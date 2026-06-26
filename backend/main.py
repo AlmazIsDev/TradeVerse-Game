@@ -3,9 +3,9 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from .database import engine, get_db, Base
-from .models import User
-from .schemas import UserCreate, UserResponse
+from database import engine, get_db, Base
+from models import User
+from schemas import UserCreate, UserResponse
 
 # Создаём таблицы в БД
 Base.metadata.create_all(bind=engine)
@@ -67,3 +67,8 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

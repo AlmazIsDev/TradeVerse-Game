@@ -1,1 +1,5 @@
 .vscode/settings.json
+backend/__pycache__/database.cpython-311.pyc
+backend/__pycache__/main.cpython-311.pyc
+backend/__pycache__/models.cpython-311.pyc
+backend/__pycache__/schemas.cpython-311.pyc

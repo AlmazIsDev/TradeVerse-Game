@@ -24,7 +24,90 @@ class UserDocument(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     username: str
     hashed_password: str
+    balance: float = 1000.0
+    card_number: Optional[str] = None
+    card_visible: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+
+# ── Stock ────────────────────────────────────────────────────────────────────
+
+
+class StockDocument(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    symbol: str
+    name: str
+    price: float
+    change: float
+    changePercent: float
+    currency: str = "USD"
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+
+# ── Transaction ──────────────────────────────────────────────────────────────
+
+
+class TransactionDocument(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    userId: str
+    type: str  # "buy" | "sell"
+    symbol: str
+    amount: float
+    price: float
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+
+# ── App Config ───────────────────────────────────────────────────────────────
+
+
+class AppConfigDocument(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    key: str
+    value: str
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+
+# ── Analytics ────────────────────────────────────────────────────────────────
+
+
+class AnalyticsDocument(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    userId: str
+    eventType: str
+    data: dict = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+
+# ── Leaderboard ──────────────────────────────────────────────────────────────
+
+
+class LeaderboardDocument(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    userId: str
+    username: str
+    avatar: Optional[str] = None
+    profit: float = 0.0
+    rank: int = 0
 
     class Config:
         populate_by_name = True

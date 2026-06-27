@@ -1,62 +1,80 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import AccountTab from './AccountTab'
 import StocksTab from './StocksTab'
 import BankTab from './BankTab'
+import AdminPanel from './AdminPanel'
+import { ShoppingCart, PartyPopper, Coins, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
 
-function Dashboard({ username, onLogout }) {
+function Dashboard({ user, onLogout }) {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('account')
+  const [showAdmin, setShowAdmin] = useState(false)
+
+  const isAdmin = user?.role === 'admin'
 
   const renderContent = () => {
     switch (activeTab) {
       case 'account':
-        return <AccountTab />
+        return <AccountTab userId={user?.id} balance={user?.balance} />
       case 'stocks':
         return <StocksTab />
       case 'bank':
-        return <BankTab />
+        return <BankTab userId={user?.id} />
       case 'shop':
-        return <PlaceholderTab title="Магазин" icon="🛒" />
+        return <PlaceholderTab title={t('nav.shop')} icon={ShoppingCart} />
       case 'events':
-        return <PlaceholderTab title="Мероприятия" icon="🎉" />
+        return <PlaceholderTab title={t('nav.events')} icon={PartyPopper} />
       case 'crypto':
-        return <PlaceholderTab title="Криптовалюта" icon="🪙" />
+        return <PlaceholderTab title={t('nav.crypto')} icon={Coins} />
       case 'realestate':
-        return <PlaceholderTab title="Покупка недвижимости" icon="🏠" />
+        return <PlaceholderTab title={t('nav.realestate')} icon={Home} />
       case 'myhomes':
-        return <PlaceholderTab title="Мои дома" icon="🏡" />
+        return <PlaceholderTab title={t('nav.myhomes')} icon={Building} />
       case 'mybusiness':
-        return <PlaceholderTab title="Мои бизнесы" icon="💼" />
+        return <PlaceholderTab title={t('nav.mybusiness')} icon={Briefcase} />
       case 'mycompany':
-        return <PlaceholderTab title="Моя Компания" icon="🏢" />
+        return <PlaceholderTab title={t('nav.mycompany')} icon={Store} />
       case 'leaderboard':
-        return <PlaceholderTab title="Таблица лидеров" icon="🏆" />
+        return <PlaceholderTab title={t('nav.leaderboard')} icon={Trophy} />
       default:
-        return <AccountTab />
+        return <AccountTab userId={user?.id} balance={user?.balance} />
     }
   }
 
   return (
     <div className="dashboard">
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={user} />
       <div className="dashboard-main">
-        <Header username={username} />
+        <Header username={user?.username} onLogout={onLogout} />
         <div className="dashboard-content">
           {renderContent()}
         </div>
       </div>
+      {isAdmin && (
+        <button
+          className="admin-fab"
+          title={t('dashboard.adminPanel')}
+          onClick={() => setShowAdmin(true)}
+        >
+          <Shield size={22} />
+        </button>
+      )}
+      {showAdmin && <AdminPanel user={user} onClose={() => setShowAdmin(false)} />}
     </div>
   )
 }
 
-function PlaceholderTab({ title, icon }) {
+function PlaceholderTab({ title, icon: Icon }) {
+  const { t } = useTranslation()
   return (
     <div className="placeholder-tab">
       <h2 className="tab-title">{title}</h2>
       <div className="placeholder-content">
-        <span className="placeholder-icon">{icon}</span>
-        <p>Раздел «{title}» скоро будет доступен</p>
+        <span className="placeholder-icon"><Icon size={48} /></span>
+        <p>{t('dashboard.comingSoon', { title })}</p>
       </div>
     </div>
   )

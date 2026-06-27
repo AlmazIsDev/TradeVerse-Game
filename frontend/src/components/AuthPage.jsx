@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { request } from '../services/api'
 
 function AuthPage({ onLogin }) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState('login')
   const [formData, setFormData] = useState({
     username: '',
@@ -21,23 +24,23 @@ function AuthPage({ onLogin }) {
     setError('')
 
     if (!formData.username || !formData.password) {
-      setError('Пожалуйста, заполните все поля')
+      setError(t('auth.fillAllFields'))
       return
     }
 
     if (tab === 'register') {
       if (!formData.confirmPassword) {
-        setError('Пожалуйста, подтвердите пароль')
+        setError(t('auth.confirmYourPassword'))
         return
       }
       if (formData.password !== formData.confirmPassword) {
-        setError('Пароли не совпадают')
+        setError(t('auth.passwordsMismatch'))
         return
       }
     }
 
     if (formData.password.length < 6) {
-      setError('Пароль должен содержать минимум 6 символов')
+      setError(t('auth.passwordTooShort'))
       return
     }
 
@@ -49,28 +52,23 @@ function AuthPage({ onLogin }) {
       : { username: formData.username, password: formData.password, confirm_password: formData.confirmPassword }
 
     try {
-      const response = await fetch(endpoint, {
+      const data = await request(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        // FastAPI может вернуть detail как строку или массив объектов
-        if (Array.isArray(data.detail)) {
-          setError(data.detail.map(err => err.msg).join(', '))
-        } else {
-          setError(data.detail || 'Ошибка при авторизации')
-        }
-        return
-      }
-
-      onLogin(data.username || formData.username)
-    } catch {
-      // Моковый режим: если сервер недоступен, всё равно пускаем
-      onLogin(formData.username)
+      // Передаём полный объект пользователя (id, username, role, card_number, card_visible, token)
+      onLogin({
+        id: data.id,
+        username: data.username || formData.username,
+        role: data.role || 'user',
+        card_number: data.card_number || null,
+        card_visible: data.card_visible !== undefined ? data.card_visible : true,
+        token: data.token || null,
+      })
+    } catch (err) {
+      // Показываем ошибку сервера пользователю
+      setError(err.message || t('auth.loginError'))
     } finally {
       setLoading(false)
     }
@@ -81,40 +79,40 @@ function AuthPage({ onLogin }) {
       <div className="auth-left">
         <div className="brand-logo">T</div>
         <h2>TradeVerse</h2>
-        <p className="brand-tagline">Экономическая война в браузере</p>
+        <p className="brand-tagline">{t('auth.tagline')}</p>
 
         <div className="features">
           <div className="feature">
             <div className="feature-icon">📈</div>
             <div>
-              <h3>Акции реальных компаний</h3>
-              <p>Торгуй акциями компаний внутри игры, скупай доли конкурентов и обрушивай их капитализацию.</p>
+              <h3>{t('auth.featureStocksTitle')}</h3>
+              <p>{t('auth.featureStocksDesc')}</p>
             </div>
           </div>
           <div className="feature">
             <div className="feature-icon">🪙</div>
             <div>
-              <h3>Своя криптовалюта</h3>
-              <p>Создай монету, задай дефляционную модель, привяжи к показателям компании — и наблюдай, как другие охотятся за твоим токеном.</p>
+              <h3>{t('auth.featureCryptoTitle')}</h3>
+              <p>{t('auth.featureCryptoDesc')}</p>
             </div>
           </div>
           <div className="feature">
             <div className="feature-icon">⚔️</div>
             <div>
-              <h3>Война инструментами</h3>
-              <p>Каждый ход влияет на общий рынок. Это не просто экономика — это война всеми доступными способами.</p>
+              <h3>{t('auth.featureWarTitle')}</h3>
+              <p>{t('auth.featureWarDesc')}</p>
             </div>
           </div>
           <div className="feature">
             <div className="feature-icon">🏛️</div>
             <div>
-              <h3>Финансовая империя</h3>
-              <p>Возводи свою империю, скупай акции соперников и стань главным магнатом TradeVerse.</p>
+              <h3>{t('auth.featureEmpireTitle')}</h3>
+              <p>{t('auth.featureEmpireDesc')}</p>
             </div>
           </div>
         </div>
 
-        <p className="brand-footer">Два класса активов. Одна цель. Ты решаешь, кому принадлежит рынок.</p>
+        <p className="brand-footer">{t('auth.footerText')}</p>
       </div>
 
       <div className="auth-right">
@@ -124,43 +122,43 @@ function AuthPage({ onLogin }) {
               className={`tab-btn ${tab === 'login' ? 'active' : ''}`}
               onClick={() => { setTab('login'); setError(''); }}
             >
-              Вход
+              {t('auth.login')}
             </button>
             <button
               className={`tab-btn ${tab === 'register' ? 'active' : ''}`}
               onClick={() => { setTab('register'); setError(''); }}
             >
-              Регистрация
+              {t('auth.register')}
             </button>
           </div>
 
           <div className="auth-header">
-            <h1>{tab === 'login' ? 'Войти в аккаунт' : 'Создать аккаунт'}</h1>
-            <p>{tab === 'login' ? 'Введите данные для входа' : 'Заполните форму для регистрации'}</p>
+            <h1>{tab === 'login' ? t('auth.loginTitle') : t('auth.registerTitle')}</h1>
+            <p>{tab === 'login' ? t('auth.loginSubtitle') : t('auth.registerSubtitle')}</p>
           </div>
 
           {error && <div className="error-message">{error}</div>}
 
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
-              <label htmlFor="username">Имя пользователя</label>
+              <label htmlFor="username">{t('auth.username')}</label>
               <input
                 type="text"
                 id="username"
                 name="username"
-                placeholder="Введите имя"
+                placeholder={t('auth.enterUsername')}
                 value={formData.username}
                 onChange={handleChange}
               />
             </div>
 
             <div className="form-group">
-              <label htmlFor="password">Пароль</label>
+              <label htmlFor="password">{t('auth.password')}</label>
               <input
                 type="password"
                 id="password"
                 name="password"
-                placeholder="Минимум 6 символов"
+                placeholder={t('auth.enterPassword')}
                 value={formData.password}
                 onChange={handleChange}
               />
@@ -168,12 +166,12 @@ function AuthPage({ onLogin }) {
 
             {tab === 'register' && (
               <div className="form-group">
-                <label htmlFor="confirmPassword">Подтвердите пароль</label>
+                <label htmlFor="confirmPassword">{t('auth.confirmPassword')}</label>
                 <input
                   type="password"
                   id="confirmPassword"
                   name="confirmPassword"
-                  placeholder="Повторите пароль"
+                  placeholder={t('auth.repeatPassword')}
                   value={formData.confirmPassword}
                   onChange={handleChange}
                 />
@@ -182,10 +180,10 @@ function AuthPage({ onLogin }) {
 
             <button type="submit" className="submit-btn" disabled={loading}>
               {loading
-                ? 'Загрузка...'
+                ? t('common.loading')
                 : tab === 'login'
-                  ? 'Войти'
-                  : 'Зарегистрироваться'}
+                  ? t('auth.loginButton')
+                  : t('auth.registerButton')}
             </button>
           </form>
         </div>

@@ -1,81 +1,88 @@
-import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { fetchTransactions } from '../services/api'
+import { useApiOnMount } from '../hooks/useApi'
+import { ShoppingCart, CheckCircle, AlertTriangle } from 'lucide-react'
 
-function BankTab() {
-  const [transactions] = useState([
-    {
-      id: 1, type: 'purchase', label: 'Трата',
-      stock: 'AAPL', company: 'Apple Inc.',
-      amount: 9125.00, quantity: 50, date: '27.06.2026 14:32'
-    },
-    {
-      id: 2, type: 'success', label: 'Успешная продажа',
-      stock: 'TSLA', company: 'Tesla Inc.',
-      amount: 12290.00, profit: 1790.00, quantity: 50, date: '27.06.2026 12:15'
-    },
-    {
-      id: 3, type: 'purchase', label: 'Трата',
-      stock: 'GAZP', company: 'Gazprom',
-      amount: 4689.00, quantity: 30, date: '26.06.2026 18:45'
-    },
-    {
-      id: 4, type: 'loss', label: 'Минусовая продажа',
-      stock: 'NVDA', company: 'NVIDIA',
-      amount: 26250.00, loss: 3750.00, quantity: 30, date: '26.06.2026 16:20'
-    },
-    {
-      id: 5, type: 'success', label: 'Успешная продажа',
-      stock: 'SBER', company: 'СберБанк',
-      amount: 8622.00, profit: 1222.00, quantity: 30, date: '25.06.2026 10:05'
-    },
-    {
-      id: 6, type: 'purchase', label: 'Трата',
-      stock: 'MSFT', company: 'Microsoft',
-      amount: 18945.00, quantity: 50, date: '25.06.2026 09:30'
-    },
-    {
-      id: 7, type: 'loss', label: 'Минусовая продажа',
-      stock: 'AAPL', company: 'Apple Inc.',
-      amount: 5475.00, loss: 1025.00, quantity: 30, date: '24.06.2026 22:10'
-    },
-    {
-      id: 8, type: 'success', label: 'Успешная продажа',
-      stock: 'GAZP', company: 'Gazprom',
-      amount: 9378.00, profit: 1878.00, quantity: 60, date: '24.06.2026 15:45'
-    },
-  ])
+function BankTab({ userId }) {
+  const { t } = useTranslation()
+  const { data: transactions, loading, error } = useApiOnMount(
+    () => fetchTransactions(userId, 100)
+  )
 
   const formatMoney = (n) => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+  const getTxType = (t) => {
+    if (t.type === 'purchase' || t.type === 'expense') return 'purchase'
+    if (t.profit > 0) return 'success'
+    if (t.loss > 0) return 'loss'
+    return 'purchase'
+  }
+
+  const getTxLabel = (t) => {
+    if (t.label) return t.label
+    const type = getTxType(t)
+    if (type === 'purchase') return t('bank.purchase')
+    if (type === 'success') return t('bank.successSale')
+    if (type === 'loss') return t('bank.lossSale')
+    return t('bank.operation')
+  }
+
   return (
     <div className="bank-tab">
-      <h2 className="tab-title">Банк — История транзакций</h2>
-      <div className="bank-transactions">
-        {transactions.map(t => (
-          <div key={t.id} className={`bank-transaction ${t.type}`}>
-            <div className="bank-tx-icon">
-              {t.type === 'purchase' && '🛒'}
-              {t.type === 'success' && '✅'}
-              {t.type === 'loss' && '⚠️'}
-            </div>
-            <div className="bank-tx-info">
-              <span className={`bank-tx-label ${t.type}`}>{t.label}</span>
-              <span className="bank-tx-stock">{t.stock} · {t.company}</span>
-              <span className="bank-tx-meta">
-                {t.quantity} акций · {t.date}
-              </span>
-            </div>
-            <div className="bank-tx-amounts">
-              <span className="bank-tx-total">{formatMoney(t.amount)} ₽</span>
-              {t.type === 'success' && (
-                <span className="bank-tx-profit">+{formatMoney(t.profit)} ₽</span>
-              )}
-              {t.type === 'loss' && (
-                <span className="bank-tx-loss">(-{formatMoney(t.loss)} ₽)</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <h2 className="tab-title">{t('bank.title')} — {t('bank.history')}</h2>
+
+      {loading && (
+        <div className="loading-state">
+          <div className="spinner" />
+          <p>{t('common.loading')}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="error-state">
+          <AlertTriangle size={24} className="error-icon" color="#fca5a5" />
+          <p>{t('common.error')}: {error}</p>
+        </div>
+      )}
+
+      {!loading && !error && (!transactions || transactions.length === 0) && (
+        <div className="empty-state">
+          <p>{t('bank.noData')}</p>
+        </div>
+      )}
+
+      {!loading && !error && transactions && transactions.length > 0 && (
+        <div className="bank-transactions">
+          {transactions.map(t => {
+            const txType = getTxType(t)
+            return (
+              <div key={t.id} className={`bank-transaction ${txType}`}>
+                <div className="bank-tx-icon">
+                  {txType === 'purchase' && <ShoppingCart size={20} />}
+                  {txType === 'success' && <CheckCircle size={20} />}
+                  {txType === 'loss' && <AlertTriangle size={20} />}
+                </div>
+                <div className="bank-tx-info">
+                  <span className={`bank-tx-label ${txType}`}>{getTxLabel(t)}</span>
+                  <span className="bank-tx-stock">{t.stock || t.ticker} · {t.company}</span>
+                  <span className="bank-tx-meta">
+                    {t.quantity} {t('common.shares')} · {t.date}
+                  </span>
+                </div>
+                <div className="bank-tx-amounts">
+                  <span className="bank-tx-total">{formatMoney(t.amount)} $</span>
+                  {txType === 'success' && t.profit > 0 && (
+                    <span className="bank-tx-profit">+{formatMoney(t.profit)} $</span>
+                  )}
+                  {txType === 'loss' && t.loss > 0 && (
+                    <span className="bank-tx-loss">(-{formatMoney(t.loss)} $)</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

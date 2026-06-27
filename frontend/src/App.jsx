@@ -11,13 +11,21 @@ function App() {
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
-      setUser(stored)
+      try {
+        const parsed = JSON.parse(stored)
+        setUser(parsed)
+      } catch {
+        setUser({ username: stored, id: null })
+      }
     }
   }, [])
 
-  const handleLogin = (username) => {
-    setUser(username)
-    localStorage.setItem(STORAGE_KEY, username)
+  const handleLogin = (userData) => {
+    const userObj = typeof userData === 'string'
+      ? { username: userData, id: null, role: 'user', token: null }
+      : userData
+    setUser(userObj)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(userObj))
   }
 
   const handleLogout = () => {
@@ -29,7 +37,7 @@ function App() {
     return <AuthPage onLogin={handleLogin} />
   }
 
-  return <Dashboard username={user} onLogout={handleLogout} />
+  return <Dashboard user={user} onLogout={handleLogout} />
 }
 
 export default App

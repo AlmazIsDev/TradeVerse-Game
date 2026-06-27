@@ -1,12 +1,58 @@
 import asyncio
-from database import engine, Base
-from models import User
+import bcrypt
+from database import get_db, get_stocks_collection, get_app_config_collection
 
 
 async def init():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    print("Tables created!")
+    db = get_db()
+
+    # Create indexes
+    await db.users.create_index("username", unique=True)
+    await db.stocks.create_index("symbol", unique=True)
+    await db.app_config.create_index("key", unique=True)
+
+    # Create default admin user
+    existing_admin = await db.users.find_one({"username": "admin"})
+    if not existing_admin:
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(b"9HfrvyIVe5LDkQ63TRFEOZNP8SsJab4h", salt).decode("utf-8")
+        await db.users.insert_one({
+            "username": "admin",
+            "hashed_password": hashed,
+            "role": "admin",
+        })
+        print("Default admin user created (admin / 9HfrvyIVe5LDkQ63TRFEOZNP8SsJab4h)")
+    else:
+        print("Admin user already exists")
+
+    # Seed default stocks if none exist
+    stocks_count = await db.stocks.count_documents({})
+    if stocks_count == 0:
+        default_stocks = [
+            {"symbol": "AAPL", "name": "Apple Inc.", "price": 195.50, "change": 2.30, "changePercent": 1.19, "currency": "USD"},
+            {"symbol": "GOOGL", "name": "Alphabet Inc.", "price": 141.80, "change": -1.20, "changePercent": -0.84, "currency": "USD"},
+            {"symbol": "MSFT", "name": "Microsoft Corp.", "price": 378.90, "change": 4.50, "changePercent": 1.20, "currency": "USD"},
+            {"symbol": "AMZN", "name": "Amazon.com Inc.", "price": 178.25, "change": 1.80, "changePercent": 1.02, "currency": "USD"},
+            {"symbol": "TSLA", "name": "Tesla Inc.", "price": 248.50, "change": -3.20, "changePercent": -1.27, "currency": "USD"},
+            {"symbol": "NVDA", "name": "NVIDIA Corp.", "price": 875.30, "change": 15.60, "changePercent": 1.81, "currency": "USD"},
+        ]
+        for stock in default_stocks:
+            await db.stocks.insert_one(stock)
+        print(f"Seeded {len(default_stocks)} default stocks")
+
+    # Seed default config
+    default_config = [
+        {"key": "sidebar_menu", "value": '{"items":["account","bank","shop","events","crypto","stocks","realestate","myhomes","mybusiness","mycompany","leaderboard"]}'},
+        {"key": "header_title", "value": "TradeVerse"},
+        {"key": "app_version", "value": "1.0.0"},
+    ]
+    for cfg in default_config:
+        existing = await db.app_config.find_one({"key": cfg["key"]})
+        if not existing:
+            await db.app_config.insert_one(cfg)
+    print("Default config seeded")
+
+    print("Database initialization complete!")
 
 
 if __name__ == "__main__":

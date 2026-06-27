@@ -1,9 +1,12 @@
-from pydantic import BaseModel, EmailStr, field_validator
+import re
+
+from pydantic import BaseModel, field_validator
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class UserCreate(BaseModel):
     username: str
-    email: EmailStr
     password: str
     confirm_password: str
 
@@ -12,6 +15,12 @@ class UserCreate(BaseModel):
     def username_min_length(cls, v):
         if len(v) < 3:
             raise ValueError("Имя пользователя должно содержать минимум 3 символа")
+        if len(v) > 32:
+            raise ValueError("Имя пользователя должно содержать максимум 32 символа")
+        if not USERNAME_RE.match(v):
+            raise ValueError(
+                "Имя пользователя может содержать только латинские буквы, цифры, _ и -"
+            )
         return v
 
     @field_validator("password")
@@ -29,10 +38,20 @@ class UserCreate(BaseModel):
         return v
 
 
-class UserResponse(BaseModel):
-    id: int
+class UserLogin(BaseModel):
     username: str
-    email: str
+    password: str
 
-    class Config:
-        from_attributes = True
+    @field_validator("username")
+    @classmethod
+    def username_format(cls, v):
+        if not USERNAME_RE.match(v):
+            raise ValueError(
+                "Имя пользователя может содержать только латинские буквы, цифры, _ и -"
+            )
+        return v
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str

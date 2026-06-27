@@ -2,18 +2,16 @@ import bcrypt
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from database import engine, get_db, Base
-from models import User
-from schemas import UserCreate, UserResponse
+from database import get_db
+from schemas import UserCreate, UserLogin, UserResponse
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    db = get_db()
+    await db.users.create_index("username", unique=True)
     yield
 
 
@@ -34,43 +32,57 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def get_users_collection(db: AsyncIOMotorDatabase = Depends(get_db)):
+    return db.users
+
+
 @app.post(
     "/api/register",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
-    # Проверяем, занято ли имя пользователя
-    existing_username = (
-        await db.execute(select(User).where(User.username == user_data.username))
-    ).scalar_one_or_none()
-    if existing_username:
+async def register_user(
+    user_data: UserCreate,
+    users=Depends(get_users_collection),
+):
+    existing = await users.find_one({"username": user_data.username})
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Пользователь с таким именем уже существует",
         )
 
-    # Проверяем, занят ли email
-    existing_email = (
-        await db.execute(select(User).where(User.email == user_data.email))
-    ).scalar_one_or_none()
-    if existing_email:
+    new_user = {
+        "username": user_data.username,
+        "hashed_password": hash_password(user_data.password),
+    }
+    result = await users.insert_one(new_user)
+    return UserResponse(id=str(result.inserted_id), username=user_data.username)
+
+
+@app.post("/api/login")
+async def login_user(
+    user_data: UserLogin,
+    users=Depends(get_users_collection),
+):
+    user = await users.find_one({"username": user_data.username})
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Пользователь с таким email уже существует",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверное имя пользователя или пароль",
         )
 
-    # Создаём пользователя с захешированным паролем
-    new_user = User(
-        username=user_data.username,
-        email=user_data.email,
-        hashed_password=hash_password(user_data.password),
-    )
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+    if not verify_password(user_data.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверное имя пользователя или пароль",
+        )
 
-    return new_user
+    return {"id": str(user["_id"]), "username": user["username"]}
 
 
 @app.get("/api/health")

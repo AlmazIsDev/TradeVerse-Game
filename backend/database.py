@@ -1,29 +1,16 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import declarative_base
+from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/tradeverse",
-)
+MONGODB_URL = os.getenv("MONGODB_URL")
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+DATABASE_NAME = "tradeverse"
 
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
-
-Base = declarative_base()
+client = AsyncIOMotorClient(MONGODB_URL)
+db = client[DATABASE_NAME]
 
 
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+def get_db():
+    return db

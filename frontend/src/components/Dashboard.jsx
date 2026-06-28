@@ -5,8 +5,9 @@ import Header from './Header'
 import AccountTab from './AccountTab'
 import StocksTab from './StocksTab'
 import BankTab from './BankTab'
+import ShopTab from './ShopTab'
 import AdminPanel from './AdminPanel'
-import { ShoppingCart, PartyPopper, Coins, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
+import { Castle, Coins, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
 
 function Dashboard({ user, onLogout }) {
   const { t } = useTranslation()
@@ -24,9 +25,9 @@ function Dashboard({ user, onLogout }) {
       case 'bank':
         return <BankTab userId={user?.id} />
       case 'shop':
-        return <PlaceholderTab title={t('nav.shop')} icon={ShoppingCart} />
-      case 'events':
-        return <PlaceholderTab title={t('nav.events')} icon={PartyPopper} />
+        return <ShopTab />
+      case 'cityroof':
+        return <PlaceholderTab title={t('nav.cityroof')} icon={Castle} />
       case 'crypto':
         return <PlaceholderTab title={t('nav.crypto')} icon={Coins} />
       case 'realestate':

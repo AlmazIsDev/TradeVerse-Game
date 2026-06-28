@@ -6,7 +6,7 @@
     "dashboard": "Dashboard",
     "settings": "Settings",
     "shop": "Shop",
-    "events": "Events",
+    "cityroof": "City Roof",
     "crypto": "Cryptocurrency",
     "realestate": "Buy Real Estate",
     "myhomes": "My Homes",
@@ -61,7 +61,11 @@
     "shares": "shares",
     "freeShares": "Available",
     "confirmDelete": "Are you sure you want to delete?",
-    "operation": "Operation"
+    "operation": "Operation",
+    "all": "All",
+    "from": "From",
+    "to": "To",
+    "notSet": "Not set"
   },
   "stocks": {
     "title": "Stocks",
@@ -102,6 +106,26 @@
     "successSale": "Successful sale",
     "lossSale": "Loss sale",
     "operation": "Operation"
+  },
+  "shop": {
+    "gpu": "GPU Store",
+    "gpuDesc": "A store where you can buy graphics cards, processors, and server racks",
+    "gpuCards": "Graphics Cards",
+    "gpuCardsDesc": "Powerful GPUs for mining and gaming",
+    "gpuCpus": "Processors",
+    "gpuCpusDesc": "Processors of any power and generation",
+    "gpuCases": "Cases",
+    "gpuCasesDesc": "Cases for building computers and servers",
+    "gpuSupplies": "Supplies",
+    "gpuSuppliesDesc": "Thermal paste, cables, fans and other consumables",
+    "realestate": "Real Estate Agency (Homes)",
+    "realestateDesc": "In this agency you can purchase a home of any type",
+    "business": "Buy Businesses",
+    "businessDesc": "Here you can buy various businesses, from a simple shawarma stand to a huge multi-million dollar per day business"
+  },
+  "gpu": {
+    "company": "Company",
+    "hashrate": "H/s"
   },
   "dashboard": {
     "title": "Dashboard",

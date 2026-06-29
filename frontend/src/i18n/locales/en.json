@@ -229,6 +229,7 @@
   "admin": {
     "title": "Admin Panel",
     "stocks": "Stocks",
+    "price": "Prices",
     "users": "Users",
     "transactions": "Transactions",
     "config": "Settings",
@@ -285,7 +286,26 @@
     "validationEmailInvalid": "Invalid email",
     "validationBalanceNegative": "Balance cannot be negative",
     "validationRoleInvalid": "Role must be user or admin",
-    "validationCardFormat": "Format: XXXX-XXXX-XXXX-XXXXX"
+    "validationCardFormat": "Format: XXXX-XXXX-XXXX-XXXXX",
+    "prices": {
+      "title": "Prices",
+      "gpu": "Graphics Cards",
+      "cpu": "Processors",
+      "case": "Cases",
+      "supplies": "Supplies",
+      "realestate": "Homes",
+      "business": "Businesses",
+      "searchPlaceholder": "Search by name...",
+      "currentPrice": "Current Price",
+      "resetConfirm": "Reset all prices for all categories?",
+      "resetCategoryConfirm": "Reset all prices in this category?",
+      "resetCategory": "Reset Category",
+      "resetAll": "Reset All",
+      "saved": "Prices saved",
+      "noProducts": "No products found",
+      "totalProducts": "Total products: {{count}}",
+      "pricesSet": "With price: {{count}}"
+    }
   },
   "notifications": {
     "title": "Notifications",

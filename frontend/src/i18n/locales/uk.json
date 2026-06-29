@@ -229,6 +229,7 @@
   "admin": {
     "title": "Адмін-панель",
     "stocks": "Акції",
+    "price": "Ціни",
     "users": "Користувачі",
     "transactions": "Транзакції",
     "config": "Налаштування",
@@ -285,7 +286,26 @@
     "validationEmailInvalid": "Некоректний email",
     "validationBalanceNegative": "Баланс не може бути від'ємним",
     "validationRoleInvalid": "Роль може бути лише user або admin",
-    "validationCardFormat": "Формат: XXXX-XXXX-XXXX-XXXXX"
+    "validationCardFormat": "Формат: XXXX-XXXX-XXXX-XXXXX",
+    "prices": {
+      "title": "Ціни",
+      "gpu": "Відеокарти",
+      "cpu": "Процесори",
+      "case": "Корпуси",
+      "supplies": "Витратні",
+      "realestate": "Будинки",
+      "business": "Бізнеси",
+      "searchPlaceholder": "Пошук за назвою...",
+      "currentPrice": "Поточна ціна",
+      "resetConfirm": "Скинути всі ціни для всіх категорій?",
+      "resetCategoryConfirm": "Скинути всі ціни в цій категорії?",
+      "resetCategory": "Скинути категорію",
+      "resetAll": "Скинути все",
+      "saved": "Ціни збережено",
+      "noProducts": "Товари не знайдено",
+      "totalProducts": "Усього товарів: {{count}}",
+      "pricesSet": "З ціною: {{count}}"
+    }
   },
   "notifications": {
     "title": "Сповіщення",

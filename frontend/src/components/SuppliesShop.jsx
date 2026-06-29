@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Wrench, Filter, DollarSign, ArrowUpDown } from 'lucide-react'
 import BuyModal from './BuyModal'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const SUPPLIES_PRODUCTS = [
   { id: 1, name: 'Охлаждающая жидкость', price: null, category: 'cooling' },
@@ -24,7 +25,7 @@ function SuppliesShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = SUPPLIES_PRODUCTS.filter(product => {
+    let result = applyShopPrices(SUPPLIES_PRODUCTS).filter(product => {
       if (selectedCategory && product.category !== selectedCategory) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -142,4 +143,5 @@ function SuppliesShop({ onBack }) {
   )
 }
 
+export { SUPPLIES_PRODUCTS }
 export default SuppliesShop

@@ -106,6 +106,14 @@ export async function adminDeleteUser(userId) {
   })
 }
 
+export async function fetchStocksV2() {
+  return request('/api/stocks/v2')
+}
+
+export async function updateStockConfig(symbol, configOverrides) {
+  return request(`/api/stocks/${encodeURIComponent(symbol)}/config`, {
+    method: 'PATCH',
+    body: JSON.stringify({ configOverrides }),
 // ── Stock Trading API ─────────────────────────────────────────────────────────
 
 export async function fetchStocksV2() {

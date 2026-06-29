@@ -4,8 +4,9 @@ import { fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, admi
 import { useApiOnMount } from '../hooks/useApi'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, DollarSign
 } from 'lucide-react'
+import PriceEditorTab from './PriceEditorTab'
 
 function Tooltip({ text }) {
   const [show, setShow] = useState(false)
@@ -323,6 +324,7 @@ function AdminPanel({ user, onClose }) {
 
   const sections = [
     { id: 'stocks', label: t('admin.stocks'), icon: Package },
+    { id: 'prices', label: t('admin.prices.title'), icon: DollarSign },
     { id: 'users', label: t('admin.users'), icon: Users },
     { id: 'transactions', label: t('admin.transactions'), icon: ArrowLeftRight },
     { id: 'config', label: t('admin.config'), icon: Settings },
@@ -438,6 +440,10 @@ function AdminPanel({ user, onClose }) {
               ))}
             </div>
           </div>
+        )}
+
+        {!loading && activeSection === 'prices' && (
+          <PriceEditorTab />
         )}
 
         {/* Config Modal */}

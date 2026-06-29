@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Monitor, Filter, Zap, DollarSign, ArrowUpDown } from 'lucide-react'
 import BuyModal from './BuyModal'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const GPU_PRODUCTS = [
   { id: 1, name: 'CrystalCore Quartz Q320', hashrate: 180, price: null, company: 'CrystalCore', line: 'Quartz' },
@@ -117,7 +118,7 @@ function GpuShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = GPU_PRODUCTS.filter(product => {
+    let result = applyShopPrices(GPU_PRODUCTS).filter(product => {
       if (selectedCompany && product.company !== selectedCompany) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -257,4 +258,5 @@ function GpuShop({ onBack }) {
   )
 }
 
+export { GPU_PRODUCTS }
 export default GpuShop

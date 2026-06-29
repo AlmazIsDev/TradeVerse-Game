@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Box, Filter, DollarSign, Layers, ArrowUpDown } from 'lucide-react'
 import BuyModal from './BuyModal'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const CASE_PRODUCTS = [
   { id: 1, name: 'TitanFrame Mini M100', maxGpus: 1, price: null, company: 'TitanFrame', line: 'Mini' },
@@ -117,7 +118,7 @@ function CaseShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = CASE_PRODUCTS.filter(product => {
+    let result = applyShopPrices(CASE_PRODUCTS).filter(product => {
       if (selectedCompany && product.company !== selectedCompany) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -252,4 +253,5 @@ function CaseShop({ onBack }) {
   )
 }
 
+export { CASE_PRODUCTS }
 export default CaseShop

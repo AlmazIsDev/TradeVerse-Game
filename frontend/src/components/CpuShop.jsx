@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Cpu, Filter, DollarSign, Layers, ArrowUpDown } from 'lucide-react'
+import BuyModal from './BuyModal'
 
 const CPU_PRODUCTS = [
   { id: 1, name: 'CrystalChip Stone S210', maxGpus: 1, multiplier: 1.00, price: null, company: 'CrystalChip', line: 'Stone' },
@@ -115,6 +116,7 @@ function CpuShop({ onBack }) {
   const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState(null)
   const [sortOrder, setSortOrder] = useState('asc')
+  const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
     let result = CPU_PRODUCTS.filter(product => {
@@ -257,13 +259,17 @@ function CpuShop({ onBack }) {
                 <DollarSign size={12} style={{ color: colors.icon }} />
                 <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
               </div>
-              <button className="gpu-card-buy" style={{ background: colors.accent }}>
+              <button className="gpu-card-buy" style={{ background: colors.accent }} onClick={() => setSelectedProduct(product)}>
                 {t('common.buy')}
               </button>
             </div>
           )
         })}
       </div>
+
+      {selectedProduct && (
+        <BuyModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
+      )}
     </div>
   )
 }

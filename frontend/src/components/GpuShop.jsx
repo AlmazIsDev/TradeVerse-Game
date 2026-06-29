@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Monitor, Filter, Zap, DollarSign, ArrowUpDown } from 'lucide-react'
+import BuyModal from './BuyModal'
 
 const GPU_PRODUCTS = [
   { id: 1, name: 'CrystalCore Quartz Q320', hashrate: 180, price: null, company: 'CrystalCore', line: 'Quartz' },
@@ -113,6 +114,7 @@ function GpuShop({ onBack }) {
   const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState(null)
   const [sortOrder, setSortOrder] = useState('asc')
+  const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
     let result = GPU_PRODUCTS.filter(product => {
@@ -240,13 +242,17 @@ function GpuShop({ onBack }) {
                 <DollarSign size={12} style={{ color: colors.icon }} />
                 <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
               </div>
-              <button className="gpu-card-buy" style={{ background: colors.accent }}>
+              <button className="gpu-card-buy" style={{ background: colors.accent }} onClick={() => setSelectedProduct(product)}>
                 {t('common.buy')}
               </button>
             </div>
           )
         })}
       </div>
+
+      {selectedProduct && (
+        <BuyModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
+      )}
     </div>
   )
 }

@@ -27,7 +27,7 @@ class UserCreate(BaseModel):
     @classmethod
     def password_min_length(cls, v):
         if len(v) < 6:
-            raise ValueError("Пароль должен содержать минимум 6 символов")
+            raise ValueError("Пароль долженминимум 6 символов")
         return v
 
     @field_validator("confirm_password")
@@ -141,3 +141,35 @@ class LeaderboardResponse(BaseModel):
     avatar: str | None
     profit: float
     rank: int
+
+
+# ── Purchase Schemas ──────────────────────────────────────────────────────────
+
+
+class PurchaseCreate(BaseModel):
+    """Схема для создания покупки предмета в магазине."""
+
+    item_id: str = ""
+    item_name: str = ""
+    item_category: str = "shop"
+    price: float = 0.0
+    quantity: int = 1
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_must_be_positive(cls, v):
+        if v < 1:
+            raise ValueError("Количество должно быть не менее 1")
+        return v
+
+
+class PurchaseResponse(BaseModel):
+    id: str
+    userId: str
+    item_id: str
+    item_name: str
+    item_category: str
+    price: float
+    quantity: int
+    total: float
+    purchased_at: str

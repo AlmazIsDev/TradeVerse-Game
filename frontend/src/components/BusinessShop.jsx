@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Briefcase, Filter, DollarSign, ArrowUpDown, Store } from 'lucide-react'
 import BuyModal from './BuyModal'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const BUSINESS_PRODUCTS = [
   { id: 1, name: 'Pixel Store', category: 'retail', price: null, income: null },
@@ -40,7 +41,7 @@ function BusinessShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = BUSINESS_PRODUCTS.filter(product => {
+    let result = applyShopPrices(BUSINESS_PRODUCTS).filter(product => {
       if (selectedCategory && product.category !== selectedCategory) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -186,4 +187,5 @@ function BusinessShop({ onBack }) {
   )
 }
 
+export { BUSINESS_PRODUCTS }
 export default BusinessShop

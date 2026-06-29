@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Home, Filter, DollarSign, Bed, Zap, Box, ArrowUpDown } from 'lucide-react'
 import BuyModal from './BuyModal'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const REAL_ESTATE_PRODUCTS = [
   // Обычный
@@ -117,7 +118,7 @@ function RealEstateShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = REAL_ESTATE_PRODUCTS.filter(product => {
+    let result = applyShopPrices(REAL_ESTATE_PRODUCTS).filter(product => {
       if (selectedRarity && product.rarity !== selectedRarity) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -280,5 +281,6 @@ function RealEstateShop({ onBack }) {
   )
 }
 
+export { REAL_ESTATE_PRODUCTS }
 export default RealEstateShop
 

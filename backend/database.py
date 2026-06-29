@@ -169,3 +169,39 @@ async def find_leaderboard(
         rank += 1
         entries.append(doc)
     return entries
+
+
+# ── Purchase operations ──────────────────────────────────────────────────────
+
+
+async def insert_purchase(db: AsyncIOMotorDatabase, purchase: dict) -> str:
+    """Сохраняет покупку в коллекцию purchases. Возвращает ID документа."""
+    purchase["purchased_at"] = datetime.utcnow()
+    result = await db.purchases.insert_one(purchase)
+    return str(result.inserted_id)
+
+
+async def find_purchases_by_user(
+    db: AsyncIOMotorDatabase, user_id: str, limit: int = 100
+) -> list[dict]:
+    """Возвращает список покупок пользователя, отсортированных по дате (новые первые)."""
+    purchases = []
+    cursor = (
+        db.purchases.find({"userId": user_id})
+        .sort("purchased_at", -1)
+        .limit(limit)
+    )
+    async for doc in cursor:
+        doc["id"] = str(doc.pop("_id"))
+        purchases.append(doc)
+    return purchases
+
+
+async def find_all_purchases(db: AsyncIOMotorDatabase, limit: int = 200) -> list[dict]:
+    """Возвращает все покупки (для админки)."""
+    purchases = []
+    cursor = db.purchases.find({}).sort("purchased_at", -1).limit(limit)
+    async for doc in cursor:
+        doc["id"] = str(doc.pop("_id"))
+        purchases.append(doc)
+    return purchases

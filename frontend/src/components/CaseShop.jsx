@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Box, Filter, DollarSign, Layers, ArrowUpDown } from 'lucide-react'
+import { ArrowLeft, Box, Filter, DollarSign, Layers, ArrowUpDown, Minimize, Wind, Shield, Rocket, Crown, Cpu, Zap, Star, Trophy, Castle, Mountain, Atom } from 'lucide-react'
 import BuyModal from './BuyModal'
+import ShopCard from './ShopCard'
 import { applyShopPrices } from '../utils/shopPrices'
 
 const CASE_PRODUCTS = [
@@ -99,10 +100,52 @@ const CASE_PRODUCTS = [
 
 const COMPANIES = ['TitanFrame', 'NovaCase', 'IronNest']
 
+const LINE_COLORS = {
+  // TitanFrame
+  Mini:   { bg: 'rgba(99, 102, 241, 0.12)', border: 'rgba(99, 102, 241, 0.35)', icon: '#818cf8', accent: '#6366f1' },
+  Air:    { bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.35)', icon: '#60a5fa', accent: '#3b82f6' },
+  Pro:    { bg: 'rgba(6, 182, 212, 0.12)', border: 'rgba(6, 182, 212, 0.35)', icon: '#22d3ee', accent: '#06b6d4' },
+  Ultra:  { bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.35)', icon: '#c084fc', accent: '#a855f7' },
+  Titan:  { bg: 'rgba(236, 72, 153, 0.12)', border: 'rgba(236, 72, 153, 0.35)', icon: '#f472b6', accent: '#ec4899' },
+  // NovaCase
+  Nano:   { bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.35)', icon: '#fb923c', accent: '#f97316' },
+  Flow:   { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.35)', icon: '#fbbf24', accent: '#f59e0b' },
+  Prime:  { bg: 'rgba(234, 179, 8, 0.12)', border: 'rgba(234, 179, 8, 0.35)', icon: '#facc15', accent: '#eab308' },
+  Elite:  { bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.35)', icon: '#f87171', accent: '#ef4444' },
+  Apex:   { bg: 'rgba(220, 38, 38, 0.12)', border: 'rgba(220, 38, 38, 0.35)', icon: '#fca5a5', accent: '#dc2626' },
+  // IronNest
+  Base:      { bg: 'rgba(34, 197, 94, 0.12)', border: 'rgba(34, 197, 94, 0.35)', icon: '#4ade80', accent: '#22c55e' },
+  Forge:     { bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.35)', icon: '#34d399', accent: '#10b981' },
+  Steel:     { bg: 'rgba(20, 184, 166, 0.12)', border: 'rgba(20, 184, 166, 0.35)', icon: '#2dd4bf', accent: '#14b8a6' },
+  Fortress:  { bg: 'rgba(132, 204, 22, 0.12)', border: 'rgba(132, 204, 22, 0.35)', icon: '#a3e635', accent: '#84cc16' },
+  Colossus:  { bg: 'rgba(163, 230, 53, 0.12)', border: 'rgba(163, 230, 53, 0.35)', icon: '#bef264', accent: '#a3e635' },
+}
+
+const LINE_ICONS = {
+  // TitanFrame
+  Mini: Minimize,
+  Air: Wind,
+  Pro: Shield,
+  Ultra: Rocket,
+  Titan: Crown,
+  // NovaCase
+  Nano: Cpu,
+  Flow: Wind,
+  Prime: Star,
+  Elite: Trophy,
+  Apex: Castle,
+  // IronNest
+  Base: Box,
+  Forge: Zap,
+  Steel: Mountain,
+  Fortress:  Shield,
+  Colossus: Atom,
+}
+
 const COMPANY_COLORS = {
-  TitanFrame: { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.3)', icon: '#818cf8', accent: '#6366f1' },
-  NovaCase: { bg: 'rgba(249, 115, 22, 0.10)', border: 'rgba(249, 115, 22, 0.3)', icon: '#fb923c', accent: '#f97316' },
-  IronNest: { bg: 'rgba(34, 197, 94, 0.10)', border: 'rgba(34, 197, 94, 0.3)', icon: '#4ade80', accent: '#22c55e' },
+  TitanFrame: LINE_COLORS.Mini,
+  NovaCase: LINE_COLORS.Nano,
+  IronNest: LINE_COLORS.Base,
 }
 
 function CaseShop({ onBack }) {
@@ -219,29 +262,21 @@ function CaseShop({ onBack }) {
         )}
       </div>
 
-      <div className="gpu-grid">
+      <div className="shop-grid">
         {filteredProducts.map(product => {
-          const colors = COMPANY_COLORS[product.company] || COMPANY_COLORS.TitanFrame
+          const colors = LINE_COLORS[product.line] || COMPANY_COLORS[product.company] || LINE_COLORS.Mini
+          const LineIcon = LINE_ICONS[product.line] || Box
           return (
-            <div
+            <ShopCard
               key={product.id}
-              className="gpu-card"
-              style={{ background: colors.bg, borderColor: colors.border }}
-            >
-              <span className="gpu-card-icon" style={{ background: colors.accent }}><Box size={24} /></span>
-              <span className="gpu-card-name">{product.name}</span>
-              <div className="gpu-card-specs">
-                <Layers size={12} style={{ color: colors.icon }} />
-                <span>{product.maxGpus} GPU</span>
-              </div>
-              <div className="gpu-card-price">
-                <DollarSign size={12} style={{ color: colors.icon }} />
-                <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
-              </div>
-              <button className="gpu-card-buy" style={{ background: colors.accent }} onClick={() => setSelectedProduct(product)}>
-                {t('common.buy')}
-              </button>
-            </div>
+              icon={LineIcon}
+              name={product.name}
+              subtitle={product.line}
+              specs={[{ icon: Layers, label: `${product.maxGpus} GPU` }]}
+              price={product.price}
+              colors={colors}
+              onBuy={() => setSelectedProduct(product)}
+            />
           )
         })}
       </div>

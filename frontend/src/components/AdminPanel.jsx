@@ -1,11 +1,25 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchStocks, fetchConfig, request, adminUpdateUser, adminDeleteUser } from '../services/api'
+import { fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle
 } from 'lucide-react'
+
+function Tooltip({ text }) {
+  const [show, setShow] = useState(false)
+  return (
+    <span
+      className="tooltip-wrapper"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <HelpCircle size={14} className="tooltip-icon" />
+      {show && <span className="tooltip-text">{text}</span>}
+    </span>
+  )
+}
 
 const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
 
@@ -32,11 +46,20 @@ function AdminPanel({ user, onClose }) {
   }
   const [activeSection, setActiveSection] = useState('stocks')
   const [stocks, setStocks] = useState([])
+  const [stocksV2, setStocksV2] = useState([])
   const [users, setUsers] = useState([])
   const [transactions, setTransactions] = useState([])
   const [configItems, setConfigItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingStock, setEditingStock] = useState(null)
+  const [editingStockConfig, setEditingStockConfig] = useState(null)
+  const [configForm, setConfigForm] = useState({
+    volatility_k: '',
+    total_shares: '',
+    price_drop_threshold: '',
+    price_rise_threshold: '',
+    max_order_size_percent: '',
+  })
   const [newStock, setNewStock] = useState({ symbol: '', name: '', price: '', change: '0', changePercent: '0' })
   const [newConfig, setNewConfig] = useState({ key: '', value: '' })
   const [message, setMessage] = useState(null)
@@ -61,6 +84,9 @@ function AdminPanel({ user, onClose }) {
       if (activeSection === 'stocks') {
         const data = await fetchStocks()
         setStocks(data)
+      } else if (activeSection === 'stockConfig') {
+        const data = await fetchStocksV2()
+        setStocksV2(data)
       } else if (activeSection === 'users') {
         const data = await request('/api/admin/users')
         setUsers(data)
@@ -263,6 +289,38 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
+  // ── Обработчики конфига акций ────────────────────────────────────────────
+
+  const handleEditStockConfig = (stock) => {
+    setEditingStockConfig(stock.symbol)
+    const overrides = stock.configOverrides || {}
+    setConfigForm({
+      volatility_k: overrides.volatility_k != null ? String(overrides.volatility_k) : '',
+      total_shares: overrides.total_shares != null ? String(overrides.total_shares) : '',
+      price_drop_threshold: overrides.price_drop_threshold != null ? String(overrides.price_drop_threshold) : '',
+      price_rise_threshold: overrides.price_rise_threshold != null ? String(overrides.price_rise_threshold) : '',
+      max_order_size_percent: overrides.max_order_size_percent != null ? String(overrides.max_order_size_percent) : '',
+    })
+  }
+
+  const handleSaveStockConfig = async () => {
+    const payload = {}
+    if (configForm.volatility_k !== '') payload.volatility_k = parseFloat(configForm.volatility_k)
+    if (configForm.total_shares !== '') payload.total_shares = parseInt(configForm.total_shares)
+    if (configForm.price_drop_threshold !== '') payload.price_drop_threshold = parseFloat(configForm.price_drop_threshold)
+    if (configForm.price_rise_threshold !== '') payload.price_rise_threshold = parseFloat(configForm.price_rise_threshold)
+    if (configForm.max_order_size_percent !== '') payload.max_order_size_percent = parseFloat(configForm.max_order_size_percent)
+
+    try {
+      await updateStockConfig(editingStockConfig, payload)
+      setEditingStockConfig(null)
+      showMessage(t('admin.configUpdated'))
+      loadData()
+    } catch (err) {
+      showMessage(t('admin.error') + ': ' + err.message)
+    }
+  }
+
   const sections = [
     { id: 'stocks', label: t('admin.stocks'), icon: Package },
     { id: 'users', label: t('admin.users'), icon: Users },
@@ -327,6 +385,12 @@ function AdminPanel({ user, onClose }) {
               </div>
             </div>
 
+            {/* Stock Config Section */}
+            <div className="admin-section-divider">
+              <h3>{t('admin.stockConfig') || 'Конфигурация акций'}</h3>
+              <p className="admin-section-hint">{t('admin.stockConfigHint') || 'Настройте параметры волатильности и поведения для каждой акции'}</p>
+            </div>
+
             <div className="admin-list">
               {stocks.map(stock => (
                 <div key={stock.id} className="admin-stock-item">
@@ -361,6 +425,9 @@ function AdminPanel({ user, onClose }) {
                         <button className="admin-btn" onClick={() => setEditingStock({ ...stock })}>
                           <Edit3 size={14} />
                         </button>
+                        <button className="admin-btn" onClick={() => handleEditStockConfig({ ...stock })} title="Настроить конфиг">
+                          <Sliders size={14} />
+                        </button>
                         <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteStock(stock.symbol)}>
                           <Trash2 size={14} />
                         </button>
@@ -369,6 +436,98 @@ function AdminPanel({ user, onClose }) {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Config Modal */}
+        {editingStockConfig && (
+          <div className="modal-overlay" onClick={() => setEditingStockConfig(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <h3>{t('admin.editStockConfig') || 'Конфигурация'}: {editingStockConfig}</h3>
+              <div className="config-form">
+                <div className="config-field">
+                  <label>
+                    {t('admin.volatilityK') || 'Волатильность (K)'}
+                    <Tooltip text={t('admin.volatilityKHelp') || 'Чем выше значение, тем сильнее меняется цена при сделках. 0.1 — стабильно, 0.5 — волатильно'} />
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.001"
+                    max="1"
+                    placeholder="0.1"
+                    value={configForm.volatility_k}
+                    onChange={e => setConfigForm({ ...configForm, volatility_k: e.target.value })}
+                  />
+                </div>
+                <div className="config-field">
+                  <label>
+                    {t('admin.totalShares') || 'Всего акций'}
+                    <Tooltip text={t('admin.totalSharesHelp') || 'Общее количество акций компании. Влияет на формулу расчёта цены: ΔP = Price × K × (ΔVolume / TotalShares)'} />
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="1000000000"
+                    value={configForm.total_shares}
+                    onChange={e => setConfigForm({ ...configForm, total_shares: e.target.value })}
+                  />
+                </div>
+                <div className="config-field">
+                  <label>
+                    {t('admin.priceDropThreshold') || 'Порог падения'}
+                    <Tooltip text={t('admin.priceDropThresholdHelp') || 'При падении цены на этот % розница начинает активно покупать (ловить дно). Например: -0.05 = -5%'} />
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="-0.5"
+                    max="0"
+                    placeholder="-0.05"
+                    value={configForm.price_drop_threshold}
+                    onChange={e => setConfigForm({ ...configForm, price_drop_threshold: e.target.value })}
+                  />
+                </div>
+                <div className="config-field">
+                  <label>
+                    {t('admin.priceRiseThreshold') || 'Порог роста'}
+                    <Tooltip text={t('admin.priceRiseThresholdHelp') || 'При росте цены на этот % киты начинают фиксировать прибыль. Например: 0.10 = +10%'} />
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    placeholder="0.10"
+                    value={configForm.price_rise_threshold}
+                    onChange={e => setConfigForm({ ...configForm, price_rise_threshold: e.target.value })}
+                  />
+                </div>
+                <div className="config-field">
+                  <label>
+                    {t('admin.maxOrderSize') || 'Макс. ордер (%)'}
+                    <Tooltip text={t('admin.maxOrderSizeHelp') || 'Максимальный размер одного ордера в % от свободных акций. Защита от манипуляций'} />
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0.001"
+                    max="0.5"
+                    placeholder="0.01"
+                    value={configForm.max_order_size_percent}
+                    onChange={e => setConfigForm({ ...configForm, max_order_size_percent: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="modal-buttons">
+                <button className="admin-btn admin-btn-primary" onClick={handleSaveStockConfig}>
+                  <Save size={14} /> {t('admin.save')}
+                </button>
+                <button className="admin-btn" onClick={() => setEditingStockConfig(null)}>
+                  {t('admin.cancel')}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -34,6 +34,9 @@ from database import (
     delete_transaction,
     delete_stock_by_symbol,
     find_all_users,
+    insert_purchase,
+    find_purchases_by_user,
+    find_all_purchases,
 )
 from schemas import (
     UserCreate,
@@ -46,6 +49,8 @@ from schemas import (
     ConfigUpdate,
     ConfigResponse,
     LeaderboardResponse,
+    PurchaseCreate,
+    PurchaseResponse,
 )
 
 
@@ -61,6 +66,8 @@ async def lifespan(app: FastAPI):
     await db.transactions.create_index("userId")
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
+    await db.purchases.create_index("userId")
+    await db.purchases.create_index("purchased_at")
     await init_db()
     yield
 
@@ -125,7 +132,9 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Токен истёк",
         )
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        import logging
+        logging.error(f"JWT decode error: {e}, token: {credentials.credentials[:20]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Недействительный токен",
@@ -184,7 +193,6 @@ async def ensure_unique_card_number(users) -> str:
 
 @app.post(
     "/api/register",
-    response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def register_user(
@@ -209,13 +217,21 @@ async def register_user(
         "card_visible": True,
     }
     result = await users.insert_one(new_user)
-    return UserResponse(
-        id=str(result.inserted_id),
-        username=user_data.username,
-        balance=1000.0,
-        card_number=card_number,
-        card_visible=True,
-    )
+    user_id = str(result.inserted_id)
+    token = create_access_token({
+        "sub": user_id,
+        "username": user_data.username,
+        "role": "user",
+    })
+    return {
+        "id": user_id,
+        "username": user_data.username,
+        "role": "user",
+        "balance": 1000.0,
+        "card_number": card_number,
+        "card_visible": True,
+        "token": token,
+    }
 
 
 @app.post("/api/login")
@@ -329,6 +345,84 @@ async def get_user_transactions(
 ):
     transactions = await find_transactions_by_user(db, user_id, limit)
     return [_format_transaction(t) for t in transactions]
+
+
+# ── Purchase Endpoints ───────────────────────────────────────────────────────
+
+
+@app.post(
+    "/api/shop/purchase",
+    response_model=PurchaseResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_purchase(
+    purchase_data: PurchaseCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Совершает покупку предмета в магазине и сохраняет в БД."""
+    user_id = str(current_user["_id"])
+    total = purchase_data.price * purchase_data.quantity
+
+    # Проверяем, что у пользователя достаточно средств
+    if current_user.get("balance", 0) < total:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недостаточно средств для покупки",
+        )
+
+    # Списываем средства
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$inc": {"balance": -total}},
+    )
+
+    # Сохраняем покупку
+    purchase_doc = {
+        "userId": user_id,
+        "item_id": purchase_data.item_id,
+        "item_name": purchase_data.item_name,
+        "item_category": purchase_data.item_category,
+        "price": purchase_data.price,
+        "quantity": purchase_data.quantity,
+        "total": total,
+    }
+    purchase_id = await insert_purchase(db, purchase_doc)
+
+    return PurchaseResponse(
+        id=purchase_id,
+        userId=user_id,
+        item_id=purchase_data.item_id,
+        item_name=purchase_data.item_name,
+        item_category=purchase_data.item_category,
+        price=purchase_data.price,
+        quantity=purchase_data.quantity,
+        total=total,
+        purchased_at=_serialize_datetime(datetime.utcnow()),
+    )
+
+
+@app.get("/api/shop/purchases", response_model=list[PurchaseResponse])
+async def get_my_purchases(
+    limit: int = Query(100, ge=1, le=500),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Возвращает список покупок текущего пользователя."""
+    user_id = str(current_user["_id"])
+    purchases = await find_purchases_by_user(db, user_id, limit)
+    return [_format_purchase(p) for p in purchases]
+
+
+@app.get("/api/admin/purchases")
+async def admin_get_all_purchases(
+    limit: int = Query(200, ge=1, le=500),
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Возвращает все покупки (только для администра)."""
+    purchases = await find_all_purchases(db, limit)
+    return [_format_purchase(p) for p in purchases]
 
 
 # ── App Config Endpoints ─────────────────────────────────────────────────────
@@ -565,6 +659,20 @@ def _format_leaderboard(entry: dict) -> dict:
         "avatar": entry.get("avatar"),
         "profit": entry.get("profit", 0.0),
         "rank": entry.get("rank", 0),
+    }
+
+
+def _format_purchase(p: dict) -> dict:
+    return {
+        "id": p.get("id", ""),
+        "userId": p["userId"],
+        "item_id": p["item_id"],
+        "item_name": p["item_name"],
+        "item_category": p["item_category"],
+        "price": p["price"],
+        "quantity": p["quantity"],
+        "total": p["total"],
+        "purchased_at": _serialize_datetime(p.get("purchased_at")),
     }
 
 

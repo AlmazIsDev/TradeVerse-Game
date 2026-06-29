@@ -8,7 +8,7 @@
     "shop": "Shop",
     "cityroof": "City Roof",
     "crypto": "Cryptocurrency",
-    "realestate": "Buy Real Estate",
+    "realestate": "Market",
     "myhomes": "My Homes",
     "mybusiness": "My Businesses",
     "mycompany": "My Company",
@@ -65,7 +65,8 @@
     "all": "All",
     "from": "From",
     "to": "To",
-    "notSet": "Not set"
+    "notSet": "Not set",
+    "name": "Name"
   },
   "stocks": {
     "title": "Stocks",
@@ -126,6 +127,48 @@
   "gpu": {
     "company": "Company",
     "hashrate": "H/s"
+  },
+  "cpu": {
+    "company": "Company",
+    "maxGpus": "GPUs",
+    "multiplier": "Multiplier"
+  },
+  "case": {
+    "company": "Company",
+    "maxGpus": "GPUs"
+  },
+  "supplies": {
+    "category": "Category",
+    "cooling": "Cooling",
+    "upgrade": "Upgrade"
+  },
+  "buyModal": {
+    "quantity": "Quantity"
+  },
+  "realestate": {
+    "rarity": "Rarity",
+    "rooms": "Rooms",
+    "roomsShort": "rooms",
+    "basement": "Basement Capacity",
+    "basementShort": "cases",
+    "tax": "Tax per kWh",
+    "rarities": {
+      "common": "Common",
+      "uncommon": "Uncommon",
+      "rare": "Rare",
+      "epic": "Epic",
+      "legendary": "Legendary"
+    }
+  },
+  "business": {
+    "category": "Category",
+    "income": "Income",
+    "categories": {
+      "retail": "Retail",
+      "tech": "Technology",
+      "service": "Services",
+      "office": "Offices"
+    }
   },
   "dashboard": {
     "title": "Dashboard",

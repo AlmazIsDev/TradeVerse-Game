@@ -8,7 +8,7 @@
     "shop": "Магазин",
     "cityroof": "Дах міста",
     "crypto": "Криптовалюта",
-    "realestate": "Купівля нерухомості",
+    "realestate": "Ринок",
     "myhomes": "Мої будинки",
     "mybusiness": "Мої бізнеси",
     "mycompany": "Моя компанія",
@@ -65,7 +65,8 @@
     "all": "Усі",
     "from": "Від",
     "to": "До",
-    "notSet": "Не встановлено"
+    "notSet": "Не встановлено",
+    "name": "Назва"
   },
   "stocks": {
     "title": "Акції",
@@ -126,6 +127,48 @@
   "gpu": {
     "company": "Компанія",
     "hashrate": "H/s"
+  },
+  "cpu": {
+    "company": "Компанія",
+    "maxGpus": "Відеокарт",
+    "multiplier": "Множник"
+  },
+  "case": {
+    "company": "Компанія",
+    "maxGpus": "Відеокарт"
+  },
+  "supplies": {
+    "category": "Категорія",
+    "cooling": "Охолодження",
+    "upgrade": "Покращення"
+  },
+  "buyModal": {
+    "quantity": "Кількість"
+  },
+  "realestate": {
+    "rarity": "Рідкість",
+    "rooms": "Кімнат",
+    "roomsShort": "кімн.",
+    "basement": "Місткість підвалу",
+    "basementShort": "корп.",
+    "tax": "Податок за kWh",
+    "rarities": {
+      "common": "Звичайний",
+      "uncommon": "Незвичайний",
+      "rare": "Рідкісний",
+      "epic": "Епічний",
+      "legendary": "Легендарний"
+    }
+  },
+  "business": {
+    "category": "Категорія",
+    "income": "Дохід",
+    "categories": {
+      "retail": "Роздрібна торгівля",
+      "tech": "Технології",
+      "service": "Послуги",
+      "office": "Офіси"
+    }
   },
   "dashboard": {
     "title": "Дашборд",

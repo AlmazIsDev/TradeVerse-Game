@@ -8,7 +8,7 @@
     "shop": "Магазин",
     "cityroof": "Крыша города",
     "crypto": "Криптовалюта",
-    "realestate": "Покупка недвижимости",
+    "realestate": "Рынок",
     "myhomes": "Мои дома",
     "mybusiness": "Мои бизнесы",
     "mycompany": "Моя Компания",
@@ -65,7 +65,8 @@
     "all": "Все",
     "from": "От",
     "to": "До",
-    "notSet": "Не установлено"
+    "notSet": "Не установлено",
+    "name": "Название"
   },
   "stocks": {
     "title": "Акции",
@@ -126,6 +127,48 @@
   "gpu": {
     "company": "Компания",
     "hashrate": "H/s"
+  },
+  "cpu": {
+    "company": "Компания",
+    "maxGpus": "Видеокарт",
+    "multiplier": "Множитель"
+  },
+  "case": {
+    "company": "Компания",
+    "maxGpus": "Видеокарт"
+  },
+  "supplies": {
+    "category": "Категория",
+    "cooling": "Охлаждение",
+    "upgrade": "Улучшение"
+  },
+  "buyModal": {
+    "quantity": "Количество"
+  },
+  "realestate": {
+    "rarity": "Редкость",
+    "rooms": "Комнат",
+    "roomsShort": "комн.",
+    "basement": "Вместимость подвала",
+    "basementShort": "корп.",
+    "tax": "Налог за kWh",
+    "rarities": {
+      "common": "Обычный",
+      "uncommon": "Необычный",
+      "rare": "Редкий",
+      "epic": "Эпический",
+      "legendary": "Легендарный"
+    }
+  },
+  "business": {
+    "category": "Категория",
+    "income": "Доход",
+    "categories": {
+      "retail": "Розница",
+      "tech": "Технологии",
+      "service": "Услуги",
+      "office": "Офисы"
+    }
   },
   "dashboard": {
     "title": "Дашборд",

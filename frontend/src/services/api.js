@@ -106,4 +106,45 @@ export async function adminDeleteUser(userId) {
   })
 }
 
+// ── Stock Trading API ─────────────────────────────────────────────────────────
+
+export async function fetchStocksV2() {
+  return request('/api/v2/stocks')
+}
+
+export async function fetchStockV2(symbol) {
+  return request(`/api/v2/stocks/${encodeURIComponent(symbol)}`)
+}
+
+export async function tradeStock(symbol, action, quantity) {
+  return request('/api/v2/stocks/trade', {
+    method: 'POST',
+    body: JSON.stringify({ symbol, action, quantity }),
+  })
+}
+
+export async function fetchPortfolio() {
+  return request('/api/v2/stocks/portfolio')
+}
+
+export async function fetchStockOrders(limit = 50) {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', limit)
+  return request(`/api/v2/stocks/orders?${params.toString()}`)
+}
+
+export async function fetchStockEvents(symbol = null, limit = 20) {
+  const params = new URLSearchParams()
+  if (symbol) params.set('symbol', symbol)
+  if (limit) params.set('limit', limit)
+  return request(`/api/v2/stocks/events?${params.toString()}`)
+}
+
+export async function updateStockConfig(symbol, configData) {
+  return request(`/api/v2/stocks/${encodeURIComponent(symbol)}/config`, {
+    method: 'PATCH',
+    body: JSON.stringify(configData),
+  })
+}
+
 export { API_BASE_URL, ApiError, request }

@@ -18,6 +18,14 @@ function App() {
         setUser({ username: stored, id: null })
       }
     }
+
+    // Автоматический логаут при 401 с сервера
+    function onUnauthorized() {
+      setUser(null)
+      localStorage.removeItem(STORAGE_KEY)
+    }
+    window.addEventListener('auth:unauthorized', onUnauthorized)
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized)
   }, [])
 
   const handleLogin = (userData) => {

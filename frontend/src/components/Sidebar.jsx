@@ -1,13 +1,13 @@
 import { useTranslation } from 'react-i18next'
 import { fetchConfig } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
-import { Wallet, Building2, ShoppingCart, PartyPopper, Coins, TrendingUp, Home, Building, Briefcase, Store, Trophy } from 'lucide-react'
+import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Briefcase, Store, Trophy } from 'lucide-react'
 
 const ICON_MAP = {
   account: Wallet,
   bank: Building2,
   shop: ShoppingCart,
-  events: PartyPopper,
+  cityroof: Castle,
   crypto: Coins,
   stocks: TrendingUp,
   realestate: Home,
@@ -25,7 +25,7 @@ function Sidebar({ activeTab, onTabChange }) {
     { id: 'account', label: t('nav.account'), icon: 'account' },
     { id: 'bank', label: t('nav.bank'), icon: 'bank' },
     { id: 'shop', label: t('nav.shop'), icon: 'shop' },
-    { id: 'events', label: t('nav.events'), icon: 'events' },
+    { id: 'cityroof', label: t('nav.cityroof'), icon: 'cityroof' },
     { id: 'crypto', label: t('nav.crypto'), icon: 'crypto' },
     { id: 'stocks', label: t('nav.stocks'), icon: 'stocks' },
     { id: 'realestate', label: t('nav.realestate'), icon: 'realestate' },

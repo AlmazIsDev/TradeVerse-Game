@@ -2365,3 +2365,960 @@ body {
   border: 6px solid transparent;
   border-top-color: rgba(30, 33, 45, 0.95);
 }
+  
+/* ===================== SHOP TAB ===================== */ 
+  
+.shop-tab {  
+  display: flex;  
+  flex-direction: column;  
+}  
+  
+.shop-sections {  
+  display: grid;  
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));  
+  gap: var(--spacing-lg);  
+}  
+  
+.shop-section-button {  
+  display: flex;  
+  flex-direction: column;  
+  align-items: center;  
+  gap: var(--spacing-sm);  
+  padding: var(--spacing-xl) var(--spacing-lg);  
+  background: var(--color-bg-secondary);  
+  backdrop-filter: blur(12px);  
+  border: 1px solid rgba(255, 255, 255, 0.08);  
+  border-radius: var(--radius-md);  
+  color: var(--color-text-primary);  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+  text-align: center;  
+}  
+  
+.shop-section-button:hover {  
+  transform: translateY(-3px);  
+  box-shadow: var(--shadow-md);  
+  border-color: rgba(99, 102, 241, 0.3);  
+  background: rgba(99, 102, 241, 0.08);  
+}  
+  
+.shop-section-icon {  
+  display: flex;  
+  align-items: center;  
+  justify-content: center;  
+  width: 56px;  
+  height: 56px;  
+  border-radius: var(--radius-md);  
+  background: rgba(99, 102, 241, 0.12);  
+  color: var(--color-accent-hover);  
+  margin-bottom: var(--spacing-xs);  
+}  
+  
+.shop-section-label {  
+  font-size: 16px;  
+  font-weight: 600;  
+  white-space: normal;  
+  line-height: 1.3;  
+}  
+  
+.shop-section-desc {  
+  font-size: 13px;  
+  font-weight: 400;  
+  color: var(--color-text-secondary);  
+  white-space: normal;  
+  line-height: 1.5;  
+} 
+  
+.shop-section-header {  
+  margin-bottom: var(--spacing-lg);  
+}  
+  
+.shop-back-btn {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-sm);  
+  padding: var(--spacing-sm) var(--spacing-md);  
+  margin-bottom: var(--spacing-md);  
+  background: transparent;  
+  border: 1px solid rgba(255, 255, 255, 0.1);  
+  border-radius: var(--radius-md);  
+  color: var(--color-text-secondary);  
+  font-size: 14px;  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+}  
+  
+.shop-back-btn:hover {  
+  background: rgba(99, 102, 241, 0.1);  
+  color: var(--color-text-primary);  
+  border-color: rgba(99, 102, 241, 0.3);  
+} 
+  
+.gpu-filters {  
+  margin-bottom: var(--spacing-lg);  
+}  
+  
+.gpu-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+  
+.gpu-filter-toggle:hover {  
+  background: rgba(99, 102, 241, 0.1);  
+  color: var(--color-text-primary);  
+}  
+  
+.gpu-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.gpu-filter-panel {
+  display: grid;  
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));  
+  gap: var(--spacing-md);  
+  padding: var(--spacing-lg);  
+  background: var(--color-bg-secondary);  
+  border: 1px solid rgba(255, 255, 255, 0.06);  
+  border-radius: var(--radius-md);  
+  margin-bottom: var(--spacing-lg);  
+}  
+  
+.gpu-filter-row {  
+  display: flex;  
+  flex-direction: column;  
+  gap: var(--spacing-xs);  
+}  
+  
+.gpu-filter-row label {  
+  font-size: 12px;  
+  color: var(--color-text-secondary);  
+  text-transform: uppercase;  
+  letter-spacing: 0.5px;  
+}  
+  
+.gpu-filter-row select,  
+.gpu-filter-row input {  
+  padding: var(--spacing-sm) var(--spacing-md);  
+  background: rgba(255, 255, 255, 0.05);  
+  border: 1px solid rgba(255, 255, 255, 0.1);  
+  border-radius: var(--radius-sm);  
+  color: var(--color-text-primary);  
+  font-size: 14px;  
+  font-family: var(--font-primary);  
+  outline: none;  
+}  
+  
+.gpu-filter-row select:focus,  
+.gpu-filter-row input:focus {  
+  border-color: var(--color-accent);  
+}  
+  
+.gpu-filter-range {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-sm);  
+}  
+  
+.gpu-filter-range input {  
+  flex: 1;  
+  min-width: 0;  
+}  
+  
+.gpu-filter-range span {  
+  color: var(--color-text-secondary);  
+}  
+  
+.gpu-grid {  
+  display: grid;  
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));  
+  gap: var(--spacing-lg);  
+}  
+  
+.gpu-card {  
+  display: flex;  
+  flex-direction: column;  
+  gap: var(--spacing-md);  
+  padding: var(--spacing-lg);  
+  background: var(--color-bg-secondary);  
+  border: 1px solid rgba(255, 255, 255, 0.06);  
+  border-radius: var(--radius-md);  
+  transition: all 0.2s ease;  
+  }  
+  
+.gpu-card:hover {  
+  transform: translateY(-2px);  
+  box-shadow: var(--shadow-md);  
+  border-color: rgba(99, 102, 241, 0.2);  
+}  
+  
+.gpu-card-icon {  
+  display: flex;  
+  align-items: center;  
+  justify-content: center;  
+  width: 48px;  
+  height: 48px;  
+  border-radius: var(--radius-md);  
+  background: rgba(99, 102, 241, 0.12);  
+  color: var(--color-accent-hover);  
+}  
+  
+.gpu-card-info {  
+  display: flex;  
+  flex-direction: column;  
+  gap: var(--spacing-xs);  
+}  
+  
+.gpu-card-name {  
+  font-size: 15px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+}  
+  
+.gpu-card-company {  
+  font-size: 12px;  
+  color: var(--color-text-secondary);  
+}  
+  
+.gpu-card-stats {  
+  display: flex;  
+  gap: var(--spacing-lg);  
+  padding-top: var(--spacing-sm);  
+  border-top: 1px solid rgba(255, 255, 255, 0.04);  
+}  
+  
+.gpu-card-stat {  
+  display: flex;  
+  flex-direction: column;  
+  gap: 2px;  
+}  
+  
+.gpu-card-stat-label {  
+  font-size: 11px;  
+  color: var(--color-text-secondary);  
+  text-transform: uppercase;  
+  letter-spacing: 0.5px;  
+}  
+  
+.gpu-card-stat-value {  
+  font-size: 14px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+}  
+  
+.gpu-card-buy {  
+  padding: var(--spacing-sm) var(--spacing-md);  
+  background: var(--color-accent);  
+  border: none;  
+  border-radius: var(--radius-sm);  
+  color: white;  
+  font-size: 14px;  
+  font-weight: 600;  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+  margin-top: auto;  
+}  
+  
+.gpu-card-buy:hover {  
+  background: var(--color-accent-hover);  
+} 
+  
+.re-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.gpu-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.gpu-card-stats {
+  display: flex;  
+  gap: var(--spacing-lg);  
+  padding-top: var(--spacing-sm);  
+  border-top: 1px solid rgba(255, 255, 255, 0.06);  
+}  
+  
+.gpu-card-stat {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-xs);  
+} 
+  
+.gpu-grid-wide {  
+  display: grid;  
+  grid-template-columns: repeat(2, 1fr);  
+  gap: var(--spacing-lg);  
+}  
+  
+.gpu-card-wide {  
+  display: flex;  
+  gap: var(--spacing-lg);  
+  padding: var(--spacing-lg);  
+  border: 1px solid;  
+  border-radius: var(--radius-lg);  
+  transition: all 0.2s ease;  
+}  
+  
+.gpu-card-wide:hover {  
+  transform: translateY(-2px);  
+  box-shadow: var(--shadow-lg);  
+}  
+  
+.gpu-card-wide-icon {  
+  display: flex;  
+  align-items: center;  
+  justify-content: center;  
+  width: 64px;  
+  height: 64px;  
+  min-width: 64px;  
+  border-radius: var(--radius-md);  
+  color: white;  
+}  
+  
+.gpu-card-wide-content {  
+  flex: 1;  
+  display: flex;  
+  flex-direction: column;  
+  gap: var(--spacing-md);  
+}  
+  
+.gpu-card-wide-top {  
+  display: flex;  
+  justify-content: space-between;  
+  align-items: flex-start;  
+  gap: var(--spacing-md);  
+}  
+  
+.gpu-card-wide-info {  
+  display: flex;  
+  flex-direction: column;  
+  gap: var(--spacing-xs);  
+}  
+  
+.gpu-card-wide-name {  
+  font-size: 15px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+}  
+  
+.gpu-card-wide-specs {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-xs);  
+  font-size: 13px;  
+  color: var(--color-text-secondary);  
+}  
+  
+.gpu-card-wide-price {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-xs);  
+  font-size: 16px;  
+  font-weight: 700;  
+  color: var(--color-text-primary);  
+  white-space: nowrap;  
+}  
+  
+.gpu-card-wide-buy {  
+  padding: var(--spacing-sm) var(--spacing-lg);  
+  border: none;  
+  border-radius: var(--radius-md);  
+  color: white;  
+  font-size: 14px;  
+  font-weight: 600;  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+}  
+  
+.gpu-card-wide-buy:hover {  
+  opacity: 0.9;  
+  transform: scale(1.02);  
+} 
+  
+.gpu-grid-4 {  
+  display: grid;  
+  grid-template-columns: repeat(6, 1fr);  
+  gap: var(--spacing-md);  
+}  
+  
+.gpu-card-4 {  
+  display: flex;  
+  flex-direction: column;  
+  align-items: center;  
+  gap: var(--spacing-sm);  
+  padding: var(--spacing-md);  
+  border: 1px solid;  
+  border-radius: var(--radius-md);  
+  text-align: center;  
+  transition: all 0.2s ease;  
+}  
+  
+.gpu-card-4:hover {  
+  transform: translateY(-2px);  
+  box-shadow: var(--shadow-md);  
+}  
+  
+.gpu-card-4-icon {  
+  display: flex;  
+  align-items: center;  
+  justify-content: center;  
+  width: 36px;  
+  height: 36px;  
+  min-width: 36px;  
+  border-radius: var(--radius-sm);  
+  color: white;  
+}  
+  
+.gpu-card-4-name {  
+  font-size: 12px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+  line-height: 1.3;  
+}  
+  
+.gpu-card-4-specs {  
+  display: flex;  
+  align-items: center;  
+  gap: 4px;  
+  font-size: 11px;  
+  color: var(--color-text-secondary);  
+}  
+  
+.gpu-card-4-bottom {  
+  display: flex;  
+  align-items: center;  
+  justify-content: space-between;  
+  width: 100%;  
+  gap: var(--spacing-sm);  
+  margin-top: auto;  
+  padding-top: var(--spacing-sm);  
+  border-top: 1px solid rgba(255, 255, 255, 0.04);  
+}  
+  
+.gpu-card-4-price {  
+  display: flex;  
+  align-items: center;  
+  gap: 2px;  
+  font-size: 11px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+}  
+  
+.gpu-card-4-buy {  
+  padding: 4px 10px;  
+  border: none;  
+  border-radius: var(--radius-sm);  
+  color: white;  
+  font-size: 10px;  
+  font-weight: 600;  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+  white-space: nowrap;  
+}  
+  
+.gpu-card-4-buy:hover {  
+  opacity: 0.85;  
+  transform: scale(1.05);  
+} 
+  
+.gpu-card-4 {  
+  display: flex;  
+  gap: var(--spacing-md);  
+  padding: var(--spacing-md);  
+  border: 1px solid;  
+  border-radius: var(--radius-md);  
+  transition: all 0.2s ease;  
+}  
+  
+.gpu-card-4:hover {  
+  transform: translateY(-2px);  
+  box-shadow: var(--shadow-md);  
+}  
+  
+.gpu-card-4-icon {  
+  display: flex;  
+  align-items: center;  
+  justify-content: center;  
+  width: 40px;  
+  height: 40px;  
+  min-width: 40px;  
+  border-radius: var(--radius-sm);  
+  color: white;  
+  align-self: flex-start;  
+}  
+  
+.gpu-card-4-content {  
+  flex: 1;  
+  display: flex;  
+  flex-direction: column;  
+  gap: 4px;  
+  min-width: 0;  
+}  
+  
+.gpu-card-4-name {  
+  font-size: 13px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+  line-height: 1.3;  
+}  
+  
+.gpu-card-4-specs {  
+  display: flex;  
+  align-items: center;  
+  gap: 4px;  
+  font-size: 11px;  
+  color: var(--color-text-secondary);  
+}  
+  
+.gpu-card-4-price {  
+  display: flex;  
+  align-items: center;  
+  gap: 4px;  
+  font-size: 13px;  
+  font-weight: 700;  
+  color: var(--color-text-primary);  
+  text-align: right;  
+  justify-content: flex-end;  
+}  
+  
+.gpu-card-4-buy {  
+  align-self: flex-end;  
+  padding: 3px 10px;  
+  border: none;  
+  border-radius: var(--radius-sm);  
+  color: white;  
+  font-size: 10px;  
+  font-weight: 600;  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+  white-space: nowrap;  
+  margin-top: 2px;  
+}  
+  
+.gpu-card-4-buy:hover {  
+  opacity: 0.85;  
+  transform: scale(1.05);  
+} 
+  
+.gpu-card-4-icon {  
+  width: 60px;  
+  height: 60px;  
+  min-width: 60px;  
+}  
+  
+.gpu-card-4-content {  
+  justify-content: flex-start;  
+}  
+  
+.gpu-card-4-bottom {  
+  display: flex;  
+  flex-direction: column;  
+  align-items: flex-end;  
+  gap: 4px;  
+  margin-top: auto;  
+  padding-top: var(--spacing-sm);  
+  border-top: 1px solid rgba(255, 255, 255, 0.06);  
+  width: 100%;  
+}  
+  
+.gpu-card-4-name {  
+  margin-top: 0;  
+  padding-top: 0;  
+} 
+
+  
+.gpu-grid {  
+  display: grid;  
+  grid-template-columns: repeat(6, 1fr);  
+  gap: var(--spacing-md);  
+}  
+  
+.gpu-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.gpu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.gpu-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 1.2rem;
+}
+
+.re-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.gpu-card-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.3;
+  flex: 1;
+}
+
+.gpu-card-specs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+
+.gpu-card-price {
+  display: flex;  
+  align-items: center;  
+  gap: 4px;  
+  font-size: 12px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+}  
+  
+.gpu-card-buy {  
+  padding: var(--spacing-sm) var(--spacing-md);  
+  border: none;  
+  border-radius: var(--radius-sm);  
+  color: white;  
+  font-size: 11px;  
+  font-weight: 600;  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+  width: 100%;  
+}  
+  
+.gpu-card-buy:hover {  
+  opacity: 0.85;  
+} 
+  
+.gpu-card-top {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-sm);  
+  width: 100%;  
+}  
+  
+.gpu-card-bottom {  
+  display: flex;  
+  justify-content: space-between;  
+  align-items: center;  
+  width: 100%;  
+  gap: var(--spacing-sm);  
+}  
+  
+.gpu-card-specs {  
+  display: flex;  
+  align-items: center;  
+  gap: 4px;  
+  font-size: 11px;  
+  color: var(--color-text-secondary);  
+}  
+  
+.gpu-card-price {  
+  display: flex;  
+  align-items: center;  
+  gap: 4px;  
+  font-size: 11px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+} 
+  
+.gpu-card-top {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-sm);  
+  width: 100%;  
+}  
+  
+.gpu-card-bottom {  
+  display: flex;  
+  justify-content: space-between;  
+  align-items: center;  
+  width: 100%;    gap: var(--spacing-sm);  
+} 
+  
+.gpu-sort {  
+  display: flex;  
+  gap: var(--spacing-sm);  
+  margin-bottom: var(--spacing-lg);  
+}  
+  
+.gpu-sort-btn {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--spacing-xs);  
+  padding: var(--spacing-sm) var(--spacing-md);  
+  background: var(--color-bg-secondary);  
+  border: 1px solid rgba(255, 255, 255, 0.1);  
+  border-radius: var(--radius-md);  
+  color: var(--color-text-secondary);  
+  font-size: 13px;  
+  font-family: var(--font-primary);  
+  cursor: pointer;  
+  transition: all 0.2s ease;  
+}  
+  
+.gpu-sort-btn:hover {  
+  background: rgba(99, 102, 241, 0.1);  
+  color: var(--color-text-primary);  
+}  
+  
+.gpu-sort-btn.active {  
+  background: var(--color-accent);  
+  color: white;  
+  border-color: var(--color-accent);  
+}  
+  
+.sort-arrow {
+  font-size: 12px;
+}
+
+/* ===================== BUY MODAL ===================== */
+
+.buy-modal {
+  background: var(--color-bg-tertiary);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+
+.buy-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.buy-modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+}
+
+.buy-modal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+  color: var(--color-accent);
+}
+
+.buy-modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.buy-modal-product {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.buy-modal-product-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.buy-modal-product-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.buy-modal-quantity {
+  margin-bottom: var(--spacing-lg);
+}
+
+.buy-modal-quantity label {
+  display: block;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.buy-modal-quantity-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.buy-modal-qty-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.buy-modal-qty-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-text-primary);
+}
+
+.buy-modal-qty-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.buy-modal-qty-input {
+  width: 80px;
+  height: 36px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-family: var(--font-primary);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.buy-modal-qty-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.buy-modal-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  font-size: 15px;
+  color: var(--color-text-secondary);
+}
+
+.buy-modal-total strong {
+  font-size: 18px;
+  color: var(--color-accent-hover);
+}
+
+.buy-modal-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.buy-modal-cancel {
+  flex: 1;
+  padding: var(--spacing-md);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.buy-modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+}
+
+.buy-modal-confirm {
+  flex: 1;
+  padding: var(--spacing-md);
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.buy-modal-confirm:hover {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.gpu-card-multiplier {
+  font-size: 12px;  
+  font-weight: 600;  
+  color: var(--color-text-primary);  
+} 
+
+
+

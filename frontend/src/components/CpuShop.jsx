@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Cpu, Filter, DollarSign, Layers, ArrowUpDown } from 'lucide-react'
 import BuyModal from './BuyModal'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const CPU_PRODUCTS = [
   { id: 1, name: 'CrystalChip Stone S210', maxGpus: 1, multiplier: 1.00, price: null, company: 'CrystalChip', line: 'Stone' },
@@ -119,7 +120,7 @@ function CpuShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = CPU_PRODUCTS.filter(product => {
+    let result = applyShopPrices(CPU_PRODUCTS).filter(product => {
       if (selectedCompany && product.company !== selectedCompany) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -274,4 +275,5 @@ function CpuShop({ onBack }) {
   )
 }
 
+export { CPU_PRODUCTS }
 export default CpuShop

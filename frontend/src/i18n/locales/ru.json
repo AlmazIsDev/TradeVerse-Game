@@ -285,7 +285,26 @@
     "validationEmailInvalid": "Некорректный email",
     "validationBalanceNegative": "Баланс не может быть отрицательным",
     "validationRoleInvalid": "Роль может быть только user или admin",
-    "validationCardFormat": "Формат: XXXX-XXXX-XXXX-XXXXX"
+    "validationCardFormat": "Формат: XXXX-XXXX-XXXX-XXXXX",
+    "prices": {
+      "title": "Цены",
+      "gpu": "Видеокарты",
+      "cpu": "Процессоры",
+      "case": "Корпуса",
+      "supplies": "Расходники",
+      "realestate": "Дома",
+      "business": "Бизнесы",
+      "searchPlaceholder": "Поиск по названию...",
+      "currentPrice": "Текущая цена",
+      "resetConfirm": "Сбросить все цены для всех категорий?",
+      "resetCategoryConfirm": "Сбросить все цены в этой категории?",
+      "resetCategory": "Сбросить категорию",
+      "resetAll": "Сбросить все",
+      "saved": "Цены сохранены",
+      "noProducts": "Товары не найдены",
+      "totalProducts": "Всего товаров: {{count}}",
+      "pricesSet": "С ценой: {{count}}"
+    }
   },
   "notifications": {
     "title": "Уведомления",

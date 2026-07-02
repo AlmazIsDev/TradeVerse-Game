@@ -1,5 +1,6 @@
 import bcrypt
 import jwt
+import logging
 import os
 import random
 from bson import ObjectId
@@ -12,8 +13,15 @@ from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import ReturnDocument
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("tradeverse")
 
 from init_db import init as init_db
 
@@ -42,6 +50,8 @@ from schemas import (
     AdminUserUpdate,
     StockCreate,
     StockResponse,
+    StockTradeRequest,
+    StockConfigUpdate,
     TransactionResponse,
     ConfigUpdate,
     ConfigResponse,
@@ -61,6 +71,10 @@ async def lifespan(app: FastAPI):
     await db.transactions.create_index("userId")
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
+    # v2 trading engine
+    await db.holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
+    await db.stock_events.create_index("symbol")
+    await db.stock_events.create_index("timestamp")
     await init_db()
     yield
 
@@ -79,9 +93,16 @@ app.add_middleware(
 
 # ── JWT / Auth Helpers ───────────────────────────────────────────────────────
 
-JWT_SECRET = os.getenv("JWT_SECRET", "tradeverse-dev-secret-change-in-prod")
+_JWT_DEFAULT_SECRET = "tradeverse-dev-secret-change-in-prod"
+JWT_SECRET = os.getenv("JWT_SECRET", _JWT_DEFAULT_SECRET)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
+
+if JWT_SECRET == _JWT_DEFAULT_SECRET:
+    logger.warning(
+        "JWT_SECRET не задан — используется небезопасное значение по умолчанию. "
+        "Установите переменную окружения JWT_SECRET перед развёртыванием в production."
+    )
 
 security = HTTPBearer(auto_error=False)
 
@@ -132,7 +153,7 @@ async def get_current_user(
         )
 
     user_id = payload.get("sub")
-    if not user_id:
+    if not user_id or not ObjectId.is_valid(user_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Недействительный токен",
@@ -318,16 +339,301 @@ async def create_or_update_stock(
     return _format_stock(stock)
 
 
+# ── Stocks V2: Trading Engine ────────────────────────────────────────────────
+#
+# Динамический рынок акций: цена реагирует на объём сделок по формуле
+#   ΔP = Price × K × (Quantity / TotalShares)
+# Покупка двигает цену вверх и уменьшает пул свободных акций, продажа — наоборот.
+# Сделки атомарны: баланс и пул свободных акций защищены условными $inc-обновлениями.
+
+DEFAULT_STOCK_CONFIG = {
+    "volatility_k": 0.1,
+    "total_shares": 1_000_000_000,
+    "price_drop_threshold": -0.05,
+    "price_rise_threshold": 0.10,
+    "max_order_size_percent": 0.01,
+}
+
+
+def _resolve_stock_config(stock: dict) -> dict:
+    """Сливает дефолтный конфиг с overrides конкретной акции."""
+    cfg = dict(DEFAULT_STOCK_CONFIG)
+    for key, value in (stock.get("config") or {}).items():
+        if value is not None:
+            cfg[key] = value
+    return cfg
+
+
+def _format_stock_v2(stock: dict) -> dict:
+    cfg = _resolve_stock_config(stock)
+    base = _format_stock(stock)
+    base["freeShares"] = stock.get("free_shares", cfg["total_shares"])
+    base["configOverrides"] = stock.get("config") or {}
+    return base
+
+
+@app.get("/api/v2/stocks")
+async def get_stocks_v2(db: AsyncIOMotorDatabase = Depends(get_db)):
+    stocks = await find_all_stocks(db)
+    return [_format_stock_v2(s) for s in stocks]
+
+
+@app.get("/api/v2/stocks/portfolio")
+async def get_portfolio(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Текущие позиции пользователя с рыночной оценкой и P&L."""
+    user_id = str(current_user["_id"])
+    positions = []
+    cursor = db.holdings.find({"userId": user_id, "quantity": {"$gt": 0}})
+    async for h in cursor:
+        stock = await db.stocks.find_one({"symbol": h["symbol"]})
+        price = float(stock["price"]) if stock else 0.0
+        qty = h.get("quantity", 0)
+        invested = h.get("invested", 0.0)
+        value = round(price * qty, 2)
+        positions.append({
+            "symbol": h["symbol"],
+            "name": stock.get("name", h["symbol"]) if stock else h["symbol"],
+            "quantity": qty,
+            "avgPrice": round(invested / qty, 2) if qty else 0.0,
+            "currentPrice": price,
+            "value": value,
+            "pnl": round(value - invested, 2),
+        })
+    return positions
+
+
+@app.get("/api/v2/stocks/orders", response_model=list[TransactionResponse])
+async def get_stock_orders(
+    limit: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """История ордеров текущего пользователя (те же документы, что и транзакции)."""
+    txs = await find_transactions_by_user(db, str(current_user["_id"]), limit)
+    return [_format_transaction(t) for t in txs]
+
+
+@app.get("/api/v2/stocks/events")
+async def get_stock_events(
+    symbol: str = Query(None, description="Фильтр по символу акции"),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Лента рыночных событий (движения цены от сделок)."""
+    query = {"symbol": symbol.upper()} if symbol else {}
+    events = []
+    cursor = db.stock_events.find(query).sort("timestamp", -1).limit(limit)
+    async for e in cursor:
+        events.append({
+            "id": str(e.pop("_id")),
+            "symbol": e.get("symbol"),
+            "type": e.get("type"),
+            "quantity": e.get("quantity"),
+            "priceBefore": e.get("priceBefore"),
+            "priceAfter": e.get("priceAfter"),
+            "timestamp": _serialize_datetime(e.get("timestamp")),
+        })
+    return events
+
+
+@app.post("/api/v2/stocks/trade")
+async def trade_stock(
+    trade: StockTradeRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Покупка/продажа акций с атомарным изменением баланса и цены."""
+    symbol = trade.symbol  # уже .upper() из валидатора
+    action = trade.action
+    quantity = trade.quantity
+
+    stock = await db.stocks.find_one({"symbol": symbol})
+    if not stock:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Stock '{symbol}' not found")
+
+    cfg = _resolve_stock_config(stock)
+    total_shares = cfg["total_shares"]
+    price = float(stock["price"])
+    cost = round(price * quantity, 2)
+    user_id = current_user["_id"]
+
+    # Ленивая инициализация пула свободных акций для старых записей.
+    if "free_shares" not in stock:
+        await db.stocks.update_one(
+            {"symbol": symbol, "free_shares": {"$exists": False}},
+            {"$set": {"free_shares": total_shares}},
+        )
+
+    # Ограничение размера ордера (защита от манипуляций).
+    max_qty = int(total_shares * cfg["max_order_size_percent"])
+    if max_qty >= 1 and quantity > max_qty:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Ордер превышает максимальный размер ({max_qty} акций)",
+        )
+
+    # Движение цены от объёма сделки.
+    delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
+
+    if action == "buy":
+        # 1) Атомарно списываем средства только при достаточном балансе.
+        updated_user = await db.users.find_one_and_update(
+            {"_id": user_id, "balance": {"$gte": cost}},
+            {"$inc": {"balance": -cost}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not updated_user:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств на балансе")
+
+        # 2) Атомарно резервируем акции из свободного пула + двигаем цену вверх.
+        new_price = round(price + delta, 2)
+        updated_stock = await db.stocks.find_one_and_update(
+            {"symbol": symbol, "free_shares": {"$gte": quantity}},
+            {
+                "$inc": {"free_shares": -quantity},
+                "$set": {
+                    "price": new_price,
+                    "change": round(new_price - price, 2),
+                    "changePercent": round((new_price - price) / price * 100, 2) if price else 0.0,
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if not updated_stock:
+            # Компенсируем списание, если акций не хватило.
+            await db.users.update_one({"_id": user_id}, {"$inc": {"balance": cost}})
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно свободных акций")
+
+        await db.holdings.update_one(
+            {"userId": str(user_id), "symbol": symbol},
+            {
+                "$inc": {"quantity": quantity, "invested": cost},
+                "$setOnInsert": {"userId": str(user_id), "symbol": symbol},
+            },
+            upsert=True,
+        )
+        new_balance = updated_user["balance"]
+
+    else:  # sell
+        # 1) Атомарно списываем акции из позиции пользователя.
+        updated_holding = await db.holdings.find_one_and_update(
+            {"userId": str(user_id), "symbol": symbol, "quantity": {"$gte": quantity}},
+            {"$inc": {"quantity": -quantity, "invested": -cost}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not updated_holding:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно акций для продажи")
+
+        # 2) Начисляем выручку и возвращаем акции в свободный пул + двигаем цену вниз.
+        updated_user = await db.users.find_one_and_update(
+            {"_id": user_id},
+            {"$inc": {"balance": cost}},
+            return_document=ReturnDocument.AFTER,
+        )
+        new_price = round(max(0.01, price - delta), 2)
+        await db.stocks.update_one(
+            {"symbol": symbol},
+            {
+                "$inc": {"free_shares": quantity},
+                "$set": {
+                    "price": new_price,
+                    "change": round(new_price - price, 2),
+                    "changePercent": round((new_price - price) / price * 100, 2) if price else 0.0,
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            },
+        )
+        new_balance = updated_user["balance"] if updated_user else current_user.get("balance", 0.0)
+
+    # История сделки (общая коллекция с v1-транзакциями → видна в Account/Bank).
+    tx_result = await db.transactions.insert_one({
+        "userId": str(user_id),
+        "type": action,
+        "symbol": symbol,
+        "amount": quantity,
+        "price": price,
+        "timestamp": datetime.now(timezone.utc),
+    })
+
+    # Рыночное событие.
+    await db.stock_events.insert_one({
+        "symbol": symbol,
+        "type": action,
+        "quantity": quantity,
+        "priceBefore": price,
+        "priceAfter": new_price,
+        "userId": str(user_id),
+        "timestamp": datetime.now(timezone.utc),
+    })
+
+    return {
+        "success": True,
+        "orderId": str(tx_result.inserted_id),
+        "symbol": symbol,
+        "action": action,
+        "quantity": quantity,
+        "price": price,
+        "total": cost,
+        "newPrice": new_price,
+        "balance": new_balance,
+    }
+
+
+@app.patch("/api/v2/stocks/{symbol}/config")
+async def update_stock_config_v2(
+    symbol: str,
+    config_update: StockConfigUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Обновляет overrides конфигурации рынка для конкретной акции (admin)."""
+    symbol = symbol.upper()
+    stock = await db.stocks.find_one({"symbol": symbol})
+    if not stock:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Stock '{symbol}' not found")
+
+    fields = config_update.model_dump(exclude_unset=True)
+    if fields:
+        set_ops = {f"config.{k}": v for k, v in fields.items()}
+        set_ops["updated_at"] = datetime.now(timezone.utc)
+        await db.stocks.update_one({"symbol": symbol}, {"$set": set_ops})
+
+    updated = await find_stock_by_symbol(db, symbol)
+    return _format_stock_v2(updated)
+
+
+@app.get("/api/v2/stocks/{symbol}")
+async def get_stock_v2(
+    symbol: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    stock = await find_stock_by_symbol(db, symbol)
+    if not stock:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Stock '{symbol}' not found")
+    return _format_stock_v2(stock)
+
+
 # ── Transactions Endpoints ───────────────────────────────────────────────────
 
 
 @app.get("/api/account/transactions", response_model=list[TransactionResponse])
 async def get_user_transactions(
-    user_id: str = Query(None, description="User ID"),
+    user_id: str = Query(None, description="User ID (admins only; ignored for regular users)"),
     limit: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    transactions = await find_transactions_by_user(db, user_id, limit)
+    # Защита от IDOR: обычный пользователь видит только свои транзакции.
+    # Администратор может явно запросить транзакции конкретного пользователя.
+    if current_user.get("role") == "admin" and user_id:
+        target_user_id = user_id
+    else:
+        target_user_id = str(current_user["_id"])
+    transactions = await find_transactions_by_user(db, target_user_id, limit)
     return [_format_transaction(t) for t in transactions]
 
 
@@ -348,7 +654,7 @@ async def get_config(
     config = await find_config_by_key(db, key)
     if not config:
         if key in DEFAULT_CONFIG:
-            return _format_config({"key": key, "value": DEFAULT_CONFIG[key], "updated_at": datetime.utcnow()})
+            return _format_config({"key": key, "value": DEFAULT_CONFIG[key], "updated_at": datetime.now(timezone.utc)})
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Config key '{key}' not found",
@@ -369,13 +675,46 @@ async def update_config(
 # ── Leaderboard Endpoints ────────────────────────────────────────────────────
 
 
+STARTING_BALANCE = 1000.0
+
+
 @app.get("/api/leaderboard", response_model=list[LeaderboardResponse])
 async def get_leaderboard(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    entries = await find_leaderboard(db, limit)
-    return [_format_leaderboard(e) for e in entries]
+    """Живой рейтинг по чистой стоимости активов (баланс + рыночная стоимость позиций)."""
+    # Карта текущих цен акций.
+    price_map: dict[str, float] = {}
+    async for s in db.stocks.find({}, {"symbol": 1, "price": 1}):
+        price_map[s["symbol"]] = float(s.get("price", 0.0))
+
+    # Суммарная рыночная стоимость позиций по каждому пользователю.
+    holdings_value: dict[str, float] = {}
+    async for h in db.holdings.find({"quantity": {"$gt": 0}}):
+        uid = h.get("userId")
+        holdings_value[uid] = holdings_value.get(uid, 0.0) + (
+            h.get("quantity", 0) * price_map.get(h.get("symbol"), 0.0)
+        )
+
+    entries = []
+    async for u in db.users.find({}):
+        uid = str(u["_id"])
+        balance = float(u.get("balance", STARTING_BALANCE))
+        net_worth = round(balance + holdings_value.get(uid, 0.0), 2)
+        entries.append({
+            "userId": uid,
+            "username": u.get("username", "—"),
+            "avatar": None,
+            "profit": round(net_worth - STARTING_BALANCE, 2),
+            "netWorth": net_worth,
+        })
+
+    entries.sort(key=lambda e: e["netWorth"], reverse=True)
+    entries = entries[:limit]
+    for rank, entry in enumerate(entries, start=1):
+        entry["rank"] = rank
+    return entries
 
 
 # ── Admin Endpoints ──────────────────────────────────────────────────────────
@@ -448,7 +787,10 @@ async def admin_update_user(
             )
 
     # Запрещённые поля не попадут в update_fields благодаря схеме AdminUserUpdate
-    print(f"[ADMIN] Updating user {user_id}: {update_fields} (by admin {_admin.get('username', 'unknown')})")
+    logger.info(
+        "Admin '%s' updating user %s: fields=%s",
+        _admin.get("username", "unknown"), user_id, list(update_fields.keys()),
+    )
 
     await db.users.update_one(
         {"_id": ObjectId(user_id)},
@@ -483,7 +825,10 @@ async def admin_delete_user(
             detail="Пользователь не найден",
         )
 
-    print(f"[ADMIN] Deleting user {user_id} ({existing.get('username', 'unknown')}) (by admin {_admin.get('username', 'unknown')})")
+    logger.info(
+        "Admin '%s' deleting user %s (%s)",
+        _admin.get("username", "unknown"), user_id, existing.get("username", "unknown"),
+    )
 
     await db.users.delete_one({"_id": ObjectId(user_id)})
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}

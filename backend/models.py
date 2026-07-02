@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel, Field
 from bson import ObjectId
@@ -27,7 +27,7 @@ class UserDocument(BaseModel):
     balance: float = 1000.0
     card_number: Optional[str] = None
     card_visible: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         populate_by_name = True
@@ -45,7 +45,7 @@ class StockDocument(BaseModel):
     change: float
     changePercent: float
     currency: str = "USD"
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         populate_by_name = True
@@ -62,7 +62,7 @@ class TransactionDocument(BaseModel):
     symbol: str
     amount: float
     price: float
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         populate_by_name = True
@@ -76,7 +76,7 @@ class AppConfigDocument(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     key: str
     value: str
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         populate_by_name = True
@@ -91,7 +91,7 @@ class AnalyticsDocument(BaseModel):
     userId: str
     eventType: str
     data: dict = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Config:
         populate_by_name = True

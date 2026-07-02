@@ -4,7 +4,7 @@ import { fetchConfig, toggleCardVisibility, fetchCurrentUser } from '../services
 import { useApiOnMount } from '../hooks/useApi'
 import ProfileCard from './ProfileCard'
 import LanguageSwitcher from './LanguageSwitcher'
-import { Bell, LogOut, X, Check, Eye, EyeOff, CheckCheck } from 'lucide-react'
+import { Bell, LogOut, X, Check, Eye, EyeOff, CheckCheck, Wallet } from 'lucide-react'
 
 const STORAGE_KEY = 'tradeverse_user'
 
@@ -16,7 +16,7 @@ function getStoredUser() {
   return null
 }
 
-function Header({ username, onLogout }) {
+function Header({ username, balance, onLogout }) {
   const { t } = useTranslation()
   const { data: headerConfig } = useApiOnMount(() => fetchConfig('header_title'))
   const [showNotifications, setShowNotifications] = useState(false)
@@ -124,6 +124,14 @@ function Header({ username, onLogout }) {
         </div>
       </div>
       <div className="header-right">
+        {balance != null && (
+          <div className="header-balance" title={t('account.balance')}>
+            <Wallet size={16} className="header-balance-icon" />
+            <span className="header-balance-value">
+              {Number(balance).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
+            </span>
+          </div>
+        )}
         <LanguageSwitcher />
         <div className="notification-wrapper" ref={notifRef}>
           <button

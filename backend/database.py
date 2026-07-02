@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from dotenv import load_dotenv
@@ -65,7 +65,7 @@ async def find_stock_by_symbol(
 
 async def upsert_stock(db: AsyncIOMotorDatabase, stock_data: dict) -> dict:
     stock_data["symbol"] = stock_data["symbol"].upper()
-    stock_data["updated_at"] = datetime.utcnow()
+    stock_data["updated_at"] = datetime.now(timezone.utc)
     result = await db.stocks.update_one(
         {"symbol": stock_data["symbol"]},
         {"$set": stock_data},
@@ -137,7 +137,7 @@ async def find_config_by_key(db: AsyncIOMotorDatabase, key: str) -> Optional[dic
 async def upsert_config(db: AsyncIOMotorDatabase, key: str, value: str) -> dict:
     await db.app_config.update_one(
         {"key": key},
-        {"$set": {"key": key, "value": value, "updated_at": datetime.utcnow()}},
+        {"$set": {"key": key, "value": value, "updated_at": datetime.now(timezone.utc)}},
         upsert=True,
     )
     return await find_config_by_key(db, key)
@@ -147,7 +147,7 @@ async def upsert_config(db: AsyncIOMotorDatabase, key: str, value: str) -> dict:
 
 
 async def insert_analytics_event(db: AsyncIOMotorDatabase, event: dict) -> str:
-    event["timestamp"] = datetime.utcnow()
+    event["timestamp"] = datetime.now(timezone.utc)
     result = await db.analytics.insert_one(event)
     return str(result.inserted_id)
 

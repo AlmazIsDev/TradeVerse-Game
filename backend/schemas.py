@@ -105,6 +105,65 @@ class StockResponse(BaseModel):
     updated_at: str
 
 
+# ── Stock Trading (v2) Schemas ───────────────────────────────────────────────
+
+
+class StockTradeRequest(BaseModel):
+    symbol: str
+    action: str
+    quantity: int
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Не указан символ акции")
+        return v.strip().upper()
+
+    @field_validator("action")
+    @classmethod
+    def action_valid(cls, v):
+        if v.lower() not in ("buy", "sell"):
+            raise ValueError("action должно быть 'buy' или 'sell'")
+        return v.lower()
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_positive(cls, v):
+        if v < 1:
+            raise ValueError("Количество должно быть не меньше 1")
+        return v
+
+
+class StockConfigUpdate(BaseModel):
+    volatility_k: float | None = None
+    total_shares: int | None = None
+    price_drop_threshold: float | None = None
+    price_rise_threshold: float | None = None
+    max_order_size_percent: float | None = None
+
+    @field_validator("volatility_k")
+    @classmethod
+    def volatility_range(cls, v):
+        if v is not None and not (0 < v <= 1):
+            raise ValueError("volatility_k должно быть в диапазоне (0, 1]")
+        return v
+
+    @field_validator("total_shares")
+    @classmethod
+    def total_shares_positive(cls, v):
+        if v is not None and v < 1:
+            raise ValueError("total_shares должно быть >= 1")
+        return v
+
+    @field_validator("max_order_size_percent")
+    @classmethod
+    def max_order_range(cls, v):
+        if v is not None and not (0 < v <= 1):
+            raise ValueError("max_order_size_percent должно быть в диапазоне (0, 1]")
+        return v
+
+
 # ── Transaction Schemas ──────────────────────────────────────────────────────
 
 
@@ -138,6 +197,7 @@ class ConfigResponse(BaseModel):
 class LeaderboardResponse(BaseModel):
     userId: str
     username: str
-    avatar: str | None
+    avatar: str | None = None
     profit: float
     rank: int
+    netWorth: float = 0.0

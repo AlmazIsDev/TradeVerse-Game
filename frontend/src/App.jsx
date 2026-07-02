@@ -28,6 +28,18 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(userObj))
   }
 
+  // Частичное обновление пользователя (например, баланса после сделки) с сохранением в localStorage.
+  const handleUserUpdate = (patch) => {
+    setUser(prev => {
+      if (!prev) return prev
+      const next = { ...prev, ...patch }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      } catch { /* ignore */ }
+      return next
+    })
+  }
+
   const handleLogout = () => {
     setUser(null)
     localStorage.removeItem(STORAGE_KEY)
@@ -37,7 +49,7 @@ function App() {
     return <AuthPage onLogin={handleLogin} />
   }
 
-  return <Dashboard user={user} onLogout={handleLogout} />
+  return <Dashboard user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
 }
 
 export default App

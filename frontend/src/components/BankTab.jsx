@@ -9,23 +9,21 @@ function BankTab({ userId }) {
     () => fetchTransactions(userId, 100)
   )
 
-  const formatMoney = (n) => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const formatMoney = (n) => (Number(n) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  const getTxType = (t) => {
-    if (t.type === 'purchase' || t.type === 'expense') return 'purchase'
-    if (t.profit > 0) return 'success'
-    if (t.loss > 0) return 'loss'
-    return 'purchase'
+  const formatDate = (ts) => {
+    if (!ts) return ''
+    const d = new Date(ts)
+    return isNaN(d.getTime())
+      ? ''
+      : d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' })
   }
 
-  const getTxLabel = (t) => {
-    if (t.label) return t.label
-    const type = getTxType(t)
-    if (type === 'purchase') return t('bank.purchase')
-    if (type === 'success') return t('bank.successSale')
-    if (type === 'loss') return t('bank.lossSale')
-    return t('bank.operation')
-  }
+  // Бэкенд-транзакции: { type: 'buy' | 'sell', symbol, amount, price, timestamp }.
+  // Покупка (buy) — расход, продажа (sell) — поступление от продажи.
+  const getTxType = (tx) => (tx.type === 'sell' ? 'success' : 'purchase')
+  const getTxLabel = (tx) => (tx.type === 'sell' ? t('bank.successSale') : t('bank.purchase'))
+  const txValue = (tx) => (Number(tx.amount) || 0) * (Number(tx.price) || 0)
 
   return (
     <div className="bank-tab">
@@ -53,30 +51,22 @@ function BankTab({ userId }) {
 
       {!loading && !error && transactions && transactions.length > 0 && (
         <div className="bank-transactions">
-          {transactions.map(t => {
-            const txType = getTxType(t)
+          {transactions.map(tx => {
+            const txType = getTxType(tx)
             return (
-              <div key={t.id} className={`bank-transaction ${txType}`}>
+              <div key={tx.id} className={`bank-transaction ${txType}`}>
                 <div className="bank-tx-icon">
-                  {txType === 'purchase' && <ShoppingCart size={20} />}
-                  {txType === 'success' && <CheckCircle size={20} />}
-                  {txType === 'loss' && <AlertTriangle size={20} />}
+                  {txType === 'purchase' ? <ShoppingCart size={20} /> : <CheckCircle size={20} />}
                 </div>
                 <div className="bank-tx-info">
-                  <span className={`bank-tx-label ${txType}`}>{getTxLabel(t)}</span>
-                  <span className="bank-tx-stock">{t.stock || t.ticker} · {t.company}</span>
+                  <span className={`bank-tx-label ${txType}`}>{getTxLabel(tx)}</span>
+                  <span className="bank-tx-stock">{tx.symbol}</span>
                   <span className="bank-tx-meta">
-                    {t.quantity} {t('common.shares')} · {t.date}
+                    {tx.amount} {t('common.shares')} · {formatDate(tx.timestamp)}
                   </span>
                 </div>
                 <div className="bank-tx-amounts">
-                  <span className="bank-tx-total">{formatMoney(t.amount)} $</span>
-                  {txType === 'success' && t.profit > 0 && (
-                    <span className="bank-tx-profit">+{formatMoney(t.profit)} $</span>
-                  )}
-                  {txType === 'loss' && t.loss > 0 && (
-                    <span className="bank-tx-loss">(-{formatMoney(t.loss)} $)</span>
-                  )}
+                  <span className="bank-tx-total">{formatMoney(txValue(tx))} $</span>
                 </div>
               </div>
             )

@@ -83,7 +83,16 @@
     "stockUpdated": "Stock updated",
     "stockDeleted": "Stock {{symbol}} deleted",
     "deleteConfirm": "Delete stock {{symbol}}?",
-    "fillAllFields": "Fill in all stock fields"
+    "fillAllFields": "Fill in all stock fields",
+    "portfolio": "My Portfolio",
+    "portfolioValue": "Portfolio value"
+  },
+  "leaderboard": {
+    "player": "Player",
+    "netWorth": "Net worth",
+    "profit": "Profit",
+    "you": "you",
+    "noData": "No players ranked yet"
   },
   "account": {
     "title": "Account",
@@ -122,7 +131,9 @@
     "realestate": "Real Estate Agency (Homes)",
     "realestateDesc": "In this agency you can purchase a home of any type",
     "business": "Buy Businesses",
-    "businessDesc": "Here you can buy various businesses, from a simple shawarma stand to a huge multi-million dollar per day business"
+    "businessDesc": "Here you can buy various businesses, from a simple shawarma stand to a huge multi-million dollar per day business",
+    "comingSoon": "Purchases are coming soon",
+    "buySuccess": "Purchased {{name}} ×{{qty}} for ${{total}}"
   },
   "gpu": {
     "company": "Company",

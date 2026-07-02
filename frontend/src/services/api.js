@@ -45,21 +45,9 @@ async function request(endpoint, options = {}) {
     const response = await fetch(url, config)
 
     if (!response.ok) {
-      const raw = await response.text().catch(() => '')
-      let message = raw
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw)
-          if (typeof parsed?.detail === 'string') {
-            message = parsed.detail
-          } else if (Array.isArray(parsed?.detail)) {
-            // Ошибки валидации Pydantic: [{ loc, msg, ... }]
-            message = parsed.detail.map(e => e.msg).filter(Boolean).join('; ') || raw
-          }
-        } catch { /* тело не JSON — используем как есть */ }
-      }
+      const errorText = await response.text().catch(() => '')
       throw new ApiError(
-        message || `Ошибка сервера: ${response.status}`,
+        errorText || `Ошибка сервера: ${response.status}`,
         response.status
       )
     }

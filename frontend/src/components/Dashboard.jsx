@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import Sidebar from './Sidebar'
 import Header from './Header'
@@ -6,49 +6,26 @@ import AccountTab from './AccountTab'
 import StocksTab from './StocksTab'
 import BankTab from './BankTab'
 import ShopTab from './ShopTab'
-import LeaderboardTab from './LeaderboardTab'
 import AdminPanel from './AdminPanel'
-import { fetchCurrentUser } from '../services/api'
-import { Castle, Coins, Home, Building, Briefcase, Store, Shield } from 'lucide-react'
+import { Castle, Coins, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
 
-function Dashboard({ user, onLogout, onUserUpdate }) {
+function Dashboard({ user, onLogout }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('account')
   const [showAdmin, setShowAdmin] = useState(false)
 
   const isAdmin = user?.role === 'admin'
 
-  // Подтягиваем актуальные данные пользователя (баланс/роль) с сервера при входе.
-  useEffect(() => {
-    let cancelled = false
-    fetchCurrentUser()
-      .then(data => {
-        if (cancelled || !data) return
-        onUserUpdate?.({
-          id: data.id,
-          balance: data.balance,
-          role: data.role,
-          card_number: data.card_number,
-          card_visible: data.card_visible,
-        })
-      })
-      .catch(() => { /* offline / unauthorized — используем локальные данные */ })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   const renderContent = () => {
     switch (activeTab) {
       case 'account':
         return <AccountTab userId={user?.id} balance={user?.balance} />
       case 'stocks':
-        return <StocksTab onUserUpdate={onUserUpdate} />
+        return <StocksTab />
       case 'bank':
         return <BankTab userId={user?.id} />
       case 'shop':
         return <ShopTab />
-      case 'leaderboard':
-        return <LeaderboardTab currentUserId={user?.id} />
       case 'cityroof':
         return <PlaceholderTab title={t('nav.cityroof')} icon={Castle} />
       case 'crypto':
@@ -61,6 +38,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <PlaceholderTab title={t('nav.mybusiness')} icon={Briefcase} />
       case 'mycompany':
         return <PlaceholderTab title={t('nav.mycompany')} icon={Store} />
+      case 'leaderboard':
+        return <PlaceholderTab title={t('nav.leaderboard')} icon={Trophy} />
       default:
         return <AccountTab userId={user?.id} balance={user?.balance} />
     }
@@ -70,7 +49,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
     <div className="dashboard">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={user} />
       <div className="dashboard-main">
-        <Header username={user?.username} balance={user?.balance} onLogout={onLogout} />
+        <Header username={user?.username} onLogout={onLogout} />
         <div className="dashboard-content">
           {renderContent()}
         </div>

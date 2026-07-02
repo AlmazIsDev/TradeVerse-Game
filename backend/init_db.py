@@ -1,16 +1,6 @@
 import asyncio
-import logging
-import os
 import bcrypt
 from database import get_db, get_stocks_collection, get_app_config_collection
-
-logger = logging.getLogger("tradeverse.init")
-
-# Пароль администратора берётся из окружения. Значение по умолчанию оставлено
-# только для локальной разработки — обязательно переопределите ADMIN_PASSWORD
-# перед развёртыванием в production.
-_DEFAULT_ADMIN_PASSWORD = "9HfrvyIVe5LDkQ63TRFEOZNP8SsJab4h"
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", _DEFAULT_ADMIN_PASSWORD)
 
 
 async def init():
@@ -25,24 +15,15 @@ async def init():
     existing_admin = await db.users.find_one({"username": "admin"})
     if not existing_admin:
         salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(ADMIN_PASSWORD.encode("utf-8"), salt).decode("utf-8")
+        hashed = bcrypt.hashpw(b"9HfrvyIVe5LDkQ63TRFEOZNP8SsJab4h", salt).decode("utf-8")
         await db.users.insert_one({
             "username": "admin",
             "hashed_password": hashed,
             "role": "admin",
-            "balance": 1000.0,
-            "card_number": None,
-            "card_visible": True,
         })
-        if ADMIN_PASSWORD == _DEFAULT_ADMIN_PASSWORD:
-            logger.warning(
-                "Создан admin с паролем по умолчанию. Задайте ADMIN_PASSWORD "
-                "в окружении и смените пароль перед production-развёртыванием."
-            )
-        else:
-            logger.info("Создан admin-пользователь с паролем из ADMIN_PASSWORD.")
+        print("Default admin user created (admin / 9HfrvyIVe5LDkQ63TRFEOZNP8SsJab4h)")
     else:
-        logger.info("Admin-пользователь уже существует.")
+        print("Admin user already exists")
 
     # Seed default stocks if none exist
     stocks_count = await db.stocks.count_documents({})
@@ -57,7 +38,7 @@ async def init():
         ]
         for stock in default_stocks:
             await db.stocks.insert_one(stock)
-        logger.info("Seeded %d default stocks", len(default_stocks))
+        print(f"Seeded {len(default_stocks)} default stocks")
 
     # Seed default config
     default_config = [
@@ -69,14 +50,10 @@ async def init():
         existing = await db.app_config.find_one({"key": cfg["key"]})
         if not existing:
             await db.app_config.insert_one(cfg)
-    logger.info("Default config seeded")
+    print("Default config seeded")
 
-    logger.info("Database initialization complete!")
+    print("Database initialization complete!")
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    )
     asyncio.run(init())

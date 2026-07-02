@@ -14,12 +14,8 @@ function AccountTab({ userId, balance = 0 }) {
   const chartData = useMemo(() => {
     const today = new Date()
     const startOfWeek = new Date(today)
-    startOfWeek.setHours(0, 0, 0, 0)
     startOfWeek.setDate(today.getDate() - today.getDay())
-    const endOfWeek = new Date(startOfWeek)
-    endOfWeek.setDate(startOfWeek.getDate() + 7)
-
-    const days = Array.from({ length: 7 }, (_, i) => {
+    return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(startOfWeek)
       d.setDate(startOfWeek.getDate() + i)
       return {
@@ -28,45 +24,17 @@ function AccountTab({ userId, balance = 0 }) {
         expense: 0,
       }
     })
+  }, [t])
 
-    // Наполняем график реальными сделками текущей недели (sell — доход, buy — расход).
-    if (Array.isArray(transactions)) {
-      const DAY_MS = 24 * 60 * 60 * 1000
-      for (const tx of transactions) {
-        const ts = new Date(tx.timestamp)
-        if (isNaN(ts.getTime()) || ts < startOfWeek || ts >= endOfWeek) continue
-        const idx = Math.floor((ts - startOfWeek) / DAY_MS)
-        if (idx < 0 || idx > 6) continue
-        const value = (Number(tx.amount) || 0) * (Number(tx.price) || 0)
-        if (tx.type === 'sell') days[idx].income += value
-        else days[idx].expense += value
-      }
-    }
-    return days
-  }, [t, transactions])
+  const maxVal = Math.max(...chartData.map(d => Math.max(d.income, d.expense)))
 
-  // max(1, …) — чтобы не делить на ноль, когда сделок ещё нет.
-  const maxVal = Math.max(1, ...chartData.map(d => Math.max(d.income, d.expense)))
-
-  const formatMoney = (n) => (Number(n) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-  const formatDate = (ts) => {
-    if (!ts) return ''
-    const d = new Date(ts)
-    return isNaN(d.getTime())
-      ? ''
-      : d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' })
-  }
-
-  // Транзакции с бэкенда: { type: 'buy' | 'sell', symbol, amount, price, timestamp }.
-  // Продажа (sell) — поступление средств, покупка (buy) — расход.
-  const txValue = (tx) => (Number(tx.amount) || 0) * (Number(tx.price) || 0)
+  const formatMoney = (n) => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const totalIncome = transactions
-    ? transactions.filter(tx => tx.type === 'sell').reduce((sum, tx) => sum + txValue(tx), 0)
+    ? transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)
     : 0
   const totalExpense = transactions
-    ? transactions.filter(tx => tx.type === 'buy').reduce((sum, tx) => sum + txValue(tx), 0)
+    ? transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
     : 0
 
   return (
@@ -143,22 +111,18 @@ function AccountTab({ userId, balance = 0 }) {
             <p>{t('account.noData')}</p>
           </div>
         )}
-        {!loading && !error && transactions && transactions.map(tx => {
-          const isIncome = tx.type === 'sell'
-          const kind = isIncome ? 'income' : 'expense'
-          return (
-            <div key={tx.id} className={`transaction-row ${kind}`}>
-              <div className="transaction-icon">{isIncome ? <TrendingUp size={16} /> : <TrendingDown size={16} />}</div>
-              <div className="transaction-info">
-                <span className="transaction-label">{t(`common.${tx.type}`)} {tx.symbol}</span>
-                <span className="transaction-date">{formatDate(tx.timestamp)}</span>
-              </div>
-              <span className={`transaction-amount ${kind}`}>
-                {isIncome ? '+' : '-'}{formatMoney(txValue(tx))} $
-              </span>
+        {!loading && !error && transactions && transactions.map(t => (
+          <div key={t.id} className={`transaction-row ${t.type}`}>
+            <div className="transaction-icon">{t.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}</div>
+            <div className="transaction-info">
+              <span className="transaction-label">{t.label}</span>
+              <span className="transaction-date">{t.date}</span>
             </div>
-          )
-        })}
+            <span className={`transaction-amount ${t.type}`}>
+              {t.type === 'income' ? '+' : '-'}{formatMoney(t.amount)} $
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )

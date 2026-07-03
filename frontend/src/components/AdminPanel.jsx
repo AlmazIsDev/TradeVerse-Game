@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig } from '../services/api'
+import { fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig, fetchBotOrders } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
@@ -50,6 +50,7 @@ function AdminPanel({ user, onClose }) {
   const [stocksV2, setStocksV2] = useState([])
   const [users, setUsers] = useState([])
   const [transactions, setTransactions] = useState([])
+  const [botOrders, setBotOrders] = useState([])
   const [configItems, setConfigItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingStock, setEditingStock] = useState(null)
@@ -94,6 +95,12 @@ function AdminPanel({ user, onClose }) {
       } else if (activeSection === 'transactions') {
         const data = await request('/api/admin/transactions')
         setTransactions(data)
+        try {
+          const botData = await fetchBotOrders(100)
+          setBotOrders(botData)
+        } catch (e) {
+          console.error('Failed to load bot orders:', e)
+        }
       } else if (activeSection === 'config') {
         const keys = ['sidebar_menu', 'header_title', 'app_version']
         const items = []
@@ -634,24 +641,49 @@ function AdminPanel({ user, onClose }) {
         )}
 
         {!loading && activeSection === 'transactions' && (
-          <div className="admin-list">
-            {transactions.map(tx => (
-              <div key={tx.id} className="admin-tx-item">
-                <div>
-                  <span className={`tx-type ${tx.type}`}>{tx.type}</span>
-                  <strong>{tx.symbol}</strong>
-                  <span>{tx.amount} × ${tx.price}</span>
+          <>
+            <div className="admin-list">
+              {transactions.map(tx => (
+                <div key={tx.id} className="admin-tx-item">
+                  <div>
+                    <span className={`tx-type ${tx.type}`}>{tx.type}</span>
+                    <strong>{tx.symbol}</strong>
+                    <span>{tx.amount} × ${tx.price}</span>
+                  </div>
+                  <div className="tx-right">
+                    <span>{tx.timestamp}</span>
+                    <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteTransaction(tx.id)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="tx-right">
-                  <span>{tx.timestamp}</span>
-                  <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteTransaction(tx.id)}>
-                    <Trash2 size={14} />
-                  </button>
+              ))}
+              {transactions.length === 0 && botOrders.length === 0 && <p className="empty-state">{t('admin.noTransactions')}</p>}
+            </div>
+            {botOrders.length > 0 && (
+              <>
+                <div className="admin-section-divider">
+                  <h3>Bot Orders</h3>
+                  <p className="admin-section-hint">Automatic trades from the bot trading system</p>
                 </div>
-              </div>
-            ))}
-            {transactions.length === 0 && <p className="empty-state">{t('admin.noTransactions')}</p>}
-          </div>
+                <div className="admin-list">
+                  {botOrders.map(tx => (
+                    <div key={tx.id} className="admin-tx-item bot-tx">
+                      <div>
+                        <span className={`tx-type ${tx.action}`}>{tx.action}</span>
+                        <strong>{tx.symbol}</strong>
+                        <span>{tx.quantity} × ${tx.pricePerShare?.toFixed(2) || '0.00'}</span>
+                        <span className="bot-label">BOT</span>
+                      </div>
+                      <div className="tx-right">
+                        <span>{tx.timestamp}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
         )}
 
         {!loading && activeSection === 'config' && (

@@ -57,7 +57,7 @@ function AuthPage({ onLogin }) {
         body: JSON.stringify(body),
       })
 
-      // Передаём полный объект пользователя (id, username, role, card_number, card_visible, token)
+      // Передаём полный объект пользователя (id, username, role, card_number, card_visible, token, refresh_token)
       onLogin({
         id: data.id,
         username: data.username || formData.username,
@@ -65,6 +65,7 @@ function AuthPage({ onLogin }) {
         card_number: data.card_number || null,
         card_visible: data.card_visible !== undefined ? data.card_visible : true,
         token: data.token || null,
+        refresh_token: data.refresh_token || null,
       })
     } catch (err) {
       // Показываем ошибку сервера пользователю

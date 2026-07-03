@@ -2,6 +2,7 @@ import bcrypt
 import jwt
 import os
 import random
+import secrets
 from bson import ObjectId
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -61,8 +62,23 @@ async def lifespan(app: FastAPI):
     await db.transactions.create_index("userId")
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
+    # Refresh token indexes
+    await db.refresh_tokens.create_index("user_id")
+    await db.refresh_tokens.create_index("expires_at")
+    # StockEngine indexes
+    await db.stock_orders.create_index("userId")
+    await db.stock_orders.create_index("symbol")
+    await db.portfolios.create_index("userId", unique=True)
+    await db.stock_events.create_index("symbol")
     await init_db()
+    # Lazy import to avoid circular dependency
+    from stock_engine.router import router as stocks_router
+    app.include_router(stocks_router)
+    # Start bot trading system
+    from stock_engine.bot_trader import start_bot_trading, stop_bot_trading
+    await start_bot_trading(db)
     yield
+    await stop_bot_trading()
 
 
 app = FastAPI(title="TradeVerse API", version="1.0.0", lifespan=lifespan)
@@ -76,12 +92,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ── JWT / Auth Helpers ───────────────────────────────────────────────────────
 
 JWT_SECRET = os.getenv("JWT_SECRET", "tradeverse-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_HOURS = 24
+JWT_EXPIRE_HOURS = 1          # Access token: 1 hour
+REFRESH_EXPIRE_DAYS = 30      # Refresh token: 30 days
 
 security = HTTPBearer(auto_error=False)
 
@@ -96,16 +112,36 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict) -> str:
-    """Создаёт JWT-токен с полезной нагрузкой и сроком действия."""
+    """Создаёт JWT access-токен с полезной нагрузкой и сроком действия."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict:
     """Декодирует и валидирует JWT-токен. Бросает исключение при ошибке."""
     return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+
+def generate_refresh_token() -> str:
+    """Генерирует криптографически стойкий refresh token (opaque)."""
+    return secrets.token_urlsafe(64)
+
+
+def hash_token(token: str) -> str:
+    """Хеширует refresh token для безопасного хранения в БД."""
+    # bcrypt имеет ограничение 72 байта — используем SHA256 для урезания
+    import hashlib
+    token_hashed = hashlib.sha256(token.encode("utf-8")).hexdigest()[:72]
+    return bcrypt.hashpw(token_hashed.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_token(token: str, hashed: str) -> bool:
+    """Проверяет refresh token против хеша из БД."""
+    import hashlib
+    token_hashed = hashlib.sha256(token.encode("utf-8")).hexdigest()[:72]
+    return bcrypt.checkpw(token_hashed.encode("utf-8"), hashed.encode("utf-8"))
 
 
 async def get_current_user(
@@ -221,8 +257,9 @@ async def register_user(
 @app.post("/api/login")
 async def login_user(
     user_data: UserLogin,
-    users=Depends(get_users_collection),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    users = db.users
     user = await users.find_one({"username": user_data.username})
     if not user:
         raise HTTPException(
@@ -236,11 +273,21 @@ async def login_user(
             detail="Неверное имя пользователя или пароль",
         )
 
-    # Создаём JWT-токен с id, username и role
-    token = create_access_token({
+    # Создаём JWT access-токен с id, username и role
+    access_token = create_access_token({
         "sub": str(user["_id"]),
         "username": user["username"],
         "role": user.get("role", "user"),
+    })
+
+    # Создаём opaque refresh-токен и сохраняем его хеш в БД
+    refresh_token = generate_refresh_token()
+    refresh_hashed = hash_token(refresh_token)
+    refresh_expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_EXPIRE_DAYS)
+    await db.refresh_tokens.insert_one({
+        "user_id": str(user["_id"]),
+        "token_hash": refresh_hashed,
+        "expires_at": refresh_expires,
     })
 
     return {
@@ -250,8 +297,84 @@ async def login_user(
         "balance": user.get("balance", 1000.0),
         "card_number": user.get("card_number"),
         "card_visible": user.get("card_visible", True),
-        "token": token,
+        "token": access_token,
+        "refresh_token": refresh_token,
     }
+
+
+@app.post("/api/auth/refresh")
+async def refresh_access_token(
+    body: dict,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Обменивает refresh-токен на новую пару access + refresh токенов."""
+    refresh_token = body.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Отсутствует refresh-токен",
+        )
+
+    now = datetime.now(timezone.utc)
+    # Ищем хеш, соответствующий данному refresh-токену
+    stored = None
+    async for doc in db.refresh_tokens.find({"expires_at": {"$gt": now}}):
+        if verify_token(refresh_token, doc["token_hash"]):
+            stored = doc
+            break
+
+    if not stored:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Недействительный или истёкший refresh-токен",
+        )
+
+    user_id = stored["user_id"]
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Пользователь не найден",
+        )
+
+    # Удаляем старый refresh-токен (rotation — каждый токен используется один раз)
+    await db.refresh_tokens.delete_one({"_id": stored["_id"]})
+
+    # Генерируем новую пару
+    access_token = create_access_token({
+        "sub": str(user["_id"]),
+        "username": user["username"],
+        "role": user.get("role", "user"),
+    })
+    new_refresh = generate_refresh_token()
+    new_hashed = hash_token(new_refresh)
+    new_expires = now + timedelta(days=REFRESH_EXPIRE_DAYS)
+    await db.refresh_tokens.insert_one({
+        "user_id": str(user["_id"]),
+        "token_hash": new_hashed,
+        "expires_at": new_expires,
+    })
+
+    return {
+        "token": access_token,
+        "refresh_token": new_refresh,
+    }
+
+
+@app.post("/api/auth/logout")
+async def logout_user(
+    body: dict,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Инвалидирует refresh-токен (logout)."""
+    refresh_token = body.get("refresh_token")
+    if refresh_token:
+        now = datetime.now(timezone.utc)
+        async for doc in db.refresh_tokens.find({"expires_at": {"$gt": now}}):
+            if verify_token(refresh_token, doc["token_hash"]):
+                await db.refresh_tokens.delete_one({"_id": doc["_id"]})
+                break
+    return {"detail": "ok"}
 
 
 @app.get("/api/user/me")

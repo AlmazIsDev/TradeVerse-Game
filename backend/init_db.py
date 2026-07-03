@@ -29,12 +29,12 @@ async def init():
     stocks_count = await db.stocks.count_documents({})
     if stocks_count == 0:
         default_stocks = [
-            {"symbol": "AAPL", "name": "Apple Inc.", "price": 195.50, "change": 2.30, "changePercent": 1.19, "currency": "USD"},
-            {"symbol": "GOOGL", "name": "Alphabet Inc.", "price": 141.80, "change": -1.20, "changePercent": -0.84, "currency": "USD"},
-            {"symbol": "MSFT", "name": "Microsoft Corp.", "price": 378.90, "change": 4.50, "changePercent": 1.20, "currency": "USD"},
-            {"symbol": "AMZN", "name": "Amazon.com Inc.", "price": 178.25, "change": 1.80, "changePercent": 1.02, "currency": "USD"},
-            {"symbol": "TSLA", "name": "Tesla Inc.", "price": 248.50, "change": -3.20, "changePercent": -1.27, "currency": "USD"},
-            {"symbol": "NVDA", "name": "NVIDIA Corp.", "price": 875.30, "change": 15.60, "changePercent": 1.81, "currency": "USD"},
+            {"symbol": "AAPL", "name": "Apple Inc.", "price": 195.50, "change": 2.30, "changePercent": 1.19, "currency": "USD", "total_shares": 1_000_000_000, "free_shares": 1_000_000_000},
+            {"symbol": "GOOGL", "name": "Alphabet Inc.", "price": 141.80, "change": -1.20, "changePercent": -0.84, "currency": "USD", "total_shares": 1_000_000_000, "free_shares": 1_000_000_000},
+            {"symbol": "MSFT", "name": "Microsoft Corp.", "price": 378.90, "change": 4.50, "changePercent": 1.20, "currency": "USD", "total_shares": 1_000_000_000, "free_shares": 1_000_000_000},
+            {"symbol": "AMZN", "name": "Amazon.com Inc.", "price": 178.25, "change": 1.80, "changePercent": 1.02, "currency": "USD", "total_shares": 1_000_000_000, "free_shares": 1_000_000_000},
+            {"symbol": "TSLA", "name": "Tesla Inc.", "price": 248.50, "change": -3.20, "changePercent": -1.27, "currency": "USD", "total_shares": 1_000_000_000, "free_shares": 1_000_000_000},
+            {"symbol": "NVDA", "name": "NVIDIA Corp.", "price": 875.30, "change": 15.60, "changePercent": 1.81, "currency": "USD", "total_shares": 1_000_000_000, "free_shares": 1_000_000_000},
         ]
         for stock in default_stocks:
             await db.stocks.insert_one(stock)

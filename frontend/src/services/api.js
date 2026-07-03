@@ -88,7 +88,7 @@ async function refreshAccessToken() {
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`
 
-  // Автоматически добавляем JWT-токен в заголовок Authorization
+  // Автоматически добавляем JWT- заголовок Authorization
   const token = getAuthToken()
   const authHeaders = {}
   if (token) {
@@ -136,6 +136,11 @@ async function request(endpoint, options = {}) {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '')
+      // При 401 автоматически разлогиниваем
+      if (response.status === 401 && typeof window !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY)
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+      }
       throw new ApiError(
         errorText || `Ошибка сервера: ${response.status}`,
         response.status
@@ -235,6 +240,21 @@ export async function updateStockConfig(symbol, configData) {
     method: 'PATCH',
     body: JSON.stringify(configData),
   })
+}
+
+// ── Shop Purchase API ────────────────────────────────────────────────────────
+
+export async function purchaseItem(purchaseData) {
+  return request('/api/shop/purchase', {
+    method: 'POST',
+    body: JSON.stringify(purchaseData),
+  })
+}
+
+export async function fetchMyPurchases(limit = 100) {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', limit)
+  return request(`/api/shop/purchases?${params.toString()}`)
 }
 
 export async function fetchBotOrders(limit = 100) {

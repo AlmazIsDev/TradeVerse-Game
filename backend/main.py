@@ -51,6 +51,7 @@ from schemas import (
     LeaderboardResponse,
     PurchaseCreate,
     PurchaseResponse,
+    ShopPriceUpdate,
 )
 
 
@@ -423,6 +424,39 @@ async def admin_get_all_purchases(
     """Возвращает все покупки (только для администра)."""
     purchases = await find_all_purchases(db, limit)
     return [_format_purchase(p) for p in purchases]
+
+
+# ── Shop Price Endpoints ─────────────────────────────────────────────────────
+
+
+@app.get("/api/admin/shop-prices")
+async def admin_get_shop_prices(
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Возвращает все сохранённые цены товаров."""
+    doc = await find_config_by_key(db, "shop_prices")
+    if not doc:
+        return {"prices": {}, "updated_at": ""}
+    import json as _json
+    try:
+        prices = _json.loads(doc["value"])
+    except Exception:
+        prices = {}
+    return {"prices": prices, "updated_at": _serialize_datetime(doc.get("updated_at"))}
+
+
+@app.post("/api/admin/shop-prices")
+async def admin_save_shop_prices(
+    data: ShopPriceUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Сохраняет цены товаров в БД."""
+    import json as _json
+    prices_json = _json.dumps(data.prices)
+    await upsert_config(db, "shop_prices", prices_json)
+    return {"prices": data.prices, "updated_at": _serialize_datetime(datetime.utcnow())}
 
 
 # ── App Config Endpoints ─────────────────────────────────────────────────────

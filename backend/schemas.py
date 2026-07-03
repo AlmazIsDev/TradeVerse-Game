@@ -173,3 +173,17 @@ class PurchaseResponse(BaseModel):
     quantity: int
     total: float
     purchased_at: str
+
+
+# ── Shop Price Schemas ───────────────────────────────────────────────────────
+
+
+class ShopPriceUpdate(BaseModel):
+    """Схема для обновления цен товаров."""
+    prices: dict[str, float | None]
+
+
+class ShopPriceResponse(BaseModel):
+    """Схема ответа с ценами товаров."""
+    prices: dict[str, float | None]
+    updated_at: str

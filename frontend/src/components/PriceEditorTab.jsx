@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Save, RotateCcw, Monitor, Cpu, Box, Wrench, Home, Briefcase, Search, DollarSign } from 'lucide-react'
 
-// Импортируем массивы товаров из shop-компонентов
 import { GPU_PRODUCTS } from './GpuShop'
 import { CPU_PRODUCTS } from './CpuShop'
 import { CASE_PRODUCTS } from './CaseShop'
@@ -10,44 +9,51 @@ import { SUPPLIES_PRODUCTS } from './SuppliesShop'
 import { REAL_ESTATE_PRODUCTS } from './RealEstateShop'
 import { BUSINESS_PRODUCTS } from './BusinessShop'
 
-const STORAGE_KEY = 'tradeverse_shop_prices'
-
-/** Загрузить все цены из localStorage */
-function loadPrices() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch { /* ignore */ }
-  return {}
-}
-
-/** Сохранить все цены в localStorage */
-function savePrices(prices) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(prices))
-}
-
-/** Категории для редактора цен */
 const PRICE_CATEGORIES = [
   { id: 'gpu', labelKey: 'admin.prices.gpu', icon: Monitor, products: GPU_PRODUCTS },
   { id: 'cpu', labelKey: 'admin.prices.cpu', icon: Cpu, products: CPU_PRODUCTS },
   { id: 'case', labelKey: 'admin.prices.case', icon: Box, products: CASE_PRODUCTS },
   { id: 'supplies', labelKey: 'admin.prices.supplies', icon: Wrench, products: SUPPLIES_PRODUCTS },
   { id: 'realestate', labelKey: 'admin.prices.realestate', icon: Home, products: REAL_ESTATE_PRODUCTS },
-  { id: 'business', labelKey: 'admin.prices.business', icon: Briefcase, products: BUSINESS_PRODUCTS },
+  { id: 'business', labelKey: 'admin.prices.business', icon: Briefcase, products },
 ]
 
 function PriceEditorTab() {
   const { t } = useTranslation()
   const [activeCategory, setActiveCategory] = useState('gpu')
-  const [prices, setPrices] = useState(loadPrices)
+  const [prices, setPrices] = useState({})
   const [searchQuery, setSearchQuery] = useState('')
   const [hasChanges, setHasChanges] = useState(false)
   const [savedMessage, setSavedMessage] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const currentCategory = PRICE_CATEGORIES.find(c => c.id === activeCategory)
   const products = currentCategory?.products || []
 
-  // Фильтрация по поиску
+  useEffect(() => {
+    let cancelled = false
+    async function loadPrices() {
+      try {
+        const storedUser = localStorage.getItem('tradeverse_user')
+        const token = storedUser ? JSON.parse(storedUser).token : null
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
+        const resp = await fetch('/api/admin/shop-prices', { headers })
+        if (!cancelled && resp.ok) {
+          const data = await resp.json()
+          if (!cancelled) {
+            setPrices(data.prices || {})
+          }
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadPrices()
+    return () => { cancelled = true }
+  }, [])
+
   const filteredProducts = searchQuery
     ? products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : products
@@ -60,19 +66,31 @@ function PriceEditorTab() {
     setHasChanges(true)
   }, [])
 
-  const handleSave = useCallback(() => {
-    savePrices(prices)
-    setHasChanges(false)
-    setSavedMessage(true)
-    setTimeout(() => setSavedMessage(false), 2000)
+  const handleSave = useCallback(async () => {
+    try {
+      const storedUser = localStorage.getItem('tradeverse_user')
+      const token = storedUser ? JSON.parse(storedUser).token : null
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      }
+      await fetch('/api/admin/shop-prices', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ prices }),
+      })
+      setHasChanges(false)
+      setSavedMessage(true)
+      setTimeout(() => setSavedMessage(false), 2000)
+    } catch {
+      // ignore
+    }
   }, [prices])
 
   const handleReset = useCallback(() => {
     if (!confirm(t('admin.prices.resetConfirm'))) return
-    const empty = {}
-    setPrices(empty)
-    savePrices(empty)
-    setHasChanges(false)
+    setPrices({})
+    setHasChanges(true)
   }, [t])
 
   const handleResetCategory = useCallback(() => {
@@ -82,10 +100,9 @@ function PriceEditorTab() {
       products.forEach(p => {
         delete updated[p.id]
       })
-      savePrices(updated)
       return updated
     })
-    setHasChanges(false)
+    setHasChanges(true)
   }, [products, t])
 
   const getPrice = (productId) => {
@@ -98,15 +115,17 @@ function PriceEditorTab() {
     return `$${Number(val).toLocaleString()}`
   }
 
-  // Подсчёт установленных цен для каждой категории
   const getCategoryStats = (cat) => {
     const setCount = cat.products.filter(p => prices[p.id] !== undefined && prices[p.id] !== null).length
     return { set: setCount, total: cat.products.length }
   }
 
+  if (loading) {
+    return <div className="price-editor">{t('common.loading')}</div>
+  }
+
   return (
     <div className="price-editor">
-      {/* Категории-вкладки */}
       <div className="price-editor-categories">
         {PRICE_CATEGORIES.map(cat => {
           const stats = getCategoryStats(cat)
@@ -127,7 +146,6 @@ function PriceEditorTab() {
         })}
       </div>
 
-      {/* Панель инструментов */}
       <div className="price-editor-toolbar">
         <div className="price-editor-search">
           <Search size={16} />
@@ -140,19 +158,11 @@ function PriceEditorTab() {
           />
         </div>
         <div className="price-editor-actions">
-          <button
-            className="admin-btn"
-            onClick={handleResetCategory}
-            title={t('admin.prices.resetCategory')}
-          >
+          <button className="admin-btn" onClick={handleResetCategory}>
             <RotateCcw size={14} />
             <span>{t('admin.prices.resetCategory')}</span>
           </button>
-          <button
-            className="admin-btn"
-            onClick={handleReset}
-            title={t('admin.prices.resetAll')}
-          >
+          <button className="admin-btn" onClick={handleReset}>
             <RotateCcw size={14} />
             <span>{t('admin.prices.resetAll')}</span>
           </button>
@@ -167,14 +177,12 @@ function PriceEditorTab() {
         </div>
       </div>
 
-      {/* Сообщение о сохранении */}
       {savedMessage && (
         <div className="price-editor-saved-msg">
           {t('admin.prices.saved')}
         </div>
       )}
 
-      {/* Таблица товаров */}
       <div className="price-editor-table-wrapper">
         <table className="price-editor-table">
           <thead>
@@ -196,15 +204,6 @@ function PriceEditorTab() {
                     <span className="price-editor-product-name">{product.name}</span>
                     {product.company && (
                       <span className="price-editor-product-meta">{product.company} · {product.line}</span>
-                    )}
-                    {product.rarity && (
-                      <span className="price-editor-product-meta">{t(`realestate.rarities.${product.rarity}`)}</span>
-                    )}
-                    {product.category && activeCategory === 'supplies' && (
-                      <span className="price-editor-product-meta">{t(`supplies.${product.category}`)}</span>
-                    )}
-                    {product.category && activeCategory === 'business' && (
-                      <span className="price-editor-product-meta">{t(`business.categories.${product.category}`)}</span>
                     )}
                   </td>
                   <td className="price-editor-td-price">
@@ -238,7 +237,6 @@ function PriceEditorTab() {
         )}
       </div>
 
-      {/* Итого */}
       <div className="price-editor-footer">
         <span>{t('admin.prices.totalProducts', { count: filteredProducts.length })}</span>
         <span>

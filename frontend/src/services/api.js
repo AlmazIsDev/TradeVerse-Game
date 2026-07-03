@@ -10,7 +10,7 @@ class ApiError extends Error {
   }
 }
 
-/** Получить JWT-токен из localStorage */
+/** Получить JWT access-токен из localStorage */
 function getAuthToken() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -20,6 +20,69 @@ function getAuthToken() {
     }
   } catch { /* ignore */ }
   return null
+}
+
+/** Получить refresh-токен из localStorage */
+function getRefreshToken() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const user = JSON.parse(stored)
+      return user.refresh_token || null
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+/** Обновить оба токена в localStorage */
+function saveTokens(accessToken, refreshToken) {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const user = JSON.parse(stored)
+      user.token = accessToken
+      if (refreshToken) user.refresh_token = refreshToken
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    }
+  } catch { /* ignore */ }
+}
+
+/** Очистить localStorage и выбросить событие принудительного логаута */
+function forceLogout() {
+  localStorage.removeItem(STORAGE_KEY)
+  window.dispatchEvent(new CustomEvent('auth:force-logout'))
+}
+
+// ── Refresh lock: предотвращает параллельные refresh-запросы ──────────────
+let refreshPromise = null
+
+async function refreshAccessToken() {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) {
+    forceLogout()
+    throw new ApiError('Сессия истекла. Войдите заново.', 401)
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+
+    if (!response.ok) {
+      forceLogout()
+      throw new ApiError('Сессия истекла. Войдите заново.', 401)
+    }
+
+    const data = await response.json()
+    saveTokens(data.token, data.refresh_token)
+    return data.token
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+    forceLogout()
+    throw new ApiError('Не удалось обновить сессию.', 401)
+  }
 }
 
 async function request(endpoint, options = {}) {
@@ -43,6 +106,33 @@ async function request(endpoint, options = {}) {
 
   try {
     const response = await fetch(url, config)
+
+    // ── 401 Interceptor: пробуем refresh, затем повторяем запрос ────────
+    if (response.status === 401 && getRefreshToken()) {
+      // Блокируем параллельные refresh-запросы
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null })
+      }
+      const newToken = await refreshPromise
+
+      // Повторяем оригинальный запрос с новым access-токеном
+      const retryConfig = {
+        ...config,
+        headers: {
+          ...config.headers,
+          Authorization: `Bearer ${newToken}`,
+        },
+      }
+      const retryResponse = await fetch(url, retryConfig)
+      if (!retryResponse.ok) {
+        const errorText = await retryResponse.text().catch(() => '')
+        throw new ApiError(
+          errorText || `Ошибка сервера: ${retryResponse.status}`,
+          retryResponse.status
+        )
+      }
+      return await retryResponse.json()
+    }
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '')
@@ -147,4 +237,10 @@ export async function updateStockConfig(symbol, configData) {
   })
 }
 
-export { API_BASE_URL, ApiError, request }
+export async function fetchBotOrders(limit = 100) {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', limit)
+  return request(`/api/v2/stocks/bot-orders?${params.toString()}`)
+}
+
+export { API_BASE_URL, ApiError, request, forceLogout }

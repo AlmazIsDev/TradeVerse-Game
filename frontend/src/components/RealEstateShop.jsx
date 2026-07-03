@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Home, Filter, DollarSign, Bed, Zap, Box, ArrowUpDown } from 'lucide-react'
 import BuyModal from './BuyModal'
+import ShopCard from './ShopCard'
 import { applyShopPrices } from '../utils/shopPrices'
 
 const REAL_ESTATE_PRODUCTS = [
@@ -241,35 +242,24 @@ function RealEstateShop({ onBack }) {
         )}
       </div>
 
-      <div className="gpu-grid">
+      <div className="shop-grid">
         {filteredProducts.map(product => {
           const colors = RARITY_COLORS[product.rarity] || RARITY_COLORS.common
           return (
-            <div
+            <ShopCard
               key={product.id}
-              className="gpu-card"
-              style={{ background: colors.bg, borderColor: colors.border }}
-            >
-              <div className="re-card-header">
-                <span className="gpu-card-icon" style={{ background: colors.accent }}><Home size={24} /></span>
-                <span className="gpu-card-name">{product.name}</span>
-              </div>
-              <div className="gpu-card-specs">
-                <Bed size={12} style={{ color: colors.icon }} />
-                <span>{product.rooms} {t('realestate.roomsShort')}</span>
-                <Box size={12} style={{ color: colors.icon, marginLeft: '8px' }} />
-                <span>{product.basement} {t('realestate.basementShort')}</span>
-                <Zap size={12} style={{ color: colors.icon, marginLeft: '8px' }} />
-                <span>{product.tax !== null ? product.tax : t('common.notSet')}</span>
-              </div>
-              <div className="gpu-card-price">
-                <DollarSign size={12} style={{ color: colors.icon }} />
-                <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
-              </div>
-              <button className="gpu-card-buy" style={{ background: colors.accent }} onClick={() => setSelectedProduct(product)}>
-                {t('common.buy')}
-              </button>
-            </div>
+              icon={Home}
+              name={product.name}
+              subtitle={t(`realestate.rarities.${product.rarity}`)}
+              specs={[
+                { icon: Bed, label: `${product.rooms} ${t('realestate.roomsShort')}` },
+                { icon: Box, label: `${product.basement} ${t('realestate.basementShort')}` },
+                { icon: Zap, label: product.tax !== null ? product.tax : t('common.notSet') },
+              ]}
+              price={product.price}
+              colors={colors}
+              onBuy={() => setSelectedProduct(product)}
+            />
           )
         })}
       </div>

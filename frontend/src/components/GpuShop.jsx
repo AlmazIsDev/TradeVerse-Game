@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Monitor, Filter, Zap, DollarSign, ArrowUpDown } from 'lucide-react'
+import { ArrowLeft, Monitor, Filter, Zap, DollarSign, ArrowUpDown, Gem, Diamond, Snowflake, Flame, FlameKindling, Lock, BookOpen, Sparkles } from 'lucide-react'
 import BuyModal from './BuyModal'
+import ShopCard from './ShopCard'
 import { applyShopPrices } from '../utils/shopPrices'
 
 const GPU_PRODUCTS = [
@@ -99,10 +100,46 @@ const GPU_PRODUCTS = [
 
 const COMPANIES = ['CrystalCore', 'Pyronix', 'Archivex']
 
+const LINE_COLORS = {
+  // CrystalCore
+  Quartz:    { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.3)', icon: '#818cf8', accent: '#6366f1' },
+  Topaz:     { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.3)', icon: '#60a5fa', accent: '#3b82f6' },
+  Sapphire:  { bg: 'rgba(6, 182, 212, 0.10)', border: 'rgba(6, 182, 212, 0.3)', icon: '#22d3ee', accent: '#06b6d4' },
+  Diamond:   { bg: 'rgba(168, 85, 247, 0.10)', border: 'rgba(168, 85, 247, 0.3)', icon: '#c084fc', accent: '#a855f7' },
+  // Pyronix
+  Spark:     { bg: 'rgba(249, 115, 22, 0.10)', border: 'rgba(249, 115, 22, 0.3)', icon: '#fb923c', accent: '#f97316' },
+  Flare:     { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.3)', icon: '#f87171', accent: '#ef4444' },
+  Blaze:     { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.3)', icon: '#fbbf24', accent: '#f59e0b' },
+  Inferno:   { bg: 'rgba(220, 38, 38, 0.10)', border: 'rgba(220, 38, 38, 0.3)', icon: '#fca5a5', accent: '#dc2626' },
+  // Archivex
+  Vault:     { bg: 'rgba(34, 197, 94, 0.10)', border: 'rgba(34, 197, 94, 0.3)', icon: '#4ade80', accent: '#22c55e' },
+  Legacy:    { bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.3)', icon: '#34d399', accent: '#10b981' },
+  Archive:   { bg: 'rgba(20, 184, 166, 0.10)', border: 'rgba(20, 184, 166, 0.3)', icon: '#2dd4bf', accent: '#14b8a6' },
+  Genesis:   { bg: 'rgba(132, 204, 22, 0.10)', border: 'rgba(132, 204, 22, 0.3)', icon: '#a3e635', accent: '#84cc16' },
+}
+
+const LINE_ICONS = {
+  // CrystalCore
+  Quartz: Gem,
+  Topaz: Snowflake,
+  Sapphire: Diamond,
+  Diamond: Sparkles,
+  // Pyronix
+  Spark: Zap,
+  Flare: Flame,
+  Blaze: FlameKindling,
+  Inferno: Flame,
+  // Archivex
+  Vault: Lock,
+  Legacy: BookOpen,
+  Archive: Monitor,
+  Genesis: Sparkles,
+}
+
 const COMPANY_COLORS = {
-  CrystalCore: { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.3)', icon: '#818cf8', accent: '#6366f1' },
-  Pyronix: { bg: 'rgba(249, 115, 22, 0.10)', border: 'rgba(249, 115, 22, 0.3)', icon: '#fb923c', accent: '#f97316' },
-  Archivex: { bg: 'rgba(34, 197, 94, 0.10)', border: 'rgba(34, 197, 94, 0.3)', icon: '#4ade80', accent: '#22c55e' },
+  CrystalCore: LINE_COLORS.Quartz,
+  Pyronix: LINE_COLORS.Spark,
+  Archivex: LINE_COLORS.Vault,
 }
 
 function GpuShop({ onBack }) {
@@ -224,29 +261,21 @@ function GpuShop({ onBack }) {
         )}
       </div>
 
-      <div className="gpu-grid">
+      <div className="shop-grid">
         {filteredProducts.map(product => {
-          const colors = COMPANY_COLORS[product.company] || COMPANY_COLORS.CrystalCore
+          const colors = LINE_COLORS[product.line] || COMPANY_COLORS[product.company] || LINE_COLORS.Quartz
+          const LineIcon = LINE_ICONS[product.line] || Monitor
           return (
-            <div
+            <ShopCard
               key={product.id}
-              className="gpu-card"
-              style={{ background: colors.bg, borderColor: colors.border }}
-            >
-              <span className="gpu-card-icon" style={{ background: colors.accent }}><Monitor size={24} /></span>
-              <span className="gpu-card-name">{product.name}</span>
-              <div className="gpu-card-specs">
-                <Zap size={12} style={{ color: colors.icon }} />
-                <span>{formatHashrate(product.hashrate)} H/s</span>
-              </div>
-              <div className="gpu-card-price">
-                <DollarSign size={12} style={{ color: colors.icon }} />
-                <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
-              </div>
-              <button className="gpu-card-buy" style={{ background: colors.accent }} onClick={() => setSelectedProduct(product)}>
-                {t('common.buy')}
-              </button>
-            </div>
+              icon={LineIcon}
+              name={product.name}
+              subtitle={product.line}
+              specs={[{ icon: Zap, label: `${formatHashrate(product.hashrate)} H/s` }]}
+              price={product.price}
+              colors={colors}
+              onBuy={() => setSelectedProduct(product)}
+            />
           )
         })}
       </div>

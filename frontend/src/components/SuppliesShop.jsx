@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Wrench, Filter, DollarSign, ArrowUpDown } from 'lucide-react'
 import BuyModal from './BuyModal'
+import ShopCard from './ShopCard'
 import { applyShopPrices } from '../utils/shopPrices'
 
 const SUPPLIES_PRODUCTS = [
@@ -116,23 +117,17 @@ function SuppliesShop({ onBack }) {
         )}
       </div>
 
-      <div className="gpu-grid">
+      <div className="shop-grid">
         {filteredProducts.map(product => (
-          <div
+          <ShopCard
             key={product.id}
-            className="gpu-card"
-            style={{ background: 'rgba(168, 85, 247, 0.10)', borderColor: 'rgba(168, 85, 247, 0.3)' }}
-          >
-            <span className="gpu-card-icon" style={{ background: '#a855f7' }}><Wrench size={24} /></span>
-            <span className="gpu-card-name">{product.name}</span>
-            <div className="gpu-card-price">
-              <DollarSign size={12} style={{ color: '#c084fc' }} />
-              <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
-            </div>
-            <button className="gpu-card-buy" style={{ background: '#a855f7' }} onClick={() => setSelectedProduct(product)}>
-              {t('common.buy')}
-            </button>
-          </div>
+            icon={Wrench}
+            name={product.name}
+            specs={[]}
+            price={product.price}
+            colors={{ bg: 'rgba(168, 85, 247, 0.10)', border: 'rgba(168, 85, 247, 0.3)', icon: '#c084fc', accent: '#a855f7' }}
+            onBuy={() => setSelectedProduct(product)}
+          />
         ))}
       </div>
 

@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, Minus, Plus, DollarSign, ShoppingCart } from 'lucide-react'
+import { X, Minus, Plus, DollarSign, ShoppingCart, Loader2 } from 'lucide-react'
+import { purchaseItem } from '../services/api'
 
-function BuyModal({ product, onClose }) {
+function BuyModal({ product, onClose, onPurchaseSuccess }) {
   const { t } = useTranslation()
   const [quantity, setQuantity] = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
-  const price = product.price ?? 0
+  const price = Number(product.price) || 0
   const total = price * quantity
 
   const handleQuantityChange = (value) => {
@@ -21,10 +24,26 @@ function BuyModal({ product, onClose }) {
   const increment = () => setQuantity(prev => prev + 1)
   const decrement = () => setQuantity(prev => Math.max(1, prev - 1))
 
-  const handleBuy = () => {
-    // TODO: интеграция с API покупки
-    alert(`Куплено: ${product.name} x${quantity} = $${total.toLocaleString()}`)
-    onClose()
+  const handleBuy = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      await purchaseItem({
+        item_id: String(product.id ?? ''),
+        item_name: String(product.name ?? ''),
+        item_category: String(product.category ?? product.type ?? 'shop'),
+        price: Number(price),
+        quantity: Number(quantity),
+      })
+      if (typeof onPurchaseSuccess === 'function') {
+        onPurchaseSuccess()
+      }
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Не удалось совершить покупку')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -71,12 +90,22 @@ function BuyModal({ product, onClose }) {
           <strong>${total.toLocaleString()}</strong>
         </div>
 
+        {error && (
+          <div className="buy-modal-error" style={{ color: '#ef4444', marginBottom: 12, textAlign: 'center' }}>
+            {error}
+          </div>
+        )}
+
         <div className="buy-modal-actions">
-          <button className="buy-modal-cancel" onClick={onClose}>
+          <button className="buy-modal-cancel" onClick={onClose} disabled={loading}>
             {t('common.cancel')}
           </button>
-          <button className="buy-modal-confirm" onClick={handleBuy}>
-            {t('common.buy')}
+          <button
+            className="buy-modal-confirm"
+            onClick={handleBuy}
+            disabled={loading}
+          >
+            {loading ? <Loader2 size={16} className="spin" /> : t('common.buy')}
           </button>
         </div>
       </div>

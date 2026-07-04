@@ -67,12 +67,35 @@ export async function fetchStock(symbol) {
   return request(`/api/stocks/${encodeURIComponent(symbol)}`)
 }
 
-export async function fetchTransactions(userId, limit = 50) {
+/**
+ * История операций текущего пользователя (JWT-scoped).
+ * Возвращает { items, total, skip, limit }.
+ * @param {{direction?:string, category?:string, search?:string, sort?:string, skip?:number, limit?:number}} opts
+ */
+export async function fetchTransactions(opts = {}) {
   const params = new URLSearchParams()
-  if (userId) params.set('user_id', userId)
-  if (limit) params.set('limit', limit)
+  const { direction, category, search, sort, skip, limit } = opts
+  if (direction) params.set('direction', direction)
+  if (category) params.set('category', category)
+  if (search) params.set('search', search)
+  if (sort) params.set('sort', sort)
+  if (skip != null) params.set('skip', skip)
+  if (limit != null) params.set('limit', limit)
   const query = params.toString()
   return request(`/api/account/transactions${query ? `?${query}` : ''}`)
+}
+
+/** Аналитика за неделю: доход/расход/изменение капитала/операции/график. */
+export async function fetchWeeklyAnalytics() {
+  return request('/api/account/analytics/weekly')
+}
+
+/** Перевод денег другому игроку по username или номеру карты. */
+export async function createTransfer({ recipient, amount, note }) {
+  return request('/api/transfers', {
+    method: 'POST',
+    body: JSON.stringify({ recipient, amount, note }),
+  })
 }
 
 export async function fetchConfig(key) {
@@ -103,6 +126,27 @@ export async function adminUpdateUser(userId, data) {
 export async function adminDeleteUser(userId) {
   return request(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: 'DELETE',
+  })
+}
+
+// ── Crypto API ────────────────────────────────────────────────────────────────
+
+export async function openCryptoAccount() {
+  return request('/api/crypto/account/open', { method: 'POST' })
+}
+
+export async function fetchCryptoAccount() {
+  return request('/api/crypto/account')
+}
+
+export async function fetchCryptoMarket() {
+  return request('/api/crypto/market')
+}
+
+export async function tradeCrypto(symbol, action, quantity) {
+  return request('/api/crypto/trade', {
+    method: 'POST',
+    body: JSON.stringify({ symbol, action, quantity }),
   })
 }
 

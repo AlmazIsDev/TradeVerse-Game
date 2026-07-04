@@ -1,32 +1,33 @@
-import bcrypt
-import jwt
-import os
 import random
 from bson import ObjectId
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from dotenv import load_dotenv
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 load_dotenv()
 
 from init_db import init as init_db
 
+from auth import (
+    get_current_user,
+    require_admin,
+    hash_password,
+    verify_password,
+    create_access_token,
+)
+from economy import router as economy_router
+from crypto import router as crypto_router
+
 from database import (
     get_db,
-    get_stocks_collection,
-    get_transactions_collection,
-    get_app_config_collection,
-    get_leaderboard_collection,
     find_all_stocks,
     find_stock_by_symbol,
     upsert_stock,
-    find_transactions_by_user,
     find_config_by_key,
     upsert_config,
     find_leaderboard,
@@ -42,7 +43,6 @@ from schemas import (
     AdminUserUpdate,
     StockCreate,
     StockResponse,
-    TransactionResponse,
     ConfigUpdate,
     ConfigResponse,
     LeaderboardResponse,
@@ -59,8 +59,11 @@ async def lifespan(app: FastAPI):
     await db.stocks.create_index("symbol", unique=True)
     await db.app_config.create_index("key", unique=True)
     await db.transactions.create_index("userId")
+    await db.transactions.create_index([("userId", 1), ("timestamp", -1)])
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
+    await db.crypto_assets.create_index("symbol", unique=True)
+    await db.crypto_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
     await init_db()
     yield
 
@@ -76,87 +79,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ── JWT / Auth Helpers ───────────────────────────────────────────────────────
-
-JWT_SECRET = os.getenv("JWT_SECRET", "tradeverse-dev-secret-change-in-prod")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_HOURS = 24
-
-security = HTTPBearer(auto_error=False)
+# Роутеры модулей
+app.include_router(economy_router)
+app.include_router(crypto_router)
 
 
-def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
-
-
-def create_access_token(data: dict) -> str:
-    """Создаёт JWT-токен с полезной нагрузкой и сроком действия."""
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def decode_access_token(token: str) -> dict:
-    """Декодирует и валидирует JWT-токен. Бросает исключение при ошибке."""
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-) -> dict:
-    """Dependency: извлекает текущего пользователя из JWT-токена."""
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Требуется авторизация",
-        )
-    try:
-        payload = decode_access_token(credentials.credentials)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Токен истёк",
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный токен",
-        )
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный токен",
-        )
-
-    user = await db.users.find_one({"_id": ObjectId(user_id)})
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден",
-        )
-    return user
-
-
-async def require_admin(
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Dependency: требует, чтобы текущий пользователь имел роль 'admin'."""
-    if current_user.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещён: требуются права администратора",
-        )
-    return current_user
+# ── App-specific helpers ─────────────────────────────────────────────────────
 
 
 def get_users_collection(db: AsyncIOMotorDatabase = Depends(get_db)):
@@ -264,6 +192,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "balance": current_user.get("balance", 1000.0),
         "card_number": current_user.get("card_number"),
         "card_visible": current_user.get("card_visible", True),
+        "crypto_account_opened": bool(current_user.get("crypto_account_opened", False)),
     }
 
 
@@ -318,17 +247,8 @@ async def create_or_update_stock(
     return _format_stock(stock)
 
 
-# ── Transactions Endpoints ───────────────────────────────────────────────────
-
-
-@app.get("/api/account/transactions", response_model=list[TransactionResponse])
-async def get_user_transactions(
-    user_id: str = Query(None, description="User ID"),
-    limit: int = Query(50, ge=1, le=200),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    transactions = await find_transactions_by_user(db, user_id, limit)
-    return [_format_transaction(t) for t in transactions]
+# NOTE: история операций текущего пользователя теперь в economy.router
+# (GET /api/account/transactions, JWT-scoped, с фильтром/поиском/пагинацией).
 
 
 # ── App Config Endpoints ─────────────────────────────────────────────────────

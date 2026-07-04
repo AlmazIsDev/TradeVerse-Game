@@ -1,35 +1,64 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import AccountTab from './AccountTab'
 import StocksTab from './StocksTab'
 import BankTab from './BankTab'
+import CryptoTab from './CryptoTab'
 import ShopTab from './ShopTab'
 import AdminPanel from './AdminPanel'
-import { Castle, Coins, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
+import { fetchCurrentUser } from '../services/api'
+import { Castle, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
+
+const STORAGE_KEY = 'tradeverse_user'
 
 function Dashboard({ user, onLogout }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('account')
   const [showAdmin, setShowAdmin] = useState(false)
+  const [balance, setBalance] = useState(user?.balance ?? 0)
 
   const isAdmin = user?.role === 'admin'
+
+  // Синхронизируем баланс с сервером при монтировании (localStorage может устареть)
+  useEffect(() => {
+    let cancelled = false
+    fetchCurrentUser()
+      .then(data => {
+        if (cancelled || data?.balance == null) return
+        setBalance(data.balance)
+        try {
+          const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, balance: data.balance }))
+        } catch { /* ignore */ }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const handleBalanceChange = useCallback((newBalance) => {
+    setBalance(newBalance)
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, balance: newBalance }))
+    } catch { /* ignore */ }
+  }, [])
 
   const renderContent = () => {
     switch (activeTab) {
       case 'account':
-        return <AccountTab userId={user?.id} balance={user?.balance} />
+        return <AccountTab balance={balance} />
       case 'stocks':
         return <StocksTab />
       case 'bank':
-        return <BankTab userId={user?.id} />
+        return <BankTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'shop':
         return <ShopTab />
       case 'cityroof':
         return <PlaceholderTab title={t('nav.cityroof')} icon={Castle} />
       case 'crypto':
-        return <PlaceholderTab title={t('nav.crypto')} icon={Coins} />
+        return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'realestate':
         return <PlaceholderTab title={t('nav.realestate')} icon={Home} />
       case 'myhomes':
@@ -41,7 +70,7 @@ function Dashboard({ user, onLogout }) {
       case 'leaderboard':
         return <PlaceholderTab title={t('nav.leaderboard')} icon={Trophy} />
       default:
-        return <AccountTab userId={user?.id} balance={user?.balance} />
+        return <AccountTab balance={balance} />
     }
   }
 
@@ -49,7 +78,7 @@ function Dashboard({ user, onLogout }) {
     <div className="dashboard">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={user} />
       <div className="dashboard-main">
-        <Header username={user?.username} onLogout={onLogout} />
+        <Header username={user?.username} balance={balance} onLogout={onLogout} />
         <div className="dashboard-content">
           {renderContent()}
         </div>

@@ -4,6 +4,7 @@ import { fetchTransactions } from '../services/api'
 import {
   ArrowDownLeft, ArrowUpRight, Search, ChevronLeft, ChevronRight,
   Send, LineChart, Coins, Briefcase, Home, ShoppingCart, Settings, AlertTriangle,
+  Store, Castle, Gift,
 } from 'lucide-react'
 
 const PAGE_SIZE = 8
@@ -14,6 +15,9 @@ const CATEGORY_ICON = {
   crypto: Coins,
   business: Briefcase,
   realestate: Home,
+  company: Store,
+  cityroof: Castle,
+  dividend: Gift,
   shop: ShoppingCart,
   system: Settings,
 }

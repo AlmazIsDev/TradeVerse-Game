@@ -3,6 +3,7 @@
 Вынесено из main.py, чтобы модули-роутеры (economy, crypto, ...) могли
 переиспользовать зависимости без циклических импортов.
 """
+import logging
 import os
 
 import bcrypt
@@ -16,9 +17,18 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_db
 
-JWT_SECRET = os.getenv("JWT_SECRET", "tradeverse-dev-secret-change-in-prod")
+logger = logging.getLogger("tradeverse.auth")
+
+_JWT_DEFAULT_SECRET = "tradeverse-dev-secret-change-in-prod"
+JWT_SECRET = os.getenv("JWT_SECRET", _JWT_DEFAULT_SECRET)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
+
+if JWT_SECRET == _JWT_DEFAULT_SECRET:
+    logger.warning(
+        "JWT_SECRET не задан — используется небезопасное значение по умолчанию. "
+        "Установите переменную окружения JWT_SECRET перед деплоем в production."
+    )
 
 security = HTTPBearer(auto_error=False)
 

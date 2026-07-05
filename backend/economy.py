@@ -1,4 +1,6 @@
 """Экономика: переводы между игроками, история операций, аналитика."""
+import logging
+
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -17,6 +19,7 @@ from ledger import (
 )
 
 router = APIRouter(prefix="/api", tags=["economy"])
+logger = logging.getLogger("tradeverse.economy")
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -118,9 +121,9 @@ async def create_transfer(
         meta={"note": note},
     )
 
-    print(
-        f"[TRANSFER] {current_user['username']} -> {recipient['username']} "
-        f"{amount:.2f} (sender balance {new_sender_balance:.2f})"
+    logger.info(
+        "Transfer %s -> %s: %.2f (sender balance %.2f)",
+        current_user["username"], recipient["username"], amount, new_sender_balance,
     )
 
     return {

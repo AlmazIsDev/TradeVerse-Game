@@ -45,9 +45,21 @@ async function request(endpoint, options = {}) {
     const response = await fetch(url, config)
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => '')
+      const raw = await response.text().catch(() => '')
+      let message = raw
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw)
+          if (typeof parsed?.detail === 'string') {
+            message = parsed.detail
+          } else if (Array.isArray(parsed?.detail)) {
+            // Ошибки валидации Pydantic: [{ loc, msg, ... }]
+            message = parsed.detail.map(e => e.msg).filter(Boolean).join('; ') || raw
+          }
+        } catch { /* тело не JSON — используем как есть */ }
+      }
       throw new ApiError(
-        errorText || `Ошибка сервера: ${response.status}`,
+        message || `Ошибка сервера: ${response.status}`,
         response.status
       )
     }
@@ -102,9 +114,10 @@ export async function fetchConfig(key) {
   return request(`/api/config/${encodeURIComponent(key)}`)
 }
 
-export async function fetchLeaderboard(limit = 10) {
+export async function fetchLeaderboard(limit = 20, sort = 'networth') {
   const params = new URLSearchParams()
   if (limit) params.set('limit', limit)
+  if (sort) params.set('sort', sort)
   return request(`/api/leaderboard?${params.toString()}`)
 }
 
@@ -189,6 +202,40 @@ export async function updateStockConfig(symbol, configData) {
     method: 'PATCH',
     body: JSON.stringify(configData),
   })
+}
+
+// ── Assets API (real estate / business / cars) ─────────────────────────────────
+
+export async function fetchAssetMarket(opts = {}) {
+  const params = new URLSearchParams()
+  const { type, search, min_price, max_price } = opts
+  if (type) params.set('type', type)
+  if (search) params.set('search', search)
+  if (min_price != null) params.set('min_price', min_price)
+  if (max_price != null) params.set('max_price', max_price)
+  const q = params.toString()
+  return request(`/api/assets/market${q ? `?${q}` : ''}`)
+}
+
+export async function buyAsset(slug) {
+  return request('/api/assets/buy', { method: 'POST', body: JSON.stringify({ slug }) })
+}
+
+export async function fetchMyAssets(type) {
+  const q = type ? `?type=${encodeURIComponent(type)}` : ''
+  return request(`/api/assets/mine${q}`)
+}
+
+export async function collectAsset(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/collect`, { method: 'POST' })
+}
+
+export async function upgradeAsset(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/upgrade`, { method: 'POST' })
+}
+
+export async function sellAsset(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/sell`, { method: 'POST' })
 }
 
 export { API_BASE_URL, ApiError, request }

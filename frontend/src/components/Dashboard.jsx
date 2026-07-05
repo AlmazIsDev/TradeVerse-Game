@@ -7,9 +7,12 @@ import StocksTab from './StocksTab'
 import BankTab from './BankTab'
 import CryptoTab from './CryptoTab'
 import ShopTab from './ShopTab'
+import LeaderboardTab from './LeaderboardTab'
+import MarketTab from './MarketTab'
+import MyAssetsTab from './MyAssetsTab'
 import AdminPanel from './AdminPanel'
 import { fetchCurrentUser } from '../services/api'
-import { Castle, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
+import { Castle, Home, Briefcase, Store, Shield } from 'lucide-react'
 
 const STORAGE_KEY = 'tradeverse_user'
 
@@ -50,7 +53,7 @@ function Dashboard({ user, onLogout }) {
       case 'account':
         return <AccountTab balance={balance} />
       case 'stocks':
-        return <StocksTab />
+        return <StocksTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'bank':
         return <BankTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'shop':
@@ -60,15 +63,15 @@ function Dashboard({ user, onLogout }) {
       case 'crypto':
         return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'realestate':
-        return <PlaceholderTab title={t('nav.realestate')} icon={Home} />
+        return <MarketTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'myhomes':
-        return <PlaceholderTab title={t('nav.myhomes')} icon={Building} />
+        return <MyAssetsTab types={['realestate', 'car']} titleKey="nav.myhomes" icon={Home} balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mybusiness':
-        return <PlaceholderTab title={t('nav.mybusiness')} icon={Briefcase} />
+        return <MyAssetsTab types={['business']} titleKey="nav.mybusiness" icon={Briefcase} balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':
         return <PlaceholderTab title={t('nav.mycompany')} icon={Store} />
       case 'leaderboard':
-        return <PlaceholderTab title={t('nav.leaderboard')} icon={Trophy} />
+        return <LeaderboardTab currentUserId={user?.id} />
       default:
         return <AccountTab balance={balance} />
     }

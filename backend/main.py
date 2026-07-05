@@ -22,6 +22,8 @@ from auth import (
 )
 from economy import router as economy_router
 from crypto import router as crypto_router
+from stocks import router as stocks_router
+from assets import router as assets_router
 
 from database import (
     get_db,
@@ -64,6 +66,10 @@ async def lifespan(app: FastAPI):
     await db.leaderboard.create_index("profit")
     await db.crypto_assets.create_index("symbol", unique=True)
     await db.crypto_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
+    await db.stock_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
+    await db.stock_events.create_index("symbol")
+    await db.stock_events.create_index("timestamp")
+    await db.user_assets.create_index("userId")
     await init_db()
     yield
 
@@ -82,6 +88,8 @@ app.add_middleware(
 # Роутеры модулей
 app.include_router(economy_router)
 app.include_router(crypto_router)
+app.include_router(stocks_router)
+app.include_router(assets_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────
@@ -289,13 +297,75 @@ async def update_config(
 # ── Leaderboard Endpoints ────────────────────────────────────────────────────
 
 
-@app.get("/api/leaderboard", response_model=list[LeaderboardResponse])
+STARTING_BALANCE = 1000.0
+
+_LEADERBOARD_SORTS = {"networth", "profit", "cash", "stocks", "crypto"}
+
+
+@app.get("/api/leaderboard")
 async def get_leaderboard(
     limit: int = Query(20, ge=1, le=100),
+    sort: str = Query("networth"),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    entries = await find_leaderboard(db, limit)
-    return [_format_leaderboard(e) for e in entries]
+    """Живой рейтинг игроков по чистой стоимости активов.
+
+    net worth = наличные + рыночная стоимость акций + рыночная стоимость крипты.
+    Поддерживает сортировку: networth | profit | cash | stocks | crypto.
+    """
+    sort_key = sort if sort in _LEADERBOARD_SORTS else "networth"
+
+    # Карты текущих цен.
+    stock_prices: dict[str, float] = {}
+    async for s in db.stocks.find({}, {"symbol": 1, "price": 1}):
+        stock_prices[s["symbol"]] = float(s.get("price", 0.0))
+    crypto_prices: dict[str, float] = {}
+    async for c in db.crypto_assets.find({}, {"symbol": 1, "price": 1}):
+        crypto_prices[c["symbol"]] = float(c.get("price", 0.0))
+
+    # Стоимость позиций по игрокам.
+    stock_val: dict[str, float] = {}
+    async for h in db.stock_holdings.find({"quantity": {"$gt": 0}}):
+        uid = h.get("userId")
+        stock_val[uid] = stock_val.get(uid, 0.0) + h.get("quantity", 0) * stock_prices.get(h.get("symbol"), 0.0)
+    crypto_val: dict[str, float] = {}
+    async for h in db.crypto_holdings.find({"quantity": {"$gt": 0}}):
+        uid = h.get("userId")
+        crypto_val[uid] = crypto_val.get(uid, 0.0) + h.get("quantity", 0.0) * crypto_prices.get(h.get("symbol"), 0.0)
+
+    # Стоимость физических активов (недвижимость/бизнес/авто) с учётом улучшений.
+    asset_val: dict[str, float] = {}
+    async for a in db.user_assets.find({}):
+        uid = a.get("userId")
+        base = a.get("price", 0)
+        level = a.get("level", 1)
+        asset_val[uid] = asset_val.get(uid, 0.0) + base * (1 + 0.35 * (level - 1))
+
+    entries = []
+    async for u in db.users.find({}):
+        uid = str(u["_id"])
+        cash = float(u.get("balance", STARTING_BALANCE))
+        stocks_value = round(stock_val.get(uid, 0.0), 2)
+        crypto_value = round(crypto_val.get(uid, 0.0), 2)
+        assets_value = round(asset_val.get(uid, 0.0), 2)
+        net_worth = round(cash + stocks_value + crypto_value + assets_value, 2)
+        entries.append({
+            "userId": uid,
+            "username": u.get("username", "—"),
+            "avatar": None,
+            "cash": round(cash, 2),
+            "stocks": stocks_value,
+            "crypto": crypto_value,
+            "assets": assets_value,
+            "netWorth": net_worth,
+            "profit": round(net_worth - STARTING_BALANCE, 2),
+        })
+
+    entries.sort(key=lambda e: e[sort_key], reverse=True)
+    entries = entries[:limit]
+    for rank, entry in enumerate(entries, start=1):
+        entry["rank"] = rank
+    return entries
 
 
 # ── Admin Endpoints ──────────────────────────────────────────────────────────

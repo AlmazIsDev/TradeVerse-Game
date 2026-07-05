@@ -282,7 +282,8 @@
     "waiting": "Waiting for a tenant…",
     "rented": "Rented out",
     "cancelled": "Listing removed",
-    "invalid": "Enter a valid price and term"
+    "invalid": "Enter a valid price and term",
+    "maxHint": "Maximum: {{max}} $ — calculated from the asset value"
   },
   "car": {
     "condition": "Condition",
@@ -351,6 +352,9 @@
     "exhausted": "Out of attempts. Progress reset — try again.",
     "tryAgain": "Attempt {{attempts}}/{{max}}. Keep trying!",
     "protected": "Protection set (lvl {{level}})",
+    "yourBonuses": "Your building bonuses",
+    "claim": "Claim +{{amount}} $",
+    "claimIn": "Bonus in {{hours}} h",
     "leagues": {
       "bronze": "Bronze",
       "silver": "Silver",

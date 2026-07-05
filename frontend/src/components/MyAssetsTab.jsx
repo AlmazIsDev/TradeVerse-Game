@@ -102,7 +102,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
 
   const renderRental = (a) => {
-    if (a.type !== 'realestate') return null
+    if (a.type !== 'realestate' && a.type !== 'car') return null
     if (a.rental?.status === 'listed') {
       return (
         <div className="asset-rental listed">
@@ -117,7 +117,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
     return (
       <button className="asset-act" disabled={busyId === a.id}
-        onClick={() => { setRentModal(a); setRentForm({ price: String(Math.round(a.incomePerHour * 24) || 100), minHours: '6' }) }}>
+        onClick={() => { setRentModal(a); setRentForm({ price: String(Math.round((a.rentMax || 200) * 0.5)), minHours: '6' }) }}>
         <KeyRound size={15} /> {t('rent.list')}
       </button>
     )
@@ -242,7 +242,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             <h3>{t('rent.title')}: {rentModal.name}</h3>
             <p className="modal-price">{t('rent.desc')}</p>
             <div className="modal-quantity"><label>{t('rent.price')}:</label>
-              <input type="number" min="1" value={rentForm.price} onChange={e => setRentForm({ ...rentForm, price: e.target.value })} /></div>
+              <input type="number" min="1" max={rentModal.rentMax}
+                value={rentForm.price}
+                onChange={e => {
+                  const v = Number(e.target.value)
+                  const capped = rentModal.rentMax && v > rentModal.rentMax ? String(Math.round(rentModal.rentMax)) : e.target.value
+                  setRentForm({ ...rentForm, price: capped })
+                }} /></div>
+            <p className="rent-max-hint">{t('rent.maxHint', { max: formatMoney(rentModal.rentMax) })}</p>
             <div className="modal-quantity"><label>{t('rent.minHours')}:</label>
               <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>
             <div className="modal-buttons">

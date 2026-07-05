@@ -24,15 +24,39 @@ from pydantic import BaseModel, field_validator
 
 from auth import get_current_user, require_admin
 from database import get_db, find_config_by_key, upsert_config
-from ledger import EXPENSE, CAT_CITYROOF, adjust_balance, record_transaction
+from ledger import INCOME, EXPENSE, CAT_CITYROOF, adjust_balance, record_transaction
 
 router = APIRouter(prefix="/api/cityroof", tags=["cityroof"])
 
 ATTACK_COST_WC = 10
 MAX_ATTEMPTS = 8
 PROTECTION_MAX = 5
-PROTECTION_COST_WC = 100        # × уровень
 WINNER_REWARD_WC = 500
+
+# Фиксированная стоимость WarCoin: 1 WC = 50$ (настраивается админом).
+WARCOIN_PRICE_DEFAULT = 50.0
+
+# Стоимость уровней защиты (WC).
+PROTECTION_COSTS = {1: 1000, 2: 3000, 3: 4000, 4: 6500, 5: 10000}
+
+BONUS_CLAIM_INTERVAL_H = 20     # раз в 20 часов можно забрать ежедневный бонус
+
+# Уникальный игровой эффект каждого здания: daily — ежедневный доход владельцу,
+# effect/mult — множитель, влияющий на соответствующую подсистему экономики.
+BUSINESS_BONUS = {
+    "market":   {"daily": 800,  "effect": "trade_income",    "mult": 0.05},
+    "bank":     {"daily": 1200, "effect": "bank_interest",   "mult": 0.02},
+    "casino":   {"daily": 2000, "effect": "daily_bonus",     "mult": 0.00},
+    "port":     {"daily": 1000, "effect": "import_discount", "mult": 0.05},
+    "mall":     {"daily": 900,  "effect": "trade_income",    "mult": 0.05},
+    "factory":  {"daily": 1300, "effect": "production",      "mult": 0.10},
+    "stadium":  {"daily": 700,  "effect": "events",          "mult": 0.00},
+    "airport":  {"daily": 1500, "effect": "logistics",       "mult": 0.10},
+    "hotel":    {"daily": 600,  "effect": "rental_income",   "mult": 0.15},
+    "tower":    {"daily": 1400, "effect": "company_income",  "mult": 0.08},
+    "studio":   {"daily": 750,  "effect": "media",           "mult": 0.00},
+    "refinery": {"daily": 1600, "effect": "energy_discount", "mult": 0.15},
+}
 
 OWNER_COLORS = [
     "#6366f1", "#22c55e", "#f97316", "#ec4899",
@@ -56,13 +80,15 @@ DEFAULT_BUSINESSES = [
 
 WARCOIN_CONFIG_KEY = "warcoin_config"
 DEFAULT_WARCOIN_CONFIG = {
+    # Единая цена WarCoin для всех игроков. Лиги — только косметический статус.
+    "price": WARCOIN_PRICE_DEFAULT,
     "leagues": [
-        {"name": "bronze", "minBalance": 0, "price": 50},
-        {"name": "silver", "minBalance": 50000, "price": 40},
-        {"name": "gold", "minBalance": 250000, "price": 30},
-        {"name": "platinum", "minBalance": 1000000, "price": 22},
-        {"name": "diamond", "minBalance": 5000000, "price": 15},
-    ]
+        {"name": "bronze", "minBalance": 0},
+        {"name": "silver", "minBalance": 50000},
+        {"name": "gold", "minBalance": 250000},
+        {"name": "platinum", "minBalance": 1000000},
+        {"name": "diamond", "minBalance": 5000000},
+    ],
 }
 
 
@@ -143,12 +169,14 @@ async def _warcoin_config(db) -> dict:
 
 
 def _league_and_price(config: dict, balance: float) -> tuple[str, float]:
+    """Цена WarCoin фиксированная; лига — только статус по балансу (косметика)."""
+    price = float(config.get("price", WARCOIN_PRICE_DEFAULT))
     leagues = sorted(config.get("leagues", []), key=lambda l: l.get("minBalance", 0))
-    chosen = leagues[0] if leagues else {"name": "bronze", "price": 50}
+    name = leagues[0].get("name", "bronze") if leagues else "bronze"
     for l in leagues:
         if balance >= l.get("minBalance", 0):
-            chosen = l
-    return chosen.get("name", "bronze"), float(chosen.get("price", 50))
+            name = l.get("name", name)
+    return name, price
 
 
 async def ensure_seeded(db: AsyncIOMotorDatabase):
@@ -284,6 +312,7 @@ async def get_map(
         "week": state.get("week") if state else _current_week(),
         "attackCost": ATTACK_COST_WC,
         "maxAttempts": MAX_ATTEMPTS,
+        "protectionCosts": PROTECTION_COSTS,
         "warcoin": {
             "balance": await _get_wc(db, user_id),
             "price": price,
@@ -306,6 +335,93 @@ async def get_warcoin(
         "league": league,
         "leagues": config.get("leagues", []),
     }
+
+
+# ── Бонусы зданий ────────────────────────────────────────────────────────────
+
+
+async def _owned_slugs(db, user_id: str) -> list[str]:
+    slugs = []
+    async for b in db.cityroof_businesses.find({"ownerId": user_id}, {"slug": 1}):
+        slugs.append(b.get("slug"))
+    return slugs
+
+
+async def player_city_effect(db: AsyncIOMotorDatabase, user_id: str, effect: str) -> float:
+    """Суммарный множитель заданного эффекта от зданий во владении игрока.
+
+    Например, effect='rental_income' от «Гранд-отеля» даёт +0.15 к доходу аренды.
+    """
+    total = 0.0
+    for slug in await _owned_slugs(db, user_id):
+        bonus = BUSINESS_BONUS.get(slug)
+        if bonus and bonus.get("effect") == effect:
+            total += bonus.get("mult", 0.0)
+    return round(total, 4)
+
+
+@router.get("/bonuses")
+async def get_bonuses(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Бонусы зданий игрока + доступность ежедневного сбора."""
+    user_id = str(current_user["_id"])
+    items = []
+    total_daily = 0
+    async for b in db.cityroof_businesses.find({"ownerId": user_id}):
+        bonus = BUSINESS_BONUS.get(b.get("slug"))
+        if not bonus:
+            continue
+        total_daily += bonus["daily"]
+        items.append({
+            "slug": b.get("slug"), "name": b.get("name"),
+            "daily": bonus["daily"], "effect": bonus["effect"], "mult": bonus["mult"],
+        })
+    last = current_user.get("last_bonus_claim")
+    ready_in = 0.0
+    if isinstance(last, datetime):
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        elapsed = (_now() - last).total_seconds() / 3600.0
+        ready_in = max(0.0, BONUS_CLAIM_INTERVAL_H - elapsed)
+    return {
+        "bonuses": items,
+        "totalDaily": total_daily,
+        "claimable": ready_in <= 0 and total_daily > 0,
+        "hoursUntilClaim": round(ready_in, 1),
+    }
+
+
+@router.post("/bonuses/claim")
+async def claim_bonuses(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Забрать ежедневный доход со зданий (раз в 20 часов)."""
+    user_id = str(current_user["_id"])
+    last = current_user.get("last_bonus_claim")
+    if isinstance(last, datetime):
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if (_now() - last).total_seconds() / 3600.0 < BONUS_CLAIM_INTERVAL_H:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Бонус ещё не готов")
+
+    total_daily = 0
+    async for b in db.cityroof_businesses.find({"ownerId": user_id}, {"slug": 1}):
+        bonus = BUSINESS_BONUS.get(b.get("slug"))
+        if bonus:
+            total_daily += bonus["daily"]
+    if total_daily <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет зданий, приносящих бонус")
+
+    new_balance = await adjust_balance(db, user_id, float(total_daily))
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"last_bonus_claim": _now()}})
+    await record_transaction(
+        db, user_id, INCOME, float(total_daily), CAT_CITYROOF,
+        "Ежедневный бонус зданий", balance_after=new_balance,
+    )
+    return {"claimed": total_daily, "balance": new_balance}
 
 
 @router.post("/warcoin/buy")
@@ -458,7 +574,7 @@ async def protect_business(
     if business.get("ownerId") != user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Вы не владелец бизнеса")
 
-    cost = payload.level * PROTECTION_COST_WC
+    cost = PROTECTION_COSTS.get(payload.level, payload.level * 1000)
     if not await _spend_wc(db, user_id, cost):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно WarCoin")
 

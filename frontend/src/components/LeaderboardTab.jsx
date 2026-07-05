@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchLeaderboard } from '../services/api'
-import { formatMoney } from './TransactionsPanel'
+import { formatMoney, formatCompact } from './TransactionsPanel'
 import { Trophy, AlertTriangle, Crown, Medal } from 'lucide-react'
 
 const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto']
@@ -97,9 +97,9 @@ function LeaderboardTab({ currentUserId }) {
                     {isMe && <span className="lb-you">{t('leaderboard.you')}</span>}
                   </span>
                 </span>
-                <span className="lb-networth">${formatMoney(entry.netWorth)}</span>
-                <span className={`lb-profit ${up ? 'up' : 'down'}`}>
-                  {up ? '+' : '−'}{formatMoney(Math.abs(entry.profit))} $
+                <span className="lb-networth" title={`$${formatMoney(entry.netWorth)}`}>${formatCompact(entry.netWorth)}</span>
+                <span className={`lb-profit ${up ? 'up' : 'down'}`} title={`${formatMoney(entry.profit)} $`}>
+                  {up ? '+' : '−'}{formatCompact(Math.abs(entry.profit))} $
                 </span>
               </div>
             )

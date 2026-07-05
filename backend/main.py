@@ -324,8 +324,9 @@ async def update_config(
 
 
 STARTING_BALANCE = 1000.0
+WARCOIN_USD = 50.0
 
-_LEADERBOARD_SORTS = {"networth", "profit", "cash", "stocks", "crypto"}
+_LEADERBOARD_SORTS = {"networth", "profit", "cash", "stocks", "crypto", "assets", "company"}
 
 
 @app.get("/api/leaderboard")
@@ -359,13 +360,26 @@ async def get_leaderboard(
         uid = h.get("userId")
         crypto_val[uid] = crypto_val.get(uid, 0.0) + h.get("quantity", 0.0) * crypto_prices.get(h.get("symbol"), 0.0)
 
-    # Стоимость личных физических активов (переданные компании — не в личном капитале).
+    # Стоимость личных физических активов (недвижимость/бизнес/авто), кроме переданных компании.
+    def _asset_value(a: dict) -> float:
+        return a.get("price", 0) * (1 + 0.35 * (a.get("level", 1) - 1))
+
     asset_val: dict[str, float] = {}
     async for a in db.user_assets.find({"companyId": None}):
         uid = a.get("userId")
-        base = a.get("price", 0)
-        level = a.get("level", 1)
-        asset_val[uid] = asset_val.get(uid, 0.0) + base * (1 + 0.35 * (level - 1))
+        asset_val[uid] = asset_val.get(uid, 0.0) + _asset_value(a)
+
+    # Компании: бюджет + рыночная стоимость активов компании → в капитал владельца.
+    company_owner: dict[str, str] = {}
+    company_val: dict[str, float] = {}
+    async for c in db.companies.find({}):
+        oid = c.get("ownerId")
+        company_owner[str(c["_id"])] = oid
+        company_val[oid] = company_val.get(oid, 0.0) + float(c.get("budget", 0.0))
+    async for a in db.user_assets.find({"companyId": {"$ne": None}}):
+        oid = company_owner.get(a.get("companyId"))
+        if oid:
+            company_val[oid] = company_val.get(oid, 0.0) + _asset_value(a)
 
     entries = []
     async for u in db.users.find({}):
@@ -374,7 +388,9 @@ async def get_leaderboard(
         stocks_value = round(stock_val.get(uid, 0.0), 2)
         crypto_value = round(crypto_val.get(uid, 0.0), 2)
         assets_value = round(asset_val.get(uid, 0.0), 2)
-        net_worth = round(cash + stocks_value + crypto_value + assets_value, 2)
+        company_value = round(company_val.get(uid, 0.0), 2)
+        warcoin_value = round(float(u.get("warcoin", 0) or 0) * WARCOIN_USD, 2)
+        net_worth = round(cash + stocks_value + crypto_value + assets_value + company_value + warcoin_value, 2)
         entries.append({
             "userId": uid,
             "username": u.get("username", "—"),
@@ -383,6 +399,8 @@ async def get_leaderboard(
             "stocks": stocks_value,
             "crypto": crypto_value,
             "assets": assets_value,
+            "company": company_value,
+            "warcoin": warcoin_value,
             "netWorth": net_worth,
             "profit": round(net_worth - STARTING_BALANCE, 2),
         })

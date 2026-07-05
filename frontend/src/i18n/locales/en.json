@@ -90,7 +90,20 @@
     "insufficientShares": "Not enough shares",
     "portfolio": "My Portfolio",
     "portfolioValue": "Portfolio value",
-    "owned": "Owned"
+    "owned": "Owned",
+    "issue": "Issue stock",
+    "issued": "own",
+    "payDividend": "Dividends",
+    "perShare": "Per share",
+    "issueTitle": "Issue your own stock",
+    "issueFee": "Listing costs $5,000. You keep 20% of shares, the rest goes to market.",
+    "issueName": "Company name",
+    "issueTicker": "Ticker (1–6 chars)",
+    "issuePrice": "Price per share, $",
+    "issueShares": "Total shares",
+    "issueConfirm": "Issue",
+    "issueInvalid": "Check fields: name, ticker, price and shares (min 1000)",
+    "dividendPaid": "Paid ${{total}} — holders: {{holders}}"
   },
   "account": {
     "title": "Account",

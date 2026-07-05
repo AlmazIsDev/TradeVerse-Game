@@ -830,3 +830,29 @@
 @media (max-width: 720px) {
   .cityroof-map { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ===================== CUSTOM STOCKS (issue / dividends) ===================== */
+.stocks-titlebar { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; }
+.stocks-issue-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border: none; border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; transition: opacity 0.15s ease;
+}
+.stocks-issue-btn:hover { opacity: 0.9; }
+.stock-issued-badge {
+  margin-left: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+  background: rgba(99, 102, 241, 0.2); color: var(--color-accent-hover);
+}
+.stock-issuer { font-size: 12px; color: var(--color-text-secondary); }
+.stock-btn.dividend-btn {
+  flex: 0 0 auto; padding: 0 12px;
+  background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);
+}
+.issue-form { display: flex; flex-direction: column; gap: var(--spacing-sm); margin: var(--spacing-md) 0; }
+.issue-form input {
+  padding: 10px 12px; background: var(--color-bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius-md);
+  color: var(--color-text-primary); font-size: 14px;
+}

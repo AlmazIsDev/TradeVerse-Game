@@ -18,6 +18,20 @@ const RARITY_COLOR = {
   epic: '#a855f7', legendary: '#f59e0b',
 }
 
+const ASSET_EMOJI = {
+  studio: '🏠', flat2: '🏢', townhouse: '🏘️', villa: '🏖️', penthouse: '🌆', castle: '🏰',
+  shawarma: '🌯', coffee: '☕', carwash: '🚿', itstudio: '💻', factory: '🏭',
+  citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
+}
+const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }
+const RARITY_GRAD = {
+  common: 'linear-gradient(135deg,#334155,#1e293b)',
+  uncommon: 'linear-gradient(135deg,#166534,#14532d)',
+  rare: 'linear-gradient(135deg,#1e40af,#1e3a8a)',
+  epic: 'linear-gradient(135deg,#6b21a8,#4c1d95)',
+  legendary: 'linear-gradient(135deg,#b45309,#78350f)',
+}
+
 function MarketTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [category, setCategory] = useState('realestate')
@@ -118,7 +132,10 @@ function MarketTab({ balance = 0, onBalanceChange }) {
             const rc = RARITY_COLOR[item.rarity] || 'var(--color-accent)'
             const affordable = balance >= item.price
             return (
-              <div key={item.slug} className="asset-card" style={{ borderTopColor: rc }}>
+              <div key={item.slug} className={`asset-card ${item.type === 'car' ? 'car-card' : ''}`} style={{ borderTopColor: rc }}>
+                <div className="asset-banner" style={{ background: RARITY_GRAD[item.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
+                  <span className="asset-banner-emoji">{ASSET_EMOJI[item.slug] || TYPE_EMOJI[item.type] || '📦'}</span>
+                </div>
                 <div className="asset-card-head">
                   <span className="asset-name">{item.name}</span>
                   {item.rarity && <span className="asset-rarity" style={{ color: rc }}>{t(`realestate.rarities.${item.rarity}`, item.rarity)}</span>}

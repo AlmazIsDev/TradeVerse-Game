@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchConfig, toggleCardVisibility, fetchCurrentUser } from '../services/api'
+import {
+  fetchConfig, toggleCardVisibility, fetchCurrentUser,
+  fetchNotifications, markNotificationRead, markAllNotificationsRead,
+  acceptInvite, declineInvite,
+} from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import ProfileCard from './ProfileCard'
 import LanguageSwitcher from './LanguageSwitcher'
-import { Bell, LogOut, X, Check, Eye, EyeOff, CheckCheck, Wallet } from 'lucide-react'
+import { Bell, LogOut, X, Check, Wallet } from 'lucide-react'
 
 function formatMoney(n) {
   return Number(n || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -77,12 +81,45 @@ function Header({ username, balance, onLogout }) {
     return () => { cancelled = true }
   }, [])
 
-  const markAsRead = (id) => {
+  // Живая лента уведомлений с сервера (в т.ч. приглашения в компанию)
+  const loadNotifs = useCallback(async () => {
+    try {
+      const data = await fetchNotifications(30)
+      setNotifications(data.items || [])
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    loadNotifs()
+    const id = setInterval(loadNotifs, 30000)
+    return () => clearInterval(id)
+  }, [loadNotifs])
+
+  const markAsRead = async (id) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+    try { await markNotificationRead(id) } catch { /* ignore */ }
   }
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    try { await markAllNotificationsRead() } catch { /* ignore */ }
+  }
+
+  const handleInvite = async (notif, accept) => {
+    const inviteId = notif?.data?.inviteId
+    if (!inviteId) return
+    try {
+      if (accept) await acceptInvite(inviteId)
+      else await declineInvite(inviteId)
+      await markNotificationRead(notif.id)
+      await loadNotifs()
+    } catch { /* ignore */ }
+  }
+
+  const formatNotifTime = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? '' : d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
   }
 
   const handleToggleVisibility = async () => {
@@ -160,19 +197,36 @@ function Header({ username, balance, onLogout }) {
                 </button>
               </div>
               <div className="notification-list">
-                {notifications.map(n => (
-                  <div
-                    key={n.id}
-                    className={`notification-item ${n.read ? 'read' : 'unread'}`}
-                    onClick={() => markAsRead(n.id)}
-                  >
-                    <div className="notification-dot" />
-                    <div className="notification-content">
-                      <span className="notification-text">{n.text}</span>
-                      <span className="notification-time">{n.time}</span>
+                {notifications.length === 0 && (
+                  <div className="notification-empty">{t('notifications.noNotifications')}</div>
+                )}
+                {notifications.map(n => {
+                  const isInvite = n.type === 'company_invite' && n.data?.inviteId
+                  return (
+                    <div
+                      key={n.id}
+                      className={`notification-item ${n.read ? 'read' : 'unread'}`}
+                      onClick={() => !isInvite && markAsRead(n.id)}
+                    >
+                      {!n.read && <div className="notification-dot" />}
+                      <div className="notification-content">
+                        <span className="notification-title">{n.title}</span>
+                        {n.body && <span className="notification-text">{n.body}</span>}
+                        <span className="notification-time">{formatNotifTime(n.createdAt)}</span>
+                        {isInvite && (
+                          <div className="notification-actions">
+                            <button className="notif-accept" onClick={(e) => { e.stopPropagation(); handleInvite(n, true) }}>
+                              <Check size={13} /> {t('company.accept')}
+                            </button>
+                            <button className="notif-decline" onClick={(e) => { e.stopPropagation(); handleInvite(n, false) }}>
+                              <X size={13} /> {t('company.decline')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

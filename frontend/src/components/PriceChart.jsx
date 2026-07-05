@@ -1,0 +1,243 @@
+import { useRef, useEffect, useCallback } from 'react'
+
+/**
+ * Самодостаточный canvas-график (без внешних зависимостей).
+ * Поддерживает: линию и свечи, наведение с подсказкой, зум колёсиком,
+ * перемещение перетаскиванием, плавную перерисовку под devicePixelRatio.
+ *
+ * props: candles [{t,o,h,l,c}], line [{t,p}], type 'line'|'candle',
+ *        color, height, up, down
+ */
+function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1', height = 340, up = '#22c55e', down = '#ef4444' }) {
+  const wrapRef = useRef(null)
+  const canvasRef = useRef(null)
+  const view = useRef({ start: 0, count: 0 })
+  const hover = useRef(-1)
+  const drag = useRef(null)
+
+  const data = type === 'candle' ? candles : line
+  const len = data.length
+
+  const fmtPrice = (p) => {
+    if (p == null) return ''
+    if (p >= 1000) return p.toLocaleString('ru-RU', { maximumFractionDigits: 0 })
+    if (p >= 1) return p.toFixed(2)
+    return p.toFixed(4)
+  }
+  const fmtTime = (t) => {
+    const d = new Date(t * 1000)
+    if (isNaN(d.getTime())) return ''
+    return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  }
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current
+    const wrap = wrapRef.current
+    if (!canvas || !wrap) return
+    const dpr = window.devicePixelRatio || 1
+    const W = wrap.clientWidth
+    const H = height
+    canvas.width = Math.round(W * dpr)
+    canvas.height = Math.round(H * dpr)
+    canvas.style.width = W + 'px'
+    canvas.style.height = H + 'px'
+    const ctx = canvas.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, W, H)
+
+    const padL = 10, padR = 62, padT = 14, padB = 24
+    const plotW = W - padL - padR
+    const plotH = H - padT - padB
+
+    if (len < 2) {
+      ctx.fillStyle = '#64748b'
+      ctx.font = '13px Inter, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('Недостаточно данных', W / 2, H / 2)
+      return
+    }
+
+    let { start, count } = view.current
+    if (count <= 0 || count > len) count = len
+    if (start < 0) start = 0
+    if (start + count > len) start = len - count
+    view.current = { start, count }
+
+    const vis = data.slice(start, start + count)
+    let min = Infinity, max = -Infinity
+    for (const d of vis) {
+      if (type === 'candle') { min = Math.min(min, d.l); max = Math.max(max, d.h) }
+      else { min = Math.min(min, d.p); max = Math.max(max, d.p) }
+    }
+    if (!isFinite(min) || !isFinite(max)) return
+    const pad = (max - min) * 0.08 || max * 0.05 || 1
+    min -= pad; max += pad
+    const range = max - min || 1
+
+    const xAt = (i) => padL + (count === 1 ? plotW / 2 : (i / (count - 1)) * plotW)
+    const yAt = (p) => padT + (1 - (p - min) / range) * plotH
+
+    // Сетка + ось цены
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+    ctx.fillStyle = '#64748b'
+    ctx.font = '11px Inter, sans-serif'
+    ctx.lineWidth = 1
+    ctx.textAlign = 'left'
+    const gridN = 5
+    for (let g = 0; g <= gridN; g++) {
+      const y = padT + (g / gridN) * plotH
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke()
+      const price = max - (g / gridN) * range
+      ctx.fillText('$' + fmtPrice(price), padL + plotW + 6, y + 3)
+    }
+    // Ось времени
+    ctx.textAlign = 'center'
+    const ticks = Math.min(5, count)
+    for (let g = 0; g < ticks; g++) {
+      const i = Math.round((g / Math.max(1, ticks - 1)) * (count - 1))
+      const x = xAt(i)
+      ctx.fillText(fmtTime(vis[i].t), Math.min(Math.max(x, 28), padL + plotW - 28), H - 7)
+    }
+
+    if (type === 'candle') {
+      const cw = Math.max(1, (plotW / count) * 0.6)
+      for (let i = 0; i < count; i++) {
+        const d = vis[i]
+        const x = xAt(i)
+        const bull = d.c >= d.o
+        ctx.strokeStyle = bull ? up : down
+        ctx.fillStyle = bull ? up : down
+        ctx.beginPath(); ctx.moveTo(x, yAt(d.h)); ctx.lineTo(x, yAt(d.l)); ctx.stroke()
+        const yo = yAt(d.o), yc = yAt(d.c)
+        const top = Math.min(yo, yc)
+        ctx.fillRect(x - cw / 2, top, cw, Math.max(1, Math.abs(yc - yo)))
+      }
+    } else {
+      // Заливка-градиент под линией
+      const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH)
+      grad.addColorStop(0, color + '44')
+      grad.addColorStop(1, color + '00')
+      ctx.beginPath()
+      ctx.moveTo(xAt(0), yAt(vis[0].p))
+      for (let i = 1; i < count; i++) ctx.lineTo(xAt(i), yAt(vis[i].p))
+      ctx.lineTo(xAt(count - 1), padT + plotH)
+      ctx.lineTo(xAt(0), padT + plotH)
+      ctx.closePath()
+      ctx.fillStyle = grad
+      ctx.fill()
+      // Линия
+      ctx.beginPath()
+      ctx.moveTo(xAt(0), yAt(vis[0].p))
+      for (let i = 1; i < count; i++) ctx.lineTo(xAt(i), yAt(vis[i].p))
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2
+      ctx.lineJoin = 'round'
+      ctx.stroke()
+    }
+
+    // Кроссхэйр + подсказка
+    const h = hover.current
+    if (h >= 0 && h < count) {
+      const d = vis[h]
+      const x = xAt(h)
+      const py = type === 'candle' ? yAt(d.c) : yAt(d.p)
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+      ctx.setLineDash([4, 4])
+      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(padL + plotW, py); ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = color
+      ctx.beginPath(); ctx.arc(x, py, 3.5, 0, Math.PI * 2); ctx.fill()
+
+      const label = type === 'candle'
+        ? `O ${fmtPrice(d.o)} H ${fmtPrice(d.h)} L ${fmtPrice(d.l)} C ${fmtPrice(d.c)}`
+        : `$${fmtPrice(d.p)}`
+      const timeLabel = fmtTime(d.t)
+      ctx.font = '11px Inter, sans-serif'
+      const tw = Math.max(ctx.measureText(label).width, ctx.measureText(timeLabel).width) + 16
+      let bx = x + 10
+      if (bx + tw > padL + plotW) bx = x - tw - 10
+      ctx.fillStyle = 'rgba(15,17,23,0.92)'
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.beginPath()
+      ctx.roundRect(bx, padT + 6, tw, 38, 6)
+      ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#f1f5f9'
+      ctx.textAlign = 'left'
+      ctx.fillText(label, bx + 8, padT + 22)
+      ctx.fillStyle = '#94a3b8'
+      ctx.fillText(timeLabel, bx + 8, padT + 37)
+    }
+  }, [data, len, type, color, height, up, down])
+
+  // Сброс окна при смене данных
+  useEffect(() => {
+    view.current = { start: 0, count: len }
+    hover.current = -1
+    draw()
+  }, [len, type, draw])
+
+  // Ресайз
+  useEffect(() => {
+    const ro = new ResizeObserver(() => draw())
+    if (wrapRef.current) ro.observe(wrapRef.current)
+    return () => ro.disconnect()
+  }, [draw])
+
+  const idxFromEvent = (e) => {
+    const canvas = canvasRef.current
+    const rect = canvas.getBoundingClientRect()
+    const W = rect.width
+    const padL = 10, padR = 62
+    const plotW = W - padL - padR
+    const { count } = view.current
+    const rel = (e.clientX - rect.left - padL) / plotW
+    return Math.max(0, Math.min(count - 1, Math.round(rel * (count - 1))))
+  }
+
+  const onMove = (e) => {
+    if (drag.current) {
+      const rect = canvasRef.current.getBoundingClientRect()
+      const plotW = rect.width - 72
+      const { count } = view.current
+      const perPx = count / plotW
+      const shift = Math.round((drag.current.x - e.clientX) * perPx)
+      view.current.start = drag.current.start + shift
+      draw()
+      return
+    }
+    hover.current = idxFromEvent(e)
+    draw()
+  }
+  const onLeave = () => { hover.current = -1; drag.current = null; draw() }
+  const onDown = (e) => { drag.current = { x: e.clientX, start: view.current.start } }
+  const onUp = () => { drag.current = null }
+  const onWheel = (e) => {
+    e.preventDefault()
+    const { start, count } = view.current
+    const center = hover.current >= 0 ? start + hover.current : start + count / 2
+    const factor = e.deltaY < 0 ? 0.85 : 1.18
+    let newCount = Math.round(count * factor)
+    newCount = Math.max(8, Math.min(len, newCount))
+    let newStart = Math.round(center - (center - start) * (newCount / count))
+    newStart = Math.max(0, Math.min(len - newCount, newStart))
+    view.current = { start: newStart, count: newCount }
+    draw()
+  }
+
+  return (
+    <div className="price-chart-wrap" ref={wrapRef}>
+      <canvas
+        ref={canvasRef}
+        style={{ display: 'block', cursor: drag.current ? 'grabbing' : 'crosshair', touchAction: 'none' }}
+        onMouseMove={onMove}
+        onMouseLeave={onLeave}
+        onMouseDown={onDown}
+        onMouseUp={onUp}
+        onWheel={onWheel}
+      />
+    </div>
+  )
+}
+
+export default PriceChart

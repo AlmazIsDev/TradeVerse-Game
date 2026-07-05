@@ -9,7 +9,7 @@
     "cityroof": "City Roof",
     "crypto": "Cryptocurrency",
     "realestate": "Market",
-    "myhomes": "My Homes",
+    "myhomes": "My Property",
     "mybusiness": "My Businesses",
     "mycompany": "My Company",
     "leaderboard": "Leaderboard"
@@ -147,7 +147,11 @@
     "insufficientFunds": "Insufficient funds",
     "invalidAmount": "Enter a valid amount",
     "processing": "Processing...",
-    "currentBalance": "Current balance"
+    "currentBalance": "Current balance",
+    "overview": "Overview",
+    "mainAccount": "Main account",
+    "cryptoAccount": "Crypto account",
+    "cryptoClosed": "Crypto account not opened — open it in the Cryptocurrency section"
   },
   "tx": {
     "all": "All",
@@ -188,6 +192,42 @@
     "insufficientFunds": "Insufficient funds",
     "insufficientCoins": "Insufficient coins"
   },
+  "cryptoTransfer": {
+    "title": "Wallet transfer",
+    "recipient": "Wallet address or nickname",
+    "selectCoin": "Select a coin",
+    "amount": "Amount",
+    "send": "Send",
+    "fee": "Network fee — 1% of the transfer amount.",
+    "invalid": "Fill in recipient, coin and amount",
+    "sent": "Sent {{amount}} {{symbol}} → {{recipient}}",
+    "to": "To:",
+    "from": "From:"
+  },
+  "asset": {
+    "favorite": "Favorite",
+    "change24h": "24h",
+    "change7d": "7 days",
+    "change1m": "1 month",
+    "change1y": "1 year",
+    "marketCap": "Market cap",
+    "volume": "Volume (24h)",
+    "shares": "Total shares",
+    "supply": "Circulating",
+    "ath": "All-time high",
+    "atl": "All-time low",
+    "line": "Line",
+    "candle": "Candles",
+    "chartHint": "Wheel to zoom, drag to pan, hover for price.",
+    "iv_1h": "1H",
+    "iv_24h": "24H",
+    "iv_7d": "7D",
+    "iv_1m": "1M",
+    "iv_3m": "3M",
+    "iv_6m": "6M",
+    "iv_1y": "1Y",
+    "iv_all": "All"
+  },
   "leaderboard": {
     "player": "Player",
     "netWorth": "Net worth",
@@ -226,7 +266,29 @@
     "sell": "Sell",
     "collected": "Income collected",
     "upgraded": "Asset upgraded",
-    "sold": "Asset sold"
+    "sold": "Asset sold",
+    "toCompany": "Give to company",
+    "toCompanyHint": "Your company will start earning from this asset",
+    "transferred": "Asset given to company"
+  },
+  "rent": {
+    "list": "Rent out",
+    "title": "Rent out",
+    "desc": "A tenant appears randomly within 1–48 hours. Money is credited automatically when the term ends.",
+    "price": "Rent price, $",
+    "minHours": "Min term, h",
+    "publish": "Publish",
+    "listed": "Listing published",
+    "waiting": "Waiting for a tenant…",
+    "rented": "Rented out",
+    "cancelled": "Listing removed",
+    "invalid": "Enter a valid price and term"
+  },
+  "car": {
+    "condition": "Condition",
+    "cond_1": "New",
+    "cond_2": "Excellent",
+    "cond_3": "Good"
   },
   "company": {
     "createTitle": "Create your company",
@@ -253,6 +315,14 @@
     "fired": "Employee fired",
     "editSalary": "Salary",
     "salaryUpdated": "Salary updated",
+    "invite": "Invite",
+    "invited": "Invitation sent",
+    "invitePlayer": "Player nickname",
+    "accept": "Accept",
+    "decline": "Decline",
+    "assets": "Company assets",
+    "noAssets": "Transfer assets from “My Property” — the company will earn from them.",
+    "incomeNote": "Company income comes only from its assets. Salaries are paid to employees from the budget.",
     "roles": {
       "intern": "Intern",
       "worker": "Worker",

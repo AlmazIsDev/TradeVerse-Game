@@ -21,6 +21,7 @@ from ledger import (
     INCOME, EXPENSE, CAT_TRADE, CAT_DIVIDEND,
     adjust_balance, record_transaction,
 )
+from market_data import MarketDataService
 
 router = APIRouter(prefix="/api/v2/stocks", tags=["stocks"])
 
@@ -181,6 +182,9 @@ async def list_stocks(
     holdings = await _holdings_map(db, str(current_user["_id"]))
     out = []
     for s in stocks:
+        # История цен: одноразовый бэкфилл + периодический снимок (троттлинг).
+        await MarketDataService.ensure_backfill(db, "stock", s["symbol"], s.get("price", 1) or 1, 0.02)
+        await MarketDataService.record_snapshot(db, "stock", s["symbol"], s.get("price", 0))
         item = _format_stock_v2(s)
         held = holdings.get(s["symbol"])
         item["heldQuantity"] = held.get("quantity", 0) if held else 0
@@ -377,6 +381,7 @@ async def trade_stock(
         "userId": user_id,
         "timestamp": datetime.now(timezone.utc),
     })
+    await MarketDataService.record_snapshot(db, "stock", symbol, new_price, force=True)
 
     return {
         "success": True,

@@ -5,12 +5,13 @@
 проходят через единый реестр (ledger). Стоимость активов учитывается в
 чистом капитале игрока (лидерборд).
 """
-from datetime import datetime, timezone
+import random
+from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from auth import get_current_user
 from database import get_db
@@ -18,6 +19,7 @@ from ledger import (
     INCOME, EXPENSE, CAT_REALESTATE, CAT_BUSINESS,
     adjust_balance, record_transaction,
 )
+from notifications import push_notification
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -28,6 +30,9 @@ ASSET_TYPES = {TYPE_REALESTATE, TYPE_BUSINESS, TYPE_CAR}
 
 SELL_RATE = 0.7          # возврат при продаже — 70% текущей стоимости
 MAX_ACCRUAL_HOURS = 24   # максимум накопленного дохода за один сбор
+
+RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
+RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
 
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
 # income_per_hour — пассивный доход; upkeep_per_hour — расход (для бизнесов).
@@ -78,6 +83,25 @@ class BuyRequest(BaseModel):
     slug: str
 
 
+class RentListing(BaseModel):
+    price: float
+    minHours: int
+
+    @field_validator("price")
+    @classmethod
+    def price_ok(cls, v):
+        if v is None or v <= 0:
+            raise ValueError("Стоимость аренды должна быть положительной")
+        return round(float(v), 2)
+
+    @field_validator("minHours")
+    @classmethod
+    def hours_ok(cls, v):
+        if v < 1 or v > 720:
+            raise ValueError("Срок аренды: 1–720 часов")
+        return int(v)
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -122,6 +146,87 @@ def _accrued(asset: dict) -> float:
     return round(max(0.0, net), 2)
 
 
+# ── Аренда ───────────────────────────────────────────────────────────────────
+
+
+def _rental_view(asset: dict) -> dict | None:
+    r = asset.get("rental")
+    if not r:
+        return None
+    return {
+        "status": r.get("status"),
+        "price": r.get("price"),
+        "minHours": r.get("minHours"),
+        "tenantAt": r["tenant_at"].isoformat() if isinstance(r.get("tenant_at"), datetime) else None,
+        "endsAt": r["ends_at"].isoformat() if isinstance(r.get("ends_at"), datetime) else None,
+    }
+
+
+async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
+    """Ленивая обработка аренды: заселение арендатора и выплата по окончании.
+
+    listed → (наступило tenant_at) → rented → (наступило ends_at) → выплата владельцу.
+    """
+    r = asset.get("rental")
+    if not r:
+        return asset
+    now = _now()
+
+    def _aware(dt):
+        return dt.replace(tzinfo=timezone.utc) if isinstance(dt, datetime) and dt.tzinfo is None else dt
+
+    # Заселение арендатора
+    if r.get("status") == "listed":
+        tenant_at = _aware(r.get("tenant_at"))
+        if tenant_at and now >= tenant_at:
+            ends_at = tenant_at + timedelta(hours=r.get("minHours", 1))
+            r["status"] = "rented"
+            r["ends_at"] = ends_at
+            await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"rental": r}})
+            asset["rental"] = r
+            await push_notification(
+                db, asset["userId"], "rental",
+                "Появился арендатор", f"«{asset.get('name')}» сдан в аренду.",
+                data={"assetId": str(asset["_id"])},
+            )
+
+    # Завершение аренды и выплата
+    if r.get("status") == "rented":
+        ends_at = _aware(r.get("ends_at"))
+        if ends_at and now >= ends_at:
+            payout = round(float(r.get("price", 0)), 2)
+            await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"rental": None}})
+            asset["rental"] = None
+            if payout > 0:
+                new_balance = await adjust_balance(db, asset["userId"], payout)
+                await record_transaction(
+                    db, asset["userId"], INCOME, payout, CAT_REALESTATE,
+                    f"Аренда: {asset.get('name')}", balance_after=new_balance,
+                    meta={"assetId": str(asset["_id"])},
+                )
+                await push_notification(
+                    db, asset["userId"], "rental",
+                    "Аренда завершена", f"Начислено ${payout:.2f} за «{asset.get('name')}».",
+                    data={"assetId": str(asset["_id"]), "payout": payout},
+                )
+    return asset
+
+
+# ── Активы компании (реальный источник дохода) ───────────────────────────────
+
+
+async def company_income_per_hour(db: AsyncIOMotorDatabase, company_id: str) -> float:
+    """Чистый доход компании в час от принадлежащих ей активов."""
+    total = 0.0
+    async for a in db.user_assets.find({"companyId": company_id}):
+        total += (_income_per_hour(a) - _upkeep_per_hour(a))
+    return round(total, 2)
+
+
+async def list_company_assets(db: AsyncIOMotorDatabase, company_id: str) -> list[dict]:
+    return [_serialize(a) async for a in db.user_assets.find({"companyId": company_id})]
+
+
 def _serialize(asset: dict) -> dict:
     return {
         "id": str(asset["_id"]),
@@ -141,6 +246,8 @@ def _serialize(asset: dict) -> dict:
         "upgradeCost": _upgrade_cost(asset),
         "accrued": _accrued(asset),
         "meta": asset.get("meta", {}),
+        "companyId": asset.get("companyId"),
+        "rental": _rental_view(asset),
         "purchasedAt": asset.get("purchased_at").isoformat() if isinstance(asset.get("purchased_at"), datetime) else None,
     }
 
@@ -215,6 +322,8 @@ async def buy_asset(
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
         "level": 1,
         "meta": catalog.get("meta", {}),
+        "companyId": None,      # None = личный актив; иначе принадлежит компании
+        "rental": None,         # активное объявление/аренда (см. rental)
         "purchased_at": _now(),
         "last_collected": _now(),
     }
@@ -239,12 +348,16 @@ async def get_my_assets(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Активы игрока (опц. фильтр по типу) + агрегаты."""
+    """Личные активы игрока (без переданных компании) + агрегаты."""
     user_id = str(current_user["_id"])
-    query = {"userId": user_id}
+    query = {"userId": user_id, "companyId": None}
     if type in ASSET_TYPES:
         query["type"] = type
-    assets = [_serialize(a) async for a in db.user_assets.find(query)]
+    docs = [a async for a in db.user_assets.find(query)]
+    assets = []
+    for a in docs:
+        a = await _process_rental(db, a)   # ленивое заселение/выплата аренды
+        assets.append(_serialize(a))
     assets.sort(key=lambda a: a["value"], reverse=True)
     total_value = round(sum(a["value"] for a in assets), 2)
     total_profit = round(sum(a["profitPerHour"] for a in assets), 2)
@@ -333,6 +446,75 @@ async def sell_asset(
         meta={"slug": asset.get("slug")},
     )
     return {"sold": payout, "balance": new_balance}
+
+
+@router.post("/{asset_id}/transfer-to-company")
+async def transfer_to_company(
+    asset_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Передать актив своей компании — доход с него начнёт получать компания."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("companyId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Актив уже принадлежит компании")
+    company = await db.companies.find_one({"ownerId": user_id})
+    if not company:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сначала создайте компанию")
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"companyId": str(company["_id"]), "rental": None, "last_collected": _now()}},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    return {"ok": True, "asset": _serialize(updated)}
+
+
+@router.post("/{asset_id}/rent/list")
+async def rent_list(
+    asset_id: str,
+    payload: RentListing,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Выставить недвижимость в аренду. Арендатор появится через 1–48 часов."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("companyId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Актив передан компании")
+    if asset.get("type") != TYPE_REALESTATE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость")
+    if asset.get("rental"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
+    wait_h = random.randint(RENT_MIN_WAIT_H, RENT_MAX_WAIT_H)
+    rental = {
+        "status": "listed",
+        "price": payload.price,
+        "minHours": payload.minHours,
+        "tenant_at": _now() + timedelta(hours=wait_h),
+        "ends_at": None,
+        "listed_at": _now(),
+    }
+    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"rental": rental}})
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    return {"ok": True, "asset": _serialize(updated), "tenantInHours": wait_h}
+
+
+@router.post("/{asset_id}/rent/cancel")
+async def rent_cancel(
+    asset_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Снять объявление об аренде (пока арендатор не заселился)."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    r = asset.get("rental")
+    if not r or r.get("status") != "listed":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдан или не выставлен")
+    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"rental": None}})
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    return {"ok": True, "asset": _serialize(updated)}
 
 
 # ── Aggregate value (для лидерборда/капитала) ────────────────────────────────

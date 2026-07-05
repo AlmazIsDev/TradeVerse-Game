@@ -163,6 +163,17 @@ export async function tradeCrypto(symbol, action, quantity) {
   })
 }
 
+export async function transferCrypto(recipient, symbol, amount) {
+  return request('/api/crypto/transfer', {
+    method: 'POST',
+    body: JSON.stringify({ recipient, symbol, amount }),
+  })
+}
+
+export async function fetchCryptoTransfers(limit = 30) {
+  return request(`/api/crypto/transfers?limit=${limit}`)
+}
+
 // ── Stock Trading API ─────────────────────────────────────────────────────────
 
 export async function fetchStocksV2() {
@@ -252,6 +263,52 @@ export async function sellAsset(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/sell`, { method: 'POST' })
 }
 
+export async function transferAssetToCompany(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/transfer-to-company`, { method: 'POST' })
+}
+
+export async function listPropertyForRent(id, price, minHours) {
+  return request(`/api/assets/${encodeURIComponent(id)}/rent/list`, {
+    method: 'POST', body: JSON.stringify({ price, minHours }),
+  })
+}
+
+export async function cancelRent(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/rent/cancel`, { method: 'POST' })
+}
+
+// ── Notifications API ───────────────────────────────────────────────────────────
+
+export async function fetchNotifications(limit = 30) {
+  return request(`/api/notifications?limit=${limit}`)
+}
+
+export async function markNotificationRead(id) {
+  return request(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' })
+}
+
+export async function markAllNotificationsRead() {
+  return request('/api/notifications/read-all', { method: 'POST' })
+}
+
+// ── Market data (history / asset detail / favorites) ────────────────────────────
+
+export async function fetchMarketAsset(market, symbol) {
+  return request(`/api/market/asset?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`)
+}
+
+export async function fetchMarketHistory(market, symbol, interval = '7d') {
+  return request(`/api/market/history?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`)
+}
+
+export async function fetchFavorites() {
+  return request('/api/favorites')
+}
+
+export async function toggleFavorite(market, symbol) {
+  return request('/api/favorites/toggle', { method: 'POST', body: JSON.stringify({ market, symbol }) })
+}
+
 // ── Company API ────────────────────────────────────────────────────────────────
 
 export async function fetchCompany() {
@@ -262,18 +319,34 @@ export async function createCompany(name) {
   return request('/api/company', { method: 'POST', body: JSON.stringify({ name }) })
 }
 
-export async function hireEmployee({ name, role, salary }) {
-  return request('/api/company/employees', { method: 'POST', body: JSON.stringify({ name, role, salary }) })
-}
-
-export async function updateEmployeeSalary(empId, salary) {
-  return request(`/api/company/employees/${encodeURIComponent(empId)}`, {
+export async function updateMemberSalary(memberUserId, salary) {
+  return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, {
     method: 'PATCH', body: JSON.stringify({ salary }),
   })
 }
 
-export async function fireEmployee(empId) {
-  return request(`/api/company/employees/${encodeURIComponent(empId)}`, { method: 'DELETE' })
+export async function fireMember(memberUserId) {
+  return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, { method: 'DELETE' })
+}
+
+export async function inviteEmployee({ username, role, salary }) {
+  return request('/api/company/invite', { method: 'POST', body: JSON.stringify({ username, role, salary }) })
+}
+
+export async function fetchMyInvites() {
+  return request('/api/company/invites')
+}
+
+export async function acceptInvite(inviteId) {
+  return request(`/api/company/invites/${encodeURIComponent(inviteId)}/accept`, { method: 'POST' })
+}
+
+export async function declineInvite(inviteId) {
+  return request(`/api/company/invites/${encodeURIComponent(inviteId)}/decline`, { method: 'POST' })
+}
+
+export async function fetchMyJobs() {
+  return request('/api/company/my-jobs')
 }
 
 export async function collectCompanyProfit() {

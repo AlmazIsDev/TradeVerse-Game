@@ -14,7 +14,7 @@ import MyCompanyTab from './MyCompanyTab'
 import CityRoofTab from './CityRoofTab'
 import AdminPanel from './AdminPanel'
 import { fetchCurrentUser } from '../services/api'
-import { Home, Briefcase, Shield } from 'lucide-react'
+import { Shield } from 'lucide-react'
 
 const STORAGE_KEY = 'tradeverse_user'
 
@@ -67,9 +67,9 @@ function Dashboard({ user, onLogout }) {
       case 'realestate':
         return <MarketTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'myhomes':
-        return <MyAssetsTab types={['realestate', 'car']} titleKey="nav.myhomes" icon={Home} balance={balance} onBalanceChange={handleBalanceChange} />
+        return <MyAssetsTab defaultType="realestate" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mybusiness':
-        return <MyAssetsTab types={['business']} titleKey="nav.mybusiness" icon={Briefcase} balance={balance} onBalanceChange={handleBalanceChange} />
+        return <MyAssetsTab defaultType="business" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'leaderboard':

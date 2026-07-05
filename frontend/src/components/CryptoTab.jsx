@@ -2,12 +2,18 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCryptoAccount, fetchCryptoMarket, openCryptoAccount, tradeCrypto,
+  transferCrypto, fetchCryptoTransfers,
 } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import AssetDetail from './AssetDetail'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
-  ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X,
+  ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X, Send,
 } from 'lucide-react'
+
+function formatCoinShort(n) {
+  return Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 6 })
+}
 
 function formatCoin(n) {
   return Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 6 })
@@ -25,6 +31,11 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
   const [feedback, setFeedback] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [detailSymbol, setDetailSymbol] = useState(null)
+  const [transfer, setTransfer] = useState({ recipient: '', symbol: '', amount: '' })
+  const [transferMsg, setTransferMsg] = useState(null)
+  const [transferBusy, setTransferBusy] = useState(false)
+  const [transfers, setTransfers] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -32,8 +43,9 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
       const acc = await fetchCryptoAccount()
       setAccount(acc)
       if (acc.opened) {
-        const mkt = await fetchCryptoMarket()
+        const [mkt, trs] = await Promise.all([fetchCryptoMarket(), fetchCryptoTransfers()])
         setMarket(mkt)
+        setTransfers(trs)
       }
     } catch {
       setAccount({ opened: false, holdings: [] })
@@ -115,12 +127,52 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+  const handleTransfer = async (e) => {
+    e?.preventDefault?.()
+    const amt = parseFloat(transfer.amount)
+    if (!transfer.recipient.trim() || !transfer.symbol || !(amt > 0)) {
+      setTransferMsg({ type: 'error', text: t('cryptoTransfer.invalid') })
+      return
+    }
+    const held = account?.holdings?.find(h => h.symbol === transfer.symbol)
+    if (!held || held.quantity < amt * 1.01) {
+      setTransferMsg({ type: 'error', text: t('crypto.insufficientCoins') })
+      return
+    }
+    setTransferBusy(true)
+    setTransferMsg(null)
+    try {
+      const res = await transferCrypto(transfer.recipient.trim(), transfer.symbol, amt)
+      setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: amt, symbol: res.symbol, recipient: res.recipient }) })
+      setTransfer({ recipient: '', symbol: '', amount: '' })
+      setRefreshKey(k => k + 1)
+      await load()
+    } catch (err) {
+      setTransferMsg({ type: 'error', text: err.message })
+    } finally {
+      setTransferBusy(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="crypto-tab">
         <h2 className="tab-title">{t('nav.crypto')}</h2>
         <div className="skeleton-chart" style={{ height: 140 }} />
       </div>
+    )
+  }
+
+  if (detailSymbol) {
+    return (
+      <AssetDetail
+        market="crypto"
+        symbol={detailSymbol}
+        onBack={() => { setDetailSymbol(null); load() }}
+        balance={balance}
+        onBalanceChange={onBalanceChange}
+        onTraded={load}
+      />
     )
   }
 
@@ -204,7 +256,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
           {market.map(coin => {
             const up = (coin.change24h || 0) >= 0
             return (
-              <div key={coin.symbol} className="crypto-coin">
+              <div key={coin.symbol} className="crypto-coin clickable" onClick={() => setDetailSymbol(coin.symbol)}>
                 <span className="crypto-coin-badge" style={{ background: coin.color }}>
                   {coin.symbol.slice(0, 2)}
                 </span>
@@ -220,12 +272,12 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
                   </span>
                 </div>
                 <div className="crypto-coin-actions">
-                  <button className="crypto-buy" onClick={() => openTrade(coin, 'buy')}>
+                  <button className="crypto-buy" onClick={(e) => { e.stopPropagation(); openTrade(coin, 'buy') }}>
                     <ArrowDownLeft size={14} /> {t('common.buy')}
                   </button>
                   <button
                     className="crypto-sell"
-                    onClick={() => openTrade(coin, 'sell')}
+                    onClick={(e) => { e.stopPropagation(); openTrade(coin, 'sell') }}
                     disabled={!holdingFor(coin.symbol)}
                   >
                     <ArrowUpRight size={14} /> {t('common.sell')}
@@ -235,6 +287,54 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
             )
           })}
         </div>
+      </div>
+
+      {/* Перевод по кошельку */}
+      <div className="crypto-section">
+        <h3><Send size={16} /> {t('cryptoTransfer.title')}</h3>
+        <form className="crypto-transfer-form" onSubmit={handleTransfer}>
+          <input
+            placeholder={t('cryptoTransfer.recipient')}
+            value={transfer.recipient}
+            onChange={e => setTransfer({ ...transfer, recipient: e.target.value })}
+          />
+          <select value={transfer.symbol} onChange={e => setTransfer({ ...transfer, symbol: e.target.value })}>
+            <option value="">{t('cryptoTransfer.selectCoin')}</option>
+            {(account?.holdings || []).map(h => (
+              <option key={h.symbol} value={h.symbol}>{h.symbol} · {formatCoinShort(h.quantity)}</option>
+            ))}
+          </select>
+          <input
+            type="number" min="0" step="any" placeholder={t('cryptoTransfer.amount')}
+            value={transfer.amount}
+            onChange={e => setTransfer({ ...transfer, amount: e.target.value })}
+          />
+          <button className="crypto-open-btn" type="submit" disabled={transferBusy}>
+            <Send size={15} /> {transferBusy ? t('bank.processing') : t('cryptoTransfer.send')}
+          </button>
+        </form>
+        <p className="crypto-transfer-fee">{t('cryptoTransfer.fee')}</p>
+        {transferMsg && (
+          <div className={`transfer-feedback ${transferMsg.type}`}>
+            {transferMsg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}
+            <span>{transferMsg.text}</span>
+          </div>
+        )}
+        {transfers.length > 0 && (
+          <div className="crypto-transfer-history">
+            {transfers.map(tr => (
+              <div key={tr.id} className={`crypto-transfer-row ${tr.direction}`}>
+                <span className="ctr-dir">{tr.direction === 'out' ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}</span>
+                <span className="ctr-main">
+                  {tr.direction === 'out' ? t('cryptoTransfer.to') : t('cryptoTransfer.from')} <b>{tr.counterparty}</b>
+                </span>
+                <span className={`ctr-amount ${tr.direction}`}>
+                  {tr.direction === 'out' ? '−' : '+'}{formatCoinShort(tr.amount)} {tr.symbol}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* История крипто-операций */}

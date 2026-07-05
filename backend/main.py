@@ -33,6 +33,8 @@ from stocks import router as stocks_router
 from assets import router as assets_router
 from company import router as company_router
 from cityroof import router as cityroof_router
+from notifications import router as notifications_router
+from market_data import router as market_router
 
 from database import (
     get_db,
@@ -75,12 +77,19 @@ async def lifespan(app: FastAPI):
     await db.leaderboard.create_index("profit")
     await db.crypto_assets.create_index("symbol", unique=True)
     await db.crypto_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
+    await db.crypto_transfers.create_index("fromId")
+    await db.crypto_transfers.create_index("toId")
     await db.stock_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
     await db.stock_events.create_index("symbol")
     await db.stock_events.create_index("timestamp")
     await db.user_assets.create_index("userId")
     await db.companies.create_index("ownerId", unique=True)
-    await db.company_employees.create_index("companyId")
+    await db.company_members.create_index([("companyId", 1), ("userId", 1)])
+    await db.company_members.create_index("userId")
+    await db.company_invites.create_index("toUserId")
+    await db.notifications.create_index([("userId", 1), ("created_at", -1)])
+    await db.price_history.create_index([("market", 1), ("symbol", 1), ("ts", 1)])
+    await db.user_favorites.create_index([("userId", 1), ("market", 1), ("symbol", 1)])
     await db.cityroof_sessions.create_index("attackerId")
     await db.cityroof_seasons.create_index("closed_at")
     await init_db()
@@ -105,6 +114,8 @@ app.include_router(stocks_router)
 app.include_router(assets_router)
 app.include_router(company_router)
 app.include_router(cityroof_router)
+app.include_router(notifications_router)
+app.include_router(market_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────
@@ -348,9 +359,9 @@ async def get_leaderboard(
         uid = h.get("userId")
         crypto_val[uid] = crypto_val.get(uid, 0.0) + h.get("quantity", 0.0) * crypto_prices.get(h.get("symbol"), 0.0)
 
-    # Стоимость физических активов (недвижимость/бизнес/авто) с учётом улучшений.
+    # Стоимость личных физических активов (переданные компании — не в личном капитале).
     asset_val: dict[str, float] = {}
-    async for a in db.user_assets.find({}):
+    async for a in db.user_assets.find({"companyId": None}):
         uid = a.get("userId")
         base = a.get("price", 0)
         level = a.get("level", 1)

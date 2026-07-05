@@ -83,7 +83,14 @@
     "stockUpdated": "Stock updated",
     "stockDeleted": "Stock {{symbol}} deleted",
     "deleteConfirm": "Delete stock {{symbol}}?",
-    "fillAllFields": "Fill in all stock fields"
+    "fillAllFields": "Fill in all stock fields",
+    "processing": "Processing trade...",
+    "tradeSuccess": "Trade completed!",
+    "insufficientFunds": "Insufficient funds",
+    "insufficientShares": "Not enough shares",
+    "portfolio": "My Portfolio",
+    "portfolioValue": "Portfolio value",
+    "owned": "Owned"
   },
   "account": {
     "title": "Account",
@@ -164,6 +171,46 @@
     "tradeSuccess": "Trade completed",
     "insufficientFunds": "Insufficient funds",
     "insufficientCoins": "Insufficient coins"
+  },
+  "leaderboard": {
+    "player": "Player",
+    "netWorth": "Net worth",
+    "profit": "Profit",
+    "you": "you",
+    "noData": "No players ranked yet",
+    "sort_networth": "By net worth",
+    "sort_profit": "By profit",
+    "sort_cash": "By cash",
+    "sort_stocks": "By stocks",
+    "sort_crypto": "By crypto"
+  },
+  "market": {
+    "cat_realestate": "Real estate",
+    "cat_business": "Businesses",
+    "cat_car": "Cars",
+    "searchPlaceholder": "Search by name...",
+    "noItems": "Nothing found",
+    "bought": "Asset purchased!",
+    "employees": "Employees",
+    "profitPerHour": "Profit/h",
+    "prestige": "Prestige"
+  },
+  "myassets": {
+    "empty": "You don't own any assets yet. Check out the Market.",
+    "totalValue": "Total value",
+    "profitPerHour": "Profit per hour",
+    "readyToCollect": "Ready to collect",
+    "level": "Lvl",
+    "value": "Value",
+    "upkeep": "Upkeep",
+    "tax": "Tax",
+    "accrued": "Accrued",
+    "collect": "Collect",
+    "upgrade": "Upgrade",
+    "sell": "Sell",
+    "collected": "Income collected",
+    "upgraded": "Asset upgraded",
+    "sold": "Asset sold"
   },
   "shop": {
     "gpu": "GPU Store",

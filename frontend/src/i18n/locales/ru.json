@@ -92,7 +92,10 @@
     "insufficientShares": "Недостаточно акций",
     "marketCap": "Капитализация",
     "volatility": "Волатильность",
-    "freeSharesLabel": "Свободных акций"
+    "freeSharesLabel": "Свободных акций",
+    "portfolio": "Мой портфель",
+    "portfolioValue": "Стоимость портфеля",
+    "owned": "В портфеле"
   },
   "account": {
     "title": "Аккаунт",
@@ -173,6 +176,46 @@
     "tradeSuccess": "Сделка выполнена",
     "insufficientFunds": "Недостаточно средств",
     "insufficientCoins": "Недостаточно монет"
+  },
+  "leaderboard": {
+    "player": "Игрок",
+    "netWorth": "Капитал",
+    "profit": "Прибыль",
+    "you": "вы",
+    "noData": "Пока нет игроков в рейтинге",
+    "sort_networth": "По капиталу",
+    "sort_profit": "По прибыли",
+    "sort_cash": "По наличным",
+    "sort_stocks": "По акциям",
+    "sort_crypto": "По крипте"
+  },
+  "market": {
+    "cat_realestate": "Недвижимость",
+    "cat_business": "Бизнесы",
+    "cat_car": "Авто",
+    "searchPlaceholder": "Поиск по названию...",
+    "noItems": "Ничего не найдено",
+    "bought": "Актив куплен!",
+    "employees": "Сотрудники",
+    "profitPerHour": "Прибыль/ч",
+    "prestige": "Престиж"
+  },
+  "myassets": {
+    "empty": "У вас пока нет активов. Загляните в раздел «Рынок».",
+    "totalValue": "Общая стоимость",
+    "profitPerHour": "Прибыль в час",
+    "readyToCollect": "Готово к сбору",
+    "level": "Ур.",
+    "value": "Стоимость",
+    "upkeep": "Содержание",
+    "tax": "Налог",
+    "accrued": "Накоплено",
+    "collect": "Собрать",
+    "upgrade": "Улучшить",
+    "sell": "Продать",
+    "collected": "Доход собран",
+    "upgraded": "Актив улучшен",
+    "sold": "Актив продан"
   },
   "shop": {
     "gpu": "Магазин видеокарт",

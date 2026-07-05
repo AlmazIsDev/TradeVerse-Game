@@ -83,7 +83,14 @@
     "stockUpdated": "Акцію оновлено",
     "stockDeleted": "Акцію {{symbol}} видалено",
     "deleteConfirm": "Видалити акцію {{symbol}}?",
-    "fillAllFields": "Заповніть усі поля акції"
+    "fillAllFields": "Заповніть усі поля акції",
+    "processing": "Обробка угоди...",
+    "tradeSuccess": "Угоду виконано!",
+    "insufficientFunds": "Недостатньо коштів",
+    "insufficientShares": "Недостатньо акцій",
+    "portfolio": "Мій портфель",
+    "portfolioValue": "Вартість портфеля",
+    "owned": "У портфелі"
   },
   "account": {
     "title": "Обліковий запис",
@@ -164,6 +171,46 @@
     "tradeSuccess": "Угоду виконано",
     "insufficientFunds": "Недостатньо коштів",
     "insufficientCoins": "Недостатньо монет"
+  },
+  "leaderboard": {
+    "player": "Гравець",
+    "netWorth": "Капітал",
+    "profit": "Прибуток",
+    "you": "ви",
+    "noData": "Поки що немає гравців у рейтингу",
+    "sort_networth": "За капіталом",
+    "sort_profit": "За прибутком",
+    "sort_cash": "За готівкою",
+    "sort_stocks": "За акціями",
+    "sort_crypto": "За криптою"
+  },
+  "market": {
+    "cat_realestate": "Нерухомість",
+    "cat_business": "Бізнеси",
+    "cat_car": "Авто",
+    "searchPlaceholder": "Пошук за назвою...",
+    "noItems": "Нічого не знайдено",
+    "bought": "Актив придбано!",
+    "employees": "Співробітники",
+    "profitPerHour": "Прибуток/год",
+    "prestige": "Престиж"
+  },
+  "myassets": {
+    "empty": "У вас поки немає активів. Завітайте до розділу «Ринок».",
+    "totalValue": "Загальна вартість",
+    "profitPerHour": "Прибуток за годину",
+    "readyToCollect": "Готово до збору",
+    "level": "Рів.",
+    "value": "Вартість",
+    "upkeep": "Утримання",
+    "tax": "Податок",
+    "accrued": "Накопичено",
+    "collect": "Зібрати",
+    "upgrade": "Покращити",
+    "sell": "Продати",
+    "collected": "Дохід зібрано",
+    "upgraded": "Актив покращено",
+    "sold": "Актив продано"
   },
   "shop": {
     "gpu": "Магазин відеокарт",

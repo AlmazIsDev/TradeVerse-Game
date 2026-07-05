@@ -1,8 +1,11 @@
-"""Компании игроков: создание, сотрудники, зарплаты, бюджет, прибыль, история.
+"""Компании игроков: создание, приглашения сотрудников (с согласия), зарплаты,
+бюджет, прибыль из реальных источников, история.
 
-Модель прибыли: каждый сотрудник приносит выручку = зарплата × 1.5, значит
-чистая прибыль в час = сумма(зарплата × 0.5). Прибыль копится и собирается
-в бюджет компании; из бюджета владелец выводит деньги на личный баланс.
+Ключевые принципы (исправление логических ошибок):
+- Сотрудник добавляется ТОЛЬКО после принятия приглашения (consent).
+- Прибыль НЕ берётся из воздуха: доход компании = чистый доход принадлежащих
+  ей активов (бизнесы/недвижимость, переданные владельцем). Зарплаты
+  выплачиваются реальным игрокам-сотрудникам из бюджета компании.
 """
 from datetime import datetime, timezone
 
@@ -17,13 +20,13 @@ from ledger import (
     INCOME, EXPENSE, CAT_COMPANY,
     adjust_balance, record_transaction, query_transactions,
 )
+from assets import company_income_per_hour, list_company_assets
+from notifications import push_notification
 
 router = APIRouter(prefix="/api/company", tags=["company"])
 
-FOUNDING_FEE = 10000.0        # стоимость регистрации компании
-PRODUCTIVITY_MULT = 1.5       # выручка сотрудника = зарплата × 1.5
+FOUNDING_FEE = 10000.0
 MAX_ACCRUAL_HOURS = 24
-
 ROLES = ["intern", "worker", "manager", "engineer", "director"]
 
 
@@ -44,18 +47,18 @@ class CompanyCreate(BaseModel):
         return v
 
 
-class EmployeeCreate(BaseModel):
-    name: str
+class InviteCreate(BaseModel):
+    username: str
     role: str = "worker"
     salary: float
 
-    @field_validator("name")
+    @field_validator("username")
     @classmethod
-    def name_ok(cls, v):
+    def uname_ok(cls, v):
         v = (v or "").strip()
         if not v:
-            raise ValueError("Укажите имя сотрудника")
-        return v[:40]
+            raise ValueError("Укажите игрока")
+        return v
 
     @field_validator("role")
     @classmethod
@@ -101,51 +104,43 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _employees(db, company_id) -> list[dict]:
-    return [e async for e in db.company_employees.find({"companyId": str(company_id)})]
+async def _members(db, company_id) -> list[dict]:
+    return [m async for m in db.company_members.find({"companyId": str(company_id)})]
 
 
-def _stats(employees: list[dict]) -> dict:
-    payroll = sum(e.get("salary", 0) for e in employees)
-    revenue = payroll * PRODUCTIVITY_MULT
-    return {
-        "revenuePerHour": round(revenue, 2),
-        "payrollPerHour": round(payroll, 2),
-        "profitPerHour": round(revenue - payroll, 2),
-    }
-
-
-def _accrued(company: dict, profit_per_hour: float) -> float:
+def _hours_since(company: dict) -> float:
     last = company.get("last_tick")
     if not isinstance(last, datetime):
         return 0.0
     if last.tzinfo is None:
         last = last.replace(tzinfo=timezone.utc)
-    hours = min((_now() - last).total_seconds() / 3600.0, MAX_ACCRUAL_HOURS)
-    return round(max(0.0, profit_per_hour * hours), 2)
+    return min((_now() - last).total_seconds() / 3600.0, MAX_ACCRUAL_HOURS)
 
 
 async def _serialize(db, company: dict) -> dict:
-    employees = await _employees(db, company["_id"])
-    stats = _stats(employees)
+    cid = str(company["_id"])
+    members = await _members(db, cid)
+    assets = await list_company_assets(db, cid)
+    revenue = await company_income_per_hour(db, cid)   # реальный доход от активов
+    payroll = round(sum(m.get("salary", 0) for m in members), 2)
+    hours = _hours_since(company)
     return {
-        "id": str(company["_id"]),
+        "id": cid,
         "name": company["name"],
         "budget": round(company.get("budget", 0.0), 2),
         "createdAt": company.get("created_at").isoformat() if isinstance(company.get("created_at"), datetime) else None,
-        **stats,
-        "accrued": _accrued(company, stats["profitPerHour"]),
-        "employeeCount": len(employees),
-        "employees": [
-            {
-                "id": str(e["_id"]),
-                "name": e["name"],
-                "role": e.get("role", "worker"),
-                "salary": round(e.get("salary", 0.0), 2),
-                "revenue": round(e.get("salary", 0.0) * PRODUCTIVITY_MULT, 2),
-            }
-            for e in employees
+        "revenuePerHour": revenue,
+        "payrollPerHour": payroll,
+        "profitPerHour": round(revenue - payroll, 2),
+        "accrued": round(revenue * hours, 2),
+        "memberCount": len(members),
+        "assetCount": len(assets),
+        "members": [
+            {"id": str(m["_id"]), "userId": m["userId"], "username": m.get("username"),
+             "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2)}
+            for m in members
         ],
+        "assets": assets,
     }
 
 
@@ -153,7 +148,14 @@ async def _my_company(db, user_id):
     return await db.companies.find_one({"ownerId": user_id})
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+async def _require_company(db, user_id):
+    company = await _my_company(db, user_id)
+    if not company:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "У вас нет компании")
+    return company
+
+
+# ── Company CRUD ─────────────────────────────────────────────────────────────
 
 
 @router.get("")
@@ -161,7 +163,6 @@ async def get_my_company(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Компания текущего игрока или {company: null}."""
     company = await _my_company(db, str(current_user["_id"]))
     if not company:
         return {"company": None, "foundingFee": FOUNDING_FEE, "roles": ROLES}
@@ -174,22 +175,14 @@ async def create_company(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Создать компанию (списывается регистрационный сбор)."""
     user_id = str(current_user["_id"])
     if await _my_company(db, user_id):
         raise HTTPException(status.HTTP_409_CONFLICT, "У вас уже есть компания")
-
     new_balance = await adjust_balance(db, user_id, -FOUNDING_FEE)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для регистрации")
-
-    doc = {
-        "ownerId": user_id,
-        "name": payload.name,
-        "budget": 0.0,
-        "created_at": _now(),
-        "last_tick": _now(),
-    }
+    doc = {"ownerId": user_id, "name": payload.name, "budget": 0.0,
+           "created_at": _now(), "last_tick": _now()}
     result = await db.companies.insert_one(doc)
     doc["_id"] = result.inserted_id
     await record_transaction(
@@ -199,46 +192,151 @@ async def create_company(
     return {"company": await _serialize(db, doc), "balance": new_balance}
 
 
-async def _require_company(db, user_id):
-    company = await _my_company(db, user_id)
-    if not company:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "У вас нет компании")
-    return company
+# ── Invitations (consent-based hiring) ───────────────────────────────────────
 
 
-@router.post("/employees", status_code=status.HTTP_201_CREATED)
-async def hire_employee(
-    payload: EmployeeCreate,
+@router.post("/invite", status_code=status.HTTP_201_CREATED)
+async def invite_employee(
+    payload: InviteCreate,
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Нанять сотрудника."""
+    """Пригласить игрока в компанию (он должен принять приглашение)."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
-    await db.company_employees.insert_one({
-        "companyId": str(company["_id"]),
-        "name": payload.name,
-        "role": payload.role,
-        "salary": payload.salary,
-        "hired_at": _now(),
+    cid = str(company["_id"])
+
+    target = await db.users.find_one({"username": payload.username})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    tid = str(target["_id"])
+    if tid == user_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя пригласить самого себя")
+    if await db.company_members.find_one({"userId": tid}):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Игрок уже работает в компании")
+    if await db.company_invites.find_one({"companyId": cid, "toUserId": tid, "status": "pending"}):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Приглашение уже отправлено")
+
+    invite = {
+        "companyId": cid, "companyName": company["name"],
+        "ownerId": user_id, "ownerName": current_user.get("username"),
+        "toUserId": tid, "role": payload.role, "salary": payload.salary,
+        "status": "pending", "created_at": _now(),
+    }
+    result = await db.company_invites.insert_one(invite)
+    await push_notification(
+        db, tid, "company_invite",
+        f"Приглашение в «{company['name']}»",
+        f"{current_user.get('username')} зовёт вас на роль «{payload.role}» "
+        f"с зарплатой ${payload.salary:.2f}/ч.",
+        data={"inviteId": str(result.inserted_id), "companyName": company["name"],
+              "role": payload.role, "salary": payload.salary},
+    )
+    return {"ok": True, "inviteId": str(result.inserted_id)}
+
+
+@router.get("/invites")
+async def my_invites(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Входящие приглашения текущего игрока."""
+    uid = str(current_user["_id"])
+    out = []
+    async for inv in db.company_invites.find({"toUserId": uid, "status": "pending"}).sort("created_at", -1):
+        out.append({
+            "id": str(inv["_id"]), "companyName": inv.get("companyName"),
+            "ownerName": inv.get("ownerName"), "role": inv.get("role"),
+            "salary": inv.get("salary"),
+        })
+    return out
+
+
+async def _load_invite(db, invite_id, user_id):
+    if not ObjectId.is_valid(invite_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
+    inv = await db.company_invites.find_one({"_id": ObjectId(invite_id)})
+    if not inv or inv.get("toUserId") != user_id or inv.get("status") != "pending":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Приглашение не найдено")
+    return inv
+
+
+@router.post("/invites/{invite_id}/accept")
+async def accept_invite(
+    invite_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Принять приглашение — стать сотрудником компании."""
+    uid = str(current_user["_id"])
+    inv = await _load_invite(db, invite_id, uid)
+    if await db.company_members.find_one({"userId": uid}):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Вы уже работаете в компании")
+    await db.company_members.insert_one({
+        "companyId": inv["companyId"], "userId": uid,
+        "username": current_user.get("username"),
+        "role": inv.get("role", "worker"), "salary": inv.get("salary", 0.0),
+        "joined_at": _now(),
     })
-    return {"company": await _serialize(db, company)}
+    await db.company_invites.update_one({"_id": inv["_id"]}, {"$set": {"status": "accepted"}})
+    await push_notification(
+        db, inv["ownerId"], "company",
+        "Приглашение принято",
+        f"{current_user.get('username')} вступил в «{inv.get('companyName')}».",
+        data={"companyId": inv["companyId"]},
+    )
+    return {"ok": True}
 
 
-@router.patch("/employees/{emp_id}")
+@router.post("/invites/{invite_id}/decline")
+async def decline_invite(
+    invite_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Отклонить приглашение."""
+    uid = str(current_user["_id"])
+    inv = await _load_invite(db, invite_id, uid)
+    await db.company_invites.update_one({"_id": inv["_id"]}, {"$set": {"status": "declined"}})
+    await push_notification(
+        db, inv["ownerId"], "company",
+        "Приглашение отклонено",
+        f"{current_user.get('username')} отклонил приглашение в «{inv.get('companyName')}».",
+        data={"companyId": inv["companyId"]},
+    )
+    return {"ok": True}
+
+
+@router.get("/my-jobs")
+async def my_jobs(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Компании, где текущий игрок работает сотрудником."""
+    uid = str(current_user["_id"])
+    out = []
+    async for m in db.company_members.find({"userId": uid}):
+        comp = await db.companies.find_one({"_id": ObjectId(m["companyId"])}) if ObjectId.is_valid(m["companyId"]) else None
+        out.append({
+            "companyId": m["companyId"],
+            "companyName": comp["name"] if comp else "—",
+            "role": m.get("role"), "salary": round(m.get("salary", 0.0), 2),
+        })
+    return out
+
+
+@router.patch("/members/{member_user_id}")
 async def update_salary(
-    emp_id: str,
+    member_user_id: str,
     payload: SalaryUpdate,
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Изменить зарплату сотрудника."""
+    """Изменить зарплату сотрудника (владелец)."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
-    if not ObjectId.is_valid(emp_id):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
-    res = await db.company_employees.update_one(
-        {"_id": ObjectId(emp_id), "companyId": str(company["_id"])},
+    res = await db.company_members.update_one(
+        {"companyId": str(company["_id"]), "userId": member_user_id},
         {"$set": {"salary": payload.salary}},
     )
     if res.matched_count == 0:
@@ -246,23 +344,29 @@ async def update_salary(
     return {"company": await _serialize(db, company)}
 
 
-@router.delete("/employees/{emp_id}")
-async def fire_employee(
-    emp_id: str,
+@router.delete("/members/{member_user_id}")
+async def fire_member(
+    member_user_id: str,
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Уволить сотрудника."""
+    """Уволить сотрудника (владелец)."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
-    if not ObjectId.is_valid(emp_id):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
-    res = await db.company_employees.delete_one(
-        {"_id": ObjectId(emp_id), "companyId": str(company["_id"])}
+    res = await db.company_members.delete_one(
+        {"companyId": str(company["_id"]), "userId": member_user_id}
     )
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")
+    await push_notification(
+        db, member_user_id, "company",
+        "Увольнение", f"Вы больше не работаете в «{company['name']}».",
+        data={"companyId": str(company["_id"])},
+    )
     return {"company": await _serialize(db, company)}
+
+
+# ── Finance ──────────────────────────────────────────────────────────────────
 
 
 @router.post("/collect")
@@ -270,18 +374,49 @@ async def collect_profit(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Зачислить накопленную прибыль в бюджет компании."""
+    """Начислить реальный доход от активов компании в бюджет и выплатить зарплаты.
+
+    Доход берётся ИСКЛЮЧИТЕЛЬНО из активов компании (никакой генерации из воздуха).
+    Зарплаты выплачиваются реальным игрокам-сотрудникам из бюджета.
+    """
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
-    employees = await _employees(db, company["_id"])
-    stats = _stats(employees)
-    amount = _accrued(company, stats["profitPerHour"])
+    cid = str(company["_id"])
+
+    hours = _hours_since(company)
+    revenue_per_h = await company_income_per_hour(db, cid)
+    gross = round(revenue_per_h * hours, 2)
+
+    members = await _members(db, cid)
+    payroll_per_h = sum(m.get("salary", 0) for m in members)
+    payroll_due = round(payroll_per_h * hours, 2)
+
+    budget = round(company.get("budget", 0.0) + gross, 2)
+    paid = 0.0
+    if payroll_due > 0 and budget >= payroll_due:
+        for m in members:
+            amt = round(m.get("salary", 0) * hours, 2)
+            if amt <= 0:
+                continue
+            mb = await adjust_balance(db, m["userId"], amt)
+            await record_transaction(
+                db, m["userId"], INCOME, amt, CAT_COMPANY,
+                f"Зарплата: {company['name']}", balance_after=mb,
+                meta={"companyId": cid},
+            )
+            await push_notification(
+                db, m["userId"], "salary", "Зарплата начислена",
+                f"«{company['name']}» выплатила ${amt:.2f}.", data={"companyId": cid},
+            )
+        budget = round(budget - payroll_due, 2)
+        paid = payroll_due
+
     await db.companies.update_one(
         {"_id": company["_id"]},
-        {"$set": {"last_tick": _now()}, "$inc": {"budget": amount}},
+        {"$set": {"budget": budget, "last_tick": _now()}},
     )
     updated = await db.companies.find_one({"_id": company["_id"]})
-    return {"collected": amount, "company": await _serialize(db, updated)}
+    return {"collected": gross, "payrollPaid": paid, "company": await _serialize(db, updated)}
 
 
 @router.post("/deposit")
@@ -290,7 +425,6 @@ async def deposit_to_budget(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Пополнить бюджет компании с личного баланса."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
     new_balance = await adjust_balance(db, user_id, -payload.amount)
@@ -311,7 +445,6 @@ async def withdraw_from_budget(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Вывести прибыль из бюджета компании на личный баланс."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
     updated = await db.companies.find_one_and_update(
@@ -336,7 +469,6 @@ async def company_history(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """История операций компании игрока."""
     return await query_transactions(
         db, str(current_user["_id"]),
         category=CAT_COMPANY, sort="date_desc", skip=skip, limit=limit,

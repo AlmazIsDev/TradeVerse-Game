@@ -1,31 +1,19 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Monitor, Building2, Briefcase, Clock, ArrowLeft, Cpu, Box, Wrench } from 'lucide-react'
+import { Monitor, Clock, ArrowLeft, Cpu, Box, Wrench } from 'lucide-react'
 import GpuShop from './GpuShop'
 import CpuShop from './CpuShop'
 import CaseShop from './CaseShop'
 import SuppliesShop from './SuppliesShop'
-import RealEstateShop from './RealEstateShop'
-import BusinessShop from './BusinessShop'
 
+// Недвижимость и бизнесы теперь покупаются ТОЛЬКО в разделе «Рынок».
+// В магазине остаётся только компьютерное железо (комплектующие).
 const SHOP_SECTIONS = [
   {
     id: 'gpu',
     labelKey: 'shop.gpu',
     descKey: 'shop.gpuDesc',
     icon: Monitor,
-  },
-  {
-    id: 'realestate',
-    labelKey: 'shop.realestate',
-    descKey: 'shop.realestateDesc',
-    icon: Building2,
-  },
-  {
-    id: 'business',
-    labelKey: 'shop.business',
-    descKey: 'shop.businessDesc',
-    icon: Briefcase,
   },
 ]
 
@@ -75,14 +63,6 @@ function ShopTab() {
 
   if (selectedSection && selectedSection.id === 'gpu' && selectedSubsection && selectedSubsection.id === 'gpu-supplies') {
     return <SuppliesShop onBack={() => setSelectedSubsection(null)} />
-  }
-
-  if (selectedSection && selectedSection.id === 'realestate') {
-    return <RealEstateShop onBack={() => setSelectedSection(null)} />
-  }
-
-  if (selectedSection && selectedSection.id === 'business') {
-    return <BusinessShop onBack={() => setSelectedSection(null)} />
   }
 
   if (selectedSubsection) {

@@ -18,18 +18,33 @@ from ledger import (
     INCOME, EXPENSE, CAT_CRYPTO,
     adjust_balance, record_transaction,
 )
+from market_data import MarketDataService
+from notifications import push_notification
 
 router = APIRouter(prefix="/api/crypto", tags=["crypto"])
 
 # Как часто (сек) пересчитывать цену монеты при чтении рынка
 PRICE_REFRESH_SECONDS = 30
+# Комиссия сети за перевод криптовалюты (доля от суммы, «сгорает»)
+CRYPTO_FEE_RATE = 0.01
 
 DEFAULT_COINS = [
-    {"symbol": "WVC", "name": "WarVerse Coin", "price": 120.0, "volatility": 0.04, "color": "#f7931a"},
-    {"symbol": "TVX", "name": "TradeVerse X", "price": 45.5, "volatility": 0.05, "color": "#627eea"},
-    {"symbol": "NEON", "name": "Neon Token", "price": 3.2, "volatility": 0.08, "color": "#22c55e"},
-    {"symbol": "GLD", "name": "GoldChain", "price": 210.0, "volatility": 0.02, "color": "#eab308"},
-    {"symbol": "MEME", "name": "MemeCoin", "price": 0.85, "volatility": 0.12, "color": "#ec4899"},
+    {"symbol": "WVC", "name": "WarVerse Coin", "price": 120.0, "volatility": 0.04, "color": "#f7931a", "supply": 21_000_000, "description": "Флагманская монета вселенной TradeVerse: дефляционная модель и лимит эмиссии."},
+    {"symbol": "TVX", "name": "TradeVerse X", "price": 45.5, "volatility": 0.05, "color": "#627eea", "supply": 120_000_000, "description": "Утилити-токен экосистемы, обеспечивает смарт-контракты и стейкинг."},
+    {"symbol": "NEON", "name": "Neon Token", "price": 3.2, "volatility": 0.08, "color": "#22c55e", "supply": 500_000_000, "description": "Быстрый L2-токен для микротранзакций и игровых платежей."},
+    {"symbol": "GLD", "name": "GoldChain", "price": 210.0, "volatility": 0.02, "color": "#eab308", "supply": 8_000_000, "description": "Стабильный актив, обеспеченный виртуальным золотом. Низкая волатильность."},
+    {"symbol": "MEME", "name": "MemeCoin", "price": 0.85, "volatility": 0.12, "color": "#ec4899", "supply": 1_000_000_000, "description": "Высоковолатильный мем-токен. Только для смелых."},
+    {"symbol": "ORB", "name": "Orbit", "price": 12.4, "volatility": 0.07, "color": "#8b5cf6", "supply": 300_000_000, "description": "Токен децентрализованной спутниковой сети."},
+    {"symbol": "AQUA", "name": "AquaCoin", "price": 1.75, "volatility": 0.06, "color": "#06b6d4", "supply": 750_000_000, "description": "Экологичный токен с механикой ликвидных пулов."},
+    {"symbol": "IRON", "name": "IronLedger", "price": 58.0, "volatility": 0.03, "color": "#64748b", "supply": 40_000_000, "description": "Промышленный блокчейн-токен для цепочек поставок."},
+    {"symbol": "PIX", "name": "PixelCash", "price": 0.42, "volatility": 0.10, "color": "#f43f5e", "supply": 2_000_000_000, "description": "Игровая валюта пиксельных миров."},
+    {"symbol": "NOVA", "name": "NovaChain", "price": 88.5, "volatility": 0.06, "color": "#e879f9", "supply": 60_000_000, "description": "Быстрорастущий токен нового поколения консенсуса."},
+    {"symbol": "ZEN", "name": "ZenToken", "price": 6.9, "volatility": 0.05, "color": "#10b981", "supply": 210_000_000, "description": "Приватный токен с фокусом на анонимность."},
+    {"symbol": "BOLT", "name": "BoltPay", "price": 24.1, "volatility": 0.07, "color": "#f59e0b", "supply": 150_000_000, "description": "Платёжная сеть с мгновенными переводами."},
+    {"symbol": "DUSK", "name": "DuskCoin", "price": 0.19, "volatility": 0.14, "color": "#7c3aed", "supply": 5_000_000_000, "description": "Экспериментальный токен теневых рынков."},
+    {"symbol": "RUBY", "name": "RubyChain", "price": 340.0, "volatility": 0.03, "color": "#dc2626", "supply": 3_000_000, "description": "Премиальный редкий токен с ограниченной эмиссией."},
+    {"symbol": "FLUX", "name": "FluxNet", "price": 9.3, "volatility": 0.09, "color": "#0ea5e9", "supply": 400_000_000, "description": "Токен распределённых вычислений и облака."},
+    {"symbol": "GEM", "name": "GemStone", "price": 155.0, "volatility": 0.04, "color": "#14b8a6", "supply": 12_000_000, "description": "Коллекционный токен с NFT-механиками."},
 ]
 
 
@@ -56,6 +71,27 @@ class CryptoTrade(BaseModel):
         return round(float(v), 8)
 
 
+class CryptoTransfer(BaseModel):
+    recipient: str          # адрес кошелька ИЛИ имя игрока
+    symbol: str
+    amount: float
+
+    @field_validator("recipient")
+    @classmethod
+    def rec_ok(cls, v):
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Укажите получателя")
+        return v
+
+    @field_validator("amount")
+    @classmethod
+    def amount_ok(cls, v):
+        if v is None or v <= 0:
+            raise ValueError("Сумма должна быть положительной")
+        return round(float(v), 8)
+
+
 # ── Seed / market maintenance ────────────────────────────────────────────────
 
 
@@ -66,8 +102,12 @@ async def ensure_coins_seeded(db: AsyncIOMotorDatabase):
                 **c,
                 "base_price": c["price"],
                 "change24h": 0.0,
+                "ath": c["price"],
+                "atl": c["price"],
+                "volume24h": round(c["price"] * c.get("supply", 0) * 0.04, 2),
                 "updated_at": datetime.utcnow(),
             })
+            await MarketDataService.ensure_backfill(db, "crypto", c["symbol"], c["price"], c.get("volatility", 0.05))
 
 
 def _walk_price(coin: dict) -> dict:
@@ -80,6 +120,9 @@ def _walk_price(coin: dict) -> dict:
     change = ((new - old) / old * 100) if old else 0.0
     coin["price"] = round(new, 6)
     coin["change24h"] = round(coin.get("change24h", 0.0) * 0.7 + change, 2)
+    coin["ath"] = round(max(coin.get("ath", new), new), 6)
+    coin["atl"] = round(min(coin.get("atl", new) or new, new), 6)
+    coin["volume24h"] = round(new * coin.get("supply", 0) * (0.03 + abs(random.gauss(0, 0.02))), 2)
     coin["updated_at"] = datetime.utcnow()
     return coin
 
@@ -89,6 +132,8 @@ async def _get_live_market(db: AsyncIOMotorDatabase) -> list[dict]:
     now = datetime.utcnow()
     coins = []
     async for coin in db.crypto_assets.find({}):
+        symbol = coin["symbol"]
+        await MarketDataService.ensure_backfill(db, "crypto", symbol, coin.get("price", 1) or 1, coin.get("volatility", 0.05))
         updated = coin.get("updated_at")
         if not isinstance(updated, datetime) or (now - updated).total_seconds() >= PRICE_REFRESH_SECONDS:
             coin = _walk_price(coin)
@@ -97,9 +142,13 @@ async def _get_live_market(db: AsyncIOMotorDatabase) -> list[dict]:
                 {"$set": {
                     "price": coin["price"],
                     "change24h": coin["change24h"],
+                    "ath": coin["ath"],
+                    "atl": coin["atl"],
+                    "volume24h": coin["volume24h"],
                     "updated_at": coin["updated_at"],
                 }},
             )
+            await MarketDataService.record_snapshot(db, "crypto", symbol, coin["price"])
         coin["id"] = str(coin.pop("_id"))
         coin.pop("updated_at", None)
         coins.append(coin)
@@ -256,3 +305,113 @@ async def trade_crypto(
     )
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
             "price": price, "total": total, "balance": new_balance}
+
+
+# ── Wallet-to-wallet transfers ───────────────────────────────────────────────
+
+
+@router.post("/transfer")
+async def transfer_crypto(
+    payload: CryptoTransfer,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Перевод криптовалюты другому игроку по адресу кошелька или нику.
+
+    Проверки: получатель существует и имеет криптосчёт, нельзя себе,
+    достаточно монет (с учётом комиссии), сумма положительна.
+    Комиссия сети (CRYPTO_FEE_RATE) сгорает.
+    """
+    if not current_user.get("crypto_account_opened"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Сначала откройте криптосчёт")
+
+    sender_id = str(current_user["_id"])
+    symbol = payload.symbol.upper()
+    amount = payload.amount
+    fee = round(amount * CRYPTO_FEE_RATE, 8)
+    total_debit = round(amount + fee, 8)
+
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if not coin:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+    price = float(coin.get("price", 0))
+
+    recipient = await db.users.find_one({
+        "$or": [{"crypto_wallet": payload.recipient}, {"username": payload.recipient}]
+    })
+    if not recipient:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Получатель не найден")
+    rec_id = str(recipient["_id"])
+    if rec_id == sender_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя перевести самому себе")
+    if not recipient.get("crypto_account_opened"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У получателя нет криптосчёта")
+
+    # Атомарное списание у отправителя с проверкой достаточности (с учётом комиссии).
+    debited = await db.crypto_holdings.find_one_and_update(
+        {"userId": sender_id, "symbol": symbol, "quantity": {"$gte": total_debit}},
+        {"$inc": {"quantity": -total_debit}},
+        return_document=True,
+    )
+    if not debited:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно монет (с учётом комиссии)")
+    if debited.get("quantity", 0) <= 1e-9:
+        await db.crypto_holdings.delete_one({"_id": debited["_id"]})
+
+    # Зачисление получателю (пересчёт средней цены).
+    rec_h = await db.crypto_holdings.find_one({"userId": rec_id, "symbol": symbol})
+    old_qty = rec_h.get("quantity", 0.0) if rec_h else 0.0
+    old_avg = rec_h.get("avg_price", 0.0) if rec_h else 0.0
+    new_qty = round(old_qty + amount, 8)
+    new_avg = round((old_qty * old_avg + amount * price) / new_qty, 6) if new_qty else price
+    await db.crypto_holdings.update_one(
+        {"userId": rec_id, "symbol": symbol},
+        {"$set": {"quantity": new_qty, "avg_price": new_avg}},
+        upsert=True,
+    )
+
+    value = round(amount * price, 2)
+    now = datetime.utcnow()
+    await db.crypto_transfers.insert_one({
+        "fromId": sender_id, "fromName": current_user.get("username"),
+        "toId": rec_id, "toName": recipient.get("username"),
+        "symbol": symbol, "amount": amount, "fee": fee,
+        "price": price, "value": value, "ts": now,
+    })
+    await push_notification(
+        db, rec_id, "crypto_transfer", "Получен крипто-перевод",
+        f"{current_user.get('username')} отправил {amount:g} {symbol}.",
+        data={"symbol": symbol, "amount": amount},
+    )
+    return {
+        "ok": True, "sent": amount, "fee": fee, "symbol": symbol,
+        "recipient": recipient.get("username"),
+    }
+
+
+@router.get("/transfers")
+async def crypto_transfers(
+    limit: int = 30,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """История крипто-переводов игрока (отправленные и полученные)."""
+    user_id = str(current_user["_id"])
+    limit = max(1, min(limit, 100))
+    out = []
+    cursor = db.crypto_transfers.find(
+        {"$or": [{"fromId": user_id}, {"toId": user_id}]}
+    ).sort("ts", -1).limit(limit)
+    async for tr in cursor:
+        outgoing = tr.get("fromId") == user_id
+        out.append({
+            "id": str(tr["_id"]),
+            "direction": "out" if outgoing else "in",
+            "counterparty": tr.get("toName") if outgoing else tr.get("fromName"),
+            "symbol": tr.get("symbol"),
+            "amount": tr.get("amount"),
+            "fee": tr.get("fee") if outgoing else 0,
+            "value": tr.get("value"),
+            "timestamp": tr["ts"].isoformat() if isinstance(tr.get("ts"), datetime) else None,
+        })
+    return out

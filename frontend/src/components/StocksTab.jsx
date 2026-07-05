@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, issueStock, payDividend } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import AssetDetail from './AssetDetail'
 import {
   TrendingUp, TrendingDown, Briefcase, AlertTriangle, Check, X, PlusCircle, Gift,
 } from 'lucide-react'
 
 function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
+  const [detailSymbol, setDetailSymbol] = useState(null)
   const [stocks, setStocks] = useState([])
   const [portfolio, setPortfolio] = useState([])
   const [loading, setLoading] = useState(true)
@@ -123,6 +125,19 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     }
   }
 
+  if (detailSymbol) {
+    return (
+      <AssetDetail
+        market="stock"
+        symbol={detailSymbol}
+        onBack={() => { setDetailSymbol(null); load() }}
+        balance={balance}
+        onBalanceChange={onBalanceChange}
+        onTraded={load}
+      />
+    )
+  }
+
   const portfolioValue = portfolio.reduce((s, p) => s + (p.value || 0), 0)
   const portfolioPnl = portfolio.reduce((s, p) => s + (p.pnl || 0), 0)
 
@@ -210,7 +225,8 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
             const isUp = (stock.change ?? 0) >= 0
             const cp = stock.changePercent
             return (
-              <div key={stock.id || stock.symbol} className={`stock-card ${isUp ? 'stock-up' : 'stock-down'}`}>
+              <div key={stock.id || stock.symbol} className={`stock-card clickable ${isUp ? 'stock-up' : 'stock-down'}`}
+                onClick={() => setDetailSymbol(stock.symbol)}>
                 <div className="stock-header">
                   <div className="stock-company-info">
                     <span className="stock-ticker">
@@ -248,12 +264,12 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                   )}
                 </div>
                 <div className="stock-actions">
-                  <button className="stock-btn buy-btn" onClick={() => openTrade(stock, 'buy')}>
+                  <button className="stock-btn buy-btn" onClick={(e) => { e.stopPropagation(); openTrade(stock, 'buy') }}>
                     {t('common.buy')}
                   </button>
                   <button
                     className="stock-btn sell-btn"
-                    onClick={() => openTrade(stock, 'sell')}
+                    onClick={(e) => { e.stopPropagation(); openTrade(stock, 'sell') }}
                     disabled={!stock.heldQuantity}
                   >
                     {t('common.sell')}
@@ -262,7 +278,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                     <button
                       className="stock-btn dividend-btn"
                       title={t('stocks.payDividend')}
-                      onClick={() => { setDividend(stock); setPerShare(''); setFeedback(null) }}
+                      onClick={(e) => { e.stopPropagation(); setDividend(stock); setPerShare(''); setFeedback(null) }}
                     >
                       <Gift size={14} />
                     </button>

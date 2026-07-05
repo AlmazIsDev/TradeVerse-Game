@@ -11,6 +11,12 @@ import {
 // Палитра «пегов» для комбинации (индекс символа → цвет)
 const PEG_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#ec4899', '#f5f5f5']
 
+// Изображения зданий на карте (эмодзи вместо ассетов — работает без сети)
+const BUILDING_EMOJI = {
+  market: '🏬', bank: '🏦', casino: '🎰', port: '⚓', mall: '🛍️', factory: '🏭',
+  stadium: '🏟️', airport: '✈️', hotel: '🏨', tower: '🏢', studio: '🎬', refinery: '🛢️',
+}
+
 function CityRoofTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [map, setMap] = useState(null)
@@ -177,6 +183,7 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
             style={b.ownerColor ? { borderColor: b.ownerColor, boxShadow: `0 0 0 1px ${b.ownerColor}55` } : undefined}
             onClick={() => openBusiness(b)}
           >
+            <span className="city-cell-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
             <span className="city-cell-name">{b.name}</span>
             <span className="city-cell-reward"><Coins size={11} /> {b.reward}</span>
             <span className="city-cell-owner" style={b.ownerColor ? { color: b.ownerColor } : undefined}>

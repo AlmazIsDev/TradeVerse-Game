@@ -10,9 +10,11 @@ import ShopTab from './ShopTab'
 import LeaderboardTab from './LeaderboardTab'
 import MarketTab from './MarketTab'
 import MyAssetsTab from './MyAssetsTab'
+import MyCompanyTab from './MyCompanyTab'
+import CityRoofTab from './CityRoofTab'
 import AdminPanel from './AdminPanel'
 import { fetchCurrentUser } from '../services/api'
-import { Castle, Home, Briefcase, Store, Shield } from 'lucide-react'
+import { Home, Briefcase, Shield } from 'lucide-react'
 
 const STORAGE_KEY = 'tradeverse_user'
 
@@ -59,7 +61,7 @@ function Dashboard({ user, onLogout }) {
       case 'shop':
         return <ShopTab />
       case 'cityroof':
-        return <PlaceholderTab title={t('nav.cityroof')} icon={Castle} />
+        return <CityRoofTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'crypto':
         return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'realestate':
@@ -69,7 +71,7 @@ function Dashboard({ user, onLogout }) {
       case 'mybusiness':
         return <MyAssetsTab types={['business']} titleKey="nav.mybusiness" icon={Briefcase} balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':
-        return <PlaceholderTab title={t('nav.mycompany')} icon={Store} />
+        return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'leaderboard':
         return <LeaderboardTab currentUserId={user?.id} />
       default:
@@ -96,19 +98,6 @@ function Dashboard({ user, onLogout }) {
         </button>
       )}
       {showAdmin && <AdminPanel user={user} onClose={() => setShowAdmin(false)} />}
-    </div>
-  )
-}
-
-function PlaceholderTab({ title, icon: Icon }) {
-  const { t } = useTranslation()
-  return (
-    <div className="placeholder-tab">
-      <h2 className="tab-title">{title}</h2>
-      <div className="placeholder-content">
-        <span className="placeholder-icon"><Icon size={48} /></span>
-        <p>{t('dashboard.comingSoon', { title })}</p>
-      </div>
     </div>
   )
 }

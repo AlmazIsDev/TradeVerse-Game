@@ -238,4 +238,70 @@ export async function sellAsset(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/sell`, { method: 'POST' })
 }
 
+// ── Company API ────────────────────────────────────────────────────────────────
+
+export async function fetchCompany() {
+  return request('/api/company')
+}
+
+export async function createCompany(name) {
+  return request('/api/company', { method: 'POST', body: JSON.stringify({ name }) })
+}
+
+export async function hireEmployee({ name, role, salary }) {
+  return request('/api/company/employees', { method: 'POST', body: JSON.stringify({ name, role, salary }) })
+}
+
+export async function updateEmployeeSalary(empId, salary) {
+  return request(`/api/company/employees/${encodeURIComponent(empId)}`, {
+    method: 'PATCH', body: JSON.stringify({ salary }),
+  })
+}
+
+export async function fireEmployee(empId) {
+  return request(`/api/company/employees/${encodeURIComponent(empId)}`, { method: 'DELETE' })
+}
+
+export async function collectCompanyProfit() {
+  return request('/api/company/collect', { method: 'POST' })
+}
+
+export async function companyDeposit(amount) {
+  return request('/api/company/deposit', { method: 'POST', body: JSON.stringify({ amount }) })
+}
+
+export async function companyWithdraw(amount) {
+  return request('/api/company/withdraw', { method: 'POST', body: JSON.stringify({ amount }) })
+}
+
+// ── City Roof (minigame + WarCoin) ─────────────────────────────────────────────
+
+export async function fetchCityMap() {
+  return request('/api/cityroof/map')
+}
+
+export async function fetchWarcoin() {
+  return request('/api/cityroof/warcoin')
+}
+
+export async function buyWarcoin(amount) {
+  return request('/api/cityroof/warcoin/buy', { method: 'POST', body: JSON.stringify({ amount }) })
+}
+
+export async function attackBusiness(id) {
+  return request(`/api/cityroof/attack/${encodeURIComponent(id)}`, { method: 'POST' })
+}
+
+export async function guessCombination(sessionId, guess) {
+  return request('/api/cityroof/guess', { method: 'POST', body: JSON.stringify({ sessionId, guess }) })
+}
+
+export async function protectBusiness(id, level) {
+  return request(`/api/cityroof/protect/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify({ level }) })
+}
+
+export async function fetchSeasons() {
+  return request('/api/cityroof/seasons')
+}
+
 export { API_BASE_URL, ApiError, request }

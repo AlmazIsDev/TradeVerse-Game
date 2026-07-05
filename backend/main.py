@@ -1,7 +1,8 @@
+import logging
 import random
 from bson import ObjectId
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from typing import Optional
 
@@ -10,6 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("tradeverse")
 
 from init_db import init as init_db
 
@@ -24,6 +31,8 @@ from economy import router as economy_router
 from crypto import router as crypto_router
 from stocks import router as stocks_router
 from assets import router as assets_router
+from company import router as company_router
+from cityroof import router as cityroof_router
 
 from database import (
     get_db,
@@ -70,6 +79,10 @@ async def lifespan(app: FastAPI):
     await db.stock_events.create_index("symbol")
     await db.stock_events.create_index("timestamp")
     await db.user_assets.create_index("userId")
+    await db.companies.create_index("ownerId", unique=True)
+    await db.company_employees.create_index("companyId")
+    await db.cityroof_sessions.create_index("attackerId")
+    await db.cityroof_seasons.create_index("closed_at")
     await init_db()
     yield
 
@@ -90,6 +103,8 @@ app.include_router(economy_router)
 app.include_router(crypto_router)
 app.include_router(stocks_router)
 app.include_router(assets_router)
+app.include_router(company_router)
+app.include_router(cityroof_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────
@@ -276,7 +291,7 @@ async def get_config(
     config = await find_config_by_key(db, key)
     if not config:
         if key in DEFAULT_CONFIG:
-            return _format_config({"key": key, "value": DEFAULT_CONFIG[key], "updated_at": datetime.utcnow()})
+            return _format_config({"key": key, "value": DEFAULT_CONFIG[key], "updated_at": datetime.now(timezone.utc)})
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Config key '{key}' not found",
@@ -438,7 +453,8 @@ async def admin_update_user(
             )
 
     # Запрещённые поля не попадут в update_fields благодаря схеме AdminUserUpdate
-    print(f"[ADMIN] Updating user {user_id}: {update_fields} (by admin {_admin.get('username', 'unknown')})")
+    logger.info("Admin '%s' updating user %s: fields=%s",
+                _admin.get("username", "unknown"), user_id, list(update_fields.keys()))
 
     await db.users.update_one(
         {"_id": ObjectId(user_id)},
@@ -473,7 +489,8 @@ async def admin_delete_user(
             detail="Пользователь не найден",
         )
 
-    print(f"[ADMIN] Deleting user {user_id} ({existing.get('username', 'unknown')}) (by admin {_admin.get('username', 'unknown')})")
+    logger.info("Admin '%s' deleting user %s (%s)",
+                _admin.get("username", "unknown"), user_id, existing.get("username", "unknown"))
 
     await db.users.delete_one({"_id": ObjectId(user_id)})
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}

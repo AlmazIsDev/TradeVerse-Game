@@ -30,7 +30,6 @@ function Sidebar({ activeTab, onTabChange }) {
     { id: 'stocks', label: t('nav.stocks'), icon: 'stocks' },
     { id: 'realestate', label: t('nav.realestate'), icon: 'realestate' },
     { id: 'myhomes', label: t('nav.myhomes'), icon: 'myhomes' },
-    { id: 'mybusiness', label: t('nav.mybusiness'), icon: 'mybusiness' },
     { id: 'mycompany', label: t('nav.mycompany'), icon: 'mycompany' },
     { id: 'leaderboard', label: t('nav.leaderboard'), icon: 'leaderboard' },
   ]

@@ -391,4 +391,12 @@ export async function fetchSeasons() {
   return request('/api/cityroof/seasons')
 }
 
+export async function fetchCityBonuses() {
+  return request('/api/cityroof/bonuses')
+}
+
+export async function claimCityBonuses() {
+  return request('/api/cityroof/bonuses/claim', { method: 'POST' })
+}
+
 export { API_BASE_URL, ApiError, request }

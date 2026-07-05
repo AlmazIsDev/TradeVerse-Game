@@ -8,6 +8,7 @@ import {
 import { useApiOnMount } from '../hooks/useApi'
 import ProfileCard from './ProfileCard'
 import LanguageSwitcher from './LanguageSwitcher'
+import { formatCompact } from './TransactionsPanel'
 import { Bell, LogOut, X, Check, Wallet } from 'lucide-react'
 
 function formatMoney(n) {
@@ -166,9 +167,9 @@ function Header({ username, balance, onLogout }) {
       </div>
       <div className="header-right">
         {balance != null && (
-          <div className="header-balance" title={t('account.balance')}>
+          <div className="header-balance" title={`${t('account.balance')}: ${formatMoney(balance)} $`}>
             <Wallet size={16} />
-            <span className="header-balance-value">{formatMoney(balance)} $</span>
+            <span className="header-balance-value">{formatCompact(balance)} $</span>
           </div>
         )}
         <LanguageSwitcher />

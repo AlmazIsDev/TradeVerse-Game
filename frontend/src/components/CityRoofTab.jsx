@@ -2,11 +2,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCityMap, buyWarcoin, attackBusiness, guessCombination, protectBusiness,
+  fetchCityBonuses, claimCityBonuses,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import {
   Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
+  Gift, HandCoins,
 } from 'lucide-react'
+
+const EFFECT_LABEL = {
+  trade_income: 'Доход от торговли', bank_interest: 'Проценты по вкладам',
+  daily_bonus: 'Ежедневный бонус', import_discount: 'Скидка на импорт',
+  production: 'Бонус производству', events: 'Доход от мероприятий',
+  logistics: 'Ускорение перевозок', rental_income: 'Доход от аренды',
+  company_income: 'Доход компании', media: 'Медиа-доход', energy_discount: 'Скидка на энергию',
+}
 
 // Палитра «пегов» для комбинации (индекс символа → цвет)
 const PEG_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#ec4899', '#f5f5f5']
@@ -29,15 +39,28 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
   const [busy, setBusy] = useState(false)
   const [buyModal, setBuyModal] = useState(false)
   const [buyAmount, setBuyAmount] = useState('10')
+  const [bonuses, setBonuses] = useState(null)
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchCityMap()
+      const [data, b] = await Promise.all([fetchCityMap(), fetchCityBonuses().catch(() => null)])
       setMap(data)
+      setBonuses(b)
     } catch { /* ignore */ } finally {
       setLoading(false)
     }
   }, [])
+
+  const claimDaily = async () => {
+    setBusy(true)
+    try {
+      const res = await claimCityBonuses()
+      onBalanceChange?.(res.balance)
+      await load()
+    } catch { /* ignore */ } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -174,6 +197,33 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
 
       <p className="cityroof-hint">{t('cityroof.hint', { cost: map?.attackCost ?? 10 })}</p>
 
+      {/* Бонусы зданий во владении */}
+      {bonuses && bonuses.bonuses.length > 0 && (
+        <div className="cityroof-bonuses">
+          <div className="cbonus-head">
+            <span><Gift size={16} /> {t('cityroof.yourBonuses')}</span>
+            <button className="cbonus-claim" disabled={busy || !bonuses.claimable} onClick={claimDaily}>
+              <HandCoins size={14} />
+              {bonuses.claimable
+                ? t('cityroof.claim', { amount: bonuses.totalDaily.toLocaleString('ru-RU') })
+                : t('cityroof.claimIn', { hours: bonuses.hoursUntilClaim })}
+            </button>
+          </div>
+          <div className="cbonus-list">
+            {bonuses.bonuses.map(b => (
+              <div key={b.slug} className="cbonus-item">
+                <span className="cbonus-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
+                <div className="cbonus-info">
+                  <span className="cbonus-name">{b.name}</span>
+                  <span className="cbonus-effect">{EFFECT_LABEL[b.effect] || b.effect}{b.mult ? ` +${Math.round(b.mult * 100)}%` : ''}</span>
+                </div>
+                <span className="cbonus-daily">+{b.daily.toLocaleString('ru-RU')} $/д</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Карта */}
       <div className="cityroof-map">
         {map?.businesses?.map(b => (
@@ -228,7 +278,7 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
                       onClick={() => doProtect(lvl)}
                     >
                       <Shield size={13} /> {lvl}
-                      <small>{lvl * 100} WC</small>
+                      <small>{(map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU')} WC</small>
                     </button>
                   ))}
                 </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createTransfer, fetchWeeklyAnalytics, fetchCryptoAccount } from '../services/api'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import {
   Send, History, User, DollarSign, MessageSquare, CheckCircle, AlertTriangle,
   LayoutGrid, BarChart3, Coins, TrendingUp, TrendingDown, Wallet, ArrowRight,
@@ -102,7 +102,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
                 </span>
               )}
             </div>
-            <div className="bank-hero-balance">{formatMoney(localBalance)} <span>$</span></div>
+            <div className="bank-hero-balance" title={`${formatMoney(localBalance)} $`}>{formatCompact(localBalance)} <span>$</span></div>
             <button className="bank-hero-action" onClick={() => setView('transfer')}>
               <Send size={15} /> {t('bank.sendMoney')}
             </button>

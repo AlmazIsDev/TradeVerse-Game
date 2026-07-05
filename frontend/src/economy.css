@@ -1078,3 +1078,38 @@
 .bank-chart-legend .legend-income { color: var(--color-success); }
 .bank-chart-legend .legend-expense { color: var(--color-danger); }
 .bank-chart-legend span::before { content: '●'; margin-right: 5px; }
+
+/* ===================== BIG-NUMBER OVERFLOW GUARDS ===================== */
+.header-balance { max-width: 280px; }
+.asset-summary-card, .ad-stat, .bank-mini, .bank-crypto-val, .portfolio-item-values, .stat-info { min-width: 0; }
+/* Числа переносятся, а не обрезаются */
+.asset-summary-card b, .ad-stat b, .bank-mini b, .stat-value,
+.portfolio-value, .portfolio-total strong, .company-emp-salary, .ad-price,
+.bank-crypto-val b, .bank-hero-balance {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.rent-max-hint { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; }
+
+/* ===================== CITY ROOF: BUILDING BONUSES ===================== */
+.cityroof-bonuses {
+  background: var(--color-bg-secondary); border: 1px solid rgba(234,179,8,0.2);
+  border-radius: var(--radius-lg); padding: var(--spacing-md) var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+.cbonus-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-sm); }
+.cbonus-head > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--color-text-primary); }
+.cbonus-head svg { color: #eab308; }
+.cbonus-claim {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+  border: none; border-radius: var(--radius-md); background: linear-gradient(135deg,#eab308,#d97706);
+  color: #1a1d26; font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.cbonus-claim:disabled { opacity: 0.5; cursor: not-allowed; background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+.cbonus-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--spacing-sm); }
+.cbonus-item { display: flex; align-items: center; gap: var(--spacing-sm); padding: 8px 10px; background: var(--color-bg-tertiary); border-radius: var(--radius-md); }
+.cbonus-emoji { font-size: 26px; }
+.cbonus-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cbonus-name { font-weight: 600; font-size: 13px; color: var(--color-text-primary); }
+.cbonus-effect { font-size: 11px; color: var(--color-text-secondary); }
+.cbonus-daily { font-weight: 700; font-size: 13px; color: var(--color-success); white-space: nowrap; }

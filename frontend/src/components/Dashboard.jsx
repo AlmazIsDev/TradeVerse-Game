@@ -55,7 +55,7 @@ function Dashboard({ user, onLogout }) {
       case 'account':
         return <AccountTab balance={balance} />
       case 'stocks':
-        return <StocksTab balance={balance} onBalanceChange={handleBalanceChange} />
+        return <StocksTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'bank':
         return <BankTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'shop':

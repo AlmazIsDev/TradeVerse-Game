@@ -204,6 +204,20 @@ export async function updateStockConfig(symbol, configData) {
   })
 }
 
+export async function issueStock({ name, symbol, description, totalShares, price }) {
+  return request('/api/v2/stocks/issue', {
+    method: 'POST',
+    body: JSON.stringify({ name, symbol, description, totalShares, price }),
+  })
+}
+
+export async function payDividend(symbol, perShare) {
+  return request(`/api/v2/stocks/${encodeURIComponent(symbol)}/dividend`, {
+    method: 'POST',
+    body: JSON.stringify({ perShare }),
+  })
+}
+
 // ── Assets API (real estate / business / cars) ─────────────────────────────────
 
 export async function fetchAssetMarket(opts = {}) {

@@ -17,7 +17,10 @@ from pydantic import BaseModel, field_validator
 
 from auth import get_current_user, require_admin
 from database import get_db, find_all_stocks, find_stock_by_symbol
-from ledger import INCOME, EXPENSE, CAT_TRADE, adjust_balance, record_transaction
+from ledger import (
+    INCOME, EXPENSE, CAT_TRADE, CAT_DIVIDEND,
+    adjust_balance, record_transaction,
+)
 
 router = APIRouter(prefix="/api/v2/stocks", tags=["stocks"])
 
@@ -28,6 +31,9 @@ DEFAULT_STOCK_CONFIG = {
     "price_rise_threshold": 0.10,
     "max_order_size_percent": 0.01,
 }
+
+LISTING_FEE = 5000.0        # стоимость размещения пользовательской акции
+FOUNDER_SHARE_PCT = 0.2     # доля основателя при эмиссии
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -66,6 +72,55 @@ class StockConfigUpdate(BaseModel):
     price_drop_threshold: float | None = None
     price_rise_threshold: float | None = None
     max_order_size_percent: float | None = None
+
+
+class StockIssue(BaseModel):
+    name: str
+    symbol: str
+    description: str = ""
+    totalShares: int
+    price: float
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_ok(cls, v):
+        v = (v or "").strip().upper()
+        if not (1 <= len(v) <= 6) or not v.isalnum():
+            raise ValueError("Тикер: 1–6 латинских букв/цифр")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def name_ok(cls, v):
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Название слишком короткое")
+        return v[:60]
+
+    @field_validator("totalShares")
+    @classmethod
+    def shares_ok(cls, v):
+        if v < 1000 or v > 10_000_000_000:
+            raise ValueError("Количество акций: 1 000 – 10 млрд")
+        return v
+
+    @field_validator("price")
+    @classmethod
+    def price_ok(cls, v):
+        if v <= 0 or v > 1_000_000:
+            raise ValueError("Некорректная цена")
+        return round(float(v), 2)
+
+
+class DividendBody(BaseModel):
+    perShare: float
+
+    @field_validator("perShare")
+    @classmethod
+    def per_ok(cls, v):
+        if v is None or v <= 0:
+            raise ValueError("Дивиденд на акцию должен быть положительным")
+        return round(float(v), 4)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -359,6 +414,113 @@ async def update_stock_config(
 
     updated = await find_stock_by_symbol(db, symbol)
     return _format_stock_v2(updated)
+
+
+# ── Пользовательская эмиссия акций ───────────────────────────────────────────
+
+
+@router.post("/issue", status_code=status.HTTP_201_CREATED)
+async def issue_stock(
+    payload: StockIssue,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Игрок выпускает собственную акцию (IPO).
+
+    Списывается листинговый сбор. Основатель получает долю FOUNDER_SHARE_PCT,
+    остальное поступает в свободный рыночный пул. Капитализация = цена × выпуск.
+    """
+    symbol = payload.symbol
+    if await db.stocks.find_one({"symbol": symbol}):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Тикер '{symbol}' уже занят")
+
+    user_id = str(current_user["_id"])
+    new_balance = await adjust_balance(db, user_id, -LISTING_FEE)
+    if new_balance is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для листинга")
+
+    founder_shares = int(payload.totalShares * FOUNDER_SHARE_PCT)
+    free_shares = payload.totalShares - founder_shares
+
+    doc = {
+        "symbol": symbol,
+        "name": payload.name,
+        "description": payload.description[:280],
+        "price": payload.price,
+        "change": 0.0,
+        "changePercent": 0.0,
+        "currency": "USD",
+        "issuer": user_id,
+        "issuer_name": current_user.get("username"),
+        "config": {"total_shares": payload.totalShares},
+        "free_shares": free_shares,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    result = await db.stocks.insert_one(doc)
+    doc["id"] = str(result.inserted_id)
+
+    if founder_shares > 0:
+        await db.stock_holdings.update_one(
+            {"userId": user_id, "symbol": symbol},
+            {"$inc": {"quantity": founder_shares, "invested": round(founder_shares * payload.price, 2)},
+             "$setOnInsert": {"userId": user_id, "symbol": symbol}},
+            upsert=True,
+        )
+
+    await record_transaction(
+        db, user_id, EXPENSE, LISTING_FEE, CAT_TRADE,
+        f"Листинг акции {symbol}", symbol=symbol, balance_after=new_balance,
+        meta={"action": "issue", "totalShares": payload.totalShares},
+    )
+    return {"stock": _format_stock_v2(doc), "balance": new_balance, "founderShares": founder_shares}
+
+
+@router.post("/{symbol}/dividend")
+async def pay_dividend(
+    symbol: str,
+    payload: DividendBody,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Эмитент выплачивает дивиденды всем держателям (кроме себя)."""
+    symbol = symbol.upper()
+    stock = await db.stocks.find_one({"symbol": symbol})
+    if not stock:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Акция '{symbol}' не найдена")
+    user_id = str(current_user["_id"])
+    if stock.get("issuer") != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Вы не эмитент этой акции")
+
+    per = payload.perShare
+    holders = [
+        h async for h in db.stock_holdings.find(
+            {"symbol": symbol, "quantity": {"$gt": 0}, "userId": {"$ne": user_id}}
+        )
+    ]
+    total = round(sum(per * h.get("quantity", 0) for h in holders), 2)
+    if total <= 0:
+        return {"paid": 0.0, "holders": 0, "balance": current_user.get("balance", 0.0)}
+
+    new_balance = await adjust_balance(db, user_id, -total)
+    if new_balance is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для выплаты дивидендов")
+
+    for h in holders:
+        amt = round(per * h.get("quantity", 0), 2)
+        if amt <= 0:
+            continue
+        hb = await adjust_balance(db, h["userId"], amt)
+        await record_transaction(
+            db, h["userId"], INCOME, amt, CAT_DIVIDEND,
+            f"Дивиденды {symbol}", symbol=symbol, balance_after=hb,
+            meta={"perShare": per, "from": stock.get("issuer_name")},
+        )
+    await record_transaction(
+        db, user_id, EXPENSE, total, CAT_DIVIDEND,
+        f"Выплата дивидендов {symbol}", symbol=symbol, balance_after=new_balance,
+        meta={"perShare": per, "holders": len(holders)},
+    )
+    return {"paid": total, "holders": len(holders), "balance": new_balance}
 
 
 @router.get("/{symbol}")

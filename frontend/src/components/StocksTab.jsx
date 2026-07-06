@@ -1,11 +1,21 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, issueStock, payDividend } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import AssetDetail from './AssetDetail'
 import {
   TrendingUp, TrendingDown, Briefcase, AlertTriangle, Check, X, PlusCircle, Gift,
+  Search, Activity, ArrowDownLeft, ArrowUpRight,
 } from 'lucide-react'
+
+// Лёгкий прогноз для акции по проценту изменения (та же логика, что у крипты).
+function stockForecast(stock) {
+  const change = stock.changePercent || 0
+  const vol = Math.round((Math.min(25, Math.abs(change) * 1.5 + 3)) * 10) / 10
+  let probUp = 50 + change * 1.4
+  probUp = Math.max(5, Math.min(95, Math.round(probUp)))
+  return { change, vol, probUp, up: change >= 0 }
+}
 
 function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
@@ -23,6 +33,8 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [issueForm, setIssueForm] = useState({ name: '', symbol: '', price: '', totalShares: '1000000' })
   const [dividend, setDividend] = useState(null)   // stock being paid dividends
   const [perShare, setPerShare] = useState('')
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState('cap')   // cap | gainers | losers
 
   const load = useCallback(async () => {
     try {
@@ -125,6 +137,18 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     }
   }
 
+  const marketView = useMemo(() => {
+    let r = stocks || []
+    if (search) {
+      const s = search.toLowerCase()
+      r = r.filter(c => (c.symbol || '').toLowerCase().includes(s) || (c.name || '').toLowerCase().includes(s))
+    }
+    r = [...r]
+    if (sort === 'gainers') r.sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))
+    else if (sort === 'losers') r.sort((a, b) => (a.changePercent || 0) - (b.changePercent || 0))
+    return r
+  }, [stocks, search, sort])
+
   if (detailSymbol) {
     return (
       <AssetDetail
@@ -143,21 +167,17 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
 
   if (loading) {
     return (
-      <div className="stocks-tab">
-        <h2 className="tab-title">{t('stocks.title')}</h2>
-        <div className="stocks-grid">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="stock-card skeleton" style={{ height: 180 }} />
-          ))}
-        </div>
+      <div className="stocks-tab crypto-tab">
+        <div className="leaderboard-title-row"><Briefcase size={22} className="icon" /><h2 className="tab-title">{t('stocks.title')}</h2></div>
+        <div className="skeleton-chart" style={{ height: 160 }} />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="stocks-tab">
-        <h2 className="tab-title">{t('stocks.title')}</h2>
+      <div className="stocks-tab crypto-tab">
+        <div className="leaderboard-title-row"><Briefcase size={22} className="icon" /><h2 className="tab-title">{t('stocks.title')}</h2></div>
         <div className="error-state">
           <AlertTriangle size={24} className="error-icon" color="#fca5a5" />
           <p>{t('common.error')}: {error}</p>
@@ -166,10 +186,19 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     )
   }
 
+  // Прогноз строим по своим активам, иначе по топу рынка (как в крипте).
+  const forecastStocks = (portfolio.length
+    ? portfolio.map(p => stocks.find(s => s.symbol === p.symbol)).filter(Boolean)
+    : marketView).slice(0, 4)
+
+  const badge = (stock) => (
+    <span className="crypto-coin-badge" style={{ background: '#6366f1' }}>{(stock.symbol || '?').slice(0, 2)}</span>
+  )
+
   return (
-    <div className="stocks-tab">
+    <div className="stocks-tab crypto-tab">
       <div className="stocks-titlebar">
-        <h2 className="tab-title">{t('stocks.title')}</h2>
+        <div className="leaderboard-title-row"><Briefcase size={22} className="icon" /><h2 className="tab-title">{t('stocks.title')}</h2></div>
         <button className="stocks-issue-btn" onClick={() => { setIssueModal(true); setFeedback(null) }}>
           <PlusCircle size={16} /> {t('stocks.issue')}
         </button>
@@ -181,119 +210,127 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       )}
 
-      {/* Портфель */}
-      {portfolio.length > 0 && (
-        <div className="portfolio-panel">
-          <div className="portfolio-header">
-            <Briefcase size={18} className="icon" />
-            <h3>{t('stocks.portfolio')}</h3>
-            <span className="portfolio-total">
-              {t('stocks.portfolioValue')}: <strong>${formatMoney(portfolioValue)}</strong>
-              <span className={`portfolio-total-pnl ${portfolioPnl >= 0 ? 'up' : 'down'}`}>
-                ({portfolioPnl >= 0 ? '+' : '−'}{formatMoney(Math.abs(portfolioPnl))} $)
-              </span>
-            </span>
-          </div>
-          <div className="portfolio-list">
-            {portfolio.map(p => {
-              const up = p.pnl >= 0
-              return (
-                <div key={p.symbol} className="portfolio-item">
-                  <div className="portfolio-item-main">
-                    <span className="portfolio-symbol">{p.symbol}</span>
-                    <span className="portfolio-qty">{p.quantity} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
-                  </div>
-                  <div className="portfolio-item-values">
-                    <span className="portfolio-value">${formatMoney(p.value)}</span>
-                    <span className={`portfolio-pnl ${up ? 'up' : 'down'}`}>
-                      {up ? '+' : '−'}{formatMoney(Math.abs(p.pnl))} $
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Рынок */}
-      {(!stocks || stocks.length === 0) ? (
-        <div className="empty-state"><p>{t('stocks.noData')}</p></div>
-      ) : (
-        <div className="stocks-grid">
-          {stocks.map(stock => {
-            const isUp = (stock.change ?? 0) >= 0
-            const cp = stock.changePercent
-            return (
-              <div key={stock.id || stock.symbol} className={`stock-card clickable ${isUp ? 'stock-up' : 'stock-down'}`}
-                onClick={() => setDetailSymbol(stock.symbol)}>
-                <div className="stock-header">
-                  <div className="stock-company-info">
-                    <span className="stock-ticker">
-                      {stock.symbol}
-                      {stock.issuer && <span className="stock-issued-badge">{t('stocks.issued')}</span>}
-                    </span>
-                    <span className="stock-company-name">
-                      {stock.name}
-                      {stock.issuerName && <span className="stock-issuer"> · {stock.issuerName}</span>}
-                    </span>
-                  </div>
-                  {cp != null && cp !== 0 && (
-                    <span className={`stock-change ${isUp ? 'up' : 'down'}`}>
-                      {isUp ? <TrendingUp size={14} className="icon" /> : <TrendingDown size={14} className="icon" />}
-                      {Math.abs(cp).toFixed(2)}%
-                    </span>
-                  )}
-                </div>
-                <div className="stock-details">
-                  <div className="stock-price-row">
-                    <span className="stock-price-label">{t('stocks.price')}</span>
-                    <span className="stock-price-value">${formatMoney(stock.price)}</span>
-                  </div>
-                  {stock.heldQuantity > 0 && (
-                    <div className="stock-shares-row">
-                      <span className="stock-shares-label">{t('stocks.owned')}</span>
-                      <span className="stock-shares-value">{stock.heldQuantity.toLocaleString('ru-RU')}</span>
-                    </div>
-                  )}
-                  {stock.freeShares != null && (
-                    <div className="stock-shares-row">
-                      <span className="stock-shares-label">{t('common.freeShares')}</span>
-                      <span className="stock-shares-value">{stock.freeShares.toLocaleString('ru-RU')}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="stock-actions">
-                  <button className="stock-btn buy-btn" onClick={(e) => { e.stopPropagation(); openTrade(stock, 'buy') }}>
-                    {t('common.buy')}
-                  </button>
-                  <button
-                    className="stock-btn sell-btn"
-                    onClick={(e) => { e.stopPropagation(); openTrade(stock, 'sell') }}
-                    disabled={!stock.heldQuantity}
-                  >
-                    {t('common.sell')}
-                  </button>
-                  {stock.issuer && stock.issuer === currentUserId && (
-                    <button
-                      className="stock-btn dividend-btn"
-                      title={t('stocks.payDividend')}
-                      onClick={(e) => { e.stopPropagation(); setDividend(stock); setPerShare(''); setFeedback(null) }}
-                    >
-                      <Gift size={14} />
-                    </button>
-                  )}
+      <div className="crypto-layout">
+        {/* ЛЕВО: рынок акций */}
+        <div className="crypto-col-main">
+          <div className="crypto-section">
+            <div className="crypto-market-head">
+              <h3>{t('stocks.market')}</h3>
+              <div className="crypto-market-tools">
+                <div className="tx-search"><Search size={15} className="tx-search-icon" />
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('market.searchPlaceholder')} /></div>
+                <div className="crypto-sort">
+                  <button className={`tx-pill ${sort === 'cap' ? 'active' : ''}`} onClick={() => setSort('cap')}>{t('crypto.sortCap')}</button>
+                  <button className={`tx-pill ${sort === 'gainers' ? 'active' : ''}`} onClick={() => setSort('gainers')}>{t('crypto.gainers')}</button>
+                  <button className={`tx-pill ${sort === 'losers' ? 'active' : ''}`} onClick={() => setSort('losers')}>{t('crypto.losers')}</button>
                 </div>
               </div>
-            )
-          })}
+            </div>
+            {marketView.length === 0 ? (
+              <p className="empty-state">{t('stocks.noData')}</p>
+            ) : (
+              <div className="crypto-market">
+                {marketView.map(stock => {
+                  const up = (stock.changePercent || 0) >= 0
+                  const owned = stock.heldQuantity > 0
+                  return (
+                    <div key={stock.id || stock.symbol} className="crypto-coin clickable" onClick={() => setDetailSymbol(stock.symbol)}>
+                      {badge(stock)}
+                      <div className="crypto-coin-info">
+                        <span className="crypto-coin-symbol">
+                          {stock.symbol}
+                          {stock.issuer && <span className="stock-issued-badge">{t('stocks.issued')}</span>}
+                        </span>
+                        <span className="crypto-coin-name">{stock.name}{stock.issuerName ? ` · ${stock.issuerName}` : ''}</span>
+                      </div>
+                      <div className="crypto-coin-price">
+                        <span className="crypto-coin-value">{formatMoney(stock.price)} $</span>
+                        <span className={`crypto-coin-change ${up ? 'up' : 'down'}`}>
+                          {up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{up ? '+' : ''}{(stock.changePercent || 0).toFixed(2)}%
+                        </span>
+                      </div>
+                      <div className="crypto-coin-actions">
+                        <button className="crypto-buy" onClick={(e) => { e.stopPropagation(); openTrade(stock, 'buy') }}><ArrowDownLeft size={14} /> {t('common.buy')}</button>
+                        <button className="crypto-sell" onClick={(e) => { e.stopPropagation(); openTrade(stock, 'sell') }} disabled={!owned}><ArrowUpRight size={14} /> {t('common.sell')}</button>
+                        {stock.issuer && stock.issuer === currentUserId && (
+                          <button className="stock-btn dividend-btn" title={t('stocks.payDividend')}
+                            onClick={(e) => { e.stopPropagation(); setDividend(stock); setPerShare(''); setFeedback(null) }}>
+                            <Gift size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      )}
 
-      {/* История сделок */}
-      <div className="stocks-history">
-        <h3>{t('bank.history')}</h3>
-        <TransactionsPanel category="trade" refreshKey={refreshKey} />
+        {/* ПРАВО: портфель, активы, прогноз, история */}
+        <div className="crypto-col-side">
+          <div className="crypto-wallet-card">
+            <span className="crypto-card-label"><Briefcase size={14} /> {t('stocks.portfolio')}</span>
+            <div className="crypto-wallet-stats">
+              <div><span>{t('crypto.cashBalance')}</span><b>{formatMoney(balance)} $</b></div>
+              <div><span>{t('stocks.portfolioValue')}</span><b className="accent">{formatMoney(portfolioValue)} $</b></div>
+              <div><span>{t('stocks.pnl')}</span><b className={portfolioPnl >= 0 ? 'up' : 'down'}>{portfolioPnl >= 0 ? '+' : '−'}{formatMoney(Math.abs(portfolioPnl))} $</b></div>
+            </div>
+          </div>
+
+          {/* Мои активы */}
+          <div className="crypto-section">
+            <h3>{t('crypto.myAssets')}</h3>
+            {portfolio.length > 0 ? (
+              <div className="crypto-holdings">
+                {portfolio.map(p => {
+                  const up = (p.pnl || 0) >= 0
+                  return (
+                    <div key={p.symbol} className="crypto-holding clickable" onClick={() => setDetailSymbol(p.symbol)}>
+                      {badge(p)}
+                      <div className="crypto-holding-info">
+                        <span className="crypto-holding-symbol">{p.symbol}</span>
+                        <span className="crypto-holding-qty">{p.quantity} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
+                      </div>
+                      <div className="crypto-holding-values">
+                        <span className="crypto-holding-value">${formatMoney(p.value)}</span>
+                        <span className={`crypto-holding-pnl ${up ? 'up' : 'down'}`}>{up ? '+' : '−'}{formatMoney(Math.abs(p.pnl || 0))} $</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : <p className="empty-state">{t('crypto.noAssets')}</p>}
+          </div>
+
+          {/* Прогноз */}
+          <div className="crypto-section">
+            <h3><Activity size={16} /> {t('crypto.forecast')}</h3>
+            <div className="crypto-forecast">
+              {forecastStocks.map(s => {
+                const f = stockForecast(s)
+                return (
+                  <div key={s.symbol} className="cf-card clickable" onClick={() => setDetailSymbol(s.symbol)}>
+                    <div className="cf-head">{badge(s)}<span>{s.symbol}</span></div>
+                    <div className="cf-row"><span>{t('crypto.trend')}</span><b className={f.up ? 'up' : 'down'}>{f.up ? t('crypto.trendUp') : t('crypto.trendDown')}</b></div>
+                    <div className="cf-row"><span>{t('crypto.change24')}</span><b className={f.up ? 'up' : 'down'}>{f.change >= 0 ? '+' : ''}{f.change.toFixed(2)}%</b></div>
+                    <div className="cf-row"><span>{t('crypto.volatility')}</span><b>{f.vol}%</b></div>
+                    <div className="cf-prob">
+                      <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${f.probUp}%` }} /></div>
+                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* История сделок */}
+          <div className="crypto-section">
+            <h3>{t('bank.history')}</h3>
+            <TransactionsPanel category="trade" refreshKey={refreshKey} />
+          </div>
+        </div>
       </div>
 
       {/* Модалка сделки */}

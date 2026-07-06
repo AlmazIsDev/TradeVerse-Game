@@ -2,13 +2,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchMyAssets, collectAsset, upgradeAsset, sellAsset,
-  transferAssetToCompany, listPropertyForRent, cancelRent,
+  transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
-  TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid,
+  TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench,
 } from 'lucide-react'
+
+// Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
+const TUNE_PARTS = ['engine', 'turbo', 'gearbox', 'suspension', 'brakes', 'tires', 'exhaust']
 
 const TYPE_TABS = [
   { id: 'all', icon: LayoutGrid },
@@ -42,6 +45,16 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)   // asset
   const [rentForm, setRentForm] = useState({ price: '', minHours: '6' })
+  const [tuneModal, setTuneModal] = useState(null)   // car asset
+
+  // Синхронизируем открытую модалку тюнинга с обновлёнными данными.
+  useEffect(() => {
+    if (tuneModal) {
+      const fresh = assets.find(a => a.id === tuneModal.id)
+      if (fresh && fresh !== tuneModal) setTuneModal(fresh)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assets])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -87,6 +100,22 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       await listPropertyForRent(rentModal.id, price, minHours)
       flash(t('rent.listed'))
       setRentModal(null)
+      await load()
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const tuneCost = (car, part) => Math.round((car.price || 0) * 0.05 * ((car.tuning?.[part] || 0) + 1))
+
+  const doTune = async (car, part) => {
+    setBusyId(car.id)
+    try {
+      const res = await tuneCar(car.id, part)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      flash(t('tune.done'))
       await load()
     } catch (err) {
       flash(err.message, 'error')
@@ -211,7 +240,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                 )}
                 {renderRental(a)}
 
-                <div className="asset-actions">
+                <div className={`asset-actions ${isCar ? 'compact' : ''}`}>
                   {!isCar && a.profitPerHour > 0 && (
                     <button className="asset-act collect" disabled={busy || a.accrued <= 0} onClick={() => act(a.id, collectAsset, 'myassets.collected')}>
                       <HandCoins size={15} /> {t('myassets.collect')}
@@ -220,6 +249,11 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   {!isCar && (
                     <button className="asset-act upgrade" disabled={busy} onClick={() => act(a.id, upgradeAsset, 'myassets.upgraded')}>
                       <ArrowUpCircle size={15} /> {t('myassets.upgrade')} (${formatMoney(a.upgradeCost)})
+                    </button>
+                  )}
+                  {isCar && (
+                    <button className="asset-act upgrade" disabled={busy} onClick={() => setTuneModal(a)}>
+                      <Wrench size={15} /> {t('tune.title')}
                     </button>
                   )}
                   <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
@@ -256,6 +290,43 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             <div className="modal-buttons">
               <button className="stock-btn buy-btn" onClick={submitRent} disabled={busyId === rentModal.id}>{t('rent.publish')}</button>
               <button className="stock-btn cancel-btn" onClick={() => setRentModal(null)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tuneModal && (
+        <div className="modal-overlay" onClick={() => busyId !== tuneModal.id && setTuneModal(null)}>
+          <div className="modal-content tune-modal" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setTuneModal(null)}><X size={18} /></button>
+            <h3><Wrench size={18} /> {t('tune.title')}: {tuneModal.name}</h3>
+            <div className="tune-summary">
+              <div><span>{t('market.prestige')}</span><b>{tuneModal.meta?.prestige ?? 0}</b></div>
+              <div><span>{t('myassets.value')}</span><b>${formatMoney(tuneModal.value)}</b></div>
+            </div>
+            <div className="tune-parts">
+              {TUNE_PARTS.map(part => {
+                const lvl = tuneModal.tuning?.[part] || 0
+                const max = tuneModal.tuneMaxLevel || 5
+                const maxed = lvl >= max
+                const cost = tuneCost(tuneModal, part)
+                return (
+                  <div key={part} className="tune-part">
+                    <div className="tune-part-info">
+                      <span className="tune-part-name">{t(`tune.parts.${part}`)}</span>
+                      <div className="tune-levels">
+                        {Array.from({ length: max }).map((_, i) => (
+                          <span key={i} className={`tune-pip ${i < lvl ? 'on' : ''}`} />
+                        ))}
+                      </div>
+                    </div>
+                    <button className="asset-act upgrade" disabled={busyId === tuneModal.id || maxed}
+                      onClick={() => doTune(tuneModal, part)}>
+                      {maxed ? t('tune.max') : <>+1 · ${formatMoney(cost)}</>}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

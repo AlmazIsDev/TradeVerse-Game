@@ -28,6 +28,17 @@ PRICE_REFRESH_SECONDS = 30
 # Комиссия сети за перевод криптовалюты (доля от суммы, «сгорает»)
 CRYPTO_FEE_RATE = 0.01
 
+# ── Собственная экономика TradeVerse поверх реальных курсов ───────────────────
+# Реальная цена (CoinGecko/симуляция) — БАЗА. Действия игроков двигают монету
+# через множитель спроса `demand`: массовая покупка поднимает цену, продажа —
+# опускает. Отображаемая цена = market_price × demand. Спрос медленно
+# возвращается к 1.0, поэтому влияние ощутимо, но не вечно.
+DEMAND_MIN = 0.5
+DEMAND_MAX = 2.5
+IMPACT_K = 0.6            # сила влияния сделки (относительно суточного объёма)
+IMPACT_CAP = 0.12        # максимум сдвига спроса за одну сделку
+DEMAND_REVERT = 0.03     # доля возврата спроса к 1.0 за фоновый тик
+
 DEFAULT_COINS = [
     {"symbol": "WVC", "name": "WarVerse Coin", "price": 120.0, "volatility": 0.04, "color": "#f7931a", "supply": 21_000_000, "description": "Флагманская монета вселенной TradeVerse: дефляционная модель и лимит эмиссии."},
     {"symbol": "TVX", "name": "TradeVerse X", "price": 45.5, "volatility": 0.05, "color": "#627eea", "supply": 120_000_000, "description": "Утилити-токен экосистемы, обеспечивает смарт-контракты и стейкинг."},
@@ -138,6 +149,7 @@ def _format_coin(coin: dict) -> dict:
     coin["id"] = str(coin.pop("_id"))
     coin.pop("updated_at", None)
     coin.pop("base_price", None)
+    coin.pop("market_price", None)   # внутреннее поле «рыночной» цены
     return coin
 
 
@@ -176,31 +188,76 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
     Читающие эндпоинты этого не делают — они лишь берут готовые данные из БД.
     """
     await ensure_coins_seeded(db)
+    # Успел ли пройти интервал реального обновления? Если refresh реально сходил
+    # в CoinGecko (не троттлинг) и вернул live — в coin["price"] лежит свежая
+    # РЕАЛЬНАЯ цена, которую и берём как market_price.
+    was_throttled = await MarketDataService._throttled(db, "crypto")
     mode = await MarketDataService.refresh_crypto(db)
+    fresh_real = (mode == "live") and not was_throttled
     now = datetime.now(timezone.utc)
     async for coin in db.crypto_assets.find({}):
         symbol = coin["symbol"]
-        await MarketDataService.ensure_backfill(db, "crypto", symbol, coin.get("price", 1) or 1, coin.get("volatility", 0.05))
-        # Симуляция цены — только когда реальные данные недоступны.
-        if mode == "sim":
+        market_price = float(coin.get("market_price") or coin.get("price") or coin.get("base_price") or 1)
+        await MarketDataService.ensure_backfill(db, "crypto", symbol, market_price, coin.get("volatility", 0.05))
+        set_fields: dict = {}
+
+        if fresh_real:
+            # Свежая реальная цена — новая рыночная база.
+            market_price = float(coin.get("price", market_price))
+        elif mode == "sim":
+            # Симуляция: блуждает именно РЫНОЧНАЯ цена (реальные данные недоступны).
             updated = coin.get("updated_at")
             if isinstance(updated, datetime) and updated.tzinfo is None:
                 updated = updated.replace(tzinfo=timezone.utc)
             if not isinstance(updated, datetime) or (now - updated).total_seconds() >= PRICE_REFRESH_SECONDS:
-                coin = _walk_price(coin)
-                await db.crypto_assets.update_one(
-                    {"_id": coin["_id"]},
-                    {"$set": {
-                        "price": coin["price"],
-                        "change24h": coin["change24h"],
-                        "ath": coin["ath"],
-                        "atl": coin["atl"],
-                        "volume24h": coin["volume24h"],
-                        "updated_at": coin["updated_at"],
-                    }},
-                )
-                await MarketDataService.record_snapshot(db, "crypto", symbol, coin["price"])
+                tmp = dict(coin)
+                tmp["price"] = market_price
+                tmp = _walk_price(tmp)
+                market_price = tmp["price"]
+                set_fields.update({
+                    "change24h": tmp["change24h"], "ath": tmp["ath"],
+                    "atl": tmp["atl"], "volume24h": tmp["volume24h"],
+                })
+
+        # Спрос игроков медленно возвращается к 1.0.
+        demand = float(coin.get("demand", 1.0))
+        demand = max(DEMAND_MIN, min(DEMAND_MAX, demand + (1.0 - demand) * DEMAND_REVERT))
+        display = round(market_price * demand, 6)
+
+        set_fields.update({
+            "market_price": round(market_price, 6),
+            "demand": round(demand, 4),
+            "price": display,
+            "updated_at": now,
+        })
+        await db.crypto_assets.update_one({"_id": coin["_id"]}, {"$set": set_fields})
+        await MarketDataService.record_snapshot(db, "crypto", symbol, display)
     # Сбрасываем кэш чтения, чтобы следующий запрос увидел свежие цены.
+    _MARKET_CACHE["ts"] = None
+
+
+async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float):
+    """Сдвигает спрос (а значит и цену) монеты от сделки игрока.
+
+    Покупка поднимает цену, продажа опускает — тем сильнее, чем крупнее сделка
+    относительно суточного объёма. Реальная (market_price) цена не трогается —
+    она остаётся базой; двигается только множитель спроса.
+    """
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if not coin:
+        return
+    market_price = float(coin.get("market_price") or coin.get("price") or 1)
+    vol = float(coin.get("volume24h") or 0) or (market_price * float(coin.get("supply", 0) or 1) * 0.04) or 1.0
+    frac = min(IMPACT_CAP, IMPACT_K * (float(total_usd) / max(vol, 1.0)))
+    demand = float(coin.get("demand", 1.0))
+    demand *= (1 + frac) if side == "buy" else (1 - frac)
+    demand = max(DEMAND_MIN, min(DEMAND_MAX, demand))
+    display = round(market_price * demand, 6)
+    await db.crypto_assets.update_one(
+        {"_id": coin["_id"]},
+        {"$set": {"demand": round(demand, 4), "price": display}},
+    )
+    await MarketDataService.record_snapshot(db, "crypto", symbol, display, force=True)
     _MARKET_CACHE["ts"] = None
 
 
@@ -331,6 +388,7 @@ async def trade_crypto(
             f"Покупка {qty:g} {symbol}", symbol=symbol, price=price,
             balance_after=new_balance, meta={"quantity": qty, "action": "buy"},
         )
+        await _apply_trade_impact(db, symbol, "buy", total)
         return {"message": "Покупка выполнена", "symbol": symbol, "quantity": qty,
                 "price": price, "total": total, "balance": new_balance}
 
@@ -351,6 +409,7 @@ async def trade_crypto(
         f"Продажа {qty:g} {symbol}", symbol=symbol, price=price,
         balance_after=new_balance, meta={"quantity": qty, "action": "sell"},
     )
+    await _apply_trade_impact(db, symbol, "sell", total)
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
             "price": price, "total": total, "balance": new_balance}
 

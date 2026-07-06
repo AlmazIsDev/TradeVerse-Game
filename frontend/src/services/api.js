@@ -293,6 +293,10 @@ export async function transferAssetToCompany(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/transfer-to-company`, { method: 'POST' })
 }
 
+export async function tuneCar(id, part) {
+  return request(`/api/assets/${encodeURIComponent(id)}/tune`, { method: 'POST', body: JSON.stringify({ part }) })
+}
+
 export async function listPropertyForRent(id, price, minHours) {
   return request(`/api/assets/${encodeURIComponent(id)}/rent/list`, {
     method: 'POST', body: JSON.stringify({ price, minHours }),

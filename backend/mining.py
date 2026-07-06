@@ -197,12 +197,18 @@ def _missing_required(farm: dict) -> list[str]:
 
 async def _serialize_with_stats(db, farm: dict, user_id: str) -> dict:
     """Сериализует ферму с ПОЛНЫМ пересчётом характеристик (для мгновенного отклика UI)."""
+    missing = _missing_required(farm)
+    if missing:
+        # Ферма не собрана — не считаем показатели.
+        item = _serialize(farm, {})
+        item["missing"] = missing
+        return item
     market = await _coin_market(db)
     econ = await get_econ(db)
     city = await _city_bonus(db, user_id)
     stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city)
     item = _serialize(farm, stats)
-    item["missing"] = _missing_required(farm)
+    item["missing"] = missing
     return item
 
 
@@ -291,9 +297,11 @@ async def get_farms(current_user: dict = Depends(get_current_user), db: AsyncIOM
     city = await _city_bonus(db, user_id)
     out = []
     async for farm in db.mining_farms.find({"userId": user_id}):
-        stats = _compute(farm, market, ec, em, city)
+        missing = _missing_required(farm)
+        # Пока ферма не собрана — показатели не рассчитываются (пустые).
+        stats = {} if missing else _compute(farm, market, ec, em, city)
         item = _serialize(farm, stats)
-        item["missing"] = _missing_required(farm)
+        item["missing"] = missing
         out.append(item)
     return out
 

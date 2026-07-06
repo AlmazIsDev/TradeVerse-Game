@@ -55,7 +55,16 @@ async def adjust_balance(
         )
     if not result:
         return None
-    return result.get("balance", 0.0)
+    new_balance = result.get("balance", 0.0)
+    # Realtime: сообщаем игроку новый баланс по WebSocket, чтобы верхняя панель
+    # обновлялась мгновенно при ЛЮБОМ изменении (аренда, майнинг, зарплата, дивиденды…),
+    # а не только при действиях в текущей вкладке. Безопасно — ошибки проглатываются.
+    try:
+        from ws import push_to_user
+        await push_to_user(user_id, {"type": "balance", "balance": round(float(new_balance), 2)})
+    except Exception:
+        pass
+    return new_balance
 
 
 async def record_transaction(

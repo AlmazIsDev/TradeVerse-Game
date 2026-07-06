@@ -2,11 +2,10 @@ import { useTranslation } from 'react-i18next'
 import { fetchWeeklyAnalytics } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import AnalyticsChart from './AnalyticsChart'
 import {
   TrendingUp, TrendingDown, DollarSign, Activity, AlertTriangle,
 } from 'lucide-react'
-
-const WEEKDAY_KEYS = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun']
 
 function AccountTab({ balance = 0 }) {
   const { t } = useTranslation()
@@ -15,7 +14,6 @@ function AccountTab({ balance = 0 }) {
   const analytics = data || { income: 0, expense: 0, net: 0, operations: 0, days: [] }
   const displayBalance = data?.balance != null ? data.balance : balance
   const days = analytics.days || []
-  const maxVal = Math.max(1, ...days.map(d => Math.max(d.income, d.expense)))
   const netPositive = analytics.net >= 0
 
   return (
@@ -65,33 +63,7 @@ function AccountTab({ balance = 0 }) {
           </div>
         )}
         {loading && <div className="chart-container skeleton-chart" />}
-        {!loading && !error && (
-          <>
-            <div className="chart-container">
-              {days.map((d, i) => (
-                <div key={d.date || i} className="chart-bar-group">
-                  <div className="chart-bars">
-                    <div
-                      className="chart-bar bar-income"
-                      style={{ height: `${(d.income / maxVal) * 100}%` }}
-                      title={`${t('account.incomeLabel')}: ${formatMoney(d.income)} $`}
-                    />
-                    <div
-                      className="chart-bar bar-expense"
-                      style={{ height: `${(d.expense / maxVal) * 100}%` }}
-                      title={`${t('account.expenseLabel')}: ${formatMoney(d.expense)} $`}
-                    />
-                  </div>
-                  <span className="chart-label">{t(`common.${WEEKDAY_KEYS[d.weekday] || 'dayMon'}`)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="chart-legend">
-              <span className="legend-item legend-income">{t('account.income')}</span>
-              <span className="legend-item legend-expense">{t('account.expense')}</span>
-            </div>
-          </>
-        )}
+        {!loading && !error && <AnalyticsChart days={days} />}
       </div>
 
       <div className="account-transactions">

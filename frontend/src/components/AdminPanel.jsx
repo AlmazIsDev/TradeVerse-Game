@@ -5,7 +5,7 @@ import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search,
 } from 'lucide-react'
 
 function Tooltip({ text }) {
@@ -67,6 +67,8 @@ function AdminPanel({ user, onClose }) {
 
   // Состояние для редактирования пользователя
   const [editingUser, setEditingUser] = useState(null)
+  const [userSearch, setUserSearch] = useState('')
+  const [stockSearch, setStockSearch] = useState('')
   const [editForm, setEditForm] = useState({
     username: '',
     balance: '',
@@ -331,9 +333,9 @@ function AdminPanel({ user, onClose }) {
   ]
 
   return (
-    <div className="admin-panel">
+    <div className="admin-panel admin-panel-modern">
       <div className="admin-header">
-        <h2>{t('admin.title')}</h2>
+        <h2><ShieldAlert size={20} /> {t('admin.title')}</h2>
         <button className="admin-close-btn" onClick={onClose}>
           <X size={20} />
         </button>
@@ -341,20 +343,21 @@ function AdminPanel({ user, onClose }) {
 
       {message && <div className="admin-message">{message}</div>}
 
-      <div className="admin-tabs">
-        {sections.map(s => (
-          <button
-            key={s.id}
-            className={`admin-tab ${activeSection === s.id ? 'active' : ''}`}
-            onClick={() => setActiveSection(s.id)}
-          >
-            <s.icon size={16} />
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <div className="admin-body">
+        <aside className="admin-sidebar">
+          {sections.map(s => (
+            <button
+              key={s.id}
+              className={`admin-nav-item ${activeSection === s.id ? 'active' : ''}`}
+              onClick={() => setActiveSection(s.id)}
+            >
+              <s.icon size={18} />
+              <span>{s.label}</span>
+            </button>
+          ))}
+        </aside>
 
-      <div className="admin-content">
+        <div className="admin-content">
         {loading && activeSection !== 'economy' && <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>}
 
         {activeSection === 'economy' && <EconomyAdmin />}
@@ -396,7 +399,12 @@ function AdminPanel({ user, onClose }) {
             </div>
 
             <div className="admin-list">
-              {stocks.map(stock => (
+              <div className="admin-toolbar">
+                <div className="tx-search"><Search size={15} className="tx-search-icon" />
+                  <input value={stockSearch} onChange={e => setStockSearch(e.target.value)} placeholder={t('admin.searchStocks')} /></div>
+                <span className="admin-count">{stocks.length}</span>
+              </div>
+              {stocks.filter(s => !stockSearch || s.symbol.toLowerCase().includes(stockSearch.toLowerCase()) || (s.name || '').toLowerCase().includes(stockSearch.toLowerCase())).map(stock => (
                 <div key={stock.id} className="admin-stock-item">
                   {editingStock?.id === stock.id ? (
                     <div className="form-row">
@@ -538,7 +546,12 @@ function AdminPanel({ user, onClose }) {
 
         {!loading && activeSection === 'users' && (
           <div className="admin-list">
-            {users.map(u => (
+            <div className="admin-toolbar">
+              <div className="tx-search"><Search size={15} className="tx-search-icon" />
+                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder={t('admin.searchUsers')} /></div>
+              <span className="admin-count">{t('admin.totalUsers')}: {users.length}</span>
+            </div>
+            {users.filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase())).map(u => (
               <div key={u.id} className="admin-user-item">
                 {editingUser === u.id ? (
                   <div className="admin-user-edit-form">
@@ -686,6 +699,7 @@ function AdminPanel({ user, onClose }) {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

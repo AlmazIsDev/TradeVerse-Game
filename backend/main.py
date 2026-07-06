@@ -348,22 +348,24 @@ async def update_config(
 STARTING_BALANCE = 1000.0
 WARCOIN_USD = 50.0
 
-_LEADERBOARD_SORTS = {"networth", "profit", "cash", "stocks", "crypto", "assets", "company"}
+# Ключ сортировки → реальное имя поля в записи лидерборда (camelCase).
+# ВАЖНО: 'networth' маппится на 'netWorth' — иначе e[sort_key] бросал KeyError,
+# что и было причиной «ошибки подключения» в разделе «По капиталу».
+_LEADERBOARD_SORT_FIELD = {
+    "networth": "netWorth", "profit": "profit", "cash": "cash",
+    "stocks": "stocks", "crypto": "crypto", "assets": "assets", "company": "company",
+}
 
 
-@app.get("/api/leaderboard")
-async def get_leaderboard(
-    limit: int = Query(20, ge=1, le=100),
-    sort: str = Query("networth"),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Живой рейтинг игроков по чистой стоимости активов.
+# Кэш рассчитанного лидерборда (общий для всех сортировок — сортировка/срез
+# делаются на готовом списке). Тяжёлый обсчёт по всем игрокам не выполняется
+# на каждый запрос, что ускоряет загрузку любого лидерборда.
+_LB_CACHE: dict = {"ts": None, "entries": None}
+_LB_CACHE_TTL_S = 12
 
-    net worth = наличные + рыночная стоимость акций + рыночная стоимость крипты.
-    Поддерживает сортировку: networth | profit | cash | stocks | crypto.
-    """
-    sort_key = sort if sort in _LEADERBOARD_SORTS else "networth"
 
+async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
+    """Полный обсчёт капитала всех игроков (наличные + акции + крипта + активы + компания + WC)."""
     # Карты текущих цен.
     stock_prices: dict[str, float] = {}
     async for s in db.stocks.find({}, {"symbol": 1, "price": 1}):
@@ -426,12 +428,38 @@ async def get_leaderboard(
             "netWorth": net_worth,
             "profit": round(net_worth - STARTING_BALANCE, 2),
         })
-
-    entries.sort(key=lambda e: e[sort_key], reverse=True)
-    entries = entries[:limit]
-    for rank, entry in enumerate(entries, start=1):
-        entry["rank"] = rank
     return entries
+
+
+@app.get("/api/leaderboard")
+async def get_leaderboard(
+    limit: int = Query(20, ge=1, le=100),
+    sort: str = Query("networth"),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Живой рейтинг игроков по чистой стоимости активов.
+
+    net worth = наличные + акции + крипта + активы + компания + WarCoin.
+    Сортировки: networth | profit | cash | stocks | crypto | assets | company.
+    Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
+    """
+    sort_field = _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
+
+    now_ts = datetime.now(timezone.utc)
+    cached, cached_ts = _LB_CACHE["entries"], _LB_CACHE["ts"]
+    if cached is not None and isinstance(cached_ts, datetime) and (now_ts - cached_ts).total_seconds() < _LB_CACHE_TTL_S:
+        entries = cached
+    else:
+        entries = await _compute_leaderboard_entries(db)
+        _LB_CACHE["entries"] = entries
+        _LB_CACHE["ts"] = now_ts
+
+    ranked = sorted(entries, key=lambda e: e.get(sort_field, 0.0), reverse=True)[:limit]
+    # Копируем и проставляем ранг, не мутируя кэш.
+    out = []
+    for rank, entry in enumerate(ranked, start=1):
+        out.append({**entry, "rank": rank})
+    return out
 
 
 # ── Admin Endpoints ──────────────────────────────────────────────────────────

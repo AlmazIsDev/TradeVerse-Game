@@ -22,6 +22,7 @@ from ledger import (
     adjust_balance, record_transaction,
 )
 from market_data import MarketDataService
+from ws import broadcast
 
 router = APIRouter(prefix="/api/v2/stocks", tags=["stocks"])
 
@@ -206,9 +207,22 @@ async def maintain_stock_market(db: AsyncIOMotorDatabase):
     # Реальные котировки — ТОЛЬКО для настоящих тикеров (не пользовательских эмиссий).
     real_symbols = [s["symbol"] for s in stocks if not s.get("issuer")]
     await MarketDataService.refresh_stocks(db, real_symbols)
+    updates = []
     for s in await find_all_stocks(db):
+        old_price = float(s.get("price", 0))
         await MarketDataService.ensure_backfill(db, "stock", s["symbol"], s.get("price", 1) or 1, 0.02)
         await MarketDataService.record_snapshot(db, "stock", s["symbol"], s.get("price", 0))
+        new_price = float(s.get("price", 0))
+        if old_price != new_price and old_price > 0:
+            change = ((new_price - old_price) / old_price * 100)
+            updates.append({
+                "symbol": s["symbol"],
+                "price": new_price,
+                "changePercent": round(s.get("changePercent", 0.0) * 0.7 + change, 2),
+            })
+    # Рассылаем обновления по WebSocket
+    if updates:
+        await broadcast({"type": "market_update", "market": "stock", "updates": updates})
 
 
 @router.get("/portfolio")
@@ -401,6 +415,15 @@ async def trade_stock(
         "timestamp": datetime.now(timezone.utc),
     })
     await MarketDataService.record_snapshot(db, "stock", symbol, new_price, force=True)
+    # WebSocket-оповещение о сделке
+    change = ((new_price - price) / price * 100) if price else 0.0
+    await broadcast({
+        "type": "price_tick",
+        "market": "stock",
+        "symbol": symbol,
+        "price": new_price,
+        "changePercent": round(change, 2),
+    })
 
     return {
         "success": True,

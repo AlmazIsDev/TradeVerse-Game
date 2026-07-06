@@ -1,11 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+<<<<<<< HEAD
 import { fetchStocksV2, tradeStock } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Loader2 } from 'lucide-react'
+=======
+import { fetchStocksV2, tradeStock, fetchPortfolio, issueStock, payDividend } from '../services/api'
+import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import AssetDetail from './AssetDetail'
+import {
+  TrendingUp, TrendingDown, Briefcase, AlertTriangle, Check, X, PlusCircle, Gift,
+} from 'lucide-react'
+>>>>>>> origin/Marlow
 
-function StocksTab() {
+function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
+<<<<<<< HEAD
   const { data: stocks, loading, error } = useApiOnMount(fetchStocksV2)
   const [modalStock, setModalStock] = useState(null)
   const [modalAction, setModalAction] = useState(null)
@@ -146,14 +156,148 @@ function StocksTab() {
     if (n == null) return '0.00'
     return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
+=======
+  const [detailSymbol, setDetailSymbol] = useState(null)
+  const [stocks, setStocks] = useState([])
+  const [portfolio, setPortfolio] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [trade, setTrade] = useState(null)     // { ...stock, action }
+  const [qty, setQty] = useState('1')
+  const [feedback, setFeedback] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [issueModal, setIssueModal] = useState(false)
+  const [issueForm, setIssueForm] = useState({ name: '', symbol: '', price: '', totalShares: '1000000' })
+  const [dividend, setDividend] = useState(null)   // stock being paid dividends
+  const [perShare, setPerShare] = useState('')
+
+  const load = useCallback(async () => {
+    try {
+      const [mkt, pf] = await Promise.all([fetchStocksV2(), fetchPortfolio()])
+      setStocks(mkt)
+      setPortfolio(pf)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const openTrade = (stock, action) => {
+    setTrade({ ...stock, action })
+    setQty('1')
+    setFeedback(null)
+  }
+
+  const heldFor = (symbol) => portfolio.find(p => p.symbol === symbol)
+
+  const confirmTrade = async () => {
+    if (!trade) return
+    const q = Math.floor(Number(qty))
+    if (!Number.isFinite(q) || q < 1) {
+      setFeedback({ type: 'error', text: t('bank.invalidAmount') })
+      return
+    }
+    if (trade.action === 'buy' && q * trade.price > balance) {
+      setFeedback({ type: 'error', text: t('stocks.insufficientFunds') })
+      return
+    }
+    const held = heldFor(trade.symbol)
+    if (trade.action === 'sell' && (!held || held.quantity < q)) {
+      setFeedback({ type: 'error', text: t('stocks.insufficientShares') })
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await tradeStock(trade.symbol, trade.action, q)
+      onBalanceChange?.(res.balance)
+      setFeedback({ type: 'success', text: t('stocks.tradeSuccess') })
+      setRefreshKey(k => k + 1)
+      await load()
+      setTimeout(() => setTrade(null), 700)
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message || t('common.error') })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doIssue = async () => {
+    const totalShares = Math.floor(Number(issueForm.totalShares))
+    const price = Number(issueForm.price)
+    if (!issueForm.name.trim() || !issueForm.symbol.trim() || !(price > 0) || !(totalShares >= 1000)) {
+      setFeedback({ type: 'error', text: t('stocks.issueInvalid') })
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await issueStock({
+        name: issueForm.name.trim(),
+        symbol: issueForm.symbol.trim().toUpperCase(),
+        description: '',
+        totalShares,
+        price,
+      })
+      onBalanceChange?.(res.balance)
+      setIssueModal(false)
+      setIssueForm({ name: '', symbol: '', price: '', totalShares: '1000000' })
+      setRefreshKey(k => k + 1)
+      await load()
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doDividend = async () => {
+    if (!dividend) return
+    const per = Number(perShare)
+    if (!(per > 0)) return
+    setBusy(true)
+    try {
+      const res = await payDividend(dividend.symbol, per)
+      if (res.balance != null) onBalanceChange?.(res.balance)
+      setFeedback({ type: 'success', text: t('stocks.dividendPaid', { total: formatMoney(res.paid), holders: res.holders }) })
+      setDividend(null)
+      setPerShare('')
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (detailSymbol) {
+    return (
+      <AssetDetail
+        market="stock"
+        symbol={detailSymbol}
+        onBack={() => { setDetailSymbol(null); load() }}
+        balance={balance}
+        onBalanceChange={onBalanceChange}
+        onTraded={load}
+      />
+    )
+  }
+
+  const portfolioValue = portfolio.reduce((s, p) => s + (p.value || 0), 0)
+  const portfolioPnl = portfolio.reduce((s, p) => s + (p.pnl || 0), 0)
+>>>>>>> origin/Marlow
 
   if (loading) {
     return (
       <div className="stocks-tab">
         <h2 className="tab-title">{t('stocks.title')}</h2>
-        <div className="loading-state">
-          <div className="spinner" />
-          <p>{t('common.loading')}</p>
+        <div className="stocks-grid">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="stock-card skeleton" style={{ height: 180 }} />
+          ))}
         </div>
       </div>
     )
@@ -171,19 +315,9 @@ function StocksTab() {
     )
   }
 
-  if (!stocks || stocks.length === 0) {
-    return (
-      <div className="stocks-tab">
-        <h2 className="tab-title">{t('stocks.title')}</h2>
-        <div className="empty-state">
-          <p>{t('stocks.noData')}</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="stocks-tab">
+<<<<<<< HEAD
       <h2 className="tab-title">{t('stocks.title')}</h2>
       <div className="stocks-grid">
         {stocks.map(stock => {
@@ -233,11 +367,141 @@ function StocksTab() {
             </div>
           )
         })}
+=======
+      <div className="stocks-titlebar">
+        <h2 className="tab-title">{t('stocks.title')}</h2>
+        <button className="stocks-issue-btn" onClick={() => { setIssueModal(true); setFeedback(null) }}>
+          <PlusCircle size={16} /> {t('stocks.issue')}
+        </button>
+>>>>>>> origin/Marlow
       </div>
 
-      {modalStock && (
-        <div className="modal-overlay" onClick={closeModal}>
+      {feedback && !trade && !issueModal && !dividend && (
+        <div className={`transfer-feedback ${feedback.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
+          {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
+        </div>
+      )}
+
+      {/* Портфель */}
+      {portfolio.length > 0 && (
+        <div className="portfolio-panel">
+          <div className="portfolio-header">
+            <Briefcase size={18} className="icon" />
+            <h3>{t('stocks.portfolio')}</h3>
+            <span className="portfolio-total">
+              {t('stocks.portfolioValue')}: <strong>${formatMoney(portfolioValue)}</strong>
+              <span className={`portfolio-total-pnl ${portfolioPnl >= 0 ? 'up' : 'down'}`}>
+                ({portfolioPnl >= 0 ? '+' : '−'}{formatMoney(Math.abs(portfolioPnl))} $)
+              </span>
+            </span>
+          </div>
+          <div className="portfolio-list">
+            {portfolio.map(p => {
+              const up = p.pnl >= 0
+              return (
+                <div key={p.symbol} className="portfolio-item">
+                  <div className="portfolio-item-main">
+                    <span className="portfolio-symbol">{p.symbol}</span>
+                    <span className="portfolio-qty">{p.quantity} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
+                  </div>
+                  <div className="portfolio-item-values">
+                    <span className="portfolio-value">${formatMoney(p.value)}</span>
+                    <span className={`portfolio-pnl ${up ? 'up' : 'down'}`}>
+                      {up ? '+' : '−'}{formatMoney(Math.abs(p.pnl))} $
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Рынок */}
+      {(!stocks || stocks.length === 0) ? (
+        <div className="empty-state"><p>{t('stocks.noData')}</p></div>
+      ) : (
+        <div className="stocks-grid">
+          {stocks.map(stock => {
+            const isUp = (stock.change ?? 0) >= 0
+            const cp = stock.changePercent
+            return (
+              <div key={stock.id || stock.symbol} className={`stock-card clickable ${isUp ? 'stock-up' : 'stock-down'}`}
+                onClick={() => setDetailSymbol(stock.symbol)}>
+                <div className="stock-header">
+                  <div className="stock-company-info">
+                    <span className="stock-ticker">
+                      {stock.symbol}
+                      {stock.issuer && <span className="stock-issued-badge">{t('stocks.issued')}</span>}
+                    </span>
+                    <span className="stock-company-name">
+                      {stock.name}
+                      {stock.issuerName && <span className="stock-issuer"> · {stock.issuerName}</span>}
+                    </span>
+                  </div>
+                  {cp != null && cp !== 0 && (
+                    <span className={`stock-change ${isUp ? 'up' : 'down'}`}>
+                      {isUp ? <TrendingUp size={14} className="icon" /> : <TrendingDown size={14} className="icon" />}
+                      {Math.abs(cp).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+                <div className="stock-details">
+                  <div className="stock-price-row">
+                    <span className="stock-price-label">{t('stocks.price')}</span>
+                    <span className="stock-price-value">${formatMoney(stock.price)}</span>
+                  </div>
+                  {stock.heldQuantity > 0 && (
+                    <div className="stock-shares-row">
+                      <span className="stock-shares-label">{t('stocks.owned')}</span>
+                      <span className="stock-shares-value">{stock.heldQuantity.toLocaleString('ru-RU')}</span>
+                    </div>
+                  )}
+                  {stock.freeShares != null && (
+                    <div className="stock-shares-row">
+                      <span className="stock-shares-label">{t('common.freeShares')}</span>
+                      <span className="stock-shares-value">{stock.freeShares.toLocaleString('ru-RU')}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="stock-actions">
+                  <button className="stock-btn buy-btn" onClick={(e) => { e.stopPropagation(); openTrade(stock, 'buy') }}>
+                    {t('common.buy')}
+                  </button>
+                  <button
+                    className="stock-btn sell-btn"
+                    onClick={(e) => { e.stopPropagation(); openTrade(stock, 'sell') }}
+                    disabled={!stock.heldQuantity}
+                  >
+                    {t('common.sell')}
+                  </button>
+                  {stock.issuer && stock.issuer === currentUserId && (
+                    <button
+                      className="stock-btn dividend-btn"
+                      title={t('stocks.payDividend')}
+                      onClick={(e) => { e.stopPropagation(); setDividend(stock); setPerShare(''); setFeedback(null) }}
+                    >
+                      <Gift size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* История сделок */}
+      <div className="stocks-history">
+        <h3>{t('bank.history')}</h3>
+        <TransactionsPanel category="trade" refreshKey={refreshKey} />
+      </div>
+
+      {/* Модалка сделки */}
+      {trade && (
+        <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
+<<<<<<< HEAD
             <h3>{modalAction === 'buy' ? t('stocks.buyShares', { ticker: modalStock.symbol }) : t('stocks.sellShares', { ticker: modalStock.symbol })}</h3>
             <p className="modal-company">{modalStock.name}</p>
             <p className="modal-price"><DollarSign size={16} className="icon" /> {t('stocks.pricePerShare')}: ${formatMoney(modalStock.price)}</p>
@@ -302,6 +566,109 @@ function StocksTab() {
                   {t('common.close')}
                 </button>
               )}
+=======
+            <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
+            <h3>
+              {trade.action === 'buy'
+                ? t('stocks.buyShares', { ticker: trade.symbol })
+                : t('stocks.sellShares', { ticker: trade.symbol })}
+            </h3>
+            <p className="modal-company">{trade.name}</p>
+            <p className="modal-price">{t('stocks.pricePerShare')}: ${formatMoney(trade.price)}</p>
+
+            <div className="modal-quantity">
+              <label>{t('common.quantity')}:</label>
+              <input
+                type="number" min="1" step="1" value={qty} autoFocus
+                onChange={e => setQty(e.target.value)}
+              />
+            </div>
+
+            <p className="modal-total">
+              {t('common.total')}: <strong>${formatMoney((Math.floor(Number(qty)) || 0) * trade.price)}</strong>
+            </p>
+
+            {feedback && (
+              <div className={`transfer-feedback ${feedback.type}`}>
+                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}
+                <span>{feedback.text}</span>
+              </div>
+            )}
+
+            <div className="modal-buttons">
+              <button
+                className={`stock-btn ${trade.action === 'buy' ? 'buy-btn' : 'sell-btn'}`}
+                onClick={confirmTrade}
+                disabled={busy}
+              >
+                {busy ? t('bank.processing') : t('common.confirm')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setTrade(null)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка эмиссии акции */}
+      {issueModal && (
+        <div className="modal-overlay" onClick={() => !busy && setIssueModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setIssueModal(false)}><X size={18} /></button>
+            <h3>{t('stocks.issueTitle')}</h3>
+            <p className="modal-price">{t('stocks.issueFee')}</p>
+            <div className="issue-form">
+              <input placeholder={t('stocks.issueName')} value={issueForm.name} maxLength={60}
+                onChange={e => setIssueForm({ ...issueForm, name: e.target.value })} />
+              <input placeholder={t('stocks.issueTicker')} value={issueForm.symbol} maxLength={6}
+                onChange={e => setIssueForm({ ...issueForm, symbol: e.target.value.toUpperCase() })} />
+              <input type="number" min="0.01" step="0.01" placeholder={t('stocks.issuePrice')} value={issueForm.price}
+                onChange={e => setIssueForm({ ...issueForm, price: e.target.value })} />
+              <input type="number" min="1000" step="1000" placeholder={t('stocks.issueShares')} value={issueForm.totalShares}
+                onChange={e => setIssueForm({ ...issueForm, totalShares: e.target.value })} />
+            </div>
+            {feedback && (
+              <div className={`transfer-feedback ${feedback.type}`}>
+                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
+              </div>
+            )}
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={doIssue} disabled={busy}>
+                {busy ? t('bank.processing') : t('stocks.issueConfirm')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setIssueModal(false)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка дивидендов */}
+      {dividend && (
+        <div className="modal-overlay" onClick={() => !busy && setDividend(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setDividend(null)}><X size={18} /></button>
+            <h3>{t('stocks.payDividend')}: {dividend.symbol}</h3>
+            <div className="modal-quantity">
+              <label>{t('stocks.perShare')}:</label>
+              <input type="number" min="0" step="0.01" value={perShare} autoFocus
+                onChange={e => setPerShare(e.target.value)} />
+            </div>
+            {feedback && (
+              <div className={`transfer-feedback ${feedback.type}`}>
+                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
+              </div>
+            )}
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={doDividend} disabled={busy || !(Number(perShare) > 0)}>
+                {busy ? t('bank.processing') : t('common.confirm')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setDividend(null)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+>>>>>>> origin/Marlow
             </div>
           </div>
         </div>

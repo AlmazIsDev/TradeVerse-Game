@@ -1,47 +1,129 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import AccountTab from './AccountTab'
 import StocksTab from './StocksTab'
 import BankTab from './BankTab'
+import CryptoTab from './CryptoTab'
 import ShopTab from './ShopTab'
+import LeaderboardTab from './LeaderboardTab'
+import MarketTab from './MarketTab'
+import MyAssetsTab from './MyAssetsTab'
+import MyCompanyTab from './MyCompanyTab'
+import CityRoofTab from './CityRoofTab'
+import MiningTab from './MiningTab'
 import AdminPanel from './AdminPanel'
-import { Castle, Coins, Home, Building, Briefcase, Store, Trophy, Shield } from 'lucide-react'
+import { fetchCurrentUser, API_BASE_URL } from '../services/api'
+import { Shield } from 'lucide-react'
+
+const STORAGE_KEY = 'tradeverse_user'
 
 function Dashboard({ user, onLogout }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('account')
   const [showAdmin, setShowAdmin] = useState(false)
+  const [balance, setBalance] = useState(user?.balance ?? 0)
+  const [rtKey, setRtKey] = useState(0)
 
   const isAdmin = user?.role === 'admin'
+
+  // Realtime через WebSocket: обновляет баланс и уведомления без перезагрузки.
+  // Polling в Header остаётся резервным механизмом, если WS недоступен.
+  useEffect(() => {
+    let socket
+    let ping
+    let debounce
+    // Всплески событий (напр. серия тиков майнинга) схлопываем в один запрос
+    // за баланс/обновление — иначе fetchCurrentUser бил бы на каждое сообщение.
+    const scheduleSync = () => {
+      if (debounce) return
+      debounce = setTimeout(() => {
+        debounce = null
+        fetchCurrentUser().then(d => { if (d?.balance != null) setBalance(d.balance) }).catch(() => {})
+        setRtKey(k => k + 1)
+      }, 1200)
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      const token = stored.token
+      if (!token) return undefined
+      const url = API_BASE_URL.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(token)
+      socket = new WebSocket(url)
+      socket.onmessage = (ev) => {
+        let data = null
+        try { data = JSON.parse(ev.data) } catch { /* ignore */ }
+        // Событие баланса применяем мгновенно (без сетевого запроса) — верхняя
+        // панель обновляется сразу при любом изменении баланса.
+        if (data?.type === 'balance' && data.balance != null) {
+          handleBalanceChange(data.balance)
+        } else {
+          scheduleSync()
+        }
+        // Ретрансляция события другим вкладкам (напр. MiningTab слушает 'tv:realtime').
+        if (data) { try { window.dispatchEvent(new CustomEvent('tv:realtime', { detail: data })) } catch { /* ignore */ } }
+      }
+      ping = setInterval(() => {
+        try { if (socket.readyState === 1) socket.send('ping') } catch { /* ignore */ }
+      }, 25000)
+    } catch { /* ignore — останется polling */ }
+    return () => {
+      try { clearInterval(ping); clearTimeout(debounce); if (socket) socket.close() } catch { /* ignore */ }
+    }
+  }, [])
+
+  // Синхронизируем баланс с сервером при монтировании (localStorage может устареть)
+  useEffect(() => {
+    let cancelled = false
+    fetchCurrentUser()
+      .then(data => {
+        if (cancelled || data?.balance == null) return
+        setBalance(data.balance)
+        try {
+          const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, balance: data.balance }))
+        } catch { /* ignore */ }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const handleBalanceChange = useCallback((newBalance) => {
+    setBalance(newBalance)
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, balance: newBalance }))
+    } catch { /* ignore */ }
+  }, [])
 
   const renderContent = () => {
     switch (activeTab) {
       case 'account':
-        return <AccountTab userId={user?.id} balance={user?.balance} />
+        return <AccountTab balance={balance} />
       case 'stocks':
-        return <StocksTab />
+        return <StocksTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'bank':
-        return <BankTab userId={user?.id} />
+        return <BankTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'shop':
-        return <ShopTab />
+        return <ShopTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cityroof':
-        return <PlaceholderTab title={t('nav.cityroof')} icon={Castle} />
+        return <CityRoofTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'mining':
+        return <MiningTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'crypto':
-        return <PlaceholderTab title={t('nav.crypto')} icon={Coins} />
+        return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'realestate':
-        return <PlaceholderTab title={t('nav.realestate')} icon={Home} />
+        return <MarketTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'myhomes':
-        return <PlaceholderTab title={t('nav.myhomes')} icon={Building} />
+        return <MyAssetsTab defaultType="realestate" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mybusiness':
-        return <PlaceholderTab title={t('nav.mybusiness')} icon={Briefcase} />
+        return <MyAssetsTab defaultType="business" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':
-        return <PlaceholderTab title={t('nav.mycompany')} icon={Store} />
+        return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'leaderboard':
-        return <PlaceholderTab title={t('nav.leaderboard')} icon={Trophy} />
+        return <LeaderboardTab currentUserId={user?.id} />
       default:
-        return <AccountTab userId={user?.id} balance={user?.balance} />
+        return <AccountTab balance={balance} />
     }
   }
 
@@ -49,7 +131,7 @@ function Dashboard({ user, onLogout }) {
     <div className="dashboard">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={user} />
       <div className="dashboard-main">
-        <Header username={user?.username} onLogout={onLogout} />
+        <Header username={user?.username} balance={balance} onLogout={onLogout} rtKey={rtKey} />
         <div className="dashboard-content">
           {renderContent()}
         </div>
@@ -64,19 +146,6 @@ function Dashboard({ user, onLogout }) {
         </button>
       )}
       {showAdmin && <AdminPanel user={user} onClose={() => setShowAdmin(false)} />}
-    </div>
-  )
-}
-
-function PlaceholderTab({ title, icon: Icon }) {
-  const { t } = useTranslation()
-  return (
-    <div className="placeholder-tab">
-      <h2 className="tab-title">{title}</h2>
-      <div className="placeholder-content">
-        <span className="placeholder-icon"><Icon size={48} /></span>
-        <p>{t('dashboard.comingSoon', { title })}</p>
-      </div>
     </div>
   )
 }

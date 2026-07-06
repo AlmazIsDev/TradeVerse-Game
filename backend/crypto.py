@@ -20,6 +20,7 @@ from ledger import (
 )
 from market_data import MarketDataService
 from notifications import push_notification
+from ws import broadcast
 
 router = APIRouter(prefix="/api/crypto", tags=["crypto"])
 
@@ -195,6 +196,7 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
     mode = await MarketDataService.refresh_crypto(db)
     fresh_real = (mode == "live") and not was_throttled
     now = datetime.now(timezone.utc)
+    updates = []
     async for coin in db.crypto_assets.find({}):
         symbol = coin["symbol"]
         market_price = float(coin.get("market_price") or coin.get("price") or coin.get("base_price") or 1)
@@ -232,8 +234,20 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
         })
         await db.crypto_assets.update_one({"_id": coin["_id"]}, {"$set": set_fields})
         await MarketDataService.record_snapshot(db, "crypto", symbol, display)
+        # Собираем обновления для WebSocket
+        old_price = float(coin.get("price", display))
+        if old_price != display:
+            change = ((display - old_price) / old_price * 100) if old_price else 0.0
+            updates.append({
+                "symbol": symbol,
+                "price": display,
+                "change24h": round(coin.get("change24h", 0.0) * 0.7 + change, 2),
+            })
     # Сбрасываем кэш чтения, чтобы следующий запрос увидел свежие цены.
     _MARKET_CACHE["ts"] = None
+    # Рассылаем обновления по WebSocket
+    if updates:
+        await broadcast({"type": "market_update", "market": "crypto", "updates": updates})
 
 
 async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float):
@@ -253,12 +267,23 @@ async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, 
     demand *= (1 + frac) if side == "buy" else (1 - frac)
     demand = max(DEMAND_MIN, min(DEMAND_MAX, demand))
     display = round(market_price * demand, 6)
+    old_price = float(coin.get("price", display))
     await db.crypto_assets.update_one(
         {"_id": coin["_id"]},
         {"$set": {"demand": round(demand, 4), "price": display}},
     )
     await MarketDataService.record_snapshot(db, "crypto", symbol, display, force=True)
     _MARKET_CACHE["ts"] = None
+    # WebSocket-оповещение о резком изменении цены от сделки
+    if old_price != display:
+        change = ((display - old_price) / old_price * 100) if old_price else 0.0
+        await broadcast({
+            "type": "price_tick",
+            "market": "crypto",
+            "symbol": symbol,
+            "price": display,
+            "change24h": round(coin.get("change24h", 0.0) * 0.7 + change, 2),
+        })
 
 
 async def _price_of(db: AsyncIOMotorDatabase, symbol: str) -> float | None:

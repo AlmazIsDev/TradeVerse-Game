@@ -70,6 +70,20 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   useEffect(() => { loadAsset() }, [loadAsset])
   useEffect(() => { loadHistory(timeframe) }, [loadHistory, timeframe])
 
+  // WebSocket: реальное обновление цены актива
+  useEffect(() => {
+    const handleRealtime = (event) => {
+      const data = event.detail
+      const marketType = market === 'stock' ? 'stock' : 'crypto'
+      if (data.type === 'price_tick' && data.market === marketType && data.symbol === symbol) {
+        setAsset(prev => prev ? { ...prev, price: data.price, changePercent: data.changePercent } : prev)
+      }
+    }
+    
+    window.addEventListener('tv:realtime', handleRealtime)
+    return () => window.removeEventListener('tv:realtime', handleRealtime)
+  }, [market, symbol])
+
   const doFavorite = async () => {
     try {
       const res = await toggleFavorite(market, symbol)

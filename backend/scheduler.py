@@ -17,6 +17,7 @@ import assets
 import mining
 import crypto
 import stocks
+from ws import broadcast
 
 logger = logging.getLogger("tradeverse.scheduler")
 

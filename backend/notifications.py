@@ -35,6 +35,13 @@ async def push_notification(
         "created_at": datetime.now(timezone.utc),
     }
     result = await db.notifications.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    # Realtime-доставка через WebSocket (polling остаётся резервом).
+    try:
+        from ws import push_to_user
+        await push_to_user(user_id, {"type": "notification", "notification": _serialize(doc)})
+    except Exception:
+        pass
     return str(result.inserted_id)
 
 

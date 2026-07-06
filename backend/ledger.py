@@ -25,6 +25,7 @@ CAT_COMPANY = "company"
 CAT_CITYROOF = "cityroof"
 CAT_DIVIDEND = "dividend"
 CAT_SHOP = "shop"
+CAT_MINING = "mining"
 CAT_SYSTEM = "system"
 
 VALID_DIRECTIONS = {INCOME, EXPENSE}

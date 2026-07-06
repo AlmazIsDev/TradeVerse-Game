@@ -35,6 +35,12 @@ from company import router as company_router
 from cityroof import router as cityroof_router
 from notifications import router as notifications_router
 from market_data import router as market_router
+from econ import router as econ_router
+from market_events import router as events_router
+from shop import router as shop_router
+from mining import router as mining_router
+from ws import router as ws_router
+from scheduler import start_scheduler, stop_scheduler
 
 from database import (
     get_db,
@@ -83,17 +89,28 @@ async def lifespan(app: FastAPI):
     await db.stock_events.create_index("symbol")
     await db.stock_events.create_index("timestamp")
     await db.user_assets.create_index("userId")
+    await db.asset_market.create_index("slug", unique=True)
     await db.companies.create_index("ownerId", unique=True)
     await db.company_members.create_index([("companyId", 1), ("userId", 1)])
     await db.company_members.create_index("userId")
     await db.company_invites.create_index("toUserId")
+    await db.company_applications.create_index("ownerId")
+    await db.company_applications.create_index("applicantId")
     await db.notifications.create_index([("userId", 1), ("created_at", -1)])
     await db.price_history.create_index([("market", 1), ("symbol", 1), ("ts", 1)])
     await db.user_favorites.create_index([("userId", 1), ("market", 1), ("symbol", 1)])
+    await db.market_meta.create_index("market", unique=True)
+    await db.market_events.create_index("active")
+    await db.user_hardware.create_index("userId")
+    await db.user_hardware.create_index("farmId")
+    await db.mining_farms.create_index("userId")
+    await db.mining_farms.create_index("status")
     await db.cityroof_sessions.create_index("attackerId")
     await db.cityroof_seasons.create_index("closed_at")
     await init_db()
+    start_scheduler()   # единый фоновый планировщик всех систем
     yield
+    await stop_scheduler()
 
 
 app = FastAPI(title="TradeVerse API", version="1.0.0", lifespan=lifespan)
@@ -116,6 +133,11 @@ app.include_router(company_router)
 app.include_router(cityroof_router)
 app.include_router(notifications_router)
 app.include_router(market_router)
+app.include_router(econ_router)
+app.include_router(events_router)
+app.include_router(shop_router)
+app.include_router(mining_router)
+app.include_router(ws_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────

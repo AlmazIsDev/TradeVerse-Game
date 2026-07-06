@@ -22,6 +22,7 @@ from ledger import (
 )
 from assets import company_income_per_hour, list_company_assets
 from notifications import push_notification
+from econ import get_econ
 
 router = APIRouter(prefix="/api/company", tags=["company"])
 
@@ -366,6 +367,144 @@ async def fire_member(
     return {"company": await _serialize(db, company)}
 
 
+# ── Companies directory + applications (заявки игроков) ──────────────────────
+
+
+@router.get("/list")
+async def list_companies(
+    search: str = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Каталог компаний: поиск, число сотрудников, капитал. Для подачи заявок."""
+    uid = str(current_user["_id"])
+    query: dict = {}
+    if search:
+        query["name"] = {"$regex": search, "$options": "i"}
+    out = []
+    async for c in db.companies.find(query).limit(60):
+        cid = str(c["_id"])
+        members = await db.company_members.count_documents({"companyId": cid})
+        assets = await list_company_assets(db, cid)
+        capital = round(c.get("budget", 0.0) + sum(a["value"] for a in assets), 2)
+        owner = await db.users.find_one({"_id": ObjectId(c["ownerId"])}, {"username": 1}) if ObjectId.is_valid(c["ownerId"]) else None
+        applied = await db.company_applications.find_one(
+            {"companyId": cid, "applicantId": uid, "status": "pending"}
+        ) is not None
+        out.append({
+            "id": cid, "name": c["name"],
+            "ownerName": owner.get("username") if owner else "—",
+            "memberCount": members, "assetCount": len(assets),
+            "capital": capital, "revenuePerHour": await company_income_per_hour(db, cid),
+            "isMine": c.get("ownerId") == uid, "applied": applied,
+        })
+    out.sort(key=lambda x: x["capital"], reverse=True)
+    return out
+
+
+@router.post("/apply/{company_id}")
+async def apply_to_company(
+    company_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Подать заявку на вступление в компанию (руководитель одобряет/отклоняет)."""
+    uid = str(current_user["_id"])
+    if not ObjectId.is_valid(company_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
+    company = await db.companies.find_one({"_id": ObjectId(company_id)})
+    if not company:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Компания не найдена")
+    if company.get("ownerId") == uid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Это ваша компания")
+    if await db.company_members.find_one({"userId": uid}):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Вы уже работаете в компании")
+    if await db.company_applications.find_one({"companyId": company_id, "applicantId": uid, "status": "pending"}):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Заявка уже отправлена")
+
+    result = await db.company_applications.insert_one({
+        "companyId": company_id, "companyName": company["name"],
+        "ownerId": company["ownerId"], "applicantId": uid,
+        "applicantName": current_user.get("username"),
+        "status": "pending", "created_at": _now(),
+    })
+    await push_notification(
+        db, company["ownerId"], "company_application",
+        f"Заявка в «{company['name']}»",
+        f"{current_user.get('username')} хочет вступить в вашу компанию.",
+        data={"applicationId": str(result.inserted_id), "applicantName": current_user.get("username")},
+    )
+    return {"ok": True}
+
+
+@router.get("/applications")
+async def my_applications(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Входящие заявки в компанию текущего игрока (он — руководитель)."""
+    company = await _my_company(db, str(current_user["_id"]))
+    if not company:
+        return []
+    out = []
+    async for a in db.company_applications.find({"companyId": str(company["_id"]), "status": "pending"}).sort("created_at", -1):
+        out.append({"id": str(a["_id"]), "applicantName": a.get("applicantName")})
+    return out
+
+
+async def _load_application(db, app_id, owner_id):
+    if not ObjectId.is_valid(app_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
+    app = await db.company_applications.find_one({"_id": ObjectId(app_id)})
+    if not app or app.get("ownerId") != owner_id or app.get("status") != "pending":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Заявка не найдена")
+    return app
+
+
+@router.post("/applications/{app_id}/accept")
+async def accept_application(
+    app_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Принять заявку — игрок становится сотрудником (базовая зарплата, редактируется)."""
+    owner_id = str(current_user["_id"])
+    company = await _require_company(db, owner_id)
+    app = await _load_application(db, app_id, owner_id)
+    applicant_id = app["applicantId"]
+    if await db.company_members.find_one({"userId": applicant_id}):
+        await db.company_applications.update_one({"_id": app["_id"]}, {"$set": {"status": "declined"}})
+        raise HTTPException(status.HTTP_409_CONFLICT, "Игрок уже в другой компании")
+    await db.company_members.insert_one({
+        "companyId": str(company["_id"]), "userId": applicant_id,
+        "username": app.get("applicantName"), "role": "worker",
+        "salary": 100.0, "joined_at": _now(),
+    })
+    await db.company_applications.update_one({"_id": app["_id"]}, {"$set": {"status": "accepted"}})
+    await push_notification(
+        db, applicant_id, "company", "Заявка одобрена",
+        f"Вы приняты в «{company['name']}».", data={"companyId": str(company["_id"])},
+    )
+    return {"ok": True}
+
+
+@router.post("/applications/{app_id}/decline")
+async def decline_application(
+    app_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    owner_id = str(current_user["_id"])
+    await _require_company(db, owner_id)
+    app = await _load_application(db, app_id, owner_id)
+    await db.company_applications.update_one({"_id": app["_id"]}, {"$set": {"status": "declined"}})
+    await push_notification(
+        db, app["applicantId"], "company", "Заявка отклонена",
+        f"Заявка в «{app.get('companyName')}» отклонена.",
+    )
+    return {"ok": True}
+
+
 # ── Finance ──────────────────────────────────────────────────────────────────
 
 
@@ -385,7 +524,8 @@ async def collect_profit(
 
     hours = _hours_since(company)
     revenue_per_h = await company_income_per_hour(db, cid)
-    gross = round(revenue_per_h * hours, 2)
+    econ = await get_econ(db)
+    gross = round(revenue_per_h * hours * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
 
     members = await _members(db, cid)
     payroll_per_h = sum(m.get("salary", 0) for m in members)

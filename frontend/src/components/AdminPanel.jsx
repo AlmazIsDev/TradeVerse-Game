@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
+import EconomyAdmin from './EconomyAdmin'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity
 } from 'lucide-react'
 
 function Tooltip({ text }) {
@@ -325,6 +326,7 @@ function AdminPanel({ user, onClose }) {
     { id: 'stocks', label: t('admin.stocks'), icon: Package },
     { id: 'users', label: t('admin.users'), icon: Users },
     { id: 'transactions', label: t('admin.transactions'), icon: ArrowLeftRight },
+    { id: 'economy', label: t('econ.tab'), icon: Activity },
     { id: 'config', label: t('admin.config'), icon: Settings },
   ]
 
@@ -353,7 +355,9 @@ function AdminPanel({ user, onClose }) {
       </div>
 
       <div className="admin-content">
-        {loading && <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>}
+        {loading && activeSection !== 'economy' && <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>}
+
+        {activeSection === 'economy' && <EconomyAdmin />}
 
         {!loading && activeSection === 'stocks' && (
           <div>

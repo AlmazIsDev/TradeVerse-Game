@@ -44,13 +44,13 @@ const GPU_SUBSECTIONS = [
   },
 ]
 
-function ShopTab() {
+function ShopTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [selectedSection, setSelectedSection] = useState(null)
   const [selectedSubsection, setSelectedSubsection] = useState(null)
 
   if (selectedSection && selectedSection.id === 'gpu' && selectedSubsection && selectedSubsection.id === 'gpu-cards') {
-    return <GpuShop onBack={() => setSelectedSubsection(null)} />
+    return <GpuShop onBack={() => setSelectedSubsection(null)} balance={balance} onBalanceChange={onBalanceChange} />
   }
 
   if (selectedSection && selectedSection.id === 'gpu' && selectedSubsection && selectedSubsection.id === 'gpu-cpus') {

@@ -179,6 +179,10 @@ async def list_stocks(
 ):
     """Список акций с рыночными данными и позицией текущего игрока."""
     stocks = await find_all_stocks(db)
+    # Реальные котировки запрашиваем ТОЛЬКО для настоящих тикеров (не пользовательских эмиссий).
+    real_symbols = [s["symbol"] for s in stocks if not s.get("issuer")]
+    await MarketDataService.refresh_stocks(db, real_symbols)
+    stocks = await find_all_stocks(db)
     holdings = await _holdings_map(db, str(current_user["_id"]))
     out = []
     for s in stocks:

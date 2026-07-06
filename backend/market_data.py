@@ -10,6 +10,8 @@
 Также здесь живёт роутер /api/market/* (история, детальная карточка актива)
 и /api/favorites/* (избранное игрока).
 """
+import logging
+import os
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -20,12 +22,26 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import get_db
+from providers import CoinGeckoProvider, StockProvider
+
+logger = logging.getLogger("tradeverse.market")
 
 router = APIRouter(prefix="/api", tags=["market"])
 
 MARKET_STOCK = "stock"
 MARKET_CRYPTO = "crypto"
 VALID_MARKETS = {MARKET_STOCK, MARKET_CRYPTO}
+
+# Кэширование: как часто обновлять цены из внешнего API (сек).
+REFRESH_INTERVAL_S = int(os.getenv("MARKET_REFRESH_SECONDS", "120"))
+CRYPTO_COUNT = int(os.getenv("MARKET_CRYPTO_COUNT", "50"))
+
+_COIN_COLORS = ["#f7931a", "#627eea", "#22c55e", "#eab308", "#ec4899",
+                "#8b5cf6", "#06b6d4", "#64748b", "#f43f5e", "#10b981"]
+
+
+def _coin_color(symbol: str) -> str:
+    return _COIN_COLORS[sum(ord(c) for c in symbol) % len(_COIN_COLORS)]
 
 # interval → (lookback, bucket_seconds).  None bucket = адаптивный (для "all").
 INTERVALS: dict[str, tuple[timedelta | None, int | None]] = {
@@ -161,6 +177,96 @@ class MarketDataService:
             },
         }
 
+    # ── Live data refresh (кэш + fallback) ────────────────────────────────────
+
+    @staticmethod
+    async def _throttled(db, market: str) -> bool:
+        meta = await db.market_meta.find_one({"market": market})
+        last = meta.get("last_refresh") if meta else None
+        return isinstance(last, datetime) and (_now() - _aware(last)).total_seconds() < REFRESH_INTERVAL_S
+
+    @staticmethod
+    async def _mode(db, market: str) -> str:
+        meta = await db.market_meta.find_one({"market": market})
+        return (meta or {}).get("mode", "sim")
+
+    @staticmethod
+    async def _set_meta(db, market: str, mode: str):
+        await db.market_meta.update_one(
+            {"market": market},
+            {"$set": {"last_refresh": _now(), "mode": mode}},
+            upsert=True,
+        )
+
+    @staticmethod
+    async def refresh_crypto(db) -> str:
+        """Обновляет крипторынок реальными данными CoinGecko (раз в REFRESH_INTERVAL_S).
+
+        Возвращает 'live' при успехе, 'sim' — если API недоступен (тогда цены
+        остаются последними сохранёнными / двигаются симуляцией как fallback).
+        """
+        if await MarketDataService._throttled(db, "crypto"):
+            return await MarketDataService._mode(db, "crypto")
+        try:
+            markets = await CoinGeckoProvider().get_markets(per_page=CRYPTO_COUNT)
+            if not markets:
+                raise RuntimeError("empty markets")
+            for m in markets:
+                await db.crypto_assets.update_one(
+                    {"symbol": m["symbol"]},
+                    {"$set": {
+                        "symbol": m["symbol"], "name": m["name"], "image": m.get("image"),
+                        "coingeckoId": m.get("coingeckoId"), "color": _coin_color(m["symbol"]),
+                        "price": round(m["price"], 6), "change24h": round(m["change24h"], 2),
+                        "marketCap": m["marketCap"], "volume24h": m["volume24h"],
+                        "supply": m["supply"], "ath": m["ath"], "atl": m["atl"],
+                        "source": "coingecko", "updated_at": _now(),
+                    }},
+                    upsert=True,
+                )
+                await MarketDataService.record_snapshot(db, "crypto", m["symbol"], m["price"], force=True)
+            await MarketDataService._set_meta(db, "crypto", "live")
+            logger.info("CoinGecko: обновлено %d монет", len(markets))
+            return "live"
+        except Exception as exc:
+            logger.warning("CoinGecko недоступен (%s) — используются сохранённые данные", exc)
+            await MarketDataService._set_meta(db, "crypto", "sim")
+            return "sim"
+
+    @staticmethod
+    async def refresh_stocks(db, symbols: list[str]) -> str:
+        """Обновляет котировки акций реальными данными (Finnhub/Twelve Data)."""
+        if not symbols:
+            return "sim"
+        if await MarketDataService._throttled(db, "stock"):
+            return await MarketDataService._mode(db, "stock")
+        provider = StockProvider()
+        if not provider.available:
+            await MarketDataService._set_meta(db, "stock", "sim")
+            return "sim"
+        try:
+            quotes = await provider.get_quotes(symbols)
+            if not quotes:
+                raise RuntimeError("no quotes")
+            for sym, q in quotes.items():
+                await db.stocks.update_one(
+                    {"symbol": sym},
+                    {"$set": {
+                        "price": round(q["price"], 2),
+                        "change": round(q["change"], 2),
+                        "changePercent": round(q["changePercent"], 2),
+                        "source": provider.source, "updated_at": _now(),
+                    }},
+                )
+                await MarketDataService.record_snapshot(db, "stock", sym, q["price"], force=True)
+            await MarketDataService._set_meta(db, "stock", "live")
+            logger.info("StockProvider(%s): обновлено %d тикеров", provider.source, len(quotes))
+            return "live"
+        except Exception as exc:
+            logger.warning("StockProvider недоступен (%s) — используются сохранённые данные", exc)
+            await MarketDataService._set_meta(db, "stock", "sim")
+            return "sim"
+
 
 # ── History endpoint ─────────────────────────────────────────────────────────
 
@@ -233,6 +339,7 @@ async def market_asset(
         info = {
             "market": market, "symbol": symbol, "name": stock.get("name"),
             "logo": symbol[:1], "color": "#6366f1",
+            "source": stock.get("source", "sim"),
             "sector": meta.get("sector") or ("Пользовательская эмиссия" if stock.get("issuer") else "—"),
             "description": stock.get("description") or meta.get("description") or "",
             "issuerName": stock.get("issuer_name"),
@@ -254,7 +361,8 @@ async def market_asset(
         held = await db.crypto_holdings.find_one({"userId": user_id, "symbol": symbol})
         info = {
             "market": market, "symbol": symbol, "name": coin.get("name"),
-            "logo": symbol[:2], "color": coin.get("color", "#6366f1"),
+            "logo": symbol[:2], "image": coin.get("image"), "color": coin.get("color", "#6366f1"),
+            "source": coin.get("source", "sim"),
             "sector": "Криптовалюта",
             "description": coin.get("description") or "",
             "price": price,

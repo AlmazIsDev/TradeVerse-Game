@@ -1260,6 +1260,184 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
 .mc-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; }
 .mining-hint { font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-sm); }
 
+/* ===================== АДМИН-ПАНЕЛЬ — современный редизайн ===================== */
+.admin-panel-modern .admin-header h2 { display: flex; align-items: center; gap: 9px; }
+.admin-panel-modern .admin-body { flex: 1; display: flex; min-height: 0; }
+.admin-sidebar {
+  flex: 0 0 220px; display: flex; flex-direction: column; gap: 4px;
+  padding: var(--spacing-md); border-right: 1px solid rgba(255,255,255,0.06);
+  overflow-y: auto;
+}
+.admin-nav-item {
+  display: flex; align-items: center; gap: 11px; padding: 11px 14px; width: 100%;
+  border: none; border-radius: var(--radius-md); background: transparent; cursor: pointer;
+  color: var(--color-text-secondary); font-size: 14px; font-weight: 600; font-family: var(--font-primary);
+  text-align: left; transition: background .15s, color .15s;
+}
+.admin-nav-item:hover { background: rgba(255,255,255,0.05); color: var(--color-text-primary); }
+.admin-nav-item.active { background: rgba(99,102,241,0.15); color: var(--color-accent-hover); }
+.admin-panel-modern .admin-content { flex: 1; min-width: 0; }
+
+.admin-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); margin-bottom: var(--spacing-md); flex-wrap: wrap; }
+.admin-toolbar .tx-search { flex: 1; max-width: 320px; }
+.admin-count { font-size: 13px; color: var(--color-text-secondary); font-weight: 600; }
+
+.admin-panel-modern .admin-user-item,
+.admin-panel-modern .admin-stock-item,
+.admin-panel-modern .admin-tx-item,
+.admin-panel-modern .admin-config-item {
+  transition: border-color .15s, transform .12s, background .15s;
+}
+.admin-panel-modern .admin-user-item:hover,
+.admin-panel-modern .admin-stock-item:hover,
+.admin-panel-modern .admin-tx-item:hover { border-color: rgba(99,102,241,0.28); transform: translateX(2px); }
+
+@media (max-width: 720px) {
+  .admin-panel-modern .admin-body { flex-direction: column; }
+  .admin-sidebar { flex: 0 0 auto; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .admin-nav-item span { display: none; }
+}
+
+/* ===================== КОМПАНИЯ — анимации и полировка ===================== */
+@keyframes tvFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes tvFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.company-tab .asset-summary { animation: tvFadeIn .35s ease both; }
+.company-tab .asset-summary-card { animation: tvFadeUp .45s cubic-bezier(.22,1,.36,1) both; transition: transform .15s, box-shadow .15s, border-color .15s; }
+.company-tab .asset-summary-card:nth-child(2) { animation-delay: .05s; }
+.company-tab .asset-summary-card:nth-child(3) { animation-delay: .1s; }
+.company-tab .asset-summary-card:nth-child(4) { animation-delay: .15s; }
+.company-tab .asset-summary-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: rgba(99,102,241,0.35); }
+.company-tab .company-section { animation: tvFadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+.company-tab .company-actions .asset-act { transition: transform .12s, filter .12s; }
+.company-tab .company-actions .asset-act:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+.company-emp { transition: background .15s, transform .15s; }
+.company-emp:hover { background: rgba(255,255,255,0.03); transform: translateX(2px); }
+.company-browse-item { transition: border-color .15s, transform .15s; }
+.company-browse-item:hover { transform: translateY(-1px); }
+
+/* ===================== КРИПТА — двухколоночный интерфейс ===================== */
+.crypto-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--spacing-lg); align-items: start; }
+@media (max-width: 960px) { .crypto-layout { grid-template-columns: 1fr; } }
+.crypto-col-main, .crypto-col-side { display: flex; flex-direction: column; gap: var(--spacing-lg); min-width: 0; }
+
+.crypto-market-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-sm); }
+.crypto-market-head h3 { margin: 0; }
+.crypto-market-tools { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
+.crypto-market-tools .tx-search input { min-width: 130px; }
+.crypto-sort { display: flex; gap: 4px; }
+
+.crypto-wallet-card { background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-lg); padding: var(--spacing-md) var(--spacing-lg); }
+.crypto-wallet-stats { display: flex; gap: var(--spacing-md); margin-top: var(--spacing-md); }
+.crypto-wallet-stats > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.crypto-wallet-stats span { font-size: 11px; color: var(--color-text-secondary); }
+.crypto-wallet-stats b { font-size: 16px; color: var(--color-text-primary); }
+.crypto-wallet-stats b.accent { color: var(--color-accent-hover); }
+
+.crypto-holding.clickable { cursor: pointer; transition: background .15s; }
+.crypto-holding.clickable:hover { background: rgba(255,255,255,0.04); }
+.crypto-holding-ch { font-size: 12px; font-weight: 600; margin-left: 8px; }
+
+.crypto-forecast { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--spacing-sm); }
+.cf-card { background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 11px 12px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: border-color .15s, transform .15s; }
+.cf-card:hover { border-color: var(--color-accent); transform: translateY(-1px); }
+.cf-head { display: flex; align-items: center; gap: 7px; font-weight: 700; }
+.cf-head .crypto-coin-img, .cf-head .crypto-coin-badge { width: 22px; height: 22px; font-size: 9px; }
+.cf-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--color-text-secondary); }
+.cf-row b { font-size: 12px; color: var(--color-text-primary); }
+.cf-prob { margin-top: 4px; }
+.cf-prob-bar { height: 6px; border-radius: 3px; background: rgba(239,68,68,0.25); overflow: hidden; }
+.cf-prob-fill { height: 100%; background: linear-gradient(90deg, #4ade80, #22c55e); border-radius: 3px; transition: width .4s ease; }
+.cf-prob-label { display: block; margin-top: 4px; font-size: 11px; color: var(--color-text-secondary); }
+
+/* ===================== АВТО: компактные действия + тюнинг ===================== */
+.asset-actions.compact { gap: 6px; }
+.asset-actions.compact .asset-act { padding: 7px 10px; font-size: 12px; flex: 1 1 auto; }
+.car-card .asset-rental { padding: 7px 10px; font-size: 12px; }
+.car-card .asset-rental.listed, .car-card .asset-rental.rented { gap: 6px; }
+
+.tune-modal { max-width: 480px; width: min(480px, 94vw); }
+.tune-modal h3 { display: flex; align-items: center; gap: 8px; }
+.tune-summary { display: flex; gap: var(--spacing-md); margin: var(--spacing-md) 0; }
+.tune-summary > div {
+  flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  background: var(--color-bg-tertiary); border-radius: var(--radius-md);
+}
+.tune-summary span { font-size: 11px; color: var(--color-text-secondary); }
+.tune-summary b { font-size: 17px; color: var(--color-text-primary); }
+.tune-parts { display: flex; flex-direction: column; gap: 8px; }
+.tune-part {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);
+  padding: 10px 12px; background: var(--color-bg-tertiary);
+  border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md);
+}
+.tune-part-info { display: flex; flex-direction: column; gap: 6px; }
+.tune-part-name { font-weight: 600; color: var(--color-text-primary); font-size: 14px; }
+.tune-levels { display: flex; gap: 4px; }
+.tune-pip { width: 22px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); transition: background .2s; }
+.tune-pip.on { background: linear-gradient(90deg, #818cf8, #6366f1); }
+.tune-part .asset-act { min-width: 120px; justify-content: center; }
+
+/* ===================== ЕДИНЫЙ ГРАФИК АНАЛИТИКИ ===================== */
+.analytics-chart { width: 100%; }
+.ac-plot {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--spacing-sm); height: 200px; padding: var(--spacing-md) var(--spacing-sm) 0;
+}
+.ac-col {
+  position: relative; flex: 1 1 0; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; height: 100%; cursor: pointer; min-width: 0;
+}
+.ac-bars {
+  display: flex; align-items: flex-end; justify-content: center; gap: 5px;
+  width: 100%; height: 100%;
+}
+.ac-bar {
+  width: 42%; max-width: 22px; min-height: 3px; border-radius: 6px 6px 2px 2px;
+  transform-origin: bottom; animation: acGrow .5s cubic-bezier(.22,1,.36,1) both;
+  transition: filter .15s, box-shadow .15s;
+}
+.ac-bar.income { background: linear-gradient(180deg, #4ade80, #22c55e); }
+.ac-bar.expense { background: linear-gradient(180deg, #f87171, #ef4444); }
+.ac-col:hover .ac-bar { filter: brightness(1.12); }
+.ac-col.active .ac-bar.income { box-shadow: 0 0 0 2px rgba(34,197,94,.25); }
+.ac-col.active .ac-bar.expense { box-shadow: 0 0 0 2px rgba(239,68,68,.25); }
+@keyframes acGrow { from { transform: scaleY(0); opacity: .4; } to { transform: scaleY(1); opacity: 1; } }
+.ac-label { font-size: 12px; color: var(--color-text-secondary); }
+.ac-col.active .ac-label { color: var(--color-text-primary); }
+
+.ac-tooltip {
+  position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+  z-index: 20; min-width: 190px; padding: 10px 12px;
+  background: var(--color-bg-elevated, #1b2231); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px; box-shadow: var(--shadow-lg, 0 12px 30px rgba(0,0,0,.45));
+  animation: acTip .16s ease both; pointer-events: none;
+}
+.ac-tooltip::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--color-bg-elevated, #1b2231);
+}
+@keyframes acTip { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.ac-tt-date { font-weight: 700; font-size: 13px; margin-bottom: 6px; color: var(--color-text-primary); }
+.ac-tt-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--color-text-secondary); margin-top: 3px; }
+.ac-tt-row b { margin-left: auto; font-size: 12px; }
+.ac-tt-delta { display: flex; align-items: center; gap: 5px; margin-top: 7px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; }
+.ac-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.ac-dot.income { background: #22c55e; } .ac-dot.expense { background: #ef4444; } .ac-dot.net { background: #6366f1; }
+.up { color: var(--color-success, #4ade80); } .down { color: var(--color-danger, #f87171); }
+.ac-legend { display: flex; justify-content: center; gap: var(--spacing-lg); margin-top: var(--spacing-md); }
+.ac-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
+
+/* ===================== NEXUS — магазин оборудования ===================== */
+.shop-subtitle { color: var(--color-text-secondary); font-size: 13px; margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-lg); }
+.shop-toolbar-right { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
+.shop-tab .gpu-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important; }
+.shop-tab .gpu-card { align-items: stretch; }
+.shop-tab .gpu-card-name { font-size: 15px; flex: 0 0 auto; }
+.gpu-card-cat {
+  font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
 /* ===================== MINING — новый дашборд ===================== */
 .mining-onboard { text-align: center; }
 .mining-onboard-form { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; justify-content: center; margin-top: var(--spacing-md); }
@@ -1293,6 +1471,12 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
 .mining-state-badge.mining { background: rgba(34,197,94,0.16); color: var(--color-success); }
 .mining-state-badge.off { background: rgba(239,68,68,0.16); color: var(--color-danger); }
 
+.mining-not-assembled {
+  display: flex; align-items: center; gap: 8px; margin-bottom: var(--spacing-md);
+  padding: 14px 16px; border-radius: var(--radius-md); font-size: 13px;
+  color: var(--color-text-secondary); background: var(--color-bg-tertiary);
+  border: 1px dashed rgba(255,255,255,0.12);
+}
 .mining-stat-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--spacing-sm); margin-bottom: var(--spacing-md); }
 .msc {
   display: flex; flex-direction: column; gap: 3px; padding: 11px 13px;

@@ -2,12 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createTransfer, fetchWeeklyAnalytics, fetchCryptoAccount } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
+import AnalyticsChart from './AnalyticsChart'
 import {
   Send, History, User, DollarSign, MessageSquare, CheckCircle, AlertTriangle,
   LayoutGrid, BarChart3, Coins, TrendingUp, TrendingDown, Wallet, ArrowRight,
 } from 'lucide-react'
-
-const WD = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun']
 
 function BankTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
@@ -71,8 +70,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
     { id: 'history', icon: History, label: t('bank.history') },
     { id: 'analytics', icon: BarChart3, label: t('account.weeklyAnalytics') },
   ]
-
-  const maxBar = analytics ? Math.max(1, ...analytics.days.map(d => Math.max(d.income, d.expense))) : 1
 
   return (
     <div className="bank-tab">
@@ -180,21 +177,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
           </div>
           <div className="bank-chart-card">
             <h3>{t('account.weeklyAnalytics')}</h3>
-            <div className="bank-chart">
-              {(analytics?.days || []).map((d, i) => (
-                <div key={i} className="bank-chart-col">
-                  <div className="bank-chart-bars">
-                    <div className="bank-bar income" style={{ height: `${(d.income / maxBar) * 100}%` }} title={`+${formatMoney(d.income)} $`} />
-                    <div className="bank-bar expense" style={{ height: `${(d.expense / maxBar) * 100}%` }} title={`−${formatMoney(d.expense)} $`} />
-                  </div>
-                  <span className="bank-chart-label">{t(`common.${WD[d.weekday]}`)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="bank-chart-legend">
-              <span className="legend-income">{t('account.income')}</span>
-              <span className="legend-expense">{t('account.expense')}</span>
-            </div>
+            <AnalyticsChart days={analytics?.days || []} />
           </div>
         </div>
       )}

@@ -32,6 +32,22 @@ ASSET_TYPES = {TYPE_REALESTATE, TYPE_BUSINESS, TYPE_CAR}
 SELL_RATE = 0.7          # возврат при продаже — 70% текущей стоимости
 MAX_ACCRUAL_HOURS = 24   # максимум накопленного дохода за один сбор
 
+# ── Тюнинг автомобилей ────────────────────────────────────────────────────────
+# Каждая деталь повышает престиж авто; стоимость улучшения зависит от цены авто
+# и текущего уровня детали. Вложения в тюнинг увеличивают стоимость авто (капитал).
+TUNE_PARTS = {
+    "engine": 18, "turbo": 22, "gearbox": 15, "suspension": 12,
+    "brakes": 10, "tires": 9, "exhaust": 8,
+}
+TUNE_MAX_LEVEL = 5
+TUNE_COST_FACTOR = 0.05      # доля от цены авто за уровень
+TUNE_VALUE_RETAIN = 0.7      # какая часть вложений в тюнинг идёт в стоимость авто
+
+
+def _tune_cost(asset: dict, level: int) -> float:
+    """Стоимость следующего уровня детали (растёт с ценой авто и уровнем)."""
+    return round(asset.get("price", 0) * TUNE_COST_FACTOR * (level + 1), 2)
+
 RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
 RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
 RENT_MAX_PCT = 0.25      # макс. суммарная аренда = 25% от стоимости актива
@@ -189,6 +205,17 @@ class BuyRequest(BaseModel):
     slug: str
 
 
+class TuneBody(BaseModel):
+    part: str
+
+    @field_validator("part")
+    @classmethod
+    def part_ok(cls, v):
+        if v not in TUNE_PARTS:
+            raise ValueError("Неизвестная деталь тюнинга")
+        return v
+
+
 class RentListing(BaseModel):
     price: float
     minHours: int
@@ -216,10 +243,10 @@ def _now() -> datetime:
 
 
 def _current_value(asset: dict) -> float:
-    """Текущая рыночная стоимость экземпляра с учётом уровня улучшений."""
+    """Текущая рыночная стоимость экземпляра с учётом уровня улучшений и тюнинга."""
     base = asset.get("price", 0)
     level = asset.get("level", 1)
-    return round(base * (1 + 0.35 * (level - 1)), 2)
+    return round(base * (1 + 0.35 * (level - 1)) + asset.get("tuning_value", 0.0), 2)
 
 
 def _income_per_hour(asset: dict) -> float:
@@ -412,6 +439,8 @@ def _serialize(asset: dict) -> dict:
         "companyId": asset.get("companyId"),
         "rental": _rental_view(asset),
         "rentMax": _rent_max(asset),
+        "tuning": asset.get("tuning", {}),
+        "tuneMaxLevel": TUNE_MAX_LEVEL,
         "purchasedAt": asset.get("purchased_at").isoformat() if isinstance(asset.get("purchased_at"), datetime) else None,
     }
 
@@ -621,6 +650,47 @@ async def upgrade_asset(
     )
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
     return {"asset": _serialize(updated), "balance": new_balance}
+
+
+@router.post("/{asset_id}/tune")
+async def tune_asset(
+    asset_id: str,
+    payload: TuneBody,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Тюнинг автомобиля: улучшает деталь, повышает престиж и стоимость авто."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("type") != TYPE_CAR:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Тюнинг доступен только для автомобилей")
+
+    part = payload.part
+    tuning = dict(asset.get("tuning", {}))
+    level = int(tuning.get(part, 0))
+    if level >= TUNE_MAX_LEVEL:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Достигнут максимальный уровень детали")
+
+    cost = _tune_cost(asset, level)
+    new_balance = await adjust_balance(db, user_id, -cost)
+    if new_balance is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+
+    tuning[part] = level + 1
+    meta = dict(asset.get("meta", {}))
+    meta["prestige"] = int(meta.get("prestige", 0)) + TUNE_PARTS[part]
+    tuning_value = round(asset.get("tuning_value", 0.0) + cost * TUNE_VALUE_RETAIN, 2)
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"tuning": tuning, "meta": meta, "tuning_value": tuning_value}},
+    )
+    await record_transaction(
+        db, user_id, EXPENSE, cost, CAT_REALESTATE,
+        f"Тюнинг: {asset.get('name')} — {part}", balance_after=new_balance,
+        meta={"assetId": asset_id, "part": part, "level": level + 1},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    return {"asset": _serialize(updated), "balance": new_balance, "cost": cost}
 
 
 @router.post("/{asset_id}/sell")

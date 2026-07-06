@@ -4,10 +4,11 @@ import { fetchAssetMarket, buyAsset } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import {
   Home, Briefcase, Car, Search, AlertTriangle, Check, X,
-  TrendingUp, Coins,
+  TrendingUp, Coins, LayoutGrid,
 } from 'lucide-react'
 
 const CATEGORIES = [
+  { id: 'all', icon: LayoutGrid },
   { id: 'realestate', icon: Home },
   { id: 'business', icon: Briefcase },
   { id: 'car', icon: Car },
@@ -34,7 +35,7 @@ const RARITY_GRAD = {
 
 function MarketTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
-  const [category, setCategory] = useState('realestate')
+  const [category, setCategory] = useState('all')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [items, setItems] = useState([])
@@ -52,7 +53,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await fetchAssetMarket({ type: category, search: search || undefined })
+      const data = await fetchAssetMarket({ type: category === 'all' ? undefined : category, search: search || undefined })
       setItems(data)
       setError(null)
     } catch (err) {
@@ -94,7 +95,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                 className={`tx-pill ${category === c.id ? 'active' : ''}`}
                 onClick={() => setCategory(c.id)}
               >
-                <Icon size={14} /> {t(`market.cat_${c.id}`)}
+                <Icon size={14} /> {c.id === 'all' ? t('common.all') : t(`market.cat_${c.id}`)}
               </button>
             )
           })}

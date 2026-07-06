@@ -53,7 +53,13 @@ function Dashboard({ user, onLogout }) {
       socket.onmessage = (ev) => {
         let data = null
         try { data = JSON.parse(ev.data) } catch { /* ignore */ }
-        scheduleSync()
+        // Событие баланса применяем мгновенно (без сетевого запроса) — верхняя
+        // панель обновляется сразу при любом изменении баланса.
+        if (data?.type === 'balance' && data.balance != null) {
+          handleBalanceChange(data.balance)
+        } else {
+          scheduleSync()
+        }
         // Ретрансляция события другим вкладкам (напр. MiningTab слушает 'tv:realtime').
         if (data) { try { window.dispatchEvent(new CustomEvent('tv:realtime', { detail: data })) } catch { /* ignore */ } }
       }

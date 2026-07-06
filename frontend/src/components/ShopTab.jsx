@@ -1,177 +1,180 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Monitor, Building2, Briefcase, Clock, ArrowLeft, Cpu, Box, Wrench } from 'lucide-react'
-import GpuShop from './GpuShop'
-import CpuShop from './CpuShop'
-import CaseShop from './CaseShop'
-import SuppliesShop from './SuppliesShop'
-import RealEstateShop from './RealEstateShop'
-import BusinessShop from './BusinessShop'
+import { fetchShopCatalog, buyHardware } from '../services/api'
+import { formatMoney } from './TransactionsPanel'
+import {
+  Monitor, Cpu, HardDrive, Zap, Fan, Box, Server, Battery, Network,
+  Search, DollarSign, ArrowUpDown, AlertTriangle, Check, ShoppingCart,
+} from 'lucide-react'
 
-const SHOP_SECTIONS = [
-  {
-    id: 'gpu',
-    labelKey: 'shop.gpu',
-    descKey: 'shop.gpuDesc',
-    icon: Monitor,
-  },
-  {
-    id: 'realestate',
-    labelKey: 'shop.realestate',
-    descKey: 'shop.realestateDesc',
-    icon: Building2,
-  },
-  {
-    id: 'business',
-    labelKey: 'shop.business',
-    descKey: 'shop.businessDesc',
-    icon: Briefcase,
-  },
+// Магазин оборудования NEXUS — единый каталог всех комплектующих.
+// Реиспользует существующий backend /api/shop (каталог + покупка).
+const CATEGORIES = [
+  { id: '', icon: ShoppingCart },        // Все
+  { id: 'gpu', icon: Monitor },
+  { id: 'cpu', icon: Cpu },
+  { id: 'motherboard', icon: Cpu },
+  { id: 'ram', icon: HardDrive },
+  { id: 'ssd', icon: HardDrive },
+  { id: 'psu', icon: Zap },
+  { id: 'cooling', icon: Fan },
+  { id: 'case', icon: Box },
+  { id: 'rack', icon: Server },
+  { id: 'fan', icon: Fan },
+  { id: 'ups', icon: Battery },
+  { id: 'network', icon: Network },
 ]
 
-const GPU_SUBSECTIONS = [
-  {
-    id: 'gpu-cards',
-    labelKey: 'shop.gpuCards',
-    descKey: 'shop.gpuCardsDesc',
-    icon: Monitor,
-  },
-  {
-    id: 'gpu-cpus',
-    labelKey: 'shop.gpuCpus',
-    descKey: 'shop.gpuCpusDesc',
-    icon: Cpu,
-  },
-  {
-    id: 'gpu-cases',
-    labelKey: 'shop.gpuCases',
-    descKey: 'shop.gpuCasesDesc',
-    icon: Box,
-  },
-  {
-    id: 'gpu-supplies',
-    labelKey: 'shop.gpuSupplies',
-    descKey: 'shop.gpuSuppliesDesc',
-    icon: Wrench,
-  },
-]
+const CAT_COLOR = {
+  gpu: '#818cf8', cpu: '#a855f7', motherboard: '#0ea5e9', ram: '#22d3ee',
+  ssd: '#34d399', psu: '#eab308', cooling: '#06b6d4', case: '#94a3b8',
+  rack: '#64748b', fan: '#38bdf8', ups: '#f59e0b', network: '#818cf8',
+}
 
-function ShopTab() {
+function specLine(cat, s = {}) {
+  switch (cat) {
+    case 'gpu': return `${s.hashrate >= 1000 ? (s.hashrate / 1000).toFixed(1) + 'k' : s.hashrate} H/s · ${s.power}W`
+    case 'cpu': return `${s.cores} ядер · ${s.power}W`
+    case 'motherboard': return `${s.gpuSlots} слотов GPU`
+    case 'ram': return `${s.gb} ГБ`
+    case 'ssd': return `${s.gb} ГБ`
+    case 'psu': return `${s.power} W`
+    case 'cooling': return `${s.cooling} охл.`
+    case 'fan': return `${s.cooling} охл. · ${s.power}W`
+    case 'case': return `${s.slots} слотов`
+    case 'rack': return `${s.slots} GPU${s.industrial ? ' · пром.' : ''}`
+    case 'ups': return `${s.backup} VA`
+    case 'network': return `${s.speed >= 1000 ? (s.speed / 1000) + ' Гбит' : s.speed + ' Мбит'}`
+    default: return ''
+  }
+}
+
+function ShopTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
-  const [selectedSection, setSelectedSection] = useState(null)
-  const [selectedSubsection, setSelectedSubsection] = useState(null)
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [category, setCategory] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [sortOrder, setSortOrder] = useState('asc')
+  const [busyId, setBusyId] = useState(null)
+  const [msg, setMsg] = useState(null)
 
-  if (selectedSection && selectedSection.id === 'gpu' && selectedSubsection && selectedSubsection.id === 'gpu-cards') {
-    return <GpuShop onBack={() => setSelectedSubsection(null)} />
-  }
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 250)
+    return () => clearTimeout(id)
+  }, [searchInput])
 
-  if (selectedSection && selectedSection.id === 'gpu' && selectedSubsection && selectedSubsection.id === 'gpu-cpus') {
-    return <CpuShop onBack={() => setSelectedSubsection(null)} />
-  }
-
-  if (selectedSection && selectedSection.id === 'gpu' && selectedSubsection && selectedSubsection.id === 'gpu-cases') {
-    return <CaseShop onBack={() => setSelectedSubsection(null)} />
-  }
-
-  if (selectedSection && selectedSection.id === 'gpu' && selectedSubsection && selectedSubsection.id === 'gpu-supplies') {
-    return <SuppliesShop onBack={() => setSelectedSubsection(null)} />
-  }
-
-  if (selectedSection && selectedSection.id === 'realestate') {
-    return <RealEstateShop onBack={() => setSelectedSection(null)} />
-  }
-
-  if (selectedSection && selectedSection.id === 'business') {
-    return <BusinessShop onBack={() => setSelectedSection(null)} />
-  }
-
-  if (selectedSubsection) {
-    return (
-      <div className="shop-tab">
-        <div className="shop-section-header">
-          <button className="shop-back-btn" onClick={() => setSelectedSubsection(null)}>
-            <ArrowLeft size={18} />
-            <span>{t(selectedSection.labelKey)}</span>
-          </button>
-          <h2 className="tab-title">{t(selectedSubsection.labelKey)}</h2>
-        </div>
-        <div className="placeholder-content">
-          <span className="placeholder-icon"><Clock size={48} /></span>
-          <p>{t('dashboard.comingSoon', { title: t(selectedSubsection.labelKey) })}</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (selectedSection) {
-    const subsections = selectedSection.id === 'gpu' ? GPU_SUBSECTIONS : null
-
-    if (subsections) {
-      return (
-        <div className="shop-tab">
-          <div className="shop-section-header">
-            <button className="shop-back-btn" onClick={() => setSelectedSection(null)}>
-              <ArrowLeft size={18} />
-              <span>{t('nav.shop')}</span>
-            </button>
-            <h2 className="tab-title">{t(selectedSection.labelKey)}</h2>
-          </div>
-          <div className="shop-sections">
-            {subsections.map(subsection => {
-              const Icon = subsection.icon
-              return (
-                <button
-                  key={subsection.id}
-                  className="shop-section-button"
-                  onClick={() => setSelectedSubsection(subsection)}
-                >
-                  <span className="shop-section-icon"><Icon size={32} /></span>
-                  <span className="shop-section-label">{t(subsection.labelKey)}</span>
-                  <span className="shop-section-desc">{t(subsection.descKey)}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      setItems(await fetchShopCatalog(category || undefined))
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
     }
+  }, [category])
 
-    return (
-      <div className="shop-tab">
-        <div className="shop-section-header">
-          <button className="shop-back-btn" onClick={() => setSelectedSection(null)}>
-            <ArrowLeft size={18} />
-            <span>{t('nav.shop')}</span>
-          </button>
-          <h2 className="tab-title">{t(selectedSection.labelKey)}</h2>
-        </div>
-        <div className="placeholder-content">
-          <span className="placeholder-icon"><Clock size={48} /></span>
-          <p>{t('dashboard.comingSoon', { title: t(selectedSection.labelKey) })}</p>
-        </div>
-      </div>
-    )
+  useEffect(() => { load() }, [load])
+
+  const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2200) }
+
+  const buy = async (item) => {
+    setBusyId(item.id)
+    try {
+      const res = await buyHardware(item.id, 1)
+      onBalanceChange?.(res.balance)
+      flash(t('market.bought'))
+      await load()   // цены могли сдвинуться
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
   }
+
+  const view = useMemo(() => {
+    let r = items
+    if (search) r = r.filter(i => (i.name || '').toLowerCase().includes(search))
+    return [...r].sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price)
+  }, [items, search, sortOrder])
 
   return (
     <div className="shop-tab">
-      <h2 className="tab-title">{t('nav.shop')}</h2>
-      <div className="shop-sections">
-        {SHOP_SECTIONS.map(section => {
-          const Icon = section.icon
-          return (
-            <button
-              key={section.id}
-              className="shop-section-button"
-              onClick={() => setSelectedSection(section)}
-            >
-              <span className="shop-section-icon"><Icon size={32} /></span>
-              <span className="shop-section-label">{t(section.labelKey)}</span>
-              <span className="shop-section-desc">{t(section.descKey)}</span>
-            </button>
-          )
-        })}
+      <div className="leaderboard-title-row">
+        <ShoppingCart size={22} className="icon" />
+        <h2 className="tab-title">NEXUS · {t('nav.shop')}</h2>
       </div>
+      <p className="shop-subtitle">{t('shop.nexusDesc')}</p>
+
+      {msg && (
+        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
+          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
+        </div>
+      )}
+
+      <div className="market-toolbar">
+        <div className="market-cats">
+          {CATEGORIES.map(c => {
+            const Icon = c.icon
+            return (
+              <button key={c.id || 'all'} className={`tx-pill ${category === c.id ? 'active' : ''}`} onClick={() => setCategory(c.id)}>
+                <Icon size={14} /> {c.id === '' ? t('common.all') : t(`mining.comp.${c.id}`, c.id)}
+              </button>
+            )
+          })}
+        </div>
+        <div className="shop-toolbar-right">
+          <div className="tx-search market-search">
+            <Search size={16} className="tx-search-icon" />
+            <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder={t('market.searchPlaceholder')} />
+          </div>
+          <button className="gpu-sort-btn active" onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}>
+            <ArrowUpDown size={14} /> {t('common.price')} {sortOrder === 'asc' ? '↑' : '↓'}
+          </button>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="gpu-grid">
+          {Array.from({ length: 10 }).map((_, i) => <div key={i} className="gpu-card skeleton" style={{ height: 150 }} />)}
+        </div>
+      )}
+      {error && <div className="error-state"><AlertTriangle size={24} className="error-icon" color="#fca5a5" /><p>{t('common.error')}: {error}</p></div>}
+
+      {!loading && !error && view.length === 0 && (
+        <div className="empty-state"><p>{t('market.noItems')}</p></div>
+      )}
+
+      {!loading && !error && view.length > 0 && (
+        <div className="gpu-grid">
+          {view.map(item => {
+            const color = CAT_COLOR[item.category] || item.color || '#6366f1'
+            const affordable = balance >= item.price
+            const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
+            return (
+              <div key={item.id} className="gpu-card" style={{ borderColor: `${color}55` }}>
+                <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={20} /></span>
+                <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
+                <span className="gpu-card-name">{item.name}</span>
+                <div className="gpu-card-specs"><span>{specLine(item.category, item.specs)}</span></div>
+                <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
+                <button
+                  className="gpu-card-buy"
+                  style={{ background: affordable ? color : undefined }}
+                  disabled={!affordable || busyId === item.id}
+                  onClick={() => buy(item)}
+                >
+                  {busyId === item.id ? t('bank.processing') : affordable ? t('common.buy') : t('stocks.insufficientFunds')}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

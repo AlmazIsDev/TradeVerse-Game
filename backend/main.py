@@ -1,33 +1,53 @@
-import bcrypt
-import jwt
-import os
+import logging
 import random
 import secrets
 from bson import ObjectId
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("tradeverse")
+
 from init_db import init as init_db
+
+from auth import (
+    get_current_user,
+    require_admin,
+    hash_password,
+    verify_password,
+    create_access_token,
+)
+from economy import router as economy_router
+from crypto import router as crypto_router
+from stocks import router as stocks_router
+from assets import router as assets_router
+from company import router as company_router
+from cityroof import router as cityroof_router
+from notifications import router as notifications_router
+from market_data import router as market_router
+from econ import router as econ_router
+from market_events import router as events_router
+from shop import router as shop_router
+from mining import router as mining_router
+from ws import router as ws_router
+from scheduler import start_scheduler, stop_scheduler
 
 from database import (
     get_db,
-    get_stocks_collection,
-    get_transactions_collection,
-    get_app_config_collection,
-    get_leaderboard_collection,
     find_all_stocks,
     find_stock_by_symbol,
     upsert_stock,
-    find_transactions_by_user,
     find_config_by_key,
     upsert_config,
     find_leaderboard,
@@ -46,7 +66,6 @@ from schemas import (
     AdminUserUpdate,
     StockCreate,
     StockResponse,
-    TransactionResponse,
     ConfigUpdate,
     ConfigResponse,
     LeaderboardResponse,
@@ -66,9 +85,37 @@ async def lifespan(app: FastAPI):
     await db.stocks.create_index("symbol", unique=True)
     await db.app_config.create_index("key", unique=True)
     await db.transactions.create_index("userId")
+    await db.transactions.create_index([("userId", 1), ("timestamp", -1)])
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
+    await db.crypto_assets.create_index("symbol", unique=True)
+    await db.crypto_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
+    await db.crypto_transfers.create_index("fromId")
+    await db.crypto_transfers.create_index("toId")
+    await db.stock_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
+    await db.stock_events.create_index("symbol")
+    await db.stock_events.create_index("timestamp")
+    await db.user_assets.create_index("userId")
+    await db.asset_market.create_index("slug", unique=True)
+    await db.companies.create_index("ownerId", unique=True)
+    await db.company_members.create_index([("companyId", 1), ("userId", 1)])
+    await db.company_members.create_index("userId")
+    await db.company_invites.create_index("toUserId")
+    await db.company_applications.create_index("ownerId")
+    await db.company_applications.create_index("applicantId")
+    await db.notifications.create_index([("userId", 1), ("created_at", -1)])
+    await db.price_history.create_index([("market", 1), ("symbol", 1), ("ts", 1)])
+    await db.user_favorites.create_index([("userId", 1), ("market", 1), ("symbol", 1)])
+    await db.market_meta.create_index("market", unique=True)
+    await db.market_events.create_index("active")
+    await db.user_hardware.create_index("userId")
+    await db.user_hardware.create_index("farmId")
+    await db.mining_farms.create_index("userId")
+    await db.mining_farms.create_index("status")
+    await db.cityroof_sessions.create_index("attackerId")
+    await db.cityroof_seasons.create_index("closed_at")
     await init_db()
+<<<<<<< HEAD
     # Lazy import to avoid circular dependency
     from stock_engine.router import router as stocks_router
     app.include_router(stocks_router)
@@ -77,6 +124,11 @@ async def lifespan(app: FastAPI):
     await start_bot_trading(db)
     yield
     await stop_bot_trading()
+=======
+    start_scheduler()   # единый фоновый планировщик всех систем
+    yield
+    await stop_scheduler()
+>>>>>>> origin/Marlow
 
 
 app = FastAPI(title="TradeVerse API", version="1.0.0", lifespan=lifespan)
@@ -90,6 +142,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+<<<<<<< HEAD
 # ── JWT / Auth Helpers ───────────────────────────────────────────────────────
 
 JWT_SECRET = os.getenv("JWT_SECRET", "tradeverse-dev-secret-change-in-prod")
@@ -193,6 +246,25 @@ async def require_admin(
             detail="Доступ запрещён: требуются права администратора",
         )
     return current_user
+=======
+# Роутеры модулей
+app.include_router(economy_router)
+app.include_router(crypto_router)
+app.include_router(stocks_router)
+app.include_router(assets_router)
+app.include_router(company_router)
+app.include_router(cityroof_router)
+app.include_router(notifications_router)
+app.include_router(market_router)
+app.include_router(econ_router)
+app.include_router(events_router)
+app.include_router(shop_router)
+app.include_router(mining_router)
+app.include_router(ws_router)
+
+
+# ── App-specific helpers ─────────────────────────────────────────────────────
+>>>>>>> origin/Marlow
 
 
 def get_users_collection(db: AsyncIOMotorDatabase = Depends(get_db)):
@@ -394,6 +466,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "balance": current_user.get("balance", 1000.0),
         "card_number": current_user.get("card_number"),
         "card_visible": current_user.get("card_visible", True),
+        "crypto_account_opened": bool(current_user.get("crypto_account_opened", False)),
     }
 
 
@@ -448,17 +521,8 @@ async def create_or_update_stock(
     return _format_stock(stock)
 
 
-# ── Transactions Endpoints ───────────────────────────────────────────────────
-
-
-@app.get("/api/account/transactions", response_model=list[TransactionResponse])
-async def get_user_transactions(
-    user_id: str = Query(None, description="User ID"),
-    limit: int = Query(50, ge=1, le=200),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    transactions = await find_transactions_by_user(db, user_id, limit)
-    return [_format_transaction(t) for t in transactions]
+# NOTE: история операций текущего пользователя теперь в economy.router
+# (GET /api/account/transactions, JWT-scoped, с фильтром/поиском/пагинацией).
 
 
 # ── Purchase Endpoints ───────────────────────────────────────────────────────
@@ -589,7 +653,7 @@ async def get_config(
     config = await find_config_by_key(db, key)
     if not config:
         if key in DEFAULT_CONFIG:
-            return _format_config({"key": key, "value": DEFAULT_CONFIG[key], "updated_at": datetime.utcnow()})
+            return _format_config({"key": key, "value": DEFAULT_CONFIG[key], "updated_at": datetime.now(timezone.utc)})
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Config key '{key}' not found",
@@ -610,13 +674,121 @@ async def update_config(
 # ── Leaderboard Endpoints ────────────────────────────────────────────────────
 
 
-@app.get("/api/leaderboard", response_model=list[LeaderboardResponse])
+STARTING_BALANCE = 1000.0
+WARCOIN_USD = 50.0
+
+# Ключ сортировки → реальное имя поля в записи лидерборда (camelCase).
+# ВАЖНО: 'networth' маппится на 'netWorth' — иначе e[sort_key] бросал KeyError,
+# что и было причиной «ошибки подключения» в разделе «По капиталу».
+_LEADERBOARD_SORT_FIELD = {
+    "networth": "netWorth", "profit": "profit", "cash": "cash",
+    "stocks": "stocks", "crypto": "crypto", "assets": "assets", "company": "company",
+}
+
+
+# Кэш рассчитанного лидерборда (общий для всех сортировок — сортировка/срез
+# делаются на готовом списке). Тяжёлый обсчёт по всем игрокам не выполняется
+# на каждый запрос, что ускоряет загрузку любого лидерборда.
+_LB_CACHE: dict = {"ts": None, "entries": None}
+_LB_CACHE_TTL_S = 12
+
+
+async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
+    """Полный обсчёт капитала всех игроков (наличные + акции + крипта + активы + компания + WC)."""
+    # Карты текущих цен.
+    stock_prices: dict[str, float] = {}
+    async for s in db.stocks.find({}, {"symbol": 1, "price": 1}):
+        stock_prices[s["symbol"]] = float(s.get("price", 0.0))
+    crypto_prices: dict[str, float] = {}
+    async for c in db.crypto_assets.find({}, {"symbol": 1, "price": 1}):
+        crypto_prices[c["symbol"]] = float(c.get("price", 0.0))
+
+    # Стоимость позиций по игрокам.
+    stock_val: dict[str, float] = {}
+    async for h in db.stock_holdings.find({"quantity": {"$gt": 0}}):
+        uid = h.get("userId")
+        stock_val[uid] = stock_val.get(uid, 0.0) + h.get("quantity", 0) * stock_prices.get(h.get("symbol"), 0.0)
+    crypto_val: dict[str, float] = {}
+    async for h in db.crypto_holdings.find({"quantity": {"$gt": 0}}):
+        uid = h.get("userId")
+        crypto_val[uid] = crypto_val.get(uid, 0.0) + h.get("quantity", 0.0) * crypto_prices.get(h.get("symbol"), 0.0)
+
+    # Стоимость личных физических активов (недвижимость/бизнес/авто), кроме переданных компании.
+    def _asset_value(a: dict) -> float:
+        return a.get("price", 0) * (1 + 0.35 * (a.get("level", 1) - 1))
+
+    asset_val: dict[str, float] = {}
+    async for a in db.user_assets.find({"companyId": None}):
+        uid = a.get("userId")
+        asset_val[uid] = asset_val.get(uid, 0.0) + _asset_value(a)
+
+    # Компании: бюджет + рыночная стоимость активов компании → в капитал владельца.
+    company_owner: dict[str, str] = {}
+    company_val: dict[str, float] = {}
+    async for c in db.companies.find({}):
+        oid = c.get("ownerId")
+        company_owner[str(c["_id"])] = oid
+        company_val[oid] = company_val.get(oid, 0.0) + float(c.get("budget", 0.0))
+    async for a in db.user_assets.find({"companyId": {"$ne": None}}):
+        oid = company_owner.get(a.get("companyId"))
+        if oid:
+            company_val[oid] = company_val.get(oid, 0.0) + _asset_value(a)
+
+    entries = []
+    async for u in db.users.find({}):
+        uid = str(u["_id"])
+        cash = float(u.get("balance", STARTING_BALANCE))
+        stocks_value = round(stock_val.get(uid, 0.0), 2)
+        crypto_value = round(crypto_val.get(uid, 0.0), 2)
+        assets_value = round(asset_val.get(uid, 0.0), 2)
+        company_value = round(company_val.get(uid, 0.0), 2)
+        warcoin_value = round(float(u.get("warcoin", 0) or 0) * WARCOIN_USD, 2)
+        net_worth = round(cash + stocks_value + crypto_value + assets_value + company_value + warcoin_value, 2)
+        entries.append({
+            "userId": uid,
+            "username": u.get("username", "—"),
+            "avatar": None,
+            "cash": round(cash, 2),
+            "stocks": stocks_value,
+            "crypto": crypto_value,
+            "assets": assets_value,
+            "company": company_value,
+            "warcoin": warcoin_value,
+            "netWorth": net_worth,
+            "profit": round(net_worth - STARTING_BALANCE, 2),
+        })
+    return entries
+
+
+@app.get("/api/leaderboard")
 async def get_leaderboard(
     limit: int = Query(20, ge=1, le=100),
+    sort: str = Query("networth"),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    entries = await find_leaderboard(db, limit)
-    return [_format_leaderboard(e) for e in entries]
+    """Живой рейтинг игроков по чистой стоимости активов.
+
+    net worth = наличные + акции + крипта + активы + компания + WarCoin.
+    Сортировки: networth | profit | cash | stocks | crypto | assets | company.
+    Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
+    """
+    sort_field = _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
+
+    now_ts = datetime.now(timezone.utc)
+    cached, cached_ts = _LB_CACHE["entries"], _LB_CACHE["ts"]
+    if cached is not None and isinstance(cached_ts, datetime) and (now_ts - cached_ts).total_seconds() < _LB_CACHE_TTL_S:
+        entries = cached
+    else:
+        entries = await _compute_leaderboard_entries(db)
+        _LB_CACHE["entries"] = entries
+        _LB_CACHE["ts"] = now_ts
+
+    ranked = sorted(entries, key=lambda e: e.get(sort_field, 0.0), reverse=True)[:limit]
+    # Копируем и проставляем ранг, не мутируя кэш.
+    out = []
+    for rank, entry in enumerate(ranked, start=1):
+        out.append({**entry, "rank": rank})
+    return out
 
 
 # ── Admin Endpoints ──────────────────────────────────────────────────────────
@@ -689,7 +861,8 @@ async def admin_update_user(
             )
 
     # Запрещённые поля не попадут в update_fields благодаря схеме AdminUserUpdate
-    print(f"[ADMIN] Updating user {user_id}: {update_fields} (by admin {_admin.get('username', 'unknown')})")
+    logger.info("Admin '%s' updating user %s: fields=%s",
+                _admin.get("username", "unknown"), user_id, list(update_fields.keys()))
 
     await db.users.update_one(
         {"_id": ObjectId(user_id)},
@@ -724,7 +897,8 @@ async def admin_delete_user(
             detail="Пользователь не найден",
         )
 
-    print(f"[ADMIN] Deleting user {user_id} ({existing.get('username', 'unknown')}) (by admin {_admin.get('username', 'unknown')})")
+    logger.info("Admin '%s' deleting user %s (%s)",
+                _admin.get("username", "unknown"), user_id, existing.get("username", "unknown"))
 
     await db.users.delete_one({"_id": ObjectId(user_id)})
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}

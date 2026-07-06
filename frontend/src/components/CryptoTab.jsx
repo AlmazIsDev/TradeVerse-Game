@@ -257,9 +257,9 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
             const up = (coin.change24h || 0) >= 0
             return (
               <div key={coin.symbol} className="crypto-coin clickable" onClick={() => setDetailSymbol(coin.symbol)}>
-                <span className="crypto-coin-badge" style={{ background: coin.color }}>
-                  {coin.symbol.slice(0, 2)}
-                </span>
+                {coin.image
+                  ? <img className="crypto-coin-img" src={coin.image} alt={coin.symbol} />
+                  : <span className="crypto-coin-badge" style={{ background: coin.color }}>{coin.symbol.slice(0, 2)}</span>}
                 <div className="crypto-coin-info">
                   <span className="crypto-coin-symbol">{coin.symbol}</span>
                   <span className="crypto-coin-name">{coin.name}</span>

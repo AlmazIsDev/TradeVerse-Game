@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchCompany, createCompany, inviteEmployee, updateMemberSalary,
   fireMember, collectCompanyProfit, companyDeposit, companyWithdraw,
+  fetchCompanies, applyToCompany,
 } from '../services/api'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
   ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
+  Search, LogIn,
 } from 'lucide-react'
 
 function MyCompanyTab({ balance = 0, onBalanceChange }) {
@@ -21,6 +23,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [refreshKey, setRefreshKey] = useState(0)
 
   const [newName, setNewName] = useState('')
+  const [companies, setCompanies] = useState([])
+  const [companySearch, setCompanySearch] = useState('')
   const [invite, setInvite] = useState({ username: '', role: 'worker', salary: '' })
   const [editing, setEditing] = useState(null)      // { userId, salary }
   const [moneyModal, setMoneyModal] = useState(null) // 'deposit' | 'withdraw'
@@ -62,6 +66,26 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+  const loadCompanies = useCallback(async () => {
+    try { setCompanies(await fetchCompanies(companySearch || undefined)) } catch { /* ignore */ }
+  }, [companySearch])
+
+  useEffect(() => {
+    if (data) return
+    const id = setTimeout(loadCompanies, 300)
+    return () => clearTimeout(id)
+  }, [loadCompanies, data])
+
+  const doApply = async (id) => {
+    try {
+      await applyToCompany(id)
+      flash(t('company.applied'))
+      await loadCompanies()
+    } catch (err) {
+      flash(err.message, 'error')
+    }
+  }
+
   if (loading) {
     return (
       <div className="company-tab">
@@ -97,6 +121,33 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
           >
             <Store size={18} /> {busy ? t('bank.processing') : t('company.create')}
           </button>
+        </div>
+
+        <div className="company-browse">
+          <div className="company-browse-head">
+            <h3><Building2 size={16} /> {t('company.browseTitle')}</h3>
+            <div className="tx-search">
+              <Search size={16} className="tx-search-icon" />
+              <input value={companySearch} onChange={e => setCompanySearch(e.target.value)} placeholder={t('company.searchPlaceholder')} />
+            </div>
+          </div>
+          {companies.length === 0 ? (
+            <p className="empty-state">{t('company.noCompanies')}</p>
+          ) : (
+            <div className="company-browse-list">
+              {companies.map(c => (
+                <div key={c.id} className="company-browse-item">
+                  <div className="cbi-info">
+                    <span className="cbi-name">{c.name}</span>
+                    <span className="cbi-meta">{c.ownerName} · 👥 {c.memberCount} · ${formatCompact(c.capital)}</span>
+                  </div>
+                  <button className="asset-act upgrade" disabled={c.isMine || c.applied} onClick={() => doApply(c.id)}>
+                    <LogIn size={14} /> {c.applied ? t('company.applicationSent') : t('company.apply')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )

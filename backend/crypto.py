@@ -5,7 +5,7 @@
 планировщика. Все денежные движения проходят через единый реестр (ledger).
 """
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -129,30 +129,36 @@ def _walk_price(coin: dict) -> dict:
 
 async def _get_live_market(db: AsyncIOMotorDatabase) -> list[dict]:
     await ensure_coins_seeded(db)
-    now = datetime.utcnow()
+    # Пытаемся обновить реальными данными CoinGecko (кэш + fallback внутри).
+    mode = await MarketDataService.refresh_crypto(db)
+    now = datetime.now(timezone.utc)
     coins = []
     async for coin in db.crypto_assets.find({}):
         symbol = coin["symbol"]
         await MarketDataService.ensure_backfill(db, "crypto", symbol, coin.get("price", 1) or 1, coin.get("volatility", 0.05))
-        updated = coin.get("updated_at")
-        if not isinstance(updated, datetime) or (now - updated).total_seconds() >= PRICE_REFRESH_SECONDS:
-            coin = _walk_price(coin)
-            await db.crypto_assets.update_one(
-                {"_id": coin["_id"]},
-                {"$set": {
-                    "price": coin["price"],
-                    "change24h": coin["change24h"],
-                    "ath": coin["ath"],
-                    "atl": coin["atl"],
-                    "volume24h": coin["volume24h"],
-                    "updated_at": coin["updated_at"],
-                }},
-            )
-            await MarketDataService.record_snapshot(db, "crypto", symbol, coin["price"])
+        # Симуляция цены — только fallback, когда реальные данные недоступны.
+        if mode == "sim":
+            updated = coin.get("updated_at")
+            if isinstance(updated, datetime) and updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if not isinstance(updated, datetime) or (now - updated).total_seconds() >= PRICE_REFRESH_SECONDS:
+                coin = _walk_price(coin)
+                await db.crypto_assets.update_one(
+                    {"_id": coin["_id"]},
+                    {"$set": {
+                        "price": coin["price"],
+                        "change24h": coin["change24h"],
+                        "ath": coin["ath"],
+                        "atl": coin["atl"],
+                        "volume24h": coin["volume24h"],
+                        "updated_at": coin["updated_at"],
+                    }},
+                )
+                await MarketDataService.record_snapshot(db, "crypto", symbol, coin["price"])
         coin["id"] = str(coin.pop("_id"))
         coin.pop("updated_at", None)
         coins.append(coin)
-    coins.sort(key=lambda c: c["symbol"])
+    coins.sort(key=lambda c: c.get("marketCap") or (c.get("price", 0) * c.get("supply", 0)), reverse=True)
     return coins
 
 

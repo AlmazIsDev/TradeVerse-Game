@@ -20,6 +20,7 @@ from ledger import (
     adjust_balance, record_transaction,
 )
 from notifications import push_notification
+from econ import get_econ
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -76,6 +77,109 @@ CATALOG = [
 ]
 
 CATALOG_BY_SLUG = {c["slug"]: c for c in CATALOG}
+
+# ── Динамическая экономика рынка ─────────────────────────────────────────────
+# Цена каждого товара = базовая × множитель. Множитель двигается от спроса
+# (покупки поднимают, продажи опускают), дрейфа и случайных событий.
+ASSET_MARKET_TICK_S = 60
+ASSET_MULT_MIN = 0.5
+ASSET_MULT_MAX = 2.5
+DEMAND_BUY = 0.015      # покупка поднимает множитель
+DEMAND_SELL = 0.01      # продажа опускает множитель
+RARITY_FLOOR = {"common": 0.0, "uncommon": 0.03, "rare": 0.07, "epic": 0.12, "legendary": 0.20}
+
+
+async def _ensure_asset_market(db: AsyncIOMotorDatabase):
+    for c in CATALOG:
+        await db.asset_market.update_one(
+            {"slug": c["slug"]},
+            {"$setOnInsert": {"slug": c["slug"], "mult": 1.0, "updated_at": _now()}},
+            upsert=True,
+        )
+
+
+async def _drift_asset_market(db: AsyncIOMotorDatabase):
+    """Естественный дрейф цен к целевому уровню, определяемому реальными факторами:
+    спрос (владельцы), предложение (объявления аренды), редкость, денежная масса,
+    инфляция, активность игроков и мировые экономические события. Плавно, без скачков.
+    """
+    meta = await db.asset_market_meta.find_one({"key": "tick"})
+    last = meta.get("updated_at") if meta else None
+    if isinstance(last, datetime):
+        la = last.replace(tzinfo=timezone.utc) if last.tzinfo is None else last
+        if (_now() - la).total_seconds() < ASSET_MARKET_TICK_S:
+            return
+
+    # Мировые события (могут стартовать/завершаться).
+    try:
+        from market_events import maybe_autostart, event_shifts, slug_event_shift
+        await maybe_autostart(db)
+        ev = await event_shifts(db)
+    except Exception:
+        ev = {"shifts": {}}
+
+    econ = await get_econ(db)
+    inflation = float(econ.get("inflation", 0.0))
+
+    # Спрос — число владельцев по slug.
+    owners: dict = {}
+    async for a in db.user_assets.find({}, {"slug": 1}):
+        owners[a.get("slug")] = owners.get(a.get("slug"), 0) + 1
+    # Предложение — активные объявления аренды по slug.
+    listings: dict = {}
+    async for a in db.user_assets.find({"rental": {"$ne": None}}, {"slug": 1}):
+        listings[a.get("slug")] = listings.get(a.get("slug"), 0) + 1
+    # Активность игроков за последний час.
+    since = _now() - timedelta(hours=1)
+    activity = await db.transactions.count_documents({"timestamp": {"$gte": since}})
+    activity_factor = min(0.10, activity * 0.002)
+    # Денежная масса — средние деньги игроков слегка поднимают уровень цен.
+    total_cash, users = 0.0, 0
+    async for u in db.users.find({}, {"balance": 1}):
+        users += 1
+        total_cash += float(u.get("balance", 0) or 0)
+    supply_factor = max(-0.10, min(0.20, (total_cash / users / 50000.0) * 0.10)) if users else 0.0
+
+    for m in [x async for x in db.asset_market.find({})]:
+        slug = m.get("slug")
+        catalog = CATALOG_BY_SLUG.get(slug, {})
+        atype = catalog.get("type", "realestate")
+        rarity = catalog.get("rarity", "common")
+
+        target = 1.0
+        target += RARITY_FLOOR.get(rarity, 0.0)
+        target += min(0.40, owners.get(slug, 0) * 0.02)      # спрос
+        target -= min(0.30, listings.get(slug, 0) * 0.03)    # переизбыток предложения
+        target += inflation + supply_factor + activity_factor
+        target += slug_event_shift(ev.get("shifts", {}), slug, atype)  # событие
+
+        cur = m.get("mult", 1.0)
+        # Плавный дрейф к цели (8%) + маленький шум → без резких скачков.
+        new = cur + (target - cur) * 0.08 + random.gauss(0, 0.01)
+        new = max(ASSET_MULT_MIN, min(ASSET_MULT_MAX, new))
+        await db.asset_market.update_one({"_id": m["_id"]}, {"$set": {"mult": round(new, 4), "updated_at": _now()}})
+
+    await db.asset_market_meta.update_one({"key": "tick"}, {"$set": {"updated_at": _now()}}, upsert=True)
+
+
+async def _mult_map(db: AsyncIOMotorDatabase) -> dict:
+    return {m["slug"]: float(m.get("mult", 1.0)) async for m in db.asset_market.find({})}
+
+
+async def _asset_mult(db: AsyncIOMotorDatabase, slug: str) -> float:
+    m = await db.asset_market.find_one({"slug": slug})
+    return float(m.get("mult", 1.0)) if m else 1.0
+
+
+async def _bump_demand(db: AsyncIOMotorDatabase, slug: str, delta: float):
+    m = await db.asset_market.find_one({"slug": slug})
+    cur = m.get("mult", 1.0) if m else 1.0
+    new = max(ASSET_MULT_MIN, min(ASSET_MULT_MAX, cur + delta))
+    await db.asset_market.update_one(
+        {"slug": slug},
+        {"$set": {"mult": round(new, 4), "updated_at": _now()}, "$setOnInsert": {"slug": slug}},
+        upsert=True,
+    )
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -204,6 +308,14 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
         ends_at = _aware(r.get("ends_at"))
         if ends_at and now >= ends_at:
             payout = round(float(r.get("price", 0)), 2)
+            # Админ-коэффициент аренды + влияние мировых событий (напр. туристический сезон).
+            try:
+                econ = await get_econ(db)
+                payout = round(payout * econ.get("rent_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
+                from market_events import event_shifts
+                payout = round(payout * (await event_shifts(db)).get("rental", 1.0), 2)
+            except Exception:
+                pass
             # Бонус «Гранд-отеля» (Крыша города) — +% к доходу от аренды.
             try:
                 from cityroof import player_city_effect
@@ -244,6 +356,21 @@ async def list_company_assets(db: AsyncIOMotorDatabase, company_id: str) -> list
     return [_serialize(a) async for a in db.user_assets.find({"companyId": company_id})]
 
 
+async def sweep_rentals(db: AsyncIOMotorDatabase):
+    """Глобальная обработка аренды (заселение/выплаты) — вызывается Scheduler'ом."""
+    async for a in db.user_assets.find({"rental": {"$ne": None}}):
+        try:
+            await _process_rental(db, a)
+        except Exception:
+            pass
+
+
+async def tick_market(db: AsyncIOMotorDatabase):
+    """Публичная точка для Scheduler: дрейф динамического рынка активов."""
+    await _ensure_asset_market(db)
+    await _drift_asset_market(db)
+
+
 def _serialize(asset: dict) -> dict:
     return {
         "id": str(asset["_id"]),
@@ -280,25 +407,35 @@ async def get_market(
     min_price: float = Query(None),
     max_price: float = Query(None),
     _user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Каталог рынка с фильтрами по типу, цене и поиском по названию."""
+    """Каталог рынка с ДИНАМИЧЕСКИМИ ценами (спрос/предложение/дрейф/события)."""
+    await _ensure_asset_market(db)
+    await _drift_asset_market(db)
+    mults = await _mult_map(db)
+
     items = CATALOG
     if type in ASSET_TYPES:
         items = [c for c in items if c["type"] == type]
     if search:
         s = search.lower()
         items = [c for c in items if s in c["name"].lower()]
-    if min_price is not None:
-        items = [c for c in items if c["price"] >= min_price]
-    if max_price is not None:
-        items = [c for c in items if c["price"] <= max_price]
+
     out = []
     for c in items:
+        mult = mults.get(c["slug"], 1.0)
+        price = round(c["price"] * mult, 2)
+        if min_price is not None and price < min_price:
+            continue
+        if max_price is not None and price > max_price:
+            continue
         out.append({
             "slug": c["slug"], "type": c["type"], "name": c["name"],
             "category": c.get("category"), "rarity": c.get("rarity"),
             "rooms": c.get("rooms"), "employees": c.get("employees", 0),
-            "price": c["price"],
+            "price": price,
+            "basePrice": c["price"],
+            "trend": round((mult - 1) * 100, 1),   # % отклонения цены от базовой
             "incomePerHour": c.get("income_per_hour", 0),
             "upkeepPerHour": c.get("upkeep_per_hour", 0),
             "profitPerHour": round(c.get("income_per_hour", 0) - c.get("upkeep_per_hour", 0), 2),
@@ -320,9 +457,12 @@ async def buy_asset(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
 
     user_id = str(current_user["_id"])
-    price = float(catalog["price"])
+    # Динамическая цена покупки (базовая × текущий рыночный множитель).
+    await _ensure_asset_market(db)
+    mult = await _asset_mult(db, catalog["slug"])
+    pay_price = round(float(catalog["price"]) * mult, 2)
 
-    new_balance = await adjust_balance(db, user_id, -price)
+    new_balance = await adjust_balance(db, user_id, -pay_price)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
 
@@ -335,7 +475,7 @@ async def buy_asset(
         "rarity": catalog.get("rarity"),
         "rooms": catalog.get("rooms"),
         "employees": catalog.get("employees", 0),
-        "price": price,
+        "price": float(catalog["price"]),   # базовая цена — для расчёта стоимости/улучшений
         "income_per_hour": catalog.get("income_per_hour", 0),
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
         "level": 1,
@@ -350,11 +490,13 @@ async def buy_asset(
 
     cat = CAT_BUSINESS if catalog["type"] == TYPE_BUSINESS else CAT_REALESTATE
     await record_transaction(
-        db, user_id, EXPENSE, price, cat,
+        db, user_id, EXPENSE, pay_price, cat,
         f"Покупка: {catalog['name']}", balance_after=new_balance,
         meta={"slug": catalog["slug"], "type": catalog["type"]},
     )
-    return {"asset": _serialize(doc), "balance": new_balance}
+    # Спрос поднимает рыночную цену этого товара.
+    await _bump_demand(db, catalog["slug"], DEMAND_BUY)
+    return {"asset": _serialize(doc), "balance": new_balance, "paid": pay_price}
 
 
 # ── Ownership ────────────────────────────────────────────────────────────────
@@ -408,6 +550,15 @@ async def collect_income(
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
     amount = _accrued(asset)
+    # Экономические коэффициенты (админ): множитель доходов.
+    econ = await get_econ(db)
+    amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
+    # Влияние активных мировых событий на доход.
+    try:
+        from market_events import event_shifts
+        amount = round(amount * (await event_shifts(db)).get("income", 1.0), 2)
+    except Exception:
+        pass
     await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"last_collected": _now()}})
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
@@ -463,6 +614,9 @@ async def sell_asset(
         f"Продажа: {asset['name']}", balance_after=new_balance,
         meta={"slug": asset.get("slug")},
     )
+    # Продажа опускает рыночную цену этого товара.
+    if asset.get("slug"):
+        await _bump_demand(db, asset["slug"], -DEMAND_SELL)
     return {"sold": payout, "balance": new_balance}
 
 

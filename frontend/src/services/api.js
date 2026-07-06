@@ -142,6 +142,32 @@ export async function adminDeleteUser(userId) {
   })
 }
 
+// ── Admin economy panel ────────────────────────────────────────────────────────
+
+export async function fetchEconomyAnalytics() {
+  return request('/api/admin/economy/analytics')
+}
+
+export async function fetchEconomyConfig() {
+  return request('/api/admin/economy/config')
+}
+
+export async function updateEconomyConfig(data) {
+  return request('/api/admin/economy/config', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function fetchEconomyEvents() {
+  return request('/api/admin/economy/events')
+}
+
+export async function startEconomyEvent(type) {
+  return request('/api/admin/economy/events/start', { method: 'POST', body: JSON.stringify({ type }) })
+}
+
+export async function stopEconomyEvent(eventId) {
+  return request(`/api/admin/economy/events/${encodeURIComponent(eventId)}/stop`, { method: 'POST' })
+}
+
 // ── Crypto API ────────────────────────────────────────────────────────────────
 
 export async function openCryptoAccount() {
@@ -349,6 +375,23 @@ export async function fetchMyJobs() {
   return request('/api/company/my-jobs')
 }
 
+export async function fetchCompanies(search) {
+  const q = search ? `?search=${encodeURIComponent(search)}` : ''
+  return request(`/api/company/list${q}`)
+}
+
+export async function applyToCompany(companyId) {
+  return request(`/api/company/apply/${encodeURIComponent(companyId)}`, { method: 'POST' })
+}
+
+export async function acceptApplication(appId) {
+  return request(`/api/company/applications/${encodeURIComponent(appId)}/accept`, { method: 'POST' })
+}
+
+export async function declineApplication(appId) {
+  return request(`/api/company/applications/${encodeURIComponent(appId)}/decline`, { method: 'POST' })
+}
+
 export async function collectCompanyProfit() {
   return request('/api/company/collect', { method: 'POST' })
 }
@@ -398,5 +441,35 @@ export async function fetchCityBonuses() {
 export async function claimCityBonuses() {
   return request('/api/cityroof/bonuses/claim', { method: 'POST' })
 }
+
+// ── Hardware shop ───────────────────────────────────────────────────────────────
+
+export async function fetchShopCatalog(category) {
+  const q = category ? `?category=${encodeURIComponent(category)}` : ''
+  return request(`/api/shop/catalog${q}`)
+}
+
+export async function buyHardware(itemId, quantity = 1) {
+  return request('/api/shop/buy', { method: 'POST', body: JSON.stringify({ itemId, quantity }) })
+}
+
+export async function fetchInventory() {
+  return request('/api/shop/inventory')
+}
+
+// ── Mining farms ────────────────────────────────────────────────────────────────
+
+export async function fetchFarms() { return request('/api/mining/farms') }
+export async function fetchMiningMarket() { return request('/api/mining/market') }
+export async function createFarm(name) { return request('/api/mining/farms', { method: 'POST', body: JSON.stringify({ name }) }) }
+export async function deleteFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+export async function installComponent(id, category) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category }) }) }
+export async function uninstallComponent(id, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/uninstall`, { method: 'POST', body: JSON.stringify({ hwId }) }) }
+export async function startMining(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/start`, { method: 'POST' }) }
+export async function stopMining(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/stop`, { method: 'POST' }) }
+export async function setFarmCoin(id, symbol) { return request(`/api/mining/farms/${encodeURIComponent(id)}/coin`, { method: 'POST', body: JSON.stringify({ symbol }) }) }
+export async function setOverclock(id, value) { return request(`/api/mining/farms/${encodeURIComponent(id)}/overclock`, { method: 'POST', body: JSON.stringify({ value }) }) }
+export async function repairFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/repair`, { method: 'POST' }) }
+export async function farmManager(id, action) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action }) }) }
 
 export { API_BASE_URL, ApiError, request }

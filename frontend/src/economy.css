@@ -1113,3 +1113,125 @@
 .cbonus-name { font-weight: 600; font-size: 13px; color: var(--color-text-primary); }
 .cbonus-effect { font-size: 11px; color: var(--color-text-secondary); }
 .cbonus-daily { font-weight: 700; font-size: 13px; color: var(--color-success); white-space: nowrap; }
+
+/* ===================== REAL MARKET DATA (logos / live badge) ===================== */
+.ad-logo-img { width: 56px; height: 56px; border-radius: 16px; object-fit: cover; background: var(--color-bg-tertiary); box-shadow: 0 8px 20px rgba(0,0,0,0.35); flex-shrink: 0; }
+.crypto-coin-img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: var(--color-bg-tertiary); flex-shrink: 0; }
+.ad-live {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 700; color: var(--color-success);
+  background: rgba(34,197,94,0.14); padding: 2px 8px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.03em;
+}
+.asset-trend { margin-left: auto; font-size: 12px; font-weight: 700; }
+.asset-trend.up { color: var(--color-success); }
+.asset-trend.down { color: var(--color-danger); }
+
+/* ===================== ADMIN ECONOMY PANEL ===================== */
+.econ-title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; margin: var(--spacing-md) 0; }
+.econ-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); }
+.econ-stat {
+  display: flex; align-items: center; gap: var(--spacing-sm); min-width: 0;
+  background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md); padding: 10px 12px;
+}
+.econ-stat svg { color: var(--color-accent-hover); flex-shrink: 0; }
+.econ-stat span { display: block; font-size: 11px; color: var(--color-text-secondary); }
+.econ-stat b { font-size: 16px; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.econ-config { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--spacing-sm); margin-bottom: var(--spacing-md); }
+.econ-field { display: flex; flex-direction: column; gap: 4px; }
+.econ-field span { font-size: 12px; color: var(--color-text-secondary); }
+.econ-field input {
+  padding: 9px 12px; background: var(--color-bg-tertiary);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md);
+  color: var(--color-text-primary); font-size: 14px;
+}
+
+/* ===================== COMPANIES BROWSE (applications) ===================== */
+.company-browse { margin-top: var(--spacing-xl); }
+.company-browse-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
+.company-browse-head h3 { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; }
+.company-browse-head .tx-search { min-width: 200px; }
+.company-browse-list { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+.company-browse-item {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.05);
+  border-radius: var(--radius-md); flex-wrap: wrap;
+}
+.cbi-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cbi-name { font-weight: 600; color: var(--color-text-primary); }
+.cbi-meta { font-size: 12px; color: var(--color-text-secondary); }
+.company-browse-item .asset-act { flex: 0 0 auto; min-width: 150px; }
+
+/* ===================== ECONOMY EVENTS (admin) ===================== */
+.econ-events-active { display: flex; flex-direction: column; gap: var(--spacing-xs); margin-bottom: var(--spacing-md); }
+.econ-event {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  padding: 10px 12px; border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(99,102,241,0.14), transparent);
+  border: 1px solid rgba(99,102,241,0.3);
+}
+.econ-event-icon { font-size: 24px; }
+.econ-event-info { flex: 1; display: flex; flex-direction: column; }
+.econ-event-info b { color: var(--color-text-primary); }
+.econ-event-info span { font-size: 11px; color: var(--color-success); text-transform: uppercase; }
+.econ-event-types { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); margin-bottom: var(--spacing-md); }
+.econ-event-type {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary); color: var(--color-text-primary);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;
+}
+.econ-event-type:hover { transform: translateY(-1px); border-color: var(--color-accent); }
+.econ-event-history { display: flex; flex-direction: column; gap: 4px; }
+.econ-hist-title { font-size: 12px; color: var(--color-text-secondary); text-transform: uppercase; margin-bottom: 4px; }
+.econ-hist-row { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 10px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); }
+.econ-hist-src { color: var(--color-text-secondary); font-size: 11px; }
+
+/* ===================== MINING FARMS ===================== */
+.mining-create { display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); flex-wrap: wrap; }
+.mining-create input {
+  flex: 1; min-width: 200px; padding: 11px 14px; background: var(--color-bg-tertiary);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); color: var(--color-text-primary);
+}
+.mining-farms { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.mining-farm { background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-lg); overflow: hidden; }
+.mining-farm.mining { border-color: rgba(34,197,94,0.35); }
+.mining-farm.off { border-color: rgba(239,68,68,0.35); }
+.mining-farm-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); cursor: pointer; flex-wrap: wrap; }
+.mfh-title { display: flex; align-items: center; gap: var(--spacing-sm); }
+.mfh-title b { color: var(--color-text-primary); }
+.mining-status { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-secondary); }
+.mining-status.mining { background: var(--color-success); box-shadow: 0 0 8px var(--color-success); }
+.mining-status.off { background: var(--color-danger); }
+.mining-coin { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(234,179,8,0.15); color: #eab308; }
+.mfh-quick { display: flex; gap: var(--spacing-md); flex-wrap: wrap; font-size: 13px; }
+.mfh-quick span { display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-secondary); }
+.mfh-quick .up { color: var(--color-success); } .mfh-quick .down { color: var(--color-danger); }
+.temp.ok { color: var(--color-success); } .temp.warn { color: #eab308; } .temp.crit { color: var(--color-danger); }
+b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color: var(--color-danger); }
+
+.mining-farm-body { padding: 0 var(--spacing-lg) var(--spacing-lg); border-top: 1px solid rgba(255,255,255,0.05); }
+.mining-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--spacing-sm); margin: var(--spacing-md) 0; }
+.ms { display: flex; align-items: center; gap: 8px; background: var(--color-bg-tertiary); border-radius: var(--radius-md); padding: 8px 10px; min-width: 0; }
+.ms svg { color: var(--color-accent-hover); flex-shrink: 0; }
+.ms span { display: block; font-size: 11px; color: var(--color-text-secondary); }
+.ms b { font-size: 14px; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.ms b.up { color: var(--color-success); } .ms b.down { color: var(--color-danger); }
+.mining-missing { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-danger); background: rgba(239,68,68,0.08); padding: 8px 12px; border-radius: var(--radius-md); margin-bottom: var(--spacing-md); }
+.mining-controls { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
+.mining-controls select { padding: 8px 12px; background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); color: var(--color-text-primary); }
+.mining-oc { display: flex; flex-direction: column; font-size: 12px; color: var(--color-text-secondary); gap: 4px; }
+.mining-best { font-size: 12px; color: var(--color-text-secondary); } .mining-best b { color: #eab308; }
+.mining-manager { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; padding: 10px 12px; background: rgba(99,102,241,0.08); border-radius: var(--radius-md); margin-bottom: var(--spacing-md); font-size: 13px; }
+.mining-manager svg { color: var(--color-accent-hover); }
+.mining-assembly h4 { font-size: 14px; margin-bottom: var(--spacing-sm); }
+.mining-comps { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--spacing-sm); }
+.mining-comp { background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 8px 10px; }
+.mining-comp.req { border-color: rgba(99,102,241,0.25); }
+.mc-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
+.mc-add { border: none; background: var(--color-accent); color: #fff; border-radius: 6px; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.mc-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--color-text-primary); margin-top: 5px; }
+.mc-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; }
+.mining-hint { font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-sm); }

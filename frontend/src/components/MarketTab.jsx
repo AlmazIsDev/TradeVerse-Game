@@ -150,7 +150,14 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                   )}
                   {item.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{item.meta.prestige}</b></div>}
                 </div>
-                <div className="asset-price"><Coins size={14} /> ${formatMoney(item.price)}</div>
+                <div className="asset-price">
+                  <Coins size={14} /> ${formatMoney(item.price)}
+                  {item.trend != null && item.trend !== 0 && (
+                    <span className={`asset-trend ${item.trend >= 0 ? 'up' : 'down'}`}>
+                      {item.trend >= 0 ? '▲' : '▼'} {Math.abs(item.trend).toFixed(1)}%
+                    </span>
+                  )}
+                </div>
                 <button
                   className="asset-buy-btn"
                   onClick={() => { setConfirm(item); setFeedback(null) }}

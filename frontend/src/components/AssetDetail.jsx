@@ -124,11 +124,16 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
       {/* Шапка */}
       <div className="ad-header">
-        <span className="ad-logo" style={{ background: asset.color || 'var(--color-accent)' }}>{asset.logo}</span>
+        {asset.image
+          ? <img className="ad-logo-img" src={asset.image} alt={asset.symbol} />
+          : <span className="ad-logo" style={{ background: asset.color || 'var(--color-accent)' }}>{asset.logo}</span>}
         <div className="ad-title">
           <div className="ad-name-row">
             <h2>{asset.name}</h2>
             <span className="ad-ticker">{asset.symbol}</span>
+            {asset.source && asset.source !== 'sim' && (
+              <span className="ad-live" title={asset.source}>● {t('asset.live')}</span>
+            )}
             <button className={`ad-fav ${asset.isFavorite ? 'active' : ''}`} onClick={doFavorite} title={t('asset.favorite')}>
               <Star size={16} fill={asset.isFavorite ? '#fbbf24' : 'none'} />
             </button>

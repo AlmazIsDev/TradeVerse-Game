@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchConfig, toggleCardVisibility, fetchCurrentUser,
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
-  acceptInvite, declineInvite,
+  acceptInvite, declineInvite, acceptApplication, declineApplication,
 } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import ProfileCard from './ProfileCard'
@@ -25,7 +25,7 @@ function getStoredUser() {
   return null
 }
 
-function Header({ username, balance, onLogout }) {
+function Header({ username, balance, onLogout, rtKey = 0 }) {
   const { t } = useTranslation()
   const { data: headerConfig } = useApiOnMount(() => fetchConfig('header_title'))
   const [showNotifications, setShowNotifications] = useState(false)
@@ -96,6 +96,11 @@ function Header({ username, balance, onLogout }) {
     return () => clearInterval(id)
   }, [loadNotifs])
 
+  // Мгновенная перезагрузка при realtime-событии (WebSocket из Dashboard).
+  useEffect(() => {
+    if (rtKey) loadNotifs()
+  }, [rtKey, loadNotifs])
+
   const markAsRead = async (id) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     try { await markNotificationRead(id) } catch { /* ignore */ }
@@ -115,6 +120,22 @@ function Header({ username, balance, onLogout }) {
       await markNotificationRead(notif.id)
       await loadNotifs()
     } catch { /* ignore */ }
+  }
+
+  const handleApplication = async (notif, accept) => {
+    const appId = notif?.data?.applicationId
+    if (!appId) return
+    try {
+      if (accept) await acceptApplication(appId)
+      else await declineApplication(appId)
+      await markNotificationRead(notif.id)
+      await loadNotifs()
+    } catch { /* ignore */ }
+  }
+
+  const notifAction = (notif, accept) => {
+    if (notif.type === 'company_application') return handleApplication(notif, accept)
+    return handleInvite(notif, accept)
   }
 
   const formatNotifTime = (iso) => {
@@ -202,24 +223,26 @@ function Header({ username, balance, onLogout }) {
                   <div className="notification-empty">{t('notifications.noNotifications')}</div>
                 )}
                 {notifications.map(n => {
-                  const isInvite = n.type === 'company_invite' && n.data?.inviteId
+                  const isActionable =
+                    (n.type === 'company_invite' && n.data?.inviteId) ||
+                    (n.type === 'company_application' && n.data?.applicationId)
                   return (
                     <div
                       key={n.id}
                       className={`notification-item ${n.read ? 'read' : 'unread'}`}
-                      onClick={() => !isInvite && markAsRead(n.id)}
+                      onClick={() => !isActionable && markAsRead(n.id)}
                     >
                       {!n.read && <div className="notification-dot" />}
                       <div className="notification-content">
                         <span className="notification-title">{n.title}</span>
                         {n.body && <span className="notification-text">{n.body}</span>}
                         <span className="notification-time">{formatNotifTime(n.createdAt)}</span>
-                        {isInvite && (
+                        {isActionable && (
                           <div className="notification-actions">
-                            <button className="notif-accept" onClick={(e) => { e.stopPropagation(); handleInvite(n, true) }}>
+                            <button className="notif-accept" onClick={(e) => { e.stopPropagation(); notifAction(n, true) }}>
                               <Check size={13} /> {t('company.accept')}
                             </button>
-                            <button className="notif-decline" onClick={(e) => { e.stopPropagation(); handleInvite(n, false) }}>
+                            <button className="notif-decline" onClick={(e) => { e.stopPropagation(); notifAction(n, false) }}>
                               <X size={13} /> {t('company.decline')}
                             </button>
                           </div>

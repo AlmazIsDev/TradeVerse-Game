@@ -182,7 +182,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
       <div className="leaderboard-title-row"><Coins size={22} className="icon" /><h2 className="tab-title">{t('nav.crypto')}</h2></div>
 
       <div className="crypto-layout">
-        {/* ЛЕВО: рынок + прогноз */}
+        {/* ЛЕВО: рынок */}
         <div className="crypto-col-main">
           <div className="crypto-section">
             <div className="crypto-market-head">
@@ -222,31 +222,9 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
               })}
             </div>
           </div>
-
-          {/* Прогноз */}
-          <div className="crypto-section">
-            <h3><Activity size={16} /> {t('crypto.forecast')}</h3>
-            <div className="crypto-forecast">
-              {forecastCoins.map(c => {
-                const f = forecast(c)
-                return (
-                  <div key={c.symbol} className="cf-card clickable" onClick={() => setDetailSymbol(c.symbol)}>
-                    <div className="cf-head">{coinLogo(c)}<span>{c.symbol}</span></div>
-                    <div className="cf-row"><span>{t('crypto.trend')}</span><b className={f.up ? 'up' : 'down'}>{f.up ? t('crypto.trendUp') : t('crypto.trendDown')}</b></div>
-                    <div className="cf-row"><span>{t('crypto.change24')}</span><b className={f.up ? 'up' : 'down'}>{f.change >= 0 ? '+' : ''}{f.change.toFixed(2)}%</b></div>
-                    <div className="cf-row"><span>{t('crypto.volatility')}</span><b>{f.vol}%</b></div>
-                    <div className="cf-prob">
-                      <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${f.probUp}%` }} /></div>
-                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
         </div>
 
-        {/* ПРАВО: кошелёк, активы, перевод, история */}
+        {/* ПРАВО: кошелёк, активы, перевод, прогноз, история */}
         <div className="crypto-col-side">
           <div className="crypto-wallet-card">
             <span className="crypto-card-label"><Wallet size={14} /> {t('crypto.wallet')}</span>
@@ -318,6 +296,28 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Прогноз — между переводом и историей */}
+          <div className="crypto-section">
+            <h3><Activity size={16} /> {t('crypto.forecast')}</h3>
+            <div className="crypto-forecast">
+              {forecastCoins.map(c => {
+                const f = forecast(c)
+                return (
+                  <div key={c.symbol} className="cf-card clickable" onClick={() => setDetailSymbol(c.symbol)}>
+                    <div className="cf-head">{coinLogo(c)}<span>{c.symbol}</span></div>
+                    <div className="cf-row"><span>{t('crypto.trend')}</span><b className={f.up ? 'up' : 'down'}>{f.up ? t('crypto.trendUp') : t('crypto.trendDown')}</b></div>
+                    <div className="cf-row"><span>{t('crypto.change24')}</span><b className={f.up ? 'up' : 'down'}>{f.change >= 0 ? '+' : ''}{f.change.toFixed(2)}%</b></div>
+                    <div className="cf-row"><span>{t('crypto.volatility')}</span><b>{f.vol}%</b></div>
+                    <div className="cf-prob">
+                      <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${f.probUp}%` }} /></div>
+                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           <div className="crypto-section">

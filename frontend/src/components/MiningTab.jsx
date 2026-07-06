@@ -225,6 +225,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
               <div className="mmc-info">
                 <b>{t('mining.aiManager')}</b>
                 <span>{t('mining.level')} {farm.manager.level} · ${formatMoney(farm.manager.salary)}/ч</span>
+                <small className="mmc-desc">{t('mining.managerDesc')}</small>
               </div>
               <div className="mmc-actions">
                 <button className="asset-act upgrade" disabled={busy} onClick={() => run(() => farmManager(farm.id, 'upgrade'), 'mining.mgrUpgraded')}>{t('mining.upgrade')}</button>
@@ -261,6 +262,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                     <span className="mslot-name">{t(`mining.comp.${cat}`, cat)}{req && <em> *</em>}</span>
                     {multi && installed.length > 0 && <span className="mslot-count">×{installed.length}</span>}
                   </div>
+                  <span className="mslot-desc">{t(`mining.desc.${cat}`, '')}</span>
                   {installed.map(it => (
                     <div key={it.hwId} className="mslot-item">
                       <span>{it.name}</span>

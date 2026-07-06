@@ -185,20 +185,30 @@ def _now() -> datetime:
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
+async def _city_shop_discount(db, user_id: str) -> float:
+    """Скидка на оборудование от зданий «Крыши города» (напр. «Морской порт»)."""
+    try:
+        from cityroof import player_city_effect
+        return min(0.5, await player_city_effect(db, user_id, "shop_discount"))
+    except Exception:
+        return 0.0
+
+
 @router.get("/catalog")
 async def get_catalog(
     category: str = Query(None),
-    _user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Каталог с ЖИВЫМИ ценами (никаких null)."""
     shop_cfg = await _shop_config(db)
     econ = await get_econ(db)
     emult = econ.get("economy_mult", 1.0)
+    discount = await _city_shop_discount(db, str(current_user["_id"]))
     items = CATALOG if not category else [c for c in CATALOG if c["category"] == category]
     out = []
     for c in items:
-        price = round(c["base_price"] * shop_cfg.get(c["category"], 1.0) * emult, 2)
+        price = round(c["base_price"] * shop_cfg.get(c["category"], 1.0) * emult * (1 - discount), 2)
         out.append({
             "id": c["id"], "category": c["category"], "name": c["name"],
             "brand": c.get("brand"), "color": c.get("color"),
@@ -225,10 +235,10 @@ async def buy_hardware(
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Товар не найден")
     qty = max(1, min(int(payload.quantity), 100))
-    unit = await _price_of(db, item)
-    total = round(unit * qty, 2)
-
     user_id = str(current_user["_id"])
+    discount = await _city_shop_discount(db, user_id)
+    unit = round(await _price_of(db, item) * (1 - discount), 2)
+    total = round(unit * qty, 2)
     new_balance = await adjust_balance(db, user_id, -total)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")

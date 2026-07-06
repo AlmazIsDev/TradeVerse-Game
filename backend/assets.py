@@ -327,17 +327,36 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
             await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"rental": None}})
             asset["rental"] = None
             if payout > 0:
-                new_balance = await adjust_balance(db, asset["userId"], payout)
-                await record_transaction(
-                    db, asset["userId"], INCOME, payout, CAT_REALESTATE,
-                    f"Аренда: {asset.get('name')}", balance_after=new_balance,
-                    meta={"assetId": str(asset["_id"])},
-                )
-                await push_notification(
-                    db, asset["userId"], "rental",
-                    "Аренда завершена", f"Начислено ${payout:.2f} за «{asset.get('name')}».",
-                    data={"assetId": str(asset["_id"]), "payout": payout},
-                )
+                company_id = asset.get("companyId")
+                if company_id and ObjectId.is_valid(company_id):
+                    # Актив компании — доход поступает в бюджет компании.
+                    await db.companies.update_one({"_id": ObjectId(company_id)}, {"$inc": {"budget": payout}})
+                    company = await db.companies.find_one({"_id": ObjectId(company_id)})
+                    from ledger import CAT_COMPANY
+                    await record_transaction(
+                        db, asset["userId"], INCOME, payout, CAT_COMPANY,
+                        f"Аренда (компания): {asset.get('name')}",
+                        meta={"assetId": str(asset["_id"]), "companyId": company_id, "toBudget": True},
+                    )
+                    if company:
+                        await push_notification(
+                            db, company.get("ownerId", asset["userId"]), "rental",
+                            "Аренда компании завершена",
+                            f"В бюджет «{company.get('name')}» начислено ${payout:.2f} за «{asset.get('name')}».",
+                            data={"assetId": str(asset["_id"]), "payout": payout, "companyId": company_id},
+                        )
+                else:
+                    new_balance = await adjust_balance(db, asset["userId"], payout)
+                    await record_transaction(
+                        db, asset["userId"], INCOME, payout, CAT_REALESTATE,
+                        f"Аренда: {asset.get('name')}", balance_after=new_balance,
+                        meta={"assetId": str(asset["_id"])},
+                    )
+                    await push_notification(
+                        db, asset["userId"], "rental",
+                        "Аренда завершена", f"Начислено ${payout:.2f} за «{asset.get('name')}».",
+                        data={"assetId": str(asset["_id"]), "payout": payout},
+                    )
     return asset
 
 
@@ -559,6 +578,14 @@ async def collect_income(
         amount = round(amount * (await event_shifts(db)).get("income", 1.0), 2)
     except Exception:
         pass
+    # Бонус зданий «Крыши города»: +% к доходу с бизнеса/недвижимости.
+    try:
+        from cityroof import player_city_effect
+        city_bonus = await player_city_effect(db, user_id, "asset_income")
+        if city_bonus:
+            amount = round(amount * (1 + city_bonus), 2)
+    except Exception:
+        pass
     await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"last_collected": _now()}})
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
@@ -649,11 +676,13 @@ async def rent_list(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Выставить недвижимость в аренду. Арендатор появится через 1–48 часов."""
+    """Выставить недвижимость/авто в аренду. Арендатор появится через 1–48 часов.
+
+    Работает и для личных активов, и для активов компании (владелец компании
+    управляет ими) — в последнем случае выплата поступит в бюджет компании.
+    """
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    if asset.get("companyId"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Актив передан компании")
     if asset.get("type") not in RENTABLE_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость и авто")
     if asset.get("rental"):

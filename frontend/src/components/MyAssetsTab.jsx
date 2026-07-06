@@ -7,10 +7,11 @@ import {
 import { formatMoney } from './TransactionsPanel'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
-  TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge,
+  TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid,
 } from 'lucide-react'
 
 const TYPE_TABS = [
+  { id: 'all', icon: LayoutGrid },
   { id: 'realestate', icon: Home },
   { id: 'car', icon: Car },
   { id: 'business', icon: Briefcase },
@@ -94,7 +95,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
   }
 
-  const list = assets.filter(a => a.type === activeType)
+  const list = activeType === 'all' ? assets : assets.filter(a => a.type === activeType)
   const totalValue = list.reduce((s, a) => s + (a.value || 0), 0)
   const totalProfit = list.reduce((s, a) => s + (a.profitPerHour || 0), 0)
   const totalAccrued = list.reduce((s, a) => s + (a.accrued || 0), 0)
@@ -136,7 +137,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
           return (
             <button key={tab.id} className={`tx-pill ${activeType === tab.id ? 'active' : ''}`}
               onClick={() => setActiveType(tab.id)}>
-              <Icon size={14} /> {t(`market.cat_${tab.id}`)}
+              <Icon size={14} /> {tab.id === 'all' ? t('common.all') : t(`market.cat_${tab.id}`)}
             </button>
           )
         })}
@@ -168,7 +169,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
       {!loading && !error && list.length === 0 && (
         <div className="empty-state">
-          <span className="placeholder-icon">{TYPE_EMOJI[activeType]}</span>
+          <span className="placeholder-icon">{TYPE_EMOJI[activeType] || '📦'}</span>
           <p>{t('myassets.empty')}</p>
         </div>
       )}

@@ -80,6 +80,18 @@ async def _coin_market(db) -> dict:
     return out
 
 
+async def _city_bonus(db, user_id: str) -> dict:
+    """Бонусы зданий «Крыши города», влияющие на майнинг (доход/электричество)."""
+    try:
+        from cityroof import player_city_effect
+        return {
+            "yield": await player_city_effect(db, user_id, "mining_yield"),
+            "energy": await player_city_effect(db, user_id, "mining_energy"),
+        }
+    except Exception:
+        return {}
+
+
 def choose_best_coin(market: dict) -> str | None:
     """ИИ-выбор самой прибыльной монеты: курс × момент − комиссия."""
     best, best_p = None, -1.0
@@ -90,7 +102,12 @@ def choose_best_coin(market: dict) -> str | None:
     return best
 
 
-def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float = 1.0) -> dict:
+def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float = 1.0,
+             city: dict | None = None) -> dict:
+    # city — бонусы зданий «Крыши города»: yield (+% к добыче), energy (−% к счёту за свет).
+    city = city or {}
+    yield_bonus = float(city.get("yield", 0.0))
+    energy_discount = min(0.5, float(city.get("energy", 0.0)))
     comp = farm.get("components", {})
     gpus = comp.get("gpus", [])
     fans = comp.get("fans", [])
@@ -114,9 +131,9 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     coin_sym = farm.get("coin")
     coin = market.get(coin_sym) if coin_sym else None
     prof = _coin_profitability(coin)
-    revenue_per_h = round(hashrate * HASH_YIELD * prof * economy_mult, 2)
+    revenue_per_h = round(hashrate * HASH_YIELD * prof * economy_mult * (1 + yield_bonus), 2)
 
-    electricity_per_h = round(total_power * energy_cost * ELEC_SCALE, 2)
+    electricity_per_h = round(total_power * energy_cost * ELEC_SCALE * (1 - energy_discount), 2)
     salary_per_h = round(MANAGER_SALARY_PER_H * ai_level, 2) if manager.get("type") == "ai" else 0.0
 
     overclock_excess = max(0.0, overclock - 1.0)
@@ -178,6 +195,17 @@ def _missing_required(farm: dict) -> list[str]:
 # ── Помощники доступа ────────────────────────────────────────────────────────
 
 
+async def _serialize_with_stats(db, farm: dict, user_id: str) -> dict:
+    """Сериализует ферму с ПОЛНЫМ пересчётом характеристик (для мгновенного отклика UI)."""
+    market = await _coin_market(db)
+    econ = await get_econ(db)
+    city = await _city_bonus(db, user_id)
+    stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city)
+    item = _serialize(farm, stats)
+    item["missing"] = _missing_required(farm)
+    return item
+
+
 async def _load_farm(db, user_id, farm_id) -> dict:
     if not ObjectId.is_valid(farm_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID фермы")
@@ -204,6 +232,7 @@ class CreateFarm(BaseModel):
 
 class InstallBody(BaseModel):
     category: str
+    hwId: str | None = None   # конкретная деталь из инвентаря (игрок выбирает сам)
 
 
 class CoinBody(BaseModel):
@@ -234,15 +263,35 @@ async def mining_market(_user: dict = Depends(get_current_user), db: AsyncIOMoto
     return {"coins": coins, "best": choose_best_coin(market)}
 
 
+@router.get("/parts")
+async def available_parts(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Свободное оборудование игрока (не установленное ни в одну ферму),
+    сгруппированное по категориям — для самостоятельного выбора комплектующих."""
+    user_id = str(current_user["_id"])
+    by_cat: dict[str, list] = {}
+    async for hw in db.user_hardware.find({"userId": user_id, "farmId": None}):
+        by_cat.setdefault(hw.get("category"), []).append({
+            "hwId": str(hw["_id"]),
+            "name": hw.get("name"),
+            "specs": hw.get("specs", {}),
+            "category": hw.get("category"),
+        })
+    # Стабильный порядок внутри категории (по названию).
+    for items in by_cat.values():
+        items.sort(key=lambda x: x.get("name") or "")
+    return by_cat
+
+
 @router.get("/farms")
 async def get_farms(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     market = await _coin_market(db)
     econ = await get_econ(db)
     ec, em = econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0)
+    city = await _city_bonus(db, user_id)
     out = []
     async for farm in db.mining_farms.find({"userId": user_id}):
-        stats = _compute(farm, market, ec, em)
+        stats = _compute(farm, market, ec, em, city)
         item = _serialize(farm, stats)
         item["missing"] = _missing_required(farm)
         out.append(item)
@@ -284,9 +333,20 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
     role = meta["role"]
     multi = meta.get("multi", False)
 
-    hw = await db.user_hardware.find_one({"userId": user_id, "category": payload.category, "farmId": None})
-    if not hw:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободного оборудования — купите в магазине")
+    # Игрок может выбрать КОНКРЕТНУЮ деталь (hwId) — иначе берётся любая свободная.
+    if payload.hwId:
+        if not ObjectId.is_valid(payload.hwId):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID детали")
+        hw = await db.user_hardware.find_one({
+            "_id": ObjectId(payload.hwId), "userId": user_id,
+            "category": payload.category, "farmId": None,
+        })
+        if not hw:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Деталь недоступна (не найдена или уже установлена)")
+    else:
+        hw = await db.user_hardware.find_one({"userId": user_id, "category": payload.category, "farmId": None})
+        if not hw:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободного оборудования — купите в магазине")
 
     comp = farm.get("components", {})
     if multi:
@@ -308,7 +368,7 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
 
     await db.user_hardware.update_one({"_id": hw["_id"]}, {"$set": {"farmId": str(farm["_id"])}})
     updated = await db.mining_farms.find_one({"_id": farm["_id"]})
-    return _serialize(updated, {})
+    return await _serialize_with_stats(db, updated, user_id)
 
 
 @router.post("/farms/{farm_id}/uninstall")
@@ -332,7 +392,7 @@ async def uninstall_component(farm_id: str, body: dict, current_user: dict = Dep
     if changed and ObjectId.is_valid(hw_id):
         await db.user_hardware.update_one({"_id": ObjectId(hw_id)}, {"$set": {"farmId": None}})
     updated = await db.mining_farms.find_one({"_id": farm["_id"]})
-    return _serialize(updated, {})
+    return await _serialize_with_stats(db, updated, user_id)
 
 
 @router.post("/farms/{farm_id}/start")
@@ -346,7 +406,8 @@ async def start_mining(farm_id: str, current_user: dict = Depends(get_current_us
     # Проверка мощности БП.
     market = await _coin_market(db)
     econ = await get_econ(db)
-    stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0))
+    city = await _city_bonus(db, user_id)
+    stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city)
     psu_w = farm.get("components", {}).get("psu", {}).get("specs", {}).get("power", 0)
     if psu_w < stats["power"]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Недостаточная мощность БП ({psu_w}W < {stats['power']}W)")
@@ -364,7 +425,7 @@ async def start_mining(farm_id: str, current_user: dict = Depends(get_current_us
         {"$set": {"status": "mining", "coin": coin, "last_tick": _now()}},
     )
     updated = await db.mining_farms.find_one({"_id": farm["_id"]})
-    return _serialize(updated, _compute(updated, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0)))
+    return _serialize(updated, _compute(updated, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city))
 
 
 @router.post("/farms/{farm_id}/stop")
@@ -423,6 +484,13 @@ async def manage_manager(farm_id: str, payload: ManagerBody, current_user: dict 
     if payload.action == "hire":
         if manager.get("type") == "ai":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Управляющий уже нанят")
+        # Нельзя нанять управляющего на несобранную ферму — управлять пока нечем.
+        missing = _missing_required(farm)
+        if missing:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Сначала соберите ферму (не хватает: {', '.join(missing)})",
+            )
         cost = MANAGER_BASE_COST
         new_level = 1
     elif payload.action == "upgrade":
@@ -471,7 +539,8 @@ async def tick_all(db: AsyncIOMotorDatabase):
             if best and best != farm.get("coin"):
                 farm["coin"] = best
 
-        stats = _compute(farm, market, ec, em)
+        city = await _city_bonus(db, user_id)
+        stats = _compute(farm, market, ec, em, city)
         revenue = round(stats["revenuePerHour"] * elapsed_h, 2)
         electricity = round(stats["electricityPerHour"] * elapsed_h, 2)
         salary = round(stats["salaryPerHour"] * elapsed_h, 2)

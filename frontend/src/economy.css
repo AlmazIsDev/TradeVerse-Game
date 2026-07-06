@@ -905,6 +905,30 @@
 }
 .company-note { font-size: 12px; color: var(--color-text-secondary); margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-lg); }
 
+/* Карточка «Активы компании» — открывает интерфейс как «Моё имущество» */
+.company-assets-card {
+  display: flex; align-items: center; gap: var(--spacing-md);
+  width: 100%; text-align: left; cursor: pointer;
+  background: var(--color-bg-elevated, #1a2130);
+  border: 1px solid var(--color-border, #2a3446);
+  border-radius: var(--radius-lg, 14px);
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin: var(--spacing-lg) 0;
+  transition: border-color .15s, transform .15s, background .15s;
+}
+.company-assets-card:hover { border-color: var(--color-accent, #6366f1); transform: translateY(-1px); }
+.company-assets-card .cac-icon {
+  display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 auto;
+  border-radius: 12px; background: rgba(99, 102, 241, 0.15); color: var(--color-accent, #818cf8);
+}
+.company-assets-card .cac-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.company-assets-card .cac-title { font-weight: 700; color: var(--color-text-primary); }
+.company-assets-card .cac-meta { font-size: 13px; color: var(--color-success, #4ade80); }
+.company-assets-card .cac-chevron { color: var(--color-text-secondary); flex: 0 0 auto; }
+
+.company-assets-modal { max-width: 860px; width: min(860px, 94vw); max-height: 88vh; overflow-y: auto; }
+.company-assets-modal h3 { display: flex; align-items: center; gap: 8px; }
+
 /* ===================== ASSET DETAIL PAGE + CHART ===================== */
 .stock-card.clickable, .crypto-coin.clickable { cursor: pointer; }
 .stock-card.clickable:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
@@ -1235,3 +1259,74 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
 .mc-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--color-text-primary); margin-top: 5px; }
 .mc-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; }
 .mining-hint { font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-sm); }
+
+/* ===================== MINING — новый дашборд ===================== */
+.mining-onboard { text-align: center; }
+.mining-onboard-form { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; justify-content: center; margin-top: var(--spacing-md); }
+.mining-onboard-form input {
+  padding: 11px 14px; background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md); color: var(--color-text-primary); min-width: 220px;
+}
+
+.mining-farm-tabs { display: flex; align-items: center; gap: var(--spacing-xs); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
+.mining-farm-tab {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; cursor: pointer;
+  background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px; color: var(--color-text-secondary); font-weight: 600; font-size: 13px;
+  transition: border-color .15s, color .15s;
+}
+.mining-farm-tab.active { color: var(--color-text-primary); border-color: var(--color-accent); }
+.mining-add-farm { display: inline-flex; gap: 6px; margin-left: auto; }
+.mining-add-farm input {
+  padding: 7px 12px; background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md); color: var(--color-text-primary); width: 150px;
+}
+
+.mining-panel { background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.07); border-radius: var(--radius-lg); padding: var(--spacing-lg); }
+.mining-panel.mining { border-color: rgba(34,197,94,0.35); }
+.mining-panel.off { border-color: rgba(239,68,68,0.35); }
+.mining-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
+.mph-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mph-title h3 { font-size: 20px; font-weight: 700; margin: 0; }
+.mph-actions { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+.mining-state-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(148,163,184,0.15); color: var(--color-text-secondary); }
+.mining-state-badge.mining { background: rgba(34,197,94,0.16); color: var(--color-success); }
+.mining-state-badge.off { background: rgba(239,68,68,0.16); color: var(--color-danger); }
+
+.mining-stat-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--spacing-sm); margin-bottom: var(--spacing-md); }
+.msc {
+  display: flex; flex-direction: column; gap: 3px; padding: 11px 13px;
+  background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md);
+}
+.msc svg { color: var(--color-text-secondary); }
+.msc span { font-size: 11px; color: var(--color-text-secondary); }
+.msc b { font-size: 17px; color: var(--color-text-primary); }
+.msc b.up { color: var(--color-success); } .msc b.down { color: var(--color-danger); }
+.msc b.ok { color: var(--color-success); } .msc b.warn { color: #eab308; } .msc b.crit { color: var(--color-danger); }
+
+.mining-panel-controls { display: flex; align-items: flex-end; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
+.mpc-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--color-text-secondary); }
+.mpc-field select, .mpc-field input[type="range"] { min-width: 200px; }
+.mpc-field select { padding: 8px 12px; background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); color: var(--color-text-primary); }
+
+.mining-manager-card {
+  display: flex; align-items: center; gap: var(--spacing-md); padding: 12px 14px; margin-bottom: var(--spacing-md);
+  background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-radius: var(--radius-md);
+}
+.mmc-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: rgba(99,102,241,0.18); color: var(--color-accent-hover); flex: 0 0 auto; }
+.mmc-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.mmc-info b { color: var(--color-text-primary); }
+.mmc-info span { font-size: 12px; color: var(--color-text-secondary); }
+.mmc-actions { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+
+.mining-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--spacing-sm); }
+.mining-slot { background: var(--color-bg-tertiary); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-md); padding: 9px 11px; }
+.mining-slot.req { border-color: rgba(99,102,241,0.22); }
+.mining-slot.filled { border-color: rgba(34,197,94,0.22); }
+.mslot-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
+.mslot-name em { color: var(--color-accent-hover); font-style: normal; }
+.mslot-count { font-size: 11px; color: var(--color-success); }
+.mslot-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--color-text-primary); margin-top: 5px; }
+.mslot-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; padding: 0; }
+.mslot-pick { width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12px; background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--color-text-primary); cursor: pointer; }
+.mslot-empty { display: block; margin-top: 6px; font-size: 11px; color: var(--color-text-secondary); }

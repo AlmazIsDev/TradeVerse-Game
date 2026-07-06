@@ -5,6 +5,7 @@ import {
   transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import ConfirmDialog from './ConfirmDialog'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench,
@@ -46,6 +47,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [rentModal, setRentModal] = useState(null)   // asset
   const [rentForm, setRentForm] = useState({ price: '', minHours: '6' })
   const [tuneModal, setTuneModal] = useState(null)   // car asset
+  const [confirm, setConfirm] = useState(null)       // { title, message, danger, onConfirm }
 
   // Синхронизируем открытую модалку тюнинга с обновлёнными данными.
   useEffect(() => {
@@ -89,6 +91,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       setBusyId(null)
     }
   }
+
+  // Открыть подтверждение перед действием (act выполнится по «Да»).
+  const askAct = (id, fn, okKey, conf) =>
+    setConfirm({ ...conf, onConfirm: () => act(id, fn, okKey) })
 
   const submitRent = async () => {
     if (!rentModal) return
@@ -138,7 +144,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="asset-rental listed">
           <KeyRound size={13} /> {t('rent.waiting')}
           <button className="asset-rental-cancel" disabled={busyId === a.id}
-            onClick={() => act(a.id, cancelRent, 'rent.cancelled')}>{t('common.cancel')}</button>
+            onClick={() => askAct(a.id, cancelRent, 'rent.cancelled', { title: t('rent.list'), message: t('confirm.cancelRent') })}>{t('common.cancel')}</button>
         </div>
       )
     }
@@ -242,12 +248,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
                 <div className={`asset-actions ${isCar ? 'compact' : ''}`}>
                   {!isCar && a.profitPerHour > 0 && (
-                    <button className="asset-act collect" disabled={busy || a.accrued <= 0} onClick={() => act(a.id, collectAsset, 'myassets.collected')}>
+                    <button className="asset-act collect" disabled={busy || a.accrued <= 0}
+                      onClick={() => askAct(a.id, collectAsset, 'myassets.collected', { title: t('myassets.collect'), message: t('confirm.collect', { amount: formatMoney(a.accrued) }) })}>
                       <HandCoins size={15} /> {t('myassets.collect')}
                     </button>
                   )}
                   {!isCar && (
-                    <button className="asset-act upgrade" disabled={busy} onClick={() => act(a.id, upgradeAsset, 'myassets.upgraded')}>
+                    <button className="asset-act upgrade" disabled={busy}
+                      onClick={() => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) })}>
                       <ArrowUpCircle size={15} /> {t('myassets.upgrade')} (${formatMoney(a.upgradeCost)})
                     </button>
                   )}
@@ -257,10 +265,11 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                     </button>
                   )}
                   <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
-                    onClick={() => act(a.id, transferAssetToCompany, 'myassets.transferred')}>
+                    onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: a.name }) })}>
                     <Building2 size={15} /> {t('myassets.toCompany')}
                   </button>
-                  <button className="asset-act sell" disabled={busy} onClick={() => act(a.id, sellAsset, 'myassets.sold')}>
+                  <button className="asset-act sell" disabled={busy}
+                    onClick={() => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: a.name, value: formatMoney(a.value) }) })}>
                     <Trash2 size={15} /> {t('myassets.sell')}
                   </button>
                 </div>
@@ -331,6 +340,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirm}
+        danger={confirm?.danger}
+        title={confirm?.title}
+        message={confirm?.message}
+        onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

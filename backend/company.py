@@ -48,6 +48,47 @@ class CompanyCreate(BaseModel):
         return v
 
 
+class CompanySettings(BaseModel):
+    """Настройки компании (все поля опциональны — обновляем только присланные)."""
+    name: str | None = None
+    description: str | None = None
+    logo: str | None = None
+    isOpen: bool | None = None
+    visibleInSearch: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_valid(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("Название компании слишком короткое")
+        if len(v) > 40:
+            raise ValueError("Название компании слишком длинное")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def desc_valid(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if len(v) > 200:
+            raise ValueError("Описание слишком длинное")
+        return v
+
+    @field_validator("logo")
+    @classmethod
+    def logo_valid(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if len(v) > 300:
+            raise ValueError("Слишком длинная ссылка на логотип")
+        return v
+
+
 class InviteCreate(BaseModel):
     username: str
     role: str = "worker"
@@ -128,6 +169,10 @@ async def _serialize(db, company: dict) -> dict:
     return {
         "id": cid,
         "name": company["name"],
+        "description": company.get("description", ""),
+        "logo": company.get("logo", ""),
+        "isOpen": company.get("isOpen", True),
+        "visibleInSearch": company.get("visibleInSearch", True),
         "budget": round(company.get("budget", 0.0), 2),
         "createdAt": company.get("created_at").isoformat() if isinstance(company.get("created_at"), datetime) else None,
         "revenuePerHour": revenue,
@@ -183,6 +228,7 @@ async def create_company(
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для регистрации")
     doc = {"ownerId": user_id, "name": payload.name, "budget": 0.0,
+           "description": "", "logo": "", "isOpen": True, "visibleInSearch": True,
            "created_at": _now(), "last_tick": _now()}
     result = await db.companies.insert_one(doc)
     doc["_id"] = result.inserted_id
@@ -191,6 +237,61 @@ async def create_company(
         f"Регистрация компании «{payload.name}»", balance_after=new_balance,
     )
     return {"company": await _serialize(db, doc), "balance": new_balance}
+
+
+@router.patch("")
+async def update_company(
+    payload: CompanySettings,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Изменить настройки компании (только владелец)."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    updates = {}
+    for field in ("name", "description", "logo", "isOpen", "visibleInSearch"):
+        val = getattr(payload, field)
+        if val is not None:
+            updates[field] = val
+    if updates:
+        await db.companies.update_one({"_id": company["_id"]}, {"$set": updates})
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    return {"company": await _serialize(db, updated)}
+
+
+@router.delete("")
+async def disband_company(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Распустить компанию (только владелец). Необратимо.
+
+    Активы компании возвращаются владельцу в личную собственность, сотрудники
+    уведомляются, все приглашения/заявки/сотрудники удаляются.
+    """
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    cid = str(company["_id"])
+    name = company["name"]
+
+    # Уведомить всех сотрудников о роспуске (realtime через WS + persist).
+    members = await _members(db, cid)
+    for m in members:
+        await push_notification(
+            db, m["userId"], "company", "Компания распущена",
+            f"Компания «{name}» была распущена. Вы больше не сотрудник.",
+            data={"companyId": cid},
+        )
+
+    # Вернуть активы компании владельцу в личную собственность.
+    await db.user_assets.update_many({"companyId": cid}, {"$set": {"companyId": None}})
+
+    # Удалить связанные записи и саму компанию.
+    await db.company_members.delete_many({"companyId": cid})
+    await db.company_invites.delete_many({"companyId": cid})
+    await db.company_applications.delete_many({"companyId": cid})
+    await db.companies.delete_one({"_id": company["_id"]})
+    return {"ok": True}
 
 
 # ── Invitations (consent-based hiring) ───────────────────────────────────────
@@ -378,7 +479,8 @@ async def list_companies(
 ):
     """Каталог компаний: поиск, число сотрудников, капитал. Для подачи заявок."""
     uid = str(current_user["_id"])
-    query: dict = {}
+    # Скрытые из поиска компании не показываем (кроме собственной).
+    query: dict = {"$or": [{"visibleInSearch": {"$ne": False}}, {"ownerId": uid}]}
     if search:
         query["name"] = {"$regex": search, "$options": "i"}
     out = []
@@ -397,6 +499,7 @@ async def list_companies(
             "memberCount": members, "assetCount": len(assets),
             "capital": capital, "revenuePerHour": await company_income_per_hour(db, cid),
             "isMine": c.get("ownerId") == uid, "applied": applied,
+            "isOpen": c.get("isOpen", True), "logo": c.get("logo", ""),
         })
     out.sort(key=lambda x: x["capital"], reverse=True)
     return out
@@ -417,6 +520,8 @@ async def apply_to_company(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Компания не найдена")
     if company.get("ownerId") == uid:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Это ваша компания")
+    if not company.get("isOpen", True):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Компания закрыта для заявок")
     if await db.company_members.find_one({"userId": uid}):
         raise HTTPException(status.HTTP_409_CONFLICT, "Вы уже работаете в компании")
     if await db.company_applications.find_one({"companyId": company_id, "applicantId": uid, "status": "pending"}):

@@ -6,6 +6,7 @@ import {
 } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import AssetDetail from './AssetDetail'
+import ConfirmDialog from './ConfirmDialog'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
   ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X, Send, Search, Activity,
@@ -42,6 +43,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
   const [transfer, setTransfer] = useState({ recipient: '', symbol: '', amount: '' })
   const [transferMsg, setTransferMsg] = useState(null)
   const [transferBusy, setTransferBusy] = useState(false)
+  const [confirmTransfer, setConfirmTransfer] = useState(null)   // { recipient, symbol, amount }
   const [transfers, setTransfers] = useState([])
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('cap')   // cap | gainers | losers
@@ -114,19 +116,26 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
     } finally { setBusy(false) }
   }
 
-  const handleTransfer = async (e) => {
+  const handleTransfer = (e) => {
     e?.preventDefault?.()
     const amt = parseFloat(transfer.amount)
     if (!transfer.recipient.trim() || !transfer.symbol || !(amt > 0)) { setTransferMsg({ type: 'error', text: t('cryptoTransfer.invalid') }); return }
     const held = account?.holdings?.find(h => h.symbol === transfer.symbol)
     if (!held || held.quantity < amt * 1.01) { setTransferMsg({ type: 'error', text: t('crypto.insufficientCoins') }); return }
+    setTransferMsg(null)
+    setConfirmTransfer({ recipient: transfer.recipient.trim(), symbol: transfer.symbol, amount: amt })
+  }
+
+  const doTransfer = async () => {
+    if (!confirmTransfer) return
     setTransferBusy(true); setTransferMsg(null)
     try {
-      const res = await transferCrypto(transfer.recipient.trim(), transfer.symbol, amt)
-      setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: amt, symbol: res.symbol, recipient: res.recipient }) })
+      const res = await transferCrypto(confirmTransfer.recipient, confirmTransfer.symbol, confirmTransfer.amount)
+      setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: confirmTransfer.amount, symbol: res.symbol, recipient: res.recipient }) })
       setTransfer({ recipient: '', symbol: '', amount: '' })
       setRefreshKey(k => k + 1); await load()
-    } catch (err) { setTransferMsg({ type: 'error', text: err.message }) } finally { setTransferBusy(false) }
+    } catch (err) { setTransferMsg({ type: 'error', text: err.message }) }
+    finally { setTransferBusy(false); setConfirmTransfer(null) }
   }
 
   const marketView = useMemo(() => {
@@ -349,6 +358,16 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmTransfer}
+        busy={transferBusy}
+        title={t('cryptoTransfer.title', 'Перевод криптовалюты')}
+        message={confirmTransfer ? t('confirm.cryptoTransfer', { amount: formatCoin(confirmTransfer.amount), symbol: confirmTransfer.symbol, recipient: confirmTransfer.recipient }) : ''}
+        confirmLabel={t('cryptoTransfer.send', 'Отправить')}
+        onConfirm={doTransfer}
+        onCancel={() => setConfirmTransfer(null)}
+      />
     </div>
   )
 }

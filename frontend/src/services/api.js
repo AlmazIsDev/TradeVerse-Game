@@ -349,6 +349,14 @@ export async function createCompany(name) {
   return request('/api/company', { method: 'POST', body: JSON.stringify({ name }) })
 }
 
+export async function updateCompanySettings(payload) {
+  return request('/api/company', { method: 'PATCH', body: JSON.stringify(payload) })
+}
+
+export async function disbandCompany() {
+  return request('/api/company', { method: 'DELETE' })
+}
+
 export async function updateMemberSalary(memberUserId, salary) {
   return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, {
     method: 'PATCH', body: JSON.stringify({ salary }),

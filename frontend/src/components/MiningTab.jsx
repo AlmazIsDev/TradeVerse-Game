@@ -6,6 +6,7 @@ import {
   repairFarm, farmManager,
 } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
+import ConfirmDialog from './ConfirmDialog'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
   Plus, X, AlertTriangle, Check, Bot, TrendingUp, HardDrive, Server, Cpu,
@@ -40,6 +41,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [activeId, setActiveId] = useState(null)
+  const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
 
   const load = useCallback(async () => {
     try {
@@ -86,6 +88,19 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+  const askCreate = () => setConfirm({
+    title: t('mining.createFarm'),
+    message: t('confirm.createFarm', { name: newName.trim() }),
+    onConfirm: () => run(() => createFarm(newName.trim()), 'mining.created').then(() => setNewName('')),
+  })
+
+  const askDismantle = (f) => setConfirm({
+    danger: true,
+    title: t('mining.dismantle'),
+    message: t('confirm.dismantle', { name: f.name }),
+    onConfirm: () => run(() => deleteFarm(f.id)),
+  })
+
   const tempClass = (temp) => (temp >= 85 ? 'crit' : temp >= 70 ? 'warn' : 'ok')
 
   if (loading) {
@@ -114,11 +129,20 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <div className="mining-onboard-form">
             <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('mining.farmName')} maxLength={40} />
             <button className="crypto-open-btn" disabled={busy || newName.trim().length < 2}
-              onClick={() => run(() => createFarm(newName.trim()), 'mining.created').then(() => setNewName(''))}>
+              onClick={askCreate}>
               <Plus size={18} /> {t('mining.createFarm')}
             </button>
           </div>
         </div>
+        <ConfirmDialog
+          open={!!confirm}
+          danger={confirm?.danger}
+          busy={busy}
+          title={confirm?.title}
+          message={confirm?.message}
+          onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
+          onCancel={() => setConfirm(null)}
+        />
       </div>
     )
   }
@@ -148,7 +172,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
         <div className="mining-add-farm">
           <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('mining.newFarm')} maxLength={40} />
           <button className="asset-act upgrade" disabled={busy || newName.trim().length < 2}
-            onClick={() => run(() => createFarm(newName.trim()), 'mining.created').then(() => setNewName(''))}>
+            onClick={askCreate}>
             <Plus size={15} />
           </button>
         </div>
@@ -169,7 +193,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             ) : (
               <button className="asset-act collect" disabled={busy || !assembled} onClick={() => run(() => startMining(farm.id), 'mining.started')}><Play size={14} /> {t('mining.start')}</button>
             )}
-            <button className="asset-act sell" disabled={busy} onClick={() => run(() => deleteFarm(farm.id))}><Trash2 size={14} /> {t('mining.dismantle')}</button>
+            <button className="asset-act sell" disabled={busy} onClick={() => askDismantle(farm)}><Trash2 size={14} /> {t('mining.dismantle')}</button>
           </div>
         </div>
 
@@ -287,6 +311,16 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <p className="mining-hint">{t('mining.buyHint')}</p>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirm}
+        danger={confirm?.danger}
+        busy={busy}
+        title={confirm?.title}
+        message={confirm?.message}
+        onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

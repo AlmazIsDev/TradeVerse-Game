@@ -67,7 +67,8 @@
     "from": "From",
     "to": "To",
     "notSet": "Not set",
-    "name": "Name"
+    "name": "Name",
+    "confirmTitle": "Confirm action"
   },
   "stocks": {
     "title": "Stocks",
@@ -392,7 +393,20 @@
       "manager": "Manager",
       "engineer": "Engineer",
       "director": "Director"
-    }
+    },
+    "settings": "Company settings",
+    "settingsSaved": "Settings saved",
+    "disband": "Disband company",
+    "disbandConfirm": "Do you really want to disband the company? This action is irreversible.",
+    "disbanded": "Company disbanded",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "A short description…",
+    "logoLabel": "Logo",
+    "logoPlaceholder": "Emoji or image URL",
+    "open": "Open",
+    "closed": "Closed",
+    "visible": "Visible in search",
+    "hidden": "Hidden from search"
   },
   "cityroof": {
     "buyWc": "Buy WC",
@@ -649,7 +663,11 @@
     "aiManagerHint": "Automatically picks the best coin and looks after the farm",
     "assembleForManager": "Assemble the farm to hire a manager",
     "notAssembled": "The farm isn't assembled yet — install all required components and stats will appear.",
-    "state": { "idle": "Idle", "mining": "Mining", "off": "Offline" },
+    "state": {
+      "idle": "Idle",
+      "mining": "Mining",
+      "off": "Offline"
+    },
     "hashrate": "Hashrate",
     "power": "Power draw",
     "temp": "Temperature",
@@ -680,9 +698,18 @@
     "buyHint": "Buy components in the Shop. * = required.",
     "managerDesc": "Automatically maintains the farm: repairs, switches coins and reduces downtime.",
     "comp": {
-      "gpu": "GPU", "cpu": "CPU", "motherboard": "Motherboard",
-      "ram": "RAM", "ssd": "SSD", "psu": "PSU", "cooling": "Cooling",
-      "case": "Case", "rack": "Rack", "fan": "Fans", "ups": "UPS", "network": "Network"
+      "gpu": "GPU",
+      "cpu": "CPU",
+      "motherboard": "Motherboard",
+      "ram": "RAM",
+      "ssd": "SSD",
+      "psu": "PSU",
+      "cooling": "Cooling",
+      "case": "Case",
+      "rack": "Rack",
+      "fan": "Fans",
+      "ups": "UPS",
+      "network": "Network"
     },
     "desc": {
       "gpu": "Increases hashrate — the core mining power.",
@@ -704,5 +731,18 @@
     "markAllRead": "Mark all read",
     "noNotifications": "No notifications",
     "new": "New"
+  },
+  "confirm": {
+    "collect": "Collect accrued profit ${{amount}}?",
+    "upgrade": "Upgrade this asset for ${{cost}}?",
+    "transfer": "Transfer \"{{name}}\" to your company?",
+    "sell": "Sell \"{{name}}\" for ${{value}}? This cannot be undone.",
+    "cancelRent": "Remove this property from rent?",
+    "buyHardware": "Buy \"{{name}}\" for ${{price}}?",
+    "createFarm": "Create farm \"{{name}}\"?",
+    "dismantle": "Dismantle farm \"{{name}}\"? All components will be lost.",
+    "cryptoTransfer": "Send {{amount}} {{symbol}} to {{recipient}}?",
+    "protect": "Set protection level {{level}} for {{cost}} WC?",
+    "attack": "Attack \"{{name}}\" for {{cost}} WC?"
   }
 }

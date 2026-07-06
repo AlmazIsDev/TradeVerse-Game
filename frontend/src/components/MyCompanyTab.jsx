@@ -3,15 +3,18 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchCompany, createCompany, inviteEmployee, updateMemberSalary,
   fireMember, collectCompanyProfit, companyDeposit, companyWithdraw,
-  fetchCompanies, applyToCompany,
+  fetchCompanies, applyToCompany, updateCompanySettings, disbandCompany,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import CompanyAssetsPanel from './CompanyAssetsPanel'
+import ConfirmDialog from './ConfirmDialog'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
   ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
-  Search, LogIn, ChevronRight,
+  Search, LogIn, ChevronRight, Settings, Eye, EyeOff, Unlock, Lock,
 } from 'lucide-react'
+
+const LOGO_EMOJI = ['🏢', '🏦', '🏭', '🚀', '💎', '⚙️', '🛰️', '🏗️', '💼', '🌐', '⚡', '🔧']
 
 function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
@@ -31,6 +34,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [moneyModal, setMoneyModal] = useState(null) // 'deposit' | 'withdraw'
   const [moneyAmount, setMoneyAmount] = useState('')
   const [showAssets, setShowAssets] = useState(false)
+  const [settingsModal, setSettingsModal] = useState(null) // { name, description, logo, isOpen, visibleInSearch }
+  const [confirmDisband, setConfirmDisband] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -46,6 +51,24 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Realtime: обновляем компанию (сотрудники/бюджет) при событиях от WebSocket —
+  // например когда приглашённый игрок принял приглашение (владелец видит live).
+  useEffect(() => {
+    const onCompany = () => load()
+    const onRealtime = (ev) => {
+      const d = ev.detail
+      if (d?.type === 'notification' && ['company', 'company_invite', 'company_application'].includes(d.notification?.type)) {
+        load()
+      }
+    }
+    window.addEventListener('tv:company-refresh', onCompany)
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => {
+      window.removeEventListener('tv:company-refresh', onCompany)
+      window.removeEventListener('tv:realtime', onRealtime)
+    }
+  }, [load])
 
   const flash = (text, type = 'success') => {
     setMsg({ text, type })
@@ -85,6 +108,49 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       await loadCompanies()
     } catch (err) {
       flash(err.message, 'error')
+    }
+  }
+
+  const openSettings = () => setSettingsModal({
+    name: data.name,
+    description: data.description || '',
+    logo: data.logo || '',
+    isOpen: data.isOpen !== false,
+    visibleInSearch: data.visibleInSearch !== false,
+  })
+
+  const saveSettings = async () => {
+    setBusy(true)
+    try {
+      const res = await updateCompanySettings({
+        name: settingsModal.name.trim(),
+        description: settingsModal.description.trim(),
+        logo: settingsModal.logo.trim(),
+        isOpen: settingsModal.isOpen,
+        visibleInSearch: settingsModal.visibleInSearch,
+      })
+      if (res?.company) setData(res.company)
+      flash(t('company.settingsSaved'))
+      setSettingsModal(null)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doDisband = async () => {
+    setBusy(true)
+    try {
+      await disbandCompany()
+      setConfirmDisband(false)
+      setSettingsModal(null)
+      setData(null)
+      flash(t('company.disbanded'))
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -158,10 +224,20 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   // ── Есть компания ──
   return (
     <div className="company-tab">
-      <div className="leaderboard-title-row">
-        <Store size={22} className="icon" />
+      <div className="leaderboard-title-row company-title-row">
+        <span className="company-logo-badge">
+          {data.logo
+            ? (/^https?:\/\//.test(data.logo)
+                ? <img src={data.logo} alt="" className="company-logo-img" />
+                : <span className="company-logo-emoji">{data.logo}</span>)
+            : <Store size={22} className="icon" />}
+        </span>
         <h2 className="tab-title">{data.name}</h2>
+        <button className="company-settings-btn" onClick={openSettings} title={t('company.settings')}>
+          <Settings size={18} />
+        </button>
       </div>
+      {data.description && <p className="company-description">{data.description}</p>}
 
       {msg && (
         <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
@@ -305,6 +381,74 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
           </div>
         </div>
       )}
+
+      {settingsModal && (
+        <div className="modal-overlay" onClick={() => !busy && setSettingsModal(null)}>
+          <div className="modal-content company-settings-modal" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setSettingsModal(null)} disabled={busy}><X size={18} /></button>
+            <h3><Settings size={18} /> {t('company.settings')}</h3>
+
+            <label className="settings-label">{t('company.namePlaceholder')}</label>
+            <input className="company-name-input" maxLength={40} value={settingsModal.name}
+              onChange={e => setSettingsModal({ ...settingsModal, name: e.target.value })} />
+
+            <label className="settings-label">{t('company.descriptionLabel')}</label>
+            <textarea className="company-desc-input" maxLength={200} rows={3} value={settingsModal.description}
+              placeholder={t('company.descriptionPlaceholder')}
+              onChange={e => setSettingsModal({ ...settingsModal, description: e.target.value })} />
+
+            <label className="settings-label">{t('company.logoLabel')}</label>
+            <div className="logo-emoji-row">
+              {LOGO_EMOJI.map(em => (
+                <button key={em} type="button"
+                  className={`logo-emoji-btn ${settingsModal.logo === em ? 'active' : ''}`}
+                  onClick={() => setSettingsModal({ ...settingsModal, logo: em })}>{em}</button>
+              ))}
+            </div>
+            <input className="company-name-input" maxLength={300} value={settingsModal.logo}
+              placeholder={t('company.logoPlaceholder')}
+              onChange={e => setSettingsModal({ ...settingsModal, logo: e.target.value })} />
+
+            <div className="settings-toggles">
+              <button type="button" className={`settings-toggle ${settingsModal.isOpen ? 'on' : ''}`}
+                onClick={() => setSettingsModal({ ...settingsModal, isOpen: !settingsModal.isOpen })}>
+                {settingsModal.isOpen ? <Unlock size={15} /> : <Lock size={15} />}
+                {settingsModal.isOpen ? t('company.open') : t('company.closed')}
+              </button>
+              <button type="button" className={`settings-toggle ${settingsModal.visibleInSearch ? 'on' : ''}`}
+                onClick={() => setSettingsModal({ ...settingsModal, visibleInSearch: !settingsModal.visibleInSearch })}>
+                {settingsModal.visibleInSearch ? <Eye size={15} /> : <EyeOff size={15} />}
+                {settingsModal.visibleInSearch ? t('company.visible') : t('company.hidden')}
+              </button>
+            </div>
+
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" disabled={busy || settingsModal.name.trim().length < 2} onClick={saveSettings}>
+                {busy ? t('bank.processing') : t('common.save')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setSettingsModal(null)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+            </div>
+
+            <button className="company-disband-btn" disabled={busy} onClick={() => setConfirmDisband(true)}>
+              <AlertTriangle size={15} /> {t('company.disband')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmDisband}
+        danger
+        busy={busy}
+        title={t('company.disband')}
+        message={t('company.disbandConfirm')}
+        confirmLabel={t('common.yes')}
+        cancelLabel={t('common.no')}
+        onConfirm={doDisband}
+        onCancel={() => setConfirmDisband(false)}
+      />
     </div>
   )
 }

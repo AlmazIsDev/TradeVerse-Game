@@ -1570,3 +1570,145 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
 .mslot-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; padding: 0; }
 .mslot-pick { width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12px; background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--color-text-primary); cursor: pointer; }
 .mslot-empty { display: block; margin-top: 6px; font-size: 11px; color: var(--color-text-secondary); }
+
+/* ===========================================================================
+   Realtime pop-up приглашений, ConfirmDialog, настройки компании, анимации
+   =========================================================================== */
+
+@keyframes tvPopIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes tvSlideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes tvSuccessPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.45); }
+  70%  { box-shadow: 0 0 0 10px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+
+/* Всплывающие приглашения (стек в правом нижнем углу) */
+.tv-popup-stack {
+  position: fixed; right: 20px; bottom: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+  z-index: 400; max-width: 360px;
+}
+.tv-popup-card {
+  position: relative; display: flex; gap: 12px;
+  padding: 16px 18px 16px 16px;
+  background: linear-gradient(150deg, var(--color-bg-tertiary), var(--color-bg-secondary));
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  animation: tvSlideInRight 0.32s cubic-bezier(.22,1,.36,1) both;
+}
+.tv-popup-close {
+  position: absolute; top: 8px; right: 8px;
+  border: none; background: transparent; color: var(--color-text-secondary);
+  cursor: pointer; padding: 2px; border-radius: 6px; transition: all .18s ease;
+}
+.tv-popup-close:hover { background: rgba(255,255,255,0.08); color: var(--color-text-primary); }
+.tv-popup-icon {
+  flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #6366f1, #4338ca); color: #fff;
+}
+.tv-popup-body { display: flex; flex-direction: column; gap: 4px; padding-right: 12px; }
+.tv-popup-title { font-weight: 700; font-size: 14px; color: var(--color-text-primary); }
+.tv-popup-text { font-size: 12.5px; color: var(--color-text-secondary); line-height: 1.4; }
+.tv-popup-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.tv-popup-meta span { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: rgba(99,102,241,0.15); color: #a5b4fc; }
+.tv-popup-actions { display: flex; gap: 8px; margin-top: 8px; }
+.tv-popup-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 14px; border: none; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: transform .12s ease, filter .18s ease;
+}
+.tv-popup-btn:active { transform: scale(0.95); }
+.tv-popup-btn:disabled { opacity: 0.6; cursor: default; }
+.tv-popup-btn.accept { background: linear-gradient(135deg,#22c55e,#16a34a); color: #fff; }
+.tv-popup-btn.accept:hover { filter: brightness(1.1); }
+.tv-popup-btn.decline { background: rgba(255,255,255,0.08); color: var(--color-text-primary); }
+.tv-popup-btn.decline:hover { background: rgba(239,68,68,0.18); color: #fca5a5; }
+
+/* ConfirmDialog */
+.tv-confirm-overlay { z-index: 350; }
+.tv-confirm { max-width: 400px; text-align: center; animation: tvPopIn 0.24s cubic-bezier(.22,1,.36,1) both; }
+.tv-confirm-icon {
+  width: 56px; height: 56px; margin: 4px auto 14px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(99,102,241,0.15); color: #a5b4fc;
+}
+.tv-confirm-icon.danger { background: rgba(239,68,68,0.15); color: #fca5a5; }
+.tv-confirm-title { font-size: 18px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 8px; }
+.tv-confirm-message { font-size: 13.5px; color: var(--color-text-secondary); line-height: 1.5; margin-bottom: 20px; }
+.tv-confirm-buttons { display: flex; gap: 10px; }
+.tv-confirm-btn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 16px; border: none; border-radius: 10px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: transform .12s ease, filter .18s ease;
+}
+.tv-confirm-btn:active { transform: scale(0.97); }
+.tv-confirm-btn:disabled { opacity: 0.6; cursor: default; }
+.tv-confirm-btn.primary { background: linear-gradient(135deg,#6366f1,#4338ca); color: #fff; }
+.tv-confirm-btn.danger { background: linear-gradient(135deg,#ef4444,#b91c1c); color: #fff; }
+.tv-confirm-btn.primary:hover, .tv-confirm-btn.danger:hover { filter: brightness(1.1); }
+.tv-confirm-btn.cancel { background: rgba(255,255,255,0.07); color: var(--color-text-primary); }
+.tv-confirm-btn.cancel:hover { background: rgba(255,255,255,0.13); }
+
+/* Настройки компании */
+.company-title-row { display: flex; align-items: center; gap: 10px; }
+.company-logo-badge {
+  width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: rgba(99,102,241,0.12); font-size: 22px;
+}
+.company-logo-img { width: 100%; height: 100%; object-fit: cover; }
+.company-logo-emoji { line-height: 1; }
+.company-settings-btn {
+  margin-left: auto; border: 1px solid rgba(255,255,255,0.1); background: transparent;
+  color: var(--color-text-secondary); border-radius: 10px; padding: 8px; cursor: pointer; transition: all .18s ease;
+}
+.company-settings-btn:hover { color: var(--color-text-primary); border-color: rgba(99,102,241,0.5); transform: rotate(30deg); }
+.company-description { color: var(--color-text-secondary); font-size: 13.5px; margin: -4px 0 12px; }
+.company-settings-modal { max-width: 460px; text-align: left; }
+.settings-label { display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin: 14px 0 6px; }
+.company-desc-input {
+  width: 100%; padding: 10px 12px; resize: vertical;
+  background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px; color: var(--color-text-primary); font-size: 13.5px; font-family: inherit;
+}
+.logo-emoji-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.logo-emoji-btn {
+  width: 38px; height: 38px; font-size: 20px; border-radius: 10px; cursor: pointer;
+  background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.1); transition: all .15s ease;
+}
+.logo-emoji-btn:hover { transform: translateY(-2px); border-color: rgba(99,102,241,0.5); }
+.logo-emoji-btn.active { border-color: #6366f1; background: rgba(99,102,241,0.2); }
+.settings-toggles { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; }
+.settings-toggle {
+  flex: 1; min-width: 140px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600;
+  background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.1);
+  color: var(--color-text-secondary); transition: all .18s ease;
+}
+.settings-toggle.on { border-color: rgba(34,197,94,0.5); color: #86efac; background: rgba(34,197,94,0.1); }
+.company-disband-btn {
+  width: 100%; margin-top: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 16px; border-radius: 10px; cursor: pointer; font-size: 13.5px; font-weight: 600;
+  background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; transition: all .18s ease;
+}
+.company-disband-btn:hover { background: rgba(239,68,68,0.2); }
+.company-disband-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Общее оживление интерфейса */
+.transfer-feedback.success { animation: tvSuccessPulse 0.9s ease-out; }
+.asset-act, .gpu-card-buy, .crypto-buy, .crypto-sell, .stock-btn { transition: transform .12s ease, filter .18s ease, background .18s ease; }
+.asset-act:active:not(:disabled), .gpu-card-buy:active:not(:disabled),
+.crypto-buy:active:not(:disabled), .crypto-sell:active:not(:disabled), .stock-btn:active:not(:disabled) { transform: scale(0.96); }
+.asset-card, .gpu-card { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.asset-card:hover, .gpu-card:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0,0,0,0.35); }

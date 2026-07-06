@@ -12,6 +12,34 @@ import {
   ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X, Send, Search, Activity,
 } from 'lucide-react'
 
+// Состояния для анимации обновления цен
+const priceAnimationTimers = new Map()
+function usePriceAnimation() {
+  const [animatingSymbols, setAnimatingSymbols] = useState(new Set())
+  
+  const triggerAnimation = useCallback((symbol, up) => {
+    // Очищаем предыдущий таймер для этого символа
+    if (priceAnimationTimers.has(symbol)) {
+      clearTimeout(priceAnimationTimers.get(symbol))
+    }
+    
+    setAnimatingSymbols(prev => new Set(prev).add(symbol))
+    
+    const timer = setTimeout(() => {
+      setAnimatingSymbols(prev => {
+        const next = new Set(prev)
+        next.delete(symbol)
+        return next
+      })
+      priceAnimationTimers.delete(symbol)
+    }, 500)
+    
+    priceAnimationTimers.set(symbol, timer)
+  }, [])
+  
+  return { animatingSymbols, triggerAnimation }
+}
+
 function formatCoin(n) {
   return Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 6 })
 }
@@ -67,11 +95,33 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
 
   useEffect(() => { load() }, [load])
 
+  // WebSocket: реальное обновление цен
   useEffect(() => {
-    if (!account?.opened) return
-    const id = setInterval(() => { fetchCryptoMarket().then(setMarket).catch(() => {}) }, 20000)
-    return () => clearInterval(id)
-  }, [account?.opened])
+    const handleRealtime = (event) => {
+      const data = event.detail
+      if (data.type === 'market_update' && data.market === 'crypto') {
+        setMarket(prev => {
+          const updates = new Map(data.updates.map(u => [u.symbol, u]))
+          return prev.map(coin => {
+            const upd = updates.get(coin.symbol)
+            if (upd) {
+              return { ...coin, price: upd.price, change24h: upd.change24h }
+            }
+            return coin
+          })
+        })
+      } else if (data.type === 'price_tick' && data.market === 'crypto') {
+        setMarket(prev => prev.map(coin =>
+          coin.symbol === data.symbol
+            ? { ...coin, price: data.price, change24h: data.change24h }
+            : coin
+        ))
+      }
+    }
+    
+    window.addEventListener('tv:realtime', handleRealtime)
+    return () => window.removeEventListener('tv:realtime', handleRealtime)
+  }, [])
 
   const marketMap = useMemo(() => Object.fromEntries(market.map(c => [c.symbol, c])), [market])
 

@@ -13,9 +13,10 @@ import logging
 import os
 
 from database import get_db
-from market_data import MarketDataService
 import assets
 import mining
+import crypto
+import stocks
 
 logger = logging.getLogger("tradeverse.scheduler")
 
@@ -24,22 +25,18 @@ SCHEDULER_INTERVAL_S = int(os.getenv("SCHEDULER_INTERVAL_SECONDS", "60"))
 _task: asyncio.Task | None = None
 
 
-async def _real_stock_symbols(db) -> list[str]:
-    syms = []
-    async for s in db.stocks.find({}, {"symbol": 1, "issuer": 1}):
-        if not s.get("issuer"):
-            syms.append(s["symbol"])
-    return syms
-
-
 async def _tick():
     db = get_db()
-    # 1) Реальные цены (внутри — кэш и fallback на сохранённые данные).
+    # 1) Обслуживание рынков: реальные цены, симуляция-fallback, история, снимки.
+    #    Вся тяжёлая работа живёт здесь — читающие эндпоинты только берут кэш из БД.
     try:
-        await MarketDataService.refresh_crypto(db)
-        await MarketDataService.refresh_stocks(db, await _real_stock_symbols(db))
+        await crypto.maintain_crypto_market(db)
     except Exception as exc:
-        logger.debug("market refresh skipped: %s", exc)
+        logger.debug("crypto market maintain skipped: %s", exc)
+    try:
+        await stocks.maintain_stock_market(db)
+    except Exception as exc:
+        logger.debug("stock market maintain skipped: %s", exc)
     # 2) Динамический рынок активов + мировые события.
     try:
         await assets.tick_market(db)

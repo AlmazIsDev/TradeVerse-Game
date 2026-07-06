@@ -127,16 +127,61 @@ def _walk_price(coin: dict) -> dict:
     return coin
 
 
-async def _get_live_market(db: AsyncIOMotorDatabase) -> list[dict]:
+# In-memory кэш отформатированного рынка — чтобы не бить в БД на каждый рендер.
+# Наполняется из БД (её актуальность поддерживает Scheduler); TTL короткий.
+_MARKET_CACHE: dict = {"ts": None, "data": []}
+_MARKET_CACHE_TTL_S = 5
+
+
+def _format_coin(coin: dict) -> dict:
+    coin = dict(coin)
+    coin["id"] = str(coin.pop("_id"))
+    coin.pop("updated_at", None)
+    coin.pop("base_price", None)
+    return coin
+
+
+async def _read_market(db: AsyncIOMotorDatabase) -> list[dict]:
+    """БЫСТРОЕ чтение рынка из БД (без сети/бэкфилла/снимков).
+
+    Данные поддерживаются в актуальном состоянии фоновым Scheduler'ом
+    (``maintain_crypto_market``). На горячем пути — только лёгкое чтение
+    с коротким in-memory кэшем, поэтому страницы открываются мгновенно и
+    эндпоинт не может «зависнуть» на внешнем API.
+    """
+    now = datetime.now(timezone.utc)
+    cached_ts = _MARKET_CACHE["ts"]
+    if isinstance(cached_ts, datetime) and (now - cached_ts).total_seconds() < _MARKET_CACHE_TTL_S:
+        return _MARKET_CACHE["data"]
+
+    if await db.crypto_assets.count_documents({}) == 0:
+        await ensure_coins_seeded(db)
+
+    coins = [_format_coin(c) async for c in db.crypto_assets.find({})]
+    coins.sort(key=lambda c: c.get("marketCap") or (c.get("price", 0) * c.get("supply", 0)), reverse=True)
+    _MARKET_CACHE["ts"] = now
+    _MARKET_CACHE["data"] = coins
+    return coins
+
+
+# Обратная совместимость: прежнее имя теперь указывает на лёгкое чтение.
+_get_live_market = _read_market
+
+
+async def maintain_crypto_market(db: AsyncIOMotorDatabase):
+    """Фоновое обслуживание крипторынка (вызывается Scheduler'ом).
+
+    Здесь живёт ВСЯ тяжёлая работа: обновление реальными данными CoinGecko,
+    симуляция цен (fallback), одноразовый бэкфилл истории и запись снимков.
+    Читающие эндпоинты этого не делают — они лишь берут готовые данные из БД.
+    """
     await ensure_coins_seeded(db)
-    # Пытаемся обновить реальными данными CoinGecko (кэш + fallback внутри).
     mode = await MarketDataService.refresh_crypto(db)
     now = datetime.now(timezone.utc)
-    coins = []
     async for coin in db.crypto_assets.find({}):
         symbol = coin["symbol"]
         await MarketDataService.ensure_backfill(db, "crypto", symbol, coin.get("price", 1) or 1, coin.get("volatility", 0.05))
-        # Симуляция цены — только fallback, когда реальные данные недоступны.
+        # Симуляция цены — только когда реальные данные недоступны.
         if mode == "sim":
             updated = coin.get("updated_at")
             if isinstance(updated, datetime) and updated.tzinfo is None:
@@ -155,11 +200,8 @@ async def _get_live_market(db: AsyncIOMotorDatabase) -> list[dict]:
                     }},
                 )
                 await MarketDataService.record_snapshot(db, "crypto", symbol, coin["price"])
-        coin["id"] = str(coin.pop("_id"))
-        coin.pop("updated_at", None)
-        coins.append(coin)
-    coins.sort(key=lambda c: c.get("marketCap") or (c.get("price", 0) * c.get("supply", 0)), reverse=True)
-    return coins
+    # Сбрасываем кэш чтения, чтобы следующий запрос увидел свежие цены.
+    _MARKET_CACHE["ts"] = None
 
 
 async def _price_of(db: AsyncIOMotorDatabase, symbol: str) -> float | None:

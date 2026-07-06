@@ -41,21 +41,32 @@ PROTECTION_COSTS = {1: 1000, 2: 3000, 3: 4000, 4: 6500, 5: 10000}
 
 BONUS_CLAIM_INTERVAL_H = 20     # раз в 20 часов можно забрать ежедневный бонус
 
-# Уникальный игровой эффект каждого здания: daily — ежедневный доход владельцу,
-# effect/mult — множитель, влияющий на соответствующую подсистему экономики.
+# Уникальный игровой эффект каждого здания.
+#   daily  — ежедневный доход владельцу (реальная механика: /bonuses/claim).
+#   effect — КАЖДЫЙ эффект влияет на реально существующую подсистему игры и
+#            подключён в коде (см. player_city_effect ниже). Никаких «мёртвых»
+#            бонусов вроде перевозок/логистики/медиа — только то, что работает:
+#     rental_income    → выплата аренды недвижимости/авто (assets._process_rental)
+#     asset_income     → сбор пассивного дохода активов (assets.collect_income)
+#     company_income   → сбор прибыли компании (company.collect_profit)
+#     mining_yield     → доход майнинг-фермы (mining._compute)
+#     mining_energy    → скидка на электричество фермы (mining._compute)
+#     shop_discount    → скидка на оборудование в магазине (shop)
+#     warcoin_discount → скидка на покупку WarCoin (cityroof.buy_warcoin)
+#     daily_cash       → только ежедневный доход (mult не используется)
 BUSINESS_BONUS = {
-    "market":   {"daily": 800,  "effect": "trade_income",    "mult": 0.05},
-    "bank":     {"daily": 1200, "effect": "bank_interest",   "mult": 0.02},
-    "casino":   {"daily": 2000, "effect": "daily_bonus",     "mult": 0.00},
-    "port":     {"daily": 1000, "effect": "import_discount", "mult": 0.05},
-    "mall":     {"daily": 900,  "effect": "trade_income",    "mult": 0.05},
-    "factory":  {"daily": 1300, "effect": "production",      "mult": 0.10},
-    "stadium":  {"daily": 700,  "effect": "events",          "mult": 0.00},
-    "airport":  {"daily": 1500, "effect": "logistics",       "mult": 0.10},
-    "hotel":    {"daily": 600,  "effect": "rental_income",   "mult": 0.15},
-    "tower":    {"daily": 1400, "effect": "company_income",  "mult": 0.08},
-    "studio":   {"daily": 750,  "effect": "media",           "mult": 0.00},
-    "refinery": {"daily": 1600, "effect": "energy_discount", "mult": 0.15},
+    "market":   {"daily": 800,  "effect": "asset_income",     "mult": 0.05},
+    "bank":     {"daily": 1200, "effect": "company_income",   "mult": 0.05},
+    "casino":   {"daily": 2000, "effect": "warcoin_discount", "mult": 0.10},
+    "port":     {"daily": 1000, "effect": "shop_discount",    "mult": 0.08},
+    "mall":     {"daily": 900,  "effect": "asset_income",     "mult": 0.05},
+    "factory":  {"daily": 1300, "effect": "mining_yield",     "mult": 0.10},
+    "stadium":  {"daily": 700,  "effect": "daily_cash",       "mult": 0.00},
+    "airport":  {"daily": 1500, "effect": "shop_discount",    "mult": 0.10},
+    "hotel":    {"daily": 600,  "effect": "rental_income",    "mult": 0.15},
+    "tower":    {"daily": 1400, "effect": "company_income",   "mult": 0.08},
+    "studio":   {"daily": 750,  "effect": "asset_income",     "mult": 0.05},
+    "refinery": {"daily": 1600, "effect": "mining_energy",    "mult": 0.15},
 }
 
 OWNER_COLORS = [
@@ -434,7 +445,10 @@ async def buy_warcoin(
     user_id = str(current_user["_id"])
     config = await _warcoin_config(db)
     _, price = _league_and_price(config, current_user.get("balance", 0.0))
-    cost = round(price * payload.amount, 2)
+    # Бонус зданий: скидка на покупку WarCoin (напр. «Казино»).
+    discount = min(0.5, await player_city_effect(db, user_id, "warcoin_discount"))
+    unit_price = round(price * (1 - discount), 2)
+    cost = round(unit_price * payload.amount, 2)
 
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
@@ -443,7 +457,7 @@ async def buy_warcoin(
     await record_transaction(
         db, user_id, EXPENSE, cost, CAT_CITYROOF,
         f"Покупка {payload.amount} WC", balance_after=new_balance,
-        meta={"warcoin": payload.amount, "price": price},
+        meta={"warcoin": payload.amount, "price": unit_price},
     )
     return {"warcoin": await _get_wc(db, user_id), "balance": new_balance, "bought": payload.amount}
 

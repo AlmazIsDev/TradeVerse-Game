@@ -177,23 +177,38 @@ async def list_stocks(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Список акций с рыночными данными и позицией текущего игрока."""
-    stocks = await find_all_stocks(db)
-    # Реальные котировки запрашиваем ТОЛЬКО для настоящих тикеров (не пользовательских эмиссий).
-    real_symbols = [s["symbol"] for s in stocks if not s.get("issuer")]
-    await MarketDataService.refresh_stocks(db, real_symbols)
+    """Список акций с рыночными данными и позицией текущего игрока.
+
+    БЫСТРОЕ чтение: котировки/история поддерживаются фоновым Scheduler'ом
+    (``maintain_stock_market``). На горячем пути — только чтение из БД, поэтому
+    страница открывается мгновенно (никаких сетевых запросов и бэкфилла).
+    """
     stocks = await find_all_stocks(db)
     holdings = await _holdings_map(db, str(current_user["_id"]))
     out = []
     for s in stocks:
-        # История цен: одноразовый бэкфилл + периодический снимок (троттлинг).
-        await MarketDataService.ensure_backfill(db, "stock", s["symbol"], s.get("price", 1) or 1, 0.02)
-        await MarketDataService.record_snapshot(db, "stock", s["symbol"], s.get("price", 0))
         item = _format_stock_v2(s)
         held = holdings.get(s["symbol"])
         item["heldQuantity"] = held.get("quantity", 0) if held else 0
         out.append(item)
     return out
+
+
+async def maintain_stock_market(db: AsyncIOMotorDatabase):
+    """Фоновое обслуживание рынка акций (вызывается Scheduler'ом).
+
+    Обновляет реальные котировки, делает одноразовый бэкфилл истории и пишет
+    периодические снимки — всё, что раньше выполнялось на каждом запросе списка.
+    """
+    stocks = await find_all_stocks(db)
+    if not stocks:
+        return
+    # Реальные котировки — ТОЛЬКО для настоящих тикеров (не пользовательских эмиссий).
+    real_symbols = [s["symbol"] for s in stocks if not s.get("issuer")]
+    await MarketDataService.refresh_stocks(db, real_symbols)
+    for s in await find_all_stocks(db):
+        await MarketDataService.ensure_backfill(db, "stock", s["symbol"], s.get("price", 1) or 1, 0.02)
+        await MarketDataService.record_snapshot(db, "stock", s["symbol"], s.get("price", 0))
 
 
 @router.get("/portfolio")

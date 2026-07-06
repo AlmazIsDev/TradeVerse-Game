@@ -6,10 +6,11 @@ import {
   fetchCompanies, applyToCompany,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
+import CompanyAssetsPanel from './CompanyAssetsPanel'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
   ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
-  Search, LogIn,
+  Search, LogIn, ChevronRight,
 } from 'lucide-react'
 
 function MyCompanyTab({ balance = 0, onBalanceChange }) {
@@ -29,6 +30,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [editing, setEditing] = useState(null)      // { userId, salary }
   const [moneyModal, setMoneyModal] = useState(null) // 'deposit' | 'withdraw'
   const [moneyAmount, setMoneyAmount] = useState('')
+  const [showAssets, setShowAssets] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -189,27 +191,25 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         </button>
       </div>
 
-      {/* Активы компании — реальный источник дохода */}
-      <div className="company-section">
-        <h3><Package size={16} /> {t('company.assets')} ({data.assetCount})</h3>
-        {data.assets.length === 0 ? (
-          <p className="empty-state">{t('company.noAssets')}</p>
-        ) : (
-          <div className="company-emp-list">
-            {data.assets.map(a => (
-              <div key={a.id} className="company-emp">
-                <div className="company-emp-info">
-                  <span className="company-emp-name">{a.name}</span>
-                  <span className="company-emp-role">{t(`market.cat_${a.type}`, a.type)} · {t('myassets.level')} {a.level}</span>
-                </div>
-                <div className="company-emp-actions">
-                  <span className="company-emp-salary">+${formatMoney(a.profitPerHour)}/ч</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Активы компании — отдельная карточка (интерфейс как «Моё имущество») */}
+      <button className="company-assets-card" onClick={() => setShowAssets(true)}>
+        <span className="cac-icon"><Package size={22} /></span>
+        <div className="cac-info">
+          <span className="cac-title">{t('company.assets')}</span>
+          <span className="cac-meta">
+            {data.assetCount} · +${formatMoney(data.assets.reduce((s, a) => s + (a.profitPerHour || 0), 0))}/ч
+          </span>
+        </div>
+        <ChevronRight size={20} className="cac-chevron" />
+      </button>
+
+      {showAssets && (
+        <CompanyAssetsPanel
+          assets={data.assets}
+          onClose={() => setShowAssets(false)}
+          onRefresh={async () => { await load(); setRefreshKey(k => k + 1) }}
+        />
+      )}
 
       {/* Сотрудники (по приглашению) */}
       <div className="company-section">

@@ -526,6 +526,14 @@ async def collect_profit(
     revenue_per_h = await company_income_per_hour(db, cid)
     econ = await get_econ(db)
     gross = round(revenue_per_h * hours * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
+    # Бонус зданий «Крыши города»: +% к доходу компании (напр. «Бизнес-башня», «Городской банк»).
+    try:
+        from cityroof import player_city_effect
+        city_bonus = await player_city_effect(db, user_id, "company_income")
+        if city_bonus:
+            gross = round(gross * (1 + city_bonus), 2)
+    except Exception:
+        pass
 
     members = await _members(db, cid)
     payroll_per_h = sum(m.get("salary", 0) for m in members)

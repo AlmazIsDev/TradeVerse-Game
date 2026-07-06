@@ -10,12 +10,17 @@ import {
   Gift, HandCoins,
 } from 'lucide-react'
 
+// Ярлыки эффектов зданий. Каждый эффект реально подключён в игровой логике
+// (см. backend/cityroof.py BUSINESS_BONUS и player_city_effect).
 const EFFECT_LABEL = {
-  trade_income: 'Доход от торговли', bank_interest: 'Проценты по вкладам',
-  daily_bonus: 'Ежедневный бонус', import_discount: 'Скидка на импорт',
-  production: 'Бонус производству', events: 'Доход от мероприятий',
-  logistics: 'Ускорение перевозок', rental_income: 'Доход от аренды',
-  company_income: 'Доход компании', media: 'Медиа-доход', energy_discount: 'Скидка на энергию',
+  rental_income: 'Доход от аренды',
+  asset_income: 'Доход бизнеса и недвижимости',
+  company_income: 'Доход компании',
+  mining_yield: 'Доход майнинга',
+  mining_energy: 'Скидка на электричество фермы',
+  shop_discount: 'Скидка на оборудование',
+  warcoin_discount: 'Скидка на WarCoin',
+  daily_cash: 'Ежедневный доход',
 }
 
 // Палитра «пегов» для комбинации (индекс символа → цвет)

@@ -33,6 +33,17 @@ function Dashboard({ user, onLogout }) {
   useEffect(() => {
     let socket
     let ping
+    let debounce
+    // Всплески событий (напр. серия тиков майнинга) схлопываем в один запрос
+    // за баланс/обновление — иначе fetchCurrentUser бил бы на каждое сообщение.
+    const scheduleSync = () => {
+      if (debounce) return
+      debounce = setTimeout(() => {
+        debounce = null
+        fetchCurrentUser().then(d => { if (d?.balance != null) setBalance(d.balance) }).catch(() => {})
+        setRtKey(k => k + 1)
+      }, 1200)
+    }
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
       const token = stored.token
@@ -42,8 +53,7 @@ function Dashboard({ user, onLogout }) {
       socket.onmessage = (ev) => {
         let data = null
         try { data = JSON.parse(ev.data) } catch { /* ignore */ }
-        fetchCurrentUser().then(d => { if (d?.balance != null) setBalance(d.balance) }).catch(() => {})
-        setRtKey(k => k + 1)
+        scheduleSync()
         // Ретрансляция события другим вкладкам (напр. MiningTab слушает 'tv:realtime').
         if (data) { try { window.dispatchEvent(new CustomEvent('tv:realtime', { detail: data })) } catch { /* ignore */ } }
       }
@@ -52,7 +62,7 @@ function Dashboard({ user, onLogout }) {
       }, 25000)
     } catch { /* ignore — останется polling */ }
     return () => {
-      try { clearInterval(ping); if (socket) socket.close() } catch { /* ignore */ }
+      try { clearInterval(ping); clearTimeout(debounce); if (socket) socket.close() } catch { /* ignore */ }
     }
   }, [])
 

@@ -5,11 +5,12 @@ import {
   transferCrypto, fetchCryptoTransfers,
 } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
-import AssetDetail from './AssetDetail'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
   ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X, Send, Search, Activity,
 } from 'lucide-react'
+import AssetDetail from './AssetDetail'
+import ConfirmDialog from './ConfirmDialog'
 
 function formatCoin(n) {
   return Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 6 })
@@ -42,6 +43,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
   const [transfer, setTransfer] = useState({ recipient: '', symbol: '', amount: '' })
   const [transferMsg, setTransferMsg] = useState(null)
   const [transferBusy, setTransferBusy] = useState(false)
+  const [confirmTransfer, setConfirmTransfer] = useState(null)   // { recipient, symbol, amount }
   const [transfers, setTransfers] = useState([])
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('cap')   // cap | gainers | losers
@@ -114,19 +116,26 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
     } finally { setBusy(false) }
   }
 
-  const handleTransfer = async (e) => {
+  const handleTransfer = (e) => {
     e?.preventDefault?.()
     const amt = parseFloat(transfer.amount)
     if (!transfer.recipient.trim() || !transfer.symbol || !(amt > 0)) { setTransferMsg({ type: 'error', text: t('cryptoTransfer.invalid') }); return }
     const held = account?.holdings?.find(h => h.symbol === transfer.symbol)
     if (!held || held.quantity < amt * 1.01) { setTransferMsg({ type: 'error', text: t('crypto.insufficientCoins') }); return }
+    setTransferMsg(null)
+    setConfirmTransfer({ recipient: transfer.recipient.trim(), symbol: transfer.symbol, amount: amt })
+  }
+
+  const doTransfer = async () => {
+    if (!confirmTransfer) return
     setTransferBusy(true); setTransferMsg(null)
     try {
-      const res = await transferCrypto(transfer.recipient.trim(), transfer.symbol, amt)
-      setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: amt, symbol: res.symbol, recipient: res.recipient }) })
+      const res = await transferCrypto(confirmTransfer.recipient, confirmTransfer.symbol, confirmTransfer.amount)
+      setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: confirmTransfer.amount, symbol: res.symbol, recipient: res.recipient }) })
       setTransfer({ recipient: '', symbol: '', amount: '' })
       setRefreshKey(k => k + 1); await load()
-    } catch (err) { setTransferMsg({ type: 'error', text: err.message }) } finally { setTransferBusy(false) }
+    } catch (err) { setTransferMsg({ type: 'error', text: err.message }) }
+    finally { setTransferBusy(false); setConfirmTransfer(null) }
   }
 
   const marketView = useMemo(() => {
@@ -182,7 +191,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
       <div className="leaderboard-title-row"><Coins size={22} className="icon" /><h2 className="tab-title">{t('nav.crypto')}</h2></div>
 
       <div className="crypto-layout">
-        {/* ЛЕВО: рынок + прогноз */}
+        {/* ЛЕВО: рынок */}
         <div className="crypto-col-main">
           <div className="crypto-section">
             <div className="crypto-market-head">
@@ -222,31 +231,9 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
               })}
             </div>
           </div>
-
-          {/* Прогноз */}
-          <div className="crypto-section">
-            <h3><Activity size={16} /> {t('crypto.forecast')}</h3>
-            <div className="crypto-forecast">
-              {forecastCoins.map(c => {
-                const f = forecast(c)
-                return (
-                  <div key={c.symbol} className="cf-card clickable" onClick={() => setDetailSymbol(c.symbol)}>
-                    <div className="cf-head">{coinLogo(c)}<span>{c.symbol}</span></div>
-                    <div className="cf-row"><span>{t('crypto.trend')}</span><b className={f.up ? 'up' : 'down'}>{f.up ? t('crypto.trendUp') : t('crypto.trendDown')}</b></div>
-                    <div className="cf-row"><span>{t('crypto.change24')}</span><b className={f.up ? 'up' : 'down'}>{f.change >= 0 ? '+' : ''}{f.change.toFixed(2)}%</b></div>
-                    <div className="cf-row"><span>{t('crypto.volatility')}</span><b>{f.vol}%</b></div>
-                    <div className="cf-prob">
-                      <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${f.probUp}%` }} /></div>
-                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
         </div>
 
-        {/* ПРАВО: кошелёк, активы, перевод, история */}
+        {/* ПРАВО: кошелёк, активы, перевод, прогноз, история */}
         <div className="crypto-col-side">
           <div className="crypto-wallet-card">
             <span className="crypto-card-label"><Wallet size={14} /> {t('crypto.wallet')}</span>
@@ -320,6 +307,31 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
             )}
           </div>
 
+<<<<<<< HEAD
+=======
+          {/* Прогноз — между переводом и историей */}
+          <div className="crypto-section">
+            <h3><Activity size={16} /> {t('crypto.forecast')}</h3>
+            <div className="crypto-forecast">
+              {forecastCoins.map(c => {
+                const f = forecast(c)
+                return (
+                  <div key={c.symbol} className="cf-card clickable" onClick={() => setDetailSymbol(c.symbol)}>
+                    <div className="cf-head">{coinLogo(c)}<span>{c.symbol}</span></div>
+                    <div className="cf-row"><span>{t('crypto.trend')}</span><b className={f.up ? 'up' : 'down'}>{f.up ? t('crypto.trendUp') : t('crypto.trendDown')}</b></div>
+                    <div className="cf-row"><span>{t('crypto.change24')}</span><b className={f.up ? 'up' : 'down'}>{f.change >= 0 ? '+' : ''}{f.change.toFixed(2)}%</b></div>
+                    <div className="cf-row"><span>{t('crypto.volatility')}</span><b>{f.vol}%</b></div>
+                    <div className="cf-prob">
+                      <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${f.probUp}%` }} /></div>
+                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+>>>>>>> origin/Marlow
           <div className="crypto-section">
             <h3>{t('bank.history')}</h3>
             <TransactionsPanel category="crypto" refreshKey={refreshKey} />
@@ -349,8 +361,5 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-export default CryptoTab
+      <ConfirmDialog

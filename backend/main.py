@@ -1,6 +1,5 @@
 import logging
 import random
-import secrets
 from bson import ObjectId
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -55,9 +54,6 @@ from database import (
     delete_transaction,
     delete_stock_by_symbol,
     find_all_users,
-    insert_purchase,
-    find_purchases_by_user,
-    find_all_purchases,
 )
 from schemas import (
     UserCreate,
@@ -69,9 +65,6 @@ from schemas import (
     ConfigUpdate,
     ConfigResponse,
     LeaderboardResponse,
-    PurchaseCreate,
-    PurchaseResponse,
-    ShopPriceUpdate,
 )
 
 
@@ -115,20 +108,9 @@ async def lifespan(app: FastAPI):
     await db.cityroof_sessions.create_index("attackerId")
     await db.cityroof_seasons.create_index("closed_at")
     await init_db()
-<<<<<<< HEAD
-    # Lazy import to avoid circular dependency
-    from stock_engine.router import router as stocks_router
-    app.include_router(stocks_router)
-    # Start bot trading system
-    from stock_engine.bot_trader import start_bot_trading, stop_bot_trading
-    await start_bot_trading(db)
-    yield
-    await stop_bot_trading()
-=======
     start_scheduler()   # единый фоновый планировщик всех систем
     yield
     await stop_scheduler()
->>>>>>> origin/Marlow
 
 
 app = FastAPI(title="TradeVerse API", version="1.0.0", lifespan=lifespan)
@@ -142,111 +124,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-<<<<<<< HEAD
-# ── JWT / Auth Helpers ───────────────────────────────────────────────────────
-
-JWT_SECRET = os.getenv("JWT_SECRET", "tradeverse-dev-secret-change-in-prod")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_HOURS = 1          # Access token: 1 hour
-REFRESH_EXPIRE_DAYS = 30      # Refresh token: 30 days
-
-security = HTTPBearer(auto_error=False)
-
-
-def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
-
-
-def create_access_token(data: dict) -> str:
-    """Создаёт JWT access-токен с полезной нагрузкой и сроком действия."""
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
-    to_encode.update({"exp": expire, "type": "access"})
-    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def decode_access_token(token: str) -> dict:
-    """Декодирует и валидирует JWT-токен. Бросает исключение при ошибке."""
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-
-
-def generate_refresh_token() -> str:
-    """Генерирует криптографически стойкий refresh token (opaque)."""
-    return secrets.token_urlsafe(64)
-
-
-def hash_token(token: str) -> str:
-    """Хеширует refresh token для безопасного хранения в БД."""
-    # bcrypt имеет ограничение 72 байта — используем SHA256 для урезания
-    import hashlib
-    token_hashed = hashlib.sha256(token.encode("utf-8")).hexdigest()[:72]
-    return bcrypt.hashpw(token_hashed.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-
-def verify_token(token: str, hashed: str) -> bool:
-    """Проверяет refresh token против хеша из БД."""
-    import hashlib
-    token_hashed = hashlib.sha256(token.encode("utf-8")).hexdigest()[:72]
-    return bcrypt.checkpw(token_hashed.encode("utf-8"), hashed.encode("utf-8"))
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-) -> dict:
-    """Dependency: извлекает текущего пользователя из JWT-токена."""
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Требуется авторизация",
-        )
-    try:
-        payload = decode_access_token(credentials.credentials)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Токен истёк",
-        )
-    except jwt.InvalidTokenError as e:
-        import logging
-        logging.error(f"JWT decode error: {e}, token: {credentials.credentials[:20]}...")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный токен",
-        )
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный токен",
-        )
-
-    user = await db.users.find_one({"_id": ObjectId(user_id)})
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден",
-        )
-    return user
-
-
-async def require_admin(
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Dependency: требует, чтобы текущий пользователь имел роль 'admin'."""
-    if current_user.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещён: требуются права администратора",
-        )
-    return current_user
-=======
 # Роутеры модулей
 app.include_router(economy_router)
 app.include_router(crypto_router)
@@ -264,7 +141,6 @@ app.include_router(ws_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────
->>>>>>> origin/Marlow
 
 
 def get_users_collection(db: AsyncIOMotorDatabase = Depends(get_db)):
@@ -292,6 +168,7 @@ async def ensure_unique_card_number(users) -> str:
 
 @app.post(
     "/api/register",
+    response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def register_user(
@@ -316,29 +193,20 @@ async def register_user(
         "card_visible": True,
     }
     result = await users.insert_one(new_user)
-    user_id = str(result.inserted_id)
-    token = create_access_token({
-        "sub": user_id,
-        "username": user_data.username,
-        "role": "user",
-    })
-    return {
-        "id": user_id,
-        "username": user_data.username,
-        "role": "user",
-        "balance": 1000.0,
-        "card_number": card_number,
-        "card_visible": True,
-        "token": token,
-    }
+    return UserResponse(
+        id=str(result.inserted_id),
+        username=user_data.username,
+        balance=1000.0,
+        card_number=card_number,
+        card_visible=True,
+    )
 
 
 @app.post("/api/login")
 async def login_user(
     user_data: UserLogin,
-    db: AsyncIOMotorDatabase = Depends(get_db),
+    users=Depends(get_users_collection),
 ):
-    users = db.users
     user = await users.find_one({"username": user_data.username})
     if not user:
         raise HTTPException(
@@ -352,21 +220,11 @@ async def login_user(
             detail="Неверное имя пользователя или пароль",
         )
 
-    # Создаём JWT access-токен с id, username и role
-    access_token = create_access_token({
+    # Создаём JWT-токен с id, username и role
+    token = create_access_token({
         "sub": str(user["_id"]),
         "username": user["username"],
         "role": user.get("role", "user"),
-    })
-
-    # Создаём opaque refresh-токен и сохраняем его хеш в БД
-    refresh_token = generate_refresh_token()
-    refresh_hashed = hash_token(refresh_token)
-    refresh_expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_EXPIRE_DAYS)
-    await db.refresh_tokens.insert_one({
-        "user_id": str(user["_id"]),
-        "token_hash": refresh_hashed,
-        "expires_at": refresh_expires,
     })
 
     return {
@@ -376,84 +234,8 @@ async def login_user(
         "balance": user.get("balance", 1000.0),
         "card_number": user.get("card_number"),
         "card_visible": user.get("card_visible", True),
-        "token": access_token,
-        "refresh_token": refresh_token,
+        "token": token,
     }
-
-
-@app.post("/api/auth/refresh")
-async def refresh_access_token(
-    body: dict,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Обменивает refresh-токен на новую пару access + refresh токенов."""
-    refresh_token = body.get("refresh_token")
-    if not refresh_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Отсутствует refresh-токен",
-        )
-
-    now = datetime.now(timezone.utc)
-    # Ищем хеш, соответствующий данному refresh-токену
-    stored = None
-    async for doc in db.refresh_tokens.find({"expires_at": {"$gt": now}}):
-        if verify_token(refresh_token, doc["token_hash"]):
-            stored = doc
-            break
-
-    if not stored:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Недействительный или истёкший refresh-токен",
-        )
-
-    user_id = stored["user_id"]
-    user = await db.users.find_one({"_id": ObjectId(user_id)})
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Пользователь не найден",
-        )
-
-    # Удаляем старый refresh-токен (rotation — каждый токен используется один раз)
-    await db.refresh_tokens.delete_one({"_id": stored["_id"]})
-
-    # Генерируем новую пару
-    access_token = create_access_token({
-        "sub": str(user["_id"]),
-        "username": user["username"],
-        "role": user.get("role", "user"),
-    })
-    new_refresh = generate_refresh_token()
-    new_hashed = hash_token(new_refresh)
-    new_expires = now + timedelta(days=REFRESH_EXPIRE_DAYS)
-    await db.refresh_tokens.insert_one({
-        "user_id": str(user["_id"]),
-        "token_hash": new_hashed,
-        "expires_at": new_expires,
-    })
-
-    return {
-        "token": access_token,
-        "refresh_token": new_refresh,
-    }
-
-
-@app.post("/api/auth/logout")
-async def logout_user(
-    body: dict,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Инвалидирует refresh-токен (logout)."""
-    refresh_token = body.get("refresh_token")
-    if refresh_token:
-        now = datetime.now(timezone.utc)
-        async for doc in db.refresh_tokens.find({"expires_at": {"$gt": now}}):
-            if verify_token(refresh_token, doc["token_hash"]):
-                await db.refresh_tokens.delete_one({"_id": doc["_id"]})
-                break
-    return {"detail": "ok"}
 
 
 @app.get("/api/user/me")
@@ -523,117 +305,6 @@ async def create_or_update_stock(
 
 # NOTE: история операций текущего пользователя теперь в economy.router
 # (GET /api/account/transactions, JWT-scoped, с фильтром/поиском/пагинацией).
-
-
-# ── Purchase Endpoints ───────────────────────────────────────────────────────
-
-
-@app.post(
-    "/api/shop/purchase",
-    response_model=PurchaseResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_purchase(
-    purchase_data: PurchaseCreate,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Совершает покупку предмета в магазине и сохраняет в БД."""
-    user_id = str(current_user["_id"])
-    total = purchase_data.price * purchase_data.quantity
-
-    # Проверяем, что у пользователя достаточно средств
-    if current_user.get("balance", 0) < total:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недостаточно средств для покупки",
-        )
-
-    # Списываем средства
-    await db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$inc": {"balance": -total}},
-    )
-
-    # Сохраняем покупку
-    purchase_doc = {
-        "userId": user_id,
-        "item_id": purchase_data.item_id,
-        "item_name": purchase_data.item_name,
-        "item_category": purchase_data.item_category,
-        "price": purchase_data.price,
-        "quantity": purchase_data.quantity,
-        "total": total,
-    }
-    purchase_id = await insert_purchase(db, purchase_doc)
-
-    return PurchaseResponse(
-        id=purchase_id,
-        userId=user_id,
-        item_id=purchase_data.item_id,
-        item_name=purchase_data.item_name,
-        item_category=purchase_data.item_category,
-        price=purchase_data.price,
-        quantity=purchase_data.quantity,
-        total=total,
-        purchased_at=_serialize_datetime(datetime.utcnow()),
-    )
-
-
-@app.get("/api/shop/purchases", response_model=list[PurchaseResponse])
-async def get_my_purchases(
-    limit: int = Query(100, ge=1, le=500),
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Возвращает список покупок текущего пользователя."""
-    user_id = str(current_user["_id"])
-    purchases = await find_purchases_by_user(db, user_id, limit)
-    return [_format_purchase(p) for p in purchases]
-
-
-@app.get("/api/admin/purchases")
-async def admin_get_all_purchases(
-    limit: int = Query(200, ge=1, le=500),
-    _admin=Depends(require_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Возвращает все покупки (только для администра)."""
-    purchases = await find_all_purchases(db, limit)
-    return [_format_purchase(p) for p in purchases]
-
-
-# ── Shop Price Endpoints ─────────────────────────────────────────────────────
-
-
-@app.get("/api/admin/shop-prices")
-async def admin_get_shop_prices(
-    _admin=Depends(require_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Возвращает все сохранённые цены товаров."""
-    doc = await find_config_by_key(db, "shop_prices")
-    if not doc:
-        return {"prices": {}, "updated_at": ""}
-    import json as _json
-    try:
-        prices = _json.loads(doc["value"])
-    except Exception:
-        prices = {}
-    return {"prices": prices, "updated_at": _serialize_datetime(doc.get("updated_at"))}
-
-
-@app.post("/api/admin/shop-prices")
-async def admin_save_shop_prices(
-    data: ShopPriceUpdate,
-    _admin=Depends(require_admin),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Сохраняет цены товаров в БД."""
-    import json as _json
-    prices_json = _json.dumps(data.prices)
-    await upsert_config(db, "shop_prices", prices_json)
-    return {"prices": data.prices, "updated_at": _serialize_datetime(datetime.utcnow())}
 
 
 # ── App Config Endpoints ─────────────────────────────────────────────────────
@@ -980,20 +651,6 @@ def _format_leaderboard(entry: dict) -> dict:
         "avatar": entry.get("avatar"),
         "profit": entry.get("profit", 0.0),
         "rank": entry.get("rank", 0),
-    }
-
-
-def _format_purchase(p: dict) -> dict:
-    return {
-        "id": p.get("id", ""),
-        "userId": p["userId"],
-        "item_id": p["item_id"],
-        "item_name": p["item_name"],
-        "item_category": p["item_category"],
-        "price": p["price"],
-        "quantity": p["quantity"],
-        "total": p["total"],
-        "purchased_at": _serialize_datetime(p.get("purchased_at")),
     }
 
 

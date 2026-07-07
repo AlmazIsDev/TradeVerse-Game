@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { ArrowLeft, Monitor, Filter, Zap, DollarSign, ArrowUpDown, Gem, Diamond, Snowflake, Flame, FlameKindling, Lock, BookOpen, Sparkles } from 'lucide-react'
 import BuyModal from './BuyModal'
 import ShopCard from './ShopCard'
@@ -188,6 +189,27 @@ function GpuShop({ onBack, balance = 0, onBalanceChange }) {
         return sortOrder === 'asc' ? compare : -compare
       })
 =======
+=======
+import { ArrowLeft, Monitor, Zap, DollarSign, ArrowUpDown, AlertTriangle, Check } from 'lucide-react'
+import { fetchShopCatalog, buyHardware } from '../services/api'
+import { formatMoney } from './TransactionsPanel'
+
+const BRAND_COLORS = {
+  CrystalCore: '#818cf8', Pyronix: '#fb923c', Archivex: '#4ade80',
+}
+
+function GpuShop({ onBack, balance = 0, onBalanceChange }) {
+  const { t } = useTranslation()
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [brand, setBrand] = useState('')
+  const [sortBy, setSortBy] = useState('price')
+  const [sortOrder, setSortOrder] = useState('asc')
+  const [busyId, setBusyId] = useState(null)
+  const [msg, setMsg] = useState(null)
+
+>>>>>>> origin/Marlow
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -197,6 +219,9 @@ function GpuShop({ onBack, balance = 0, onBalanceChange }) {
       setError(err.message)
     } finally {
       setLoading(false)
+<<<<<<< HEAD
+>>>>>>> origin/Marlow
+=======
 >>>>>>> origin/Marlow
     }
   }, [])
@@ -265,6 +290,7 @@ function GpuShop({ onBack, balance = 0, onBalanceChange }) {
       </div>
 
 <<<<<<< HEAD
+<<<<<<< HEAD
       <div className="shop-grid">
         {filteredProducts.map(product => {
           const colors = LINE_COLORS[product.line] || COMPANY_COLORS[product.company] || LINE_COLORS.Quartz
@@ -284,12 +310,17 @@ function GpuShop({ onBack, balance = 0, onBalanceChange }) {
         })}
       </div>
 =======
+=======
+>>>>>>> origin/Marlow
       {loading && (
         <div className="gpu-grid">
           {Array.from({ length: 8 }).map((_, i) => <div key={i} className="gpu-card skeleton" style={{ height: 150 }} />)}
         </div>
       )}
       {error && <div className="error-state"><AlertTriangle size={24} className="error-icon" color="#fca5a5" /><p>{t('common.error')}: {error}</p></div>}
+<<<<<<< HEAD
+>>>>>>> origin/Marlow
+=======
 >>>>>>> origin/Marlow
 
       {!loading && !error && (

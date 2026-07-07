@@ -5,6 +5,7 @@ import {
   fetchCityBonuses, claimCityBonuses,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import ConfirmDialog from './ConfirmDialog'
 import {
   Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
   Gift, HandCoins,
@@ -84,6 +85,8 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
     setSelected(null)
     setSession(null)
   }
+
+  const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
 
   const startAttack = async () => {
     if (!selected) return
@@ -280,7 +283,11 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
                       key={lvl}
                       className={`protect-lvl ${selected.protectionLevel === lvl ? 'active' : ''}`}
                       disabled={busy}
-                      onClick={() => doProtect(lvl)}
+                      onClick={() => setConfirm({
+                        title: t('cityroof.protection'),
+                        message: t('confirm.protect', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') }),
+                        onConfirm: () => doProtect(lvl),
+                      })}
                     >
                       <Shield size={13} /> {lvl}
                       <small>{(map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU')} WC</small>
@@ -292,7 +299,13 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
 
             {/* Не владелец — атака */}
             {!selected.isMine && !session && (
-              <button className="cityroof-attack-btn" onClick={startAttack} disabled={busy}>
+              <button className="cityroof-attack-btn" disabled={busy}
+                onClick={() => setConfirm({
+                  danger: true,
+                  title: t('cityroof.attack', { cost: map?.attackCost ?? 10 }),
+                  message: t('confirm.attack', { name: selected.name, cost: map?.attackCost ?? 10 }),
+                  onConfirm: startAttack,
+                })}>
                 <Swords size={16} /> {busy ? t('bank.processing') : t('cityroof.attack', { cost: map?.attackCost ?? 10 })}
               </button>
             )}
@@ -355,6 +368,16 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirm}
+        danger={confirm?.danger}
+        busy={busy}
+        title={confirm?.title}
+        message={confirm?.message}
+        onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

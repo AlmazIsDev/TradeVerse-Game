@@ -2,6 +2,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchShopCatalog, buyHardware } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+<<<<<<< HEAD
+=======
+import ConfirmDialog from './ConfirmDialog'
+>>>>>>> origin/Marlow
 import {
   Monitor, Cpu, HardDrive, Zap, Fan, Box, Server, Battery, Network,
   Search, DollarSign, ArrowUpDown, AlertTriangle, Check, ShoppingCart,
@@ -60,6 +64,10 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   const [sortOrder, setSortOrder] = useState('asc')
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
+<<<<<<< HEAD
+=======
+  const [confirm, setConfirm] = useState(null)   // item awaiting purchase confirmation
+>>>>>>> origin/Marlow
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 250)
@@ -166,7 +174,11 @@ function ShopTab({ balance = 0, onBalanceChange }) {
                   className="gpu-card-buy"
                   style={{ background: affordable ? color : undefined }}
                   disabled={!affordable || busyId === item.id}
+<<<<<<< HEAD
                   onClick={() => buy(item)}
+=======
+                  onClick={() => setConfirm(item)}
+>>>>>>> origin/Marlow
                 >
                   {busyId === item.id ? t('bank.processing') : affordable ? t('common.buy') : t('stocks.insufficientFunds')}
                 </button>
@@ -175,6 +187,19 @@ function ShopTab({ balance = 0, onBalanceChange }) {
           })}
         </div>
       )}
+<<<<<<< HEAD
+=======
+
+      <ConfirmDialog
+        open={!!confirm}
+        busy={busyId === confirm?.id}
+        title={t('common.buy')}
+        message={confirm ? t('confirm.buyHardware', { name: confirm.name, price: formatMoney(confirm.price) }) : ''}
+        confirmLabel={t('common.buy')}
+        onConfirm={async () => { const it = confirm; setConfirm(null); await buy(it) }}
+        onCancel={() => setConfirm(null)}
+      />
+>>>>>>> origin/Marlow
     </div>
   )
 }

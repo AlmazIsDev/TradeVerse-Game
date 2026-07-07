@@ -3,6 +3,18 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchCompany, createCompany, inviteEmployee, updateMemberSalary,
   fireMember, collectCompanyProfit, companyDeposit, companyWithdraw,
+<<<<<<< HEAD
+  fetchCompanies, applyToCompany,
+} from '../services/api'
+import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
+import CompanyAssetsPanel from './CompanyAssetsPanel'
+import {
+  Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
+  ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
+  Search, LogIn, ChevronRight,
+} from 'lucide-react'
+
+=======
   fetchCompanies, applyToCompany, updateCompanySettings, disbandCompany,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
@@ -16,6 +28,7 @@ import {
 
 const LOGO_EMOJI = ['🏢', '🏦', '🏭', '🚀', '💎', '⚙️', '🛰️', '🏗️', '💼', '🌐', '⚡', '🔧']
 
+>>>>>>> origin/Marlow
 function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [data, setData] = useState(null)
@@ -34,8 +47,11 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [moneyModal, setMoneyModal] = useState(null) // 'deposit' | 'withdraw'
   const [moneyAmount, setMoneyAmount] = useState('')
   const [showAssets, setShowAssets] = useState(false)
+<<<<<<< HEAD
+=======
   const [settingsModal, setSettingsModal] = useState(null) // { name, description, logo, isOpen, visibleInSearch }
   const [confirmDisband, setConfirmDisband] = useState(false)
+>>>>>>> origin/Marlow
 
   const load = useCallback(async () => {
     try {
@@ -52,6 +68,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
 
   useEffect(() => { load() }, [load])
 
+<<<<<<< HEAD
+=======
   // Realtime: обновляем компанию (сотрудники/бюджет) при событиях от WebSocket —
   // например когда приглашённый игрок принял приглашение (владелец видит live).
   useEffect(() => {
@@ -70,6 +88,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }, [load])
 
+>>>>>>> origin/Marlow
   const flash = (text, type = 'success') => {
     setMsg({ text, type })
     setTimeout(() => setMsg(null), 2600)
@@ -111,6 +130,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+<<<<<<< HEAD
+=======
   const openSettings = () => setSettingsModal({
     name: data.name,
     description: data.description || '',
@@ -154,6 +175,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+>>>>>>> origin/Marlow
   if (loading) {
     return (
       <div className="company-tab">
@@ -224,6 +246,12 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   // ── Есть компания ──
   return (
     <div className="company-tab">
+<<<<<<< HEAD
+      <div className="leaderboard-title-row">
+        <Store size={22} className="icon" />
+        <h2 className="tab-title">{data.name}</h2>
+      </div>
+=======
       <div className="leaderboard-title-row company-title-row">
         <span className="company-logo-badge">
           {data.logo
@@ -238,6 +266,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         </button>
       </div>
       {data.description && <p className="company-description">{data.description}</p>}
+>>>>>>> origin/Marlow
 
       {msg && (
         <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
@@ -381,6 +410,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
           </div>
         </div>
       )}
+<<<<<<< HEAD
+=======
 
       {settingsModal && (
         <div className="modal-overlay" onClick={() => !busy && setSettingsModal(null)}>
@@ -449,6 +480,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         onConfirm={doDisband}
         onCancel={() => setConfirmDisband(false)}
       />
+>>>>>>> origin/Marlow
     </div>
   )
 }

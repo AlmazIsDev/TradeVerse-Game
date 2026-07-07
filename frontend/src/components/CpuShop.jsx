@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Cpu, Filter, DollarSign, Layers, ArrowUpDown } from 'lucide-react'
+import { ArrowLeft, Cpu, Filter, DollarSign, Layers, ArrowUpDown, Gem, Snowflake, Flame, Leaf, Archive, Sparkles } from 'lucide-react'
 import BuyModal from './BuyModal'
+import ShopCard from './ShopCard'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const CPU_PRODUCTS = [
   { id: 1, name: 'CrystalChip Stone S210', maxGpus: 1, multiplier: 1.00, price: null, company: 'CrystalChip', line: 'Stone' },
@@ -98,10 +100,37 @@ const CPU_PRODUCTS = [
 
 const COMPANIES = ['CrystalChip', 'PyroCore', 'ArchiveCore']
 
+const LINE_COLORS = {
+  // CrystalChip
+  Stone:    { bg: 'rgba(99, 102, 241, 0.12)', border: 'rgba(99, 102, 241, 0.35)', icon: '#818cf8', accent: '#6366f1' },
+  Crystal:  { bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.35)', icon: '#60a5fa', accent: '#3b82f6' },
+  Diamond:  { bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.35)', icon: '#c084fc', accent: '#a855f7' },
+  // PyroCore
+  Ember:    { bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.35)', icon: '#fb923c', accent: '#f97316' },
+  Blaze:    { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.35)', icon: '#fbbf24', accent: '#f59e0b' },
+  Inferno:  { bg: 'rgba(220, 38, 38, 0.12)', border: 'rgba(220, 38, 38, 0.35)', icon: '#fca5a5', accent: '#dc2626' },
+  // ArchiveCore
+  Legacy:   { bg: 'rgba(34, 197, 94, 0.12)', border: 'rgba(34, 197, 94, 0.35)', icon: '#4ade80', accent: '#22c55e' },
+  Archive:  { bg: 'rgba(20, 184, 166, 0.12)', border: 'rgba(20, 184, 166, 0.35)', icon: '#2dd4bf', accent: '#14b8a6' },
+  Genesis:  { bg: 'rgba(132, 204, 22, 0.12)', border: 'rgba(132, 204, 22, 0.35)', icon: '#a3e635', accent: '#84cc16' },
+}
+
+const LINE_ICONS = {
+  Stone: Gem,
+  Crystal: Snowflake,
+  Diamond: Sparkles,
+  Ember: Flame,
+  Blaze: Flame,
+  Inferno: Flame,
+  Legacy: Leaf,
+  Archive: Archive,
+  Genesis: Sparkles,
+}
+
 const COMPANY_COLORS = {
-  CrystalChip: { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.3)', icon: '#818cf8', accent: '#6366f1' },
-  PyroCore: { bg: 'rgba(249, 115, 22, 0.10)', border: 'rgba(249, 115, 22, 0.3)', icon: '#fb923c', accent: '#f97316' },
-  ArchiveCore: { bg: 'rgba(34, 197, 94, 0.10)', border: 'rgba(34, 197, 94, 0.3)', icon: '#4ade80', accent: '#22c55e' },
+  CrystalChip: LINE_COLORS.Stone,
+  PyroCore: LINE_COLORS.Ember,
+  ArchiveCore: LINE_COLORS.Legacy,
 }
 
 function CpuShop({ onBack }) {
@@ -119,7 +148,7 @@ function CpuShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = CPU_PRODUCTS.filter(product => {
+    let result = applyShopPrices(CPU_PRODUCTS).filter(product => {
       if (selectedCompany && product.company !== selectedCompany) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -237,32 +266,24 @@ function CpuShop({ onBack }) {
         )}
       </div>
 
-      <div className="gpu-grid">
+      <div className="shop-grid">
         {filteredProducts.map(product => {
-          const colors = COMPANY_COLORS[product.company] || COMPANY_COLORS.CrystalChip
+          const colors = LINE_COLORS[product.line] || COMPANY_COLORS[product.company] || LINE_COLORS.Stone
+          const LineIcon = LINE_ICONS[product.line] || Cpu
           return (
-            <div
+            <ShopCard
               key={product.id}
-              className="gpu-card"
-              style={{ background: colors.bg, borderColor: colors.border }}
-            >
-              <span className="gpu-card-icon" style={{ background: colors.accent }}><Cpu size={24} /></span>
-              <span className="gpu-card-name">{product.name}</span>
-              <div className="gpu-card-specs">
-                <Layers size={12} style={{ color: colors.icon }} />
-                <span>{product.maxGpus} GPU</span>
-              </div>
-              <div className="gpu-card-multiplier">
-                <span>{product.multiplier}x</span>
-              </div>
-              <div className="gpu-card-price">
-                <DollarSign size={12} style={{ color: colors.icon }} />
-                <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
-              </div>
-              <button className="gpu-card-buy" style={{ background: colors.accent }} onClick={() => setSelectedProduct(product)}>
-                {t('common.buy')}
-              </button>
-            </div>
+              icon={LineIcon}
+              name={product.name}
+              subtitle={product.line}
+              specs={[
+                { icon: Layers, label: `${product.maxGpus} GPU` },
+                { icon: ArrowUpDown, label: `${product.multiplier}x` },
+              ]}
+              price={product.price}
+              colors={colors}
+              onBuy={() => setSelectedProduct(product)}
+            />
           )
         })}
       </div>
@@ -274,4 +295,5 @@ function CpuShop({ onBack }) {
   )
 }
 
+export { CPU_PRODUCTS }
 export default CpuShop

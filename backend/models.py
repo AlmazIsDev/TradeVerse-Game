@@ -98,6 +98,27 @@ class AnalyticsDocument(BaseModel):
         json_encoders = {ObjectId: str}
 
 
+# ── Purchase ──────────────────────────────────────────────────────────────────
+
+
+class PurchaseDocument(BaseModel):
+    """Модель покупки предмета в магазине."""
+
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    userId: str
+    item_id: str
+    item_name: str
+    item_category: str  # "gpu", "cpu", "case", "supplies", "realestate", "business" и т.д.
+    price: float
+    quantity: int = 1
+    total: float = 0.0
+    purchased_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+
 # ── Leaderboard ──────────────────────────────────────────────────────────────
 
 

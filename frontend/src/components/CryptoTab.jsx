@@ -5,12 +5,12 @@ import {
   transferCrypto, fetchCryptoTransfers,
 } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
-import AssetDetail from './AssetDetail'
-import ConfirmDialog from './ConfirmDialog'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
   ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X, Send, Search, Activity,
 } from 'lucide-react'
+import AssetDetail from './AssetDetail'
+import ConfirmDialog from './ConfirmDialog'
 
 // Состояния для анимации обновления цен
 const priceAnimationTimers = new Map()
@@ -357,6 +357,8 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
             )}
           </div>
 
+<<<<<<< HEAD
+=======
           {/* Прогноз — между переводом и историей */}
           <div className="crypto-section">
             <h3><Activity size={16} /> {t('crypto.forecast')}</h3>
@@ -379,6 +381,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
             </div>
           </div>
 
+>>>>>>> origin/Marlow
           <div className="crypto-section">
             <h3>{t('bank.history')}</h3>
             <TransactionsPanel category="crypto" refreshKey={refreshKey} />
@@ -410,16 +413,3 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
       )}
 
       <ConfirmDialog
-        open={!!confirmTransfer}
-        busy={transferBusy}
-        title={t('cryptoTransfer.title', 'Перевод криптовалюты')}
-        message={confirmTransfer ? t('confirm.cryptoTransfer', { amount: formatCoin(confirmTransfer.amount), symbol: confirmTransfer.symbol, recipient: confirmTransfer.recipient }) : ''}
-        confirmLabel={t('cryptoTransfer.send', 'Отправить')}
-        onConfirm={doTransfer}
-        onCancel={() => setConfirmTransfer(null)}
-      />
-    </div>
-  )
-}
-
-export default CryptoTab

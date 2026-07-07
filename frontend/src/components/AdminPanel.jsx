@@ -5,11 +5,7 @@ import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-<<<<<<< HEAD
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, DollarSign
-=======
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search,
->>>>>>> origin/Marlow
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 

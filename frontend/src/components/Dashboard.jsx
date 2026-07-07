@@ -14,6 +14,7 @@ import MyCompanyTab from './MyCompanyTab'
 import CityRoofTab from './CityRoofTab'
 import MiningTab from './MiningTab'
 import AdminPanel from './AdminPanel'
+import NotificationCenter from './NotificationCenter'
 import { fetchCurrentUser, API_BASE_URL } from '../services/api'
 import { Shield } from 'lucide-react'
 
@@ -136,6 +137,7 @@ function Dashboard({ user, onLogout }) {
           {renderContent()}
         </div>
       </div>
+      <NotificationCenter />
       {isAdmin && (
         <button
           className="admin-fab"

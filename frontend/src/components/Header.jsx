@@ -101,6 +101,13 @@ function Header({ username, balance, onLogout, rtKey = 0 }) {
     if (rtKey) loadNotifs()
   }, [rtKey, loadNotifs])
 
+  // Push-событие от NotificationCenter — обновляем ленту без задержки debounce.
+  useEffect(() => {
+    const onNotif = () => loadNotifs()
+    window.addEventListener('tv:notif', onNotif)
+    return () => window.removeEventListener('tv:notif', onNotif)
+  }, [loadNotifs])
+
   const markAsRead = async (id) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     try { await markNotificationRead(id) } catch { /* ignore */ }

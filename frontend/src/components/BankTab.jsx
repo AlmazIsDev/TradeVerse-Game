@@ -74,7 +74,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
   return (
     <div className="bank-tab">
       <h2 className="tab-title">{t('bank.title')}</h2>
-
       <div className="bank-nav">
         {NAV.map(n => {
           const Icon = n.icon

@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Briefcase, Filter, DollarSign, ArrowUpDown, Store } from 'lucide-react'
 import BuyModal from './BuyModal'
+import ShopCard from './ShopCard'
+import { applyShopPrices } from '../utils/shopPrices'
 
 const BUSINESS_PRODUCTS = [
   { id: 1, name: 'Pixel Store', category: 'retail', price: null, income: null },
@@ -40,7 +42,7 @@ function BusinessShop({ onBack }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
 
   const filteredProducts = useMemo(() => {
-    let result = BUSINESS_PRODUCTS.filter(product => {
+    let result = applyShopPrices(BUSINESS_PRODUCTS).filter(product => {
       if (selectedCategory && product.category !== selectedCategory) return false
       if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
       if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
@@ -146,35 +148,21 @@ function BusinessShop({ onBack }) {
         )}
       </div>
 
-      <div className="gpu-grid">
+      <div className="shop-grid">
         {filteredProducts.map(product => {
           const colors = CATEGORY_COLORS[product.category] || CATEGORY_COLORS.retail
           return (
-            <div
+            <ShopCard
               key={product.id}
-              className="gpu-card"
-              style={{ background: colors.bg, borderColor: colors.border }}
-            >
-              <div className="re-card-header">
-                <span className="gpu-card-icon" style={{ background: colors.accent }}><Store size={24} /></span>
-                <span className="gpu-card-name">{product.name}</span>
-              </div>
-              <div className="gpu-card-specs">
-                <Briefcase size={12} style={{ color: colors.icon }} />
-                <span>{t(`business.categories.${product.category}`)}</span>
-              </div>
-              <div className="gpu-card-price">
-                <DollarSign size={12} style={{ color: colors.icon }} />
-                <span>{product.price !== null ? `$${product.price.toLocaleString()}` : t('common.notSet')}</span>
-              </div>
-              <div className="gpu-card-price">
-                <DollarSign size={12} style={{ color: colors.icon }} />
-                <span>{t('business.income')}: {product.income !== null ? `$${product.income.toLocaleString()}` : t('common.notSet')}</span>
-              </div>
-              <button className="gpu-card-buy" style={{ background: colors.accent }} onClick={() => setSelectedProduct(product)}>
-                {t('common.buy')}
-              </button>
-            </div>
+              icon={Store}
+              name={product.name}
+              subtitle={t(`business.categories.${product.category}`)}
+              specs={[]}
+              price={product.price}
+              priceLabel={product.income !== null ? `${t('business.income')}: $${product.income.toLocaleString()}` : `${t('business.income')}: ${t('common.notSet')}`}
+              colors={colors}
+              onBuy={() => setSelectedProduct(product)}
+            />
           )
         })}
       </div>
@@ -186,4 +174,5 @@ function BusinessShop({ onBack }) {
   )
 }
 
+export { BUSINESS_PRODUCTS }
 export default BusinessShop

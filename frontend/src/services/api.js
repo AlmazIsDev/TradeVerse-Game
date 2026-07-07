@@ -10,7 +10,7 @@ class ApiError extends Error {
   }
 }
 
-/** Получить JWT-токен из localStorage */
+/** Получить JWT access-токен из localStorage */
 function getAuthToken() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -22,10 +22,73 @@ function getAuthToken() {
   return null
 }
 
+/** Получить refresh-токен из localStorage */
+function getRefreshToken() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const user = JSON.parse(stored)
+      return user.refresh_token || null
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+/** Обновить оба токена в localStorage */
+function saveTokens(accessToken, refreshToken) {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const user = JSON.parse(stored)
+      user.token = accessToken
+      if (refreshToken) user.refresh_token = refreshToken
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    }
+  } catch { /* ignore */ }
+}
+
+/** Очистить localStorage и выбросить событие принудительного логаута */
+function forceLogout() {
+  localStorage.removeItem(STORAGE_KEY)
+  window.dispatchEvent(new CustomEvent('auth:force-logout'))
+}
+
+// ── Refresh lock: предотвращает параллельные refresh-запросы ──────────────
+let refreshPromise = null
+
+async function refreshAccessToken() {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) {
+    forceLogout()
+    throw new ApiError('Сессия истекла. Войдите заново.', 401)
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+
+    if (!response.ok) {
+      forceLogout()
+      throw new ApiError('Сессия истекла. Войдите заново.', 401)
+    }
+
+    const data = await response.json()
+    saveTokens(data.token, data.refresh_token)
+    return data.token
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+    forceLogout()
+    throw new ApiError('Не удалось обновить сессию.', 401)
+  }
+}
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`
 
-  // Автоматически добавляем JWT-токен в заголовок Authorization
+  // Автоматически добавляем JWT- заголовок Authorization
   const token = getAuthToken()
   const authHeaders = {}
   if (token) {
@@ -44,7 +107,44 @@ async function request(endpoint, options = {}) {
   try {
     const response = await fetch(url, config)
 
+    // ── 401 Interceptor: пробуем refresh, затем повторяем запрос ────────
+    if (response.status === 401 && getRefreshToken()) {
+      // Блокируем параллельные refresh-запросы
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null })
+      }
+      const newToken = await refreshPromise
+
+      // Повторяем оригинальный запрос с новым access-токеном
+      const retryConfig = {
+        ...config,
+        headers: {
+          ...config.headers,
+          Authorization: `Bearer ${newToken}`,
+        },
+      }
+      const retryResponse = await fetch(url, retryConfig)
+      if (!retryResponse.ok) {
+        const errorText = await retryResponse.text().catch(() => '')
+        throw new ApiError(
+          errorText || `Ошибка сервера: ${retryResponse.status}`,
+          retryResponse.status
+        )
+      }
+      return await retryResponse.json()
+    }
+
     if (!response.ok) {
+<<<<<<< HEAD
+<<<<<<< HEAD
+      const errorText = await response.text().catch(() => '')
+      // При 401 автоматически разлогиниваем
+      if (response.status === 401 && typeof window !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY)
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+=======
+=======
+>>>>>>> origin/Marlow
       const raw = await response.text().catch(() => '')
       let message = raw
       if (raw) {
@@ -57,6 +157,10 @@ async function request(endpoint, options = {}) {
             message = parsed.detail.map(e => e.msg).filter(Boolean).join('; ') || raw
           }
         } catch { /* тело не JSON — используем как есть */ }
+<<<<<<< HEAD
+>>>>>>> origin/Marlow
+=======
+>>>>>>> origin/Marlow
       }
       throw new ApiError(
         message || `Ошибка сервера: ${response.status}`,
@@ -241,6 +345,33 @@ export async function updateStockConfig(symbol, configData) {
   })
 }
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+// ── Shop Purchase API ────────────────────────────────────────────────────────
+
+export async function purchaseItem(purchaseData) {
+  return request('/api/shop/purchase', {
+    method: 'POST',
+    body: JSON.stringify(purchaseData),
+  })
+}
+
+export async function fetchMyPurchases(limit = 100) {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', limit)
+  return request(`/api/shop/purchases?${params.toString()}`)
+}
+
+export async function fetchBotOrders(limit = 100) {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', limit)
+  return request(`/api/v2/stocks/bot-orders?${params.toString()}`)
+}
+
+export { API_BASE_URL, ApiError, request, forceLogout }
+=======
+=======
+>>>>>>> origin/Marlow
 export async function issueStock({ name, symbol, description, totalShares, price }) {
   return request('/api/v2/stocks/issue', {
     method: 'POST',
@@ -349,6 +480,8 @@ export async function createCompany(name) {
   return request('/api/company', { method: 'POST', body: JSON.stringify({ name }) })
 }
 
+<<<<<<< HEAD
+=======
 export async function updateCompanySettings(payload) {
   return request('/api/company', { method: 'PATCH', body: JSON.stringify(payload) })
 }
@@ -357,6 +490,7 @@ export async function disbandCompany() {
   return request('/api/company', { method: 'DELETE' })
 }
 
+>>>>>>> origin/Marlow
 export async function updateMemberSalary(memberUserId, salary) {
   return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, {
     method: 'PATCH', body: JSON.stringify({ salary }),
@@ -486,3 +620,4 @@ export async function repairFarm(id) { return request(`/api/mining/farms/${encod
 export async function farmManager(id, action) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action }) }) }
 
 export { API_BASE_URL, ApiError, request }
+>>>>>>> origin/Marlow

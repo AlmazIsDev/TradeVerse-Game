@@ -8,6 +8,10 @@
 Здесь же живут пользовательские акции (issuer != None) — их выпускают игроки
 через company/эмиссию; торговая механика общая.
 """
+from __future__ import annotations
+
+from typing import Optional
+
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -69,11 +73,11 @@ class StockTradeRequest(BaseModel):
 
 
 class StockConfigUpdate(BaseModel):
-    volatility_k: float | None = None
-    total_shares: int | None = None
-    price_drop_threshold: float | None = None
-    price_rise_threshold: float | None = None
-    max_order_size_percent: float | None = None
+    volatility_k: Optional[float] = None
+    total_shares: Optional[int] = None
+    price_drop_threshold: Optional[float] = None
+    price_rise_threshold: Optional[float] = None
+    max_order_size_percent: Optional[float] = None
 
 
 class StockIssue(BaseModel):

@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import random
 from datetime import datetime, timezone
 
@@ -288,7 +290,7 @@ async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, 
         })
 
 
-async def _price_of(db: AsyncIOMotorDatabase, symbol: str) -> float | None:
+async def _price_of(db: AsyncIOMotorDatabase, symbol: str) -> Optional[float]:
     coin = await db.crypto_assets.find_one({"symbol": symbol.upper()})
     return coin["price"] if coin else None
 

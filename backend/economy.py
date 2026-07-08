@@ -1,6 +1,8 @@
 """Экономика: переводы между игроками, история операций, аналитика."""
 from __future__ import annotations
 
+from typing import Optional
+
 import logging
 
 from bson import ObjectId
@@ -30,7 +32,7 @@ logger = logging.getLogger("tradeverse.economy")
 class TransferCreate(BaseModel):
     recipient: str          # username или номер карты получателя
     amount: float
-    note: str | None = None
+    note: Optional[str] = None
 
     @field_validator("recipient")
     @classmethod
@@ -141,9 +143,9 @@ async def create_transfer(
 
 @router.get("/account/transactions")
 async def get_my_transactions(
-    direction: str | None = Query(None),
-    category: str | None = Query(None),
-    search: str | None = Query(None),
+    direction: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     sort: str = Query("date_desc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),

@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 import re
 
 from pydantic import BaseModel, field_validator
@@ -57,15 +61,15 @@ class UserResponse(BaseModel):
     username: str
     role: str = "user"
     balance: float = 1000.0
-    card_number: str | None = None
+    card_number: Optional[str] = None
     card_visible: bool = True
 
 
 class AdminUserUpdate(BaseModel):
-    username: str | None = None
-    balance: float | None = None
-    role: str | None = None
-    card_number: str | None = None
+    username: Optional[str] = None
+    balance: Optional[float] = None
+    role: Optional[str] = None
+    card_number: Optional[str] = None
 
     @field_validator("role")
     @classmethod
@@ -138,7 +142,7 @@ class ConfigResponse(BaseModel):
 class LeaderboardResponse(BaseModel):
     userId: str
     username: str
-    avatar: str | None
+    avatar: Optional[str]
     profit: float
     rank: int
 
@@ -180,10 +184,10 @@ class PurchaseResponse(BaseModel):
 
 class ShopPriceUpdate(BaseModel):
     """Схема для обновления цен товаров."""
-    prices: dict[str, float | None]
+    prices: dict[str, Optional[float]]
 
 
 class ShopPriceResponse(BaseModel):
     """Схема ответа с ценами товаров."""
-    prices: dict[str, float | None]
+    prices: dict[str, Optional[float]]
     updated_at: str

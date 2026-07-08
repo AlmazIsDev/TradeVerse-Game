@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -291,7 +293,7 @@ def _accrued(asset: dict) -> float:
 # ── Аренда ───────────────────────────────────────────────────────────────────
 
 
-def _rental_view(asset: dict) -> dict | None:
+def _rental_view(asset: dict) -> Optional[dict]:
     r = asset.get("rental")
     if not r:
         return None

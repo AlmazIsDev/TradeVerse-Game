@@ -8,6 +8,10 @@
 
 Запускается в lifespan приложения, корректно останавливается при завершении.
 """
+from __future__ import annotations
+
+from typing import Optional
+
 import asyncio
 import logging
 import os
@@ -23,7 +27,7 @@ logger = logging.getLogger("tradeverse.scheduler")
 
 SCHEDULER_INTERVAL_S = int(os.getenv("SCHEDULER_INTERVAL_SECONDS", "60"))
 
-_task: asyncio.Task | None = None
+_task: Optional[asyncio.Task] = None
 
 
 async def _tick():

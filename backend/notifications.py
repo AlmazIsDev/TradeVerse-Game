@@ -4,6 +4,10 @@
 читает ленту и отмечает прочитанным. Используется, например, для приглашений
 в компанию (с действиями accept/decline) и авто-начислений (аренда).
 """
+from __future__ import annotations
+
+from typing import Optional
+
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -22,7 +26,7 @@ async def push_notification(
     ntype: str,
     title: str,
     body: str = "",
-    data: dict | None = None,
+    data: Optional[dict] = None,
 ) -> str:
     """Создаёт уведомление для пользователя и возвращает его id."""
     doc = {

@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -47,13 +49,13 @@ async def get_econ(db: AsyncIOMotorDatabase) -> dict:
 
 
 class EconConfigUpdate(BaseModel):
-    income_mult: float | None = None
-    rent_mult: float | None = None
-    tax_rate: float | None = None
-    inflation: float | None = None
-    energy_cost: float | None = None
-    wc_price: float | None = None
-    economy_mult: float | None = None
+    income_mult: Optional[float] = None
+    rent_mult: Optional[float] = None
+    tax_rate: Optional[float] = None
+    inflation: Optional[float] = None
+    energy_cost: Optional[float] = None
+    wc_price: Optional[float] = None
+    economy_mult: Optional[float] = None
 
 
 @router.get("/config")

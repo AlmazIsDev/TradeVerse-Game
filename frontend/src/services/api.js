@@ -135,17 +135,12 @@ async function request(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      const errorText = await response.text().catch(() => '')
+      const raw = await response.text().catch(() => '')
       // При 401 автоматически разлогиниваем
       if (response.status === 401 && typeof window !== 'undefined') {
         localStorage.removeItem(STORAGE_KEY)
         window.dispatchEvent(new CustomEvent('auth:unauthorized'))
-=======
-=======
->>>>>>> origin/Marlow
-      const raw = await response.text().catch(() => '')
+      }
       let message = raw
       if (raw) {
         try {
@@ -157,10 +152,6 @@ async function request(endpoint, options = {}) {
             message = parsed.detail.map(e => e.msg).filter(Boolean).join('; ') || raw
           }
         } catch { /* тело не JSON — используем как есть */ }
-<<<<<<< HEAD
->>>>>>> origin/Marlow
-=======
->>>>>>> origin/Marlow
       }
       throw new ApiError(
         message || `Ошибка сервера: ${response.status}`,
@@ -345,8 +336,6 @@ export async function updateStockConfig(symbol, configData) {
   })
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 // ── Shop Purchase API ────────────────────────────────────────────────────────
 
 export async function purchaseItem(purchaseData) {
@@ -368,10 +357,6 @@ export async function fetchBotOrders(limit = 100) {
   return request(`/api/v2/stocks/bot-orders?${params.toString()}`)
 }
 
-export { API_BASE_URL, ApiError, request, forceLogout }
-=======
-=======
->>>>>>> origin/Marlow
 export async function issueStock({ name, symbol, description, totalShares, price }) {
   return request('/api/v2/stocks/issue', {
     method: 'POST',
@@ -480,8 +465,6 @@ export async function createCompany(name) {
   return request('/api/company', { method: 'POST', body: JSON.stringify({ name }) })
 }
 
-<<<<<<< HEAD
-=======
 export async function updateCompanySettings(payload) {
   return request('/api/company', { method: 'PATCH', body: JSON.stringify(payload) })
 }
@@ -490,7 +473,6 @@ export async function disbandCompany() {
   return request('/api/company', { method: 'DELETE' })
 }
 
->>>>>>> origin/Marlow
 export async function updateMemberSalary(memberUserId, salary) {
   return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, {
     method: 'PATCH', body: JSON.stringify({ salary }),
@@ -619,5 +601,4 @@ export async function setOverclock(id, value) { return request(`/api/mining/farm
 export async function repairFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/repair`, { method: 'POST' }) }
 export async function farmManager(id, action) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action }) }) }
 
-export { API_BASE_URL, ApiError, request }
->>>>>>> origin/Marlow
+export { API_BASE_URL, ApiError, request, forceLogout }

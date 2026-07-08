@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "concurrently -n \"frontend,backend\" -c \"blue,green\" \"npm run dev:frontend\" \"npm run dev:backend\"",
-    "dev:frontend": "npm run dev --prefix frontend",
-    "dev:backend": "cd backend && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:frontend": "cd frontend && node node_modules/vite/bin/vite.js --port 20300",
+    "dev:backend": "cd backend && python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 20301",
     "start": "npm run dev",
     "install:all": "npm install && cd backend && pip install -r requirements.txt"
   },

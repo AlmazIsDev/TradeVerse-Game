@@ -5,6 +5,8 @@
 проходят через единый реестр (ledger). Стоимость активов учитывается в
 чистом капитале игрока (лидерборд).
 """
+from __future__ import annotations
+
 import random
 from datetime import datetime, timedelta, timezone
 

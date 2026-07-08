@@ -1,4 +1,6 @@
 """Экономика: переводы между игроками, история операций, аналитика."""
+from __future__ import annotations
+
 import logging
 
 from bson import ObjectId

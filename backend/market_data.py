@@ -10,6 +10,8 @@
 Также здесь живёт роутер /api/market/* (история, детальная карточка актива)
 и /api/favorites/* (избранное игрока).
 """
+from __future__ import annotations
+
 import logging
 import os
 import random

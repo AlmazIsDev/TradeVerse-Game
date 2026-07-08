@@ -4,6 +4,8 @@
 троттлинг-обновление (случайное блуждание), что даёт динамику без внешнего
 планировщика. Все денежные движения проходят через единый реестр (ledger).
 """
+from __future__ import annotations
+
 import random
 from datetime import datetime, timezone
 

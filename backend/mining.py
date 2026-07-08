@@ -11,6 +11,8 @@
 Доход зависит от: числа и характеристик GPU, температуры, износа, стоимости
 электроэнергии, курса крипты, эффективности охлаждения, разгона и БП.
 """
+from __future__ import annotations
+
 import math
 from datetime import datetime, timezone
 

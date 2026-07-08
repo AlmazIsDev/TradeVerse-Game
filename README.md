@@ -24,7 +24,7 @@
 ```
 ┌─────────────────────────┐         HTTP / JWT          ┌──────────────────────────┐
 │  Frontend (React + Vite)│  ─────────────────────────► │  Backend (FastAPI)       │
-│  http://localhost:5173  │  ◄───────────────────────── │  http://localhost:8000   │
+│  http://localhost:5173  │  ◄───────────────────────── │  http://localhost:20301   │
 └─────────────────────────┘      REST /api/*            └────────────┬─────────────┘
                                                                      │ Motor (async)
                                                                      ▼
@@ -33,7 +33,7 @@
                                                           └──────────────────────┘
 ```
 
-- Frontend — SPA, общается с backend по REST через `/api/*`. В dev-режиме Vite проксирует `/api` на `http://localhost:8000`.
+- Frontend — SPA, общается с backend по REST через `/api/*`. В dev-режиме Vite проксирует `/api` на `http://localhost:20301`.
 - Backend — асинхронный FastAPI-сервер, хранит данные в MongoDB, аутентификация через JWT (Bearer).
 - CORS на бэкенде разрешает origin `http://localhost:5173`.
 
@@ -71,10 +71,10 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Backend поднимется на `http://localhost:8000`. Проверка:
+Backend поднимется на `http://localhost:20301`. Проверка:
 
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:20301/api/health
 # {"status":"ok"}
 ```
 
@@ -90,7 +90,7 @@ npm run dev
 
 Frontend поднимется на `http://localhost:5173`. Откройте этот адрес в браузере.
 
-> Интерактивная документация API (Swagger) доступна на `http://localhost:8000/docs`.
+> Интерактивная документация API (Swagger) доступна на `http://localhost:20301/docs`.
 
 ---
 
@@ -108,7 +108,7 @@ JWT_SECRET=<секретный-ключ-для-подписи-JWT>
 ```bash
 python main.py
 # или
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 20301 --reload
 ```
 
 ### Модель данных (коллекции MongoDB)
@@ -144,7 +144,7 @@ npm run lint     # линтинг (oxlint)
 
 ### Переменные окружения
 
-- `VITE_API_URL` — базовый URL backend API (по умолчанию `http://localhost:8000`).
+- `VITE_API_URL` — базовый URL backend API (по умолчанию `http://localhost:20301`).
 
 ### Ключевые экраны
 

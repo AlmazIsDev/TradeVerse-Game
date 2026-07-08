@@ -44,7 +44,7 @@ function App() {
         const parsed = JSON.parse(stored)
         if (parsed.refresh_token) {
           fetch(
-            `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/auth/logout`,
+            `${import.meta.env.VITE_API_URL || 'http://localhost:20301'}/api/auth/logout`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

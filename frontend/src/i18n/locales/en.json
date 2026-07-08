@@ -92,11 +92,8 @@
     "insufficientShares": "Not enough shares",
     "portfolio": "My Portfolio",
     "portfolioValue": "Portfolio value",
-<<<<<<< HEAD
-=======
     "market": "Stock market",
     "pnl": "Profit / loss",
->>>>>>> origin/Marlow
     "owned": "Owned",
     "issue": "Issue stock",
     "issued": "own",
@@ -246,9 +243,6 @@
     "iv_3m": "3M",
     "iv_6m": "6M",
     "iv_1y": "1Y",
-<<<<<<< HEAD
-    "iv_all": "All"
-=======
     "iv_all": "All",
     "analytics": "Analytics",
     "forecast": "Forecast",
@@ -274,7 +268,6 @@
     "trendUp": "Up",
     "trendDown": "Down",
     "history": "Transaction history"
->>>>>>> origin/Marlow
   },
   "leaderboard": {
     "player": "Player",
@@ -400,9 +393,6 @@
       "manager": "Manager",
       "engineer": "Engineer",
       "director": "Director"
-<<<<<<< HEAD
-    }
-=======
     },
     "settings": "Company settings",
     "settingsSaved": "Settings saved",
@@ -417,7 +407,6 @@
     "closed": "Closed",
     "visible": "Visible in search",
     "hidden": "Hidden from search"
->>>>>>> origin/Marlow
   },
   "cityroof": {
     "buyWc": "Buy WC",
@@ -650,83 +639,6 @@
       "noProducts": "No products found",
       "totalProducts": "Total products: {{count}}",
       "pricesSet": "With price: {{count}}"
-    }
-  },
-  "econ": {
-    "tab": "Economy",
-    "analytics": "Economy analytics",
-    "coefficients": "Economy coefficients",
-    "saved": "Settings saved",
-    "save": "Save",
-    "moneySupply": "Money supply",
-    "totalCapital": "Total capital",
-    "avgCapital": "Average capital",
-    "players": "Players",
-    "dailyVolume": "Daily volume (24h)",
-    "stocksValue": "Stocks held",
-    "cryptoValue": "Crypto held",
-    "realestate": "Real estate",
-    "business": "Businesses",
-    "cars": "Cars",
-    "companies": "Companies",
-    "economy_mult": "Global multiplier",
-    "income_mult": "Income multiplier",
-    "rent_mult": "Rent multiplier",
-    "tax_rate": "Tax rate",
-    "inflation": "Inflation",
-    "energy_cost": "Energy cost",
-    "wc_price": "WarCoin price",
-    "events": "Economic events",
-    "eventActive": "active",
-    "stop": "Stop",
-    "eventHistory": "Event history"
-  },
-  "mining": {
-    "farmName": "Farm name",
-    "createFarm": "Create farm",
-    "created": "Farm created",
-    "noFarms": "No farms yet. Create one and assemble the hardware.",
-    "onboardTitle": "Create a mining farm",
-    "onboardDesc": "Assemble a farm from components, pick a coin and mine crypto. Income depends on hardware, temperature, wear and price.",
-    "newFarm": "New farm",
-    "pickPart": "+ Add part",
-    "noParts": "None free — buy in the shop",
-    "aiManagerHint": "Automatically picks the best coin and looks after the farm",
-    "assembleForManager": "Assemble the farm to hire a manager",
-    "notAssembled": "The farm isn't assembled yet — install all required components and stats will appear.",
-    "state": { "idle": "Idle", "mining": "Mining", "off": "Offline" },
-    "hashrate": "Hashrate",
-    "power": "Power draw",
-    "temp": "Temperature",
-    "condition": "Condition",
-    "incomeHr": "Income/h",
-    "elecHr": "Electricity/h",
-    "profitHr": "Profit/h",
-    "earned": "Total earned",
-    "missing": "Missing",
-    "start": "Start mining",
-    "started": "Mining started",
-    "stop": "Stop",
-    "selectCoin": "Select coin",
-    "aiBest": "AI suggests",
-    "overclock": "Overclock",
-    "repair": "Repair",
-    "repaired": "Hardware repaired",
-    "dismantle": "Dismantle",
-    "aiManager": "AI manager",
-    "level": "lvl",
-    "upgrade": "Upgrade",
-    "fire": "Fire",
-    "playerManaged": "Player-managed",
-    "hireAi": "Hire AI",
-    "mgrHired": "AI manager hired",
-    "mgrUpgraded": "Manager upgraded",
-    "assembly": "Farm assembly",
-    "buyHint": "Buy components in the Shop. * = required.",
-    "comp": {
-      "gpu": "GPU", "cpu": "CPU", "motherboard": "Motherboard",
-      "ram": "RAM", "ssd": "SSD", "psu": "PSU", "cooling": "Cooling",
-      "case": "Case", "rack": "Rack", "fan": "Fans", "ups": "UPS", "network": "Network"
     }
   },
   "econ": {

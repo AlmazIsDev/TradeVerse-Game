@@ -5,6 +5,8 @@
 - /api/admin/economy/config  — просмотр/изменение коэффициентов.
 - /api/admin/economy/analytics — сводка состояния экономики.
 """
+from __future__ import annotations
+
 import json
 from datetime import datetime, timedelta, timezone
 

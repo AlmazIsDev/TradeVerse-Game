@@ -15,4 +15,11 @@ export default defineConfig({
       },
     },
   },
+  // Прод-режим: `vite preview` раздаёт собранную папку dist.
+  // Опции server сюда НЕ наследуются — дублируем host/port/allowedHosts.
+  preview: {
+    host: '0.0.0.0',
+    port: 20300,
+    allowedHosts: ['tradeverse.weissx.net'],
+  },
 })

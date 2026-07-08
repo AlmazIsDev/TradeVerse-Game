@@ -41,9 +41,18 @@ class CoinGeckoProvider:
 
     def __init__(self):
         self.api_key = os.getenv("COINGECKO_API_KEY")
-        if self.api_key:
+        # CoinGecko различает Demo- и Pro-ключи: у них РАЗНЫЕ хосты и заголовки.
+        #   Demo (бесплатный, префикс "CG-"): api.coingecko.com     + x-cg-demo-api-key
+        #   Pro  (платный)                  : pro-api.coingecko.com + x-cg-pro-api-key
+        # Отправка Demo-ключа на Pro-эндпоинт даёт 400 Bad Request. План берём из
+        # COINGECKO_API_PLAN (demo|pro); по умолчанию — demo (частый случай).
+        plan = (os.getenv("COINGECKO_API_PLAN") or "demo").strip().lower()
+        if self.api_key and plan == "pro":
             self.base = "https://pro-api.coingecko.com/api/v3"
             self.headers = {"x-cg-pro-api-key": self.api_key}
+        elif self.api_key:
+            self.base = "https://api.coingecko.com/api/v3"
+            self.headers = {"x-cg-demo-api-key": self.api_key}
         else:
             self.base = "https://api.coingecko.com/api/v3"
             self.headers = {}

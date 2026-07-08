@@ -115,10 +115,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="TradeVerse API", version="1.0.0", lifespan=lifespan)
 
-# CORS — разрешаем запросы с frontend (Vite на порту 5173)
+# CORS — разрешаем запросы с frontend (прод-домен + локальная разработка)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "https://tradeverse.weissx.net",   # прод-фронтенд
+        "http://localhost:20300",          # локальный vite (dev/preview)
+        "http://localhost:5173",           # локальный vite (дефолтный порт)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

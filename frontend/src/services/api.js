@@ -49,8 +49,120 @@ function saveTokens(accessToken, refreshToken) {
 
 /** Очистить localStorage и выбросить событие принудительного логаута */
 function forceLogout() {
+  stopTokenRefresh()
   localStorage.removeItem(STORAGE_KEY)
   window.dispatchEvent(new CustomEvent('auth:force-logout'))
+}
+
+/**
+ * Разлогин по инициативе пользователя: инвалидируем refresh-токен на сервере
+ * (best-effort), затем очищаем локальное состояние. Логаут происходит локально
+ * даже если сетевой запрос упал.
+ */
+async function logoutUser() {
+  const refreshToken = getRefreshToken()
+  stopTokenRefresh()
+  if (refreshToken) {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+    } catch { /* сеть недоступна — всё равно выходим локально */ }
+  }
+  localStorage.removeItem(STORAGE_KEY)
+}
+
+// ── Проактивное обновление access-токена ────────────────────────────────────
+// Декодируем `exp` из JWT (base64url payload) и планируем refresh за ~2 мин до
+// истечения. Также обновляем токен при возврате фокуса на вкладку, если он
+// близок к истечению. 401-интерцептор остаётся страховкой.
+
+const REFRESH_LEEWAY_MS = 2 * 60 * 1000 // обновляем за 2 минуты до exp
+
+let refreshTimer = null
+let focusHandlerBound = false
+
+/** Вернуть Unix-время (ms) истечения access-токена или null. */
+function getTokenExpiryMs(token) {
+  if (!token || typeof token !== 'string') return null
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+  try {
+    let payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    // Восстанавливаем padding для корректного base64
+    while (payload.length % 4) payload += '='
+    const json = JSON.parse(atob(payload))
+    if (typeof json.exp !== 'number') return null
+    return json.exp * 1000
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Обновить access-токен через общий (across-caller) lock и перепланировать
+ * следующий проактивный refresh. Используется и таймером, и focus-хендлером —
+ * единая точка, чтобы поведение блокировки/повтора не расходилось между ними.
+ */
+async function refreshAndReschedule() {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null })
+  }
+  try {
+    await refreshPromise
+    scheduleTokenRefresh() // перепланируем после успешного обновления
+  } catch { /* refreshAccessToken уже вызвал forceLogout */ }
+}
+
+/** Запланировать следующий refresh на основе exp текущего access-токена. */
+function scheduleTokenRefresh() {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+
+  const token = getAuthToken()
+  const expMs = getTokenExpiryMs(token)
+  if (expMs == null) return
+
+  // Обновляем за REFRESH_LEEWAY_MS до истечения, но не реже чем через 1с
+  const delay = Math.max(1000, expMs - Date.now() - REFRESH_LEEWAY_MS)
+
+  refreshTimer = setTimeout(refreshAndReschedule, delay)
+}
+
+/** Обновить токен при фокусе, если он истёк или близок к истечению. */
+async function onWindowFocus() {
+  if (!getRefreshToken()) return
+  const expMs = getTokenExpiryMs(getAuthToken())
+  // Если exp неизвестен или уже близок к истечению — освежаем немедленно
+  if (expMs == null || expMs - Date.now() <= REFRESH_LEEWAY_MS) {
+    await refreshAndReschedule()
+  }
+}
+
+/** Запустить проактивное обновление (вызывать при логине / монтировании). */
+function startTokenRefresh() {
+  if (!getRefreshToken()) return
+  scheduleTokenRefresh()
+  if (!focusHandlerBound && typeof window !== 'undefined') {
+    window.addEventListener('focus', onWindowFocus)
+    focusHandlerBound = true
+  }
+}
+
+/** Остановить проактивное обновление (вызывать при логауте). */
+function stopTokenRefresh() {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+  if (focusHandlerBound && typeof window !== 'undefined') {
+    window.removeEventListener('focus', onWindowFocus)
+    focusHandlerBound = false
+  }
 }
 
 // ── Refresh lock: предотвращает параллельные refresh-запросы ──────────────
@@ -77,6 +189,8 @@ async function refreshAccessToken() {
 
     const data = await response.json()
     saveTokens(data.token, data.refresh_token)
+    // Перепланируем проактивный refresh под новый exp (страховка для 401-пути)
+    scheduleTokenRefresh()
     return data.token
   } catch (err) {
     if (err instanceof ApiError) throw err
@@ -601,4 +715,14 @@ export async function setOverclock(id, value) { return request(`/api/mining/farm
 export async function repairFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/repair`, { method: 'POST' }) }
 export async function farmManager(id, action) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action }) }) }
 
-export { API_BASE_URL, ApiError, request, forceLogout }
+export {
+  API_BASE_URL,
+  ApiError,
+  request,
+  forceLogout,
+  logoutUser,
+  saveTokens,
+  getRefreshToken,
+  startTokenRefresh,
+  stopTokenRefresh,
+}

@@ -561,7 +561,7 @@
   "admin": {
     "title": "Admin Panel",
     "stocks": "Stocks",
-    "price": "Prices",
+    "price": "Price",
     "users": "Users",
     "transactions": "Transactions",
     "config": "Settings",
@@ -570,7 +570,6 @@
     "deleteStock": "Delete Stock",
     "symbol": "Symbol",
     "name": "Name",
-    "price": "Price",
     "currency": "Currency",
     "save": "Save",
     "cancel": "Cancel",
@@ -764,5 +763,103 @@
     "cryptoTransfer": "Send {{amount}} {{symbol}} to {{recipient}}?",
     "protect": "Set protection level {{level}} for {{cost}} WC?",
     "attack": "Attack \"{{name}}\" for {{cost}} WC?"
+  },
+  "landing": {
+    "nav": {
+      "login": "Log in",
+      "play": "Play for free"
+    },
+    "hero": {
+      "eyebrow": "Online economy game",
+      "title": "Build your financial empire in TradeVerse",
+      "subtitle": "Trade stocks and crypto, buy real estate, run companies, mine coins and climb the leaderboard. A virtual economy with real market mechanics — free to play.",
+      "ctaPrimary": "Play for free",
+      "ctaSecondary": "I already have an account"
+    },
+    "stats": {
+      "markets": {
+        "value": "8+",
+        "label": "Markets & mechanics"
+      },
+      "assets": {
+        "value": "100+",
+        "label": "Tradable assets"
+      },
+      "players": {
+        "value": "24/7",
+        "label": "Live economy"
+      },
+      "currency": {
+        "value": "₮",
+        "label": "One world currency"
+      }
+    },
+    "features": {
+      "eyebrow": "Features",
+      "title": "One world, dozens of ways to earn",
+      "subtitle": "TradeVerse blends trading, investing and business strategy into a single virtual economy.",
+      "stocks": {
+        "title": "Stock trading",
+        "desc": "Buy and sell company shares at live prices, track charts, dividends and market events."
+      },
+      "crypto": {
+        "title": "Cryptocurrency",
+        "desc": "Trade crypto coins on a volatile market, transfer assets to other players and time your entries and exits."
+      },
+      "realestate": {
+        "title": "Real estate",
+        "desc": "Buy apartments and houses, upgrade them, rent them out to other players and earn passive income."
+      },
+      "companies": {
+        "title": "Companies & business",
+        "desc": "Found your own company, hire employees, pay salaries and grow a profitable enterprise."
+      },
+      "mining": {
+        "title": "Mining farms",
+        "desc": "Assemble farms from GPUs and CPUs, overclock your rigs and mine crypto around the clock."
+      },
+      "leaderboard": {
+        "title": "Leaderboard",
+        "desc": "Compete with players by net worth and income, climb the rankings and prove you're the best trader."
+      },
+      "cityroof": {
+        "title": "City rooftop",
+        "desc": "Capture businesses, protect your assets and fight for influence over the city each season."
+      },
+      "bank": {
+        "title": "Bank & transfers",
+        "desc": "Manage your account, send money by card number or username and analyse your financial history."
+      }
+    },
+    "how": {
+      "eyebrow": "How it works",
+      "title": "Start earning in three steps",
+      "subtitle": "No deposits required — just strategy, calculation and a bit of risk.",
+      "step1": {
+        "title": "Create an account",
+        "desc": "Sign up in a minute and get starting capital for your first trades. Free and no bank card needed."
+      },
+      "step2": {
+        "title": "Choose your path",
+        "desc": "Trade on the exchange, mine crypto, buy real estate or build a business empire — mix the mechanics as you like."
+      },
+      "step3": {
+        "title": "Grow your capital",
+        "desc": "Reinvest your profit, outpace rivals in the rankings and become the richest player in TradeVerse."
+      }
+    },
+    "finalCta": {
+      "title": "Ready to test yourself against the market?",
+      "subtitle": "Join TradeVerse and start building your financial empire today.",
+      "button": "Play for free"
+    },
+    "footer": {
+      "tagline": "A virtual economy game: trading, business and strategy.",
+      "linkFeatures": "Features",
+      "linkHow": "How to play",
+      "linkLogin": "Log in",
+      "copyright": "© 2026 TradeVerse. All rights reserved.",
+      "disclaimer": "In-game currency has no real-world value. TradeVerse is an entertainment simulator."
+    }
   }
 }

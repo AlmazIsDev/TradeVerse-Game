@@ -361,8 +361,10 @@
     "tryAgain": "Спроба {{attempts}}/{{max}}. Не вгадали, продовжуйте!",
     "protected": "Захист встановлено (рів. {{level}})",
     "yourBonuses": "Бонуси ваших будівель",
-    "claim": "Забрати +{{amount}} $",
-    "claimIn": "Бонус через {{hours}} год",
+    "autoCollect": "Автозбір",
+    "nextIncome": "Наст. нарахування: {{time}}",
+    "incomeReady": "Нараховано",
+    "capturedWithIncome": "Бізнес захоплено! +{{amount}} $",
     "leagues": {
       "bronze": "Бронза",
       "silver": "Срібло",
@@ -513,6 +515,7 @@
     "totalTransactions": "Усього транзакцій",
     "noUsers": "Немає користувачів",
     "noTransactions": "Немає транзакцій",
+    "refresh": "Оновити",
     "loadError": "Помилка завантаження",
     "error": "Помилка",
     "stockAdded": "Акцію додано",
@@ -650,7 +653,9 @@
     "title": "Сповіщення",
     "markAllRead": "Прочитати всі",
     "noNotifications": "Немає сповіщень",
-    "new": "Нове"
+    "new": "Нове",
+    "worldEventStarted": "Світова подія: {{name}}",
+    "worldEventEnded": "Завершено: {{name}}"
   },
   "landing": {
     "nav": {

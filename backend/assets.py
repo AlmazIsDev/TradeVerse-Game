@@ -333,6 +333,11 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
                 "Появился арендатор", f"«{asset.get('name')}» сдан в аренду.",
                 data={"assetId": str(asset["_id"])},
             )
+            try:
+                from ws import push_to_user
+                await push_to_user(asset["userId"], {"type": "asset_update", "assetId": str(asset["_id"])})
+            except Exception:
+                pass
 
     # Завершение аренды и выплата
     if r.get("status") == "rented":
@@ -357,6 +362,11 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
                 pass
             await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"rental": None}})
             asset["rental"] = None
+            try:
+                from ws import push_to_user
+                await push_to_user(asset["userId"], {"type": "asset_update", "assetId": str(asset["_id"])})
+            except Exception:
+                pass
             if payout > 0:
                 company_id = asset.get("companyId")
                 if company_id and ObjectId.is_valid(company_id):
@@ -419,6 +429,11 @@ async def tick_market(db: AsyncIOMotorDatabase):
     """Публичная точка для Scheduler: дрейф динамического рынка активов."""
     await _ensure_asset_market(db)
     await _drift_asset_market(db)
+    try:
+        from ws import broadcast
+        await broadcast({"type": "market_update"})
+    except Exception:
+        pass
 
 
 def _serialize(asset: dict) -> dict:

@@ -50,8 +50,8 @@ function MarketTab({ balance = 0, onBalanceChange }) {
     return () => clearTimeout(id)
   }, [searchInput])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const data = await fetchAssetMarket({ type: category === 'all' ? undefined : category, search: search || undefined })
       setItems(data)
@@ -59,11 +59,21 @@ function MarketTab({ balance = 0, onBalanceChange }) {
     } catch (err) {
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [category, search])
 
   useEffect(() => { load() }, [load])
+
+  // Динамический рынок дрейфует на сервере раз в тик планировщика (см.
+  // backend/assets.py tick_market) — обновляем список тихо, без скелетона.
+  useEffect(() => {
+    const onRealtime = (ev) => {
+      if (ev.detail?.type === 'market_update') load(true)
+    }
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => window.removeEventListener('tv:realtime', onRealtime)
+  }, [load])
 
   const doBuy = async () => {
     if (!confirm) return

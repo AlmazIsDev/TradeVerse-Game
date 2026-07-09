@@ -39,10 +39,13 @@ WARCOIN_PRICE_DEFAULT = 50.0
 # Стоимость уровней защиты (WC).
 PROTECTION_COSTS = {1: 1000, 2: 3000, 3: 4000, 4: 6500, 5: 10000}
 
-BONUS_CLAIM_INTERVAL_H = 20     # раз в 20 часов можно забрать ежедневный бонус
+BONUS_CLAIM_INTERVAL_MIN = 5    # КД дохода — свой у каждого бизнеса, раз в 5 минут
+DAILY_TO_INTERVAL_DIVISOR = 288  # 24ч·60/5мин — делим дневную ставку на кол-во 5-минуток в сутках
 
 # Уникальный игровой эффект каждого здания.
-#   daily  — ежедневный доход владельцу (реальная механика: /bonuses/claim).
+#   daily  — доход владельцу в пересчёте на сутки; фактически начисляется
+#            автосбором каждые BONUS_CLAIM_INTERVAL_MIN минут по формуле
+#            daily / DAILY_TO_INTERVAL_DIVISOR (см. _interval_amount).
 #   effect — КАЖДЫЙ эффект влияет на реально существующую подсистему игры и
 #            подключён в коде (см. player_city_effect ниже). Никаких «мёртвых»
 #            бонусов вроде перевозок/логистики/медиа — только то, что работает:
@@ -54,7 +57,9 @@ BONUS_CLAIM_INTERVAL_H = 20     # раз в 20 часов можно забра�
 #     shop_discount    → скидка на оборудование в магазине (shop)
 #     warcoin_discount → скидка на покупку WarCoin (cityroof.buy_warcoin)
 #     daily_cash       → только ежедневный доход (mult не используется)
-# daily — суточный доход владельца (сбор раз в BONUS_CLAIM_INTERVAL_H ≈ сутки).
+# КД дохода — персональный у каждого бизнеса (last_collected на документе, а
+# не на пользователе): захват одного здания не блокирует доход с остальных, а
+# при смене владельца недособранный КД переходит по наследству.
 # Баланс: WarCoin стоит 50$/шт, защита топ-объекта — до 10 000 WC (500 000$),
 # поэтому крупные объекты приносят ≈100 000$/сутки, чтобы борьба за них и
 # вложения в WarCoin окупались. Мелкие объекты — пропорционально меньше.
@@ -162,6 +167,28 @@ def _color_for(user_id: str) -> str:
     return OWNER_COLORS[sum(ord(c) for c in user_id) % len(OWNER_COLORS)]
 
 
+def _interval_amount(daily: float) -> float:
+    """Выплата за один 5-минутный интервал (доля от суточной ставки)."""
+    return round(daily / DAILY_TO_INTERVAL_DIVISOR, 2)
+
+
+def _aware(dt):
+    if isinstance(dt, datetime) and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _seconds_since_collected(last_collected) -> float:
+    lc = _aware(last_collected)
+    if not isinstance(lc, datetime):
+        return float("inf")
+    return (_now() - lc).total_seconds()
+
+
+def _business_ready(last_collected) -> bool:
+    return _seconds_since_collected(last_collected) >= BONUS_CLAIM_INTERVAL_MIN * 60
+
+
 def _make_secret(level: int) -> dict:
     length = 3 + level
     symbol_range = 4 + level
@@ -205,6 +232,7 @@ async def ensure_seeded(db: AsyncIOMotorDatabase):
                 "ownerColor": None,
                 "protection_level": 0,
                 "last_captured": None,
+                "last_collected": None,
                 **secret,
             })
     if not await find_config_by_key(db, WARCOIN_CONFIG_KEY):
@@ -255,7 +283,8 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
             {"_id": b["_id"]},
             {"$set": {
                 "ownerId": None, "ownerName": None, "ownerColor": None,
-                "protection_level": 0, "last_captured": None, **secret,
+                "protection_level": 0, "last_captured": None, "last_collected": None,
+                **secret,
             }},
         )
     await db.cityroof_sessions.delete_many({})
@@ -380,63 +409,67 @@ async def get_bonuses(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Бонусы зданий игрока + доступность ежедневного сбора."""
+    """Бонусы зданий игрока + КД до следующего автосбора у каждого здания."""
     user_id = str(current_user["_id"])
     items = []
     total_daily = 0
+    interval_s = BONUS_CLAIM_INTERVAL_MIN * 60
     async for b in db.cityroof_businesses.find({"ownerId": user_id}):
         bonus = BUSINESS_BONUS.get(b.get("slug"))
         if not bonus:
             continue
         total_daily += bonus["daily"]
+        ready_in = max(0.0, interval_s - _seconds_since_collected(b.get("last_collected")))
         items.append({
             "slug": b.get("slug"), "name": b.get("name"),
             "daily": bonus["daily"], "effect": bonus["effect"], "mult": bonus["mult"],
+            "amount": _interval_amount(bonus["daily"]),
+            "readyInSec": round(ready_in),
         })
-    last = current_user.get("last_bonus_claim")
-    ready_in = 0.0
-    if isinstance(last, datetime):
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
-        elapsed = (_now() - last).total_seconds() / 3600.0
-        ready_in = max(0.0, BONUS_CLAIM_INTERVAL_H - elapsed)
     return {
         "bonuses": items,
         "totalDaily": total_daily,
-        "claimable": ready_in <= 0 and total_daily > 0,
-        "hoursUntilClaim": round(ready_in, 1),
+        "intervalSec": interval_s,
     }
 
 
-@router.post("/bonuses/claim")
-async def claim_bonuses(
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Забрать ежедневный доход со зданий (раз в 20 часов)."""
-    user_id = str(current_user["_id"])
-    last = current_user.get("last_bonus_claim")
-    if isinstance(last, datetime):
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
-        if (_now() - last).total_seconds() / 3600.0 < BONUS_CLAIM_INTERVAL_H:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Бонус ещё не готов")
+async def sweep_business_income(db: AsyncIOMotorDatabase):
+    """Автосбор: зачисляет владельцам доход по всем готовым бизнесам.
 
-    total_daily = 0
-    async for b in db.cityroof_businesses.find({"ownerId": user_id}, {"slug": 1}):
-        bonus = BUSINESS_BONUS.get(b.get("slug"))
-        if bonus:
-            total_daily += bonus["daily"]
-    if total_daily <= 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет зданий, приносящих бонус")
-
-    new_balance = await adjust_balance(db, user_id, float(total_daily))
-    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"last_bonus_claim": _now()}})
-    await record_transaction(
-        db, user_id, INCOME, float(total_daily), CAT_CITYROOF,
-        "Ежедневный бонус зданий", balance_after=new_balance,
-    )
-    return {"claimed": total_daily, "balance": new_balance}
+    Вызывается Scheduler'ом. КД — персональный у каждого бизнеса
+    (last_collected на документе), поэтому захват одного здания никак не
+    блокирует доход с остальных, а при смене владельца недособранный КД
+    переходит по наследству (см. submit_guess).
+    """
+    interval_s = BONUS_CLAIM_INTERVAL_MIN * 60
+    async for b in db.cityroof_businesses.find({"ownerId": {"$ne": None}}):
+        try:
+            bonus = BUSINESS_BONUS.get(b.get("slug"))
+            if not bonus:
+                continue
+            elapsed = _seconds_since_collected(b.get("last_collected"))
+            if elapsed < interval_s:
+                continue
+            intervals = 1 if elapsed == float("inf") else int(elapsed // interval_s)
+            amount = _interval_amount(bonus["daily"]) * intervals
+            if amount <= 0:
+                continue
+            user_id = b["ownerId"]
+            new_balance = await adjust_balance(db, user_id, amount)
+            if new_balance is None:
+                continue
+            await db.cityroof_businesses.update_one({"_id": b["_id"]}, {"$set": {"last_collected": _now()}})
+            await record_transaction(
+                db, user_id, INCOME, amount, CAT_CITYROOF,
+                f"Автосбор дохода «{b.get('name')}»", balance_after=new_balance,
+            )
+            from ws import push_to_user
+            await push_to_user(user_id, {
+                "type": "cityroof_income", "businessId": str(b["_id"]), "slug": b.get("slug"),
+                "amount": amount, "intervalSec": interval_s,
+            })
+        except Exception:
+            continue
 
 
 @router.post("/warcoin/buy")
@@ -543,20 +576,40 @@ async def submit_guess(
     if solved:
         # Захват: бизнес переходит атакующему, защита сбрасывается, новый секрет.
         new_secret = _make_secret(0)
-        await db.cityroof_businesses.update_one(
-            {"_id": business["_id"]},
-            {"$set": {
-                "ownerId": user_id,
-                "ownerName": current_user.get("username"),
-                "ownerColor": _color_for(user_id),
-                "protection_level": 0,
-                "last_captured": _now(),
-                **new_secret,
-            }},
-        )
+        update_fields = {
+            "ownerId": user_id,
+            "ownerName": current_user.get("username"),
+            "ownerColor": _color_for(user_id),
+            "protection_level": 0,
+            "last_captured": _now(),
+            **new_secret,
+        }
+        # КД дохода — персональный у бизнеса. Если он уже истёк (или ещё не
+        # собирался), новый владелец сразу получает выплату и КД стартует
+        # заново. Если КД ещё активен (прошлый владелец недавно собирал) —
+        # ничего не платим и не трогаем last_collected: оставшийся КД
+        # переходит по наследству новому владельцу.
+        bonus = BUSINESS_BONUS.get(business.get("slug"))
+        captured_income = 0.0
+        if bonus and _business_ready(business.get("last_collected")):
+            captured_income = _interval_amount(bonus["daily"])
+            update_fields["last_collected"] = _now()
+
+        await db.cityroof_businesses.update_one({"_id": business["_id"]}, {"$set": update_fields})
+        if captured_income > 0:
+            new_balance = await adjust_balance(db, user_id, captured_income)
+            if new_balance is not None:
+                await record_transaction(
+                    db, user_id, INCOME, captured_income, CAT_CITYROOF,
+                    f"Доход при захвате «{business.get('name')}»", balance_after=new_balance,
+                )
         await db.cityroof_sessions.delete_one({"_id": session["_id"]})
+        updated_doc = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+        from ws import broadcast
+        await broadcast({"type": "cityroof_captured", "business": _serialize_business(updated_doc, "")})
         return {"solved": True, "exact": exact, "present": present, "attempts": attempts,
-                "business": _serialize_business(await db.cityroof_businesses.find_one({"_id": business["_id"]}), user_id)}
+                "capturedIncome": captured_income,
+                "business": _serialize_business(updated_doc, user_id)}
 
     exhausted = attempts >= session.get("maxAttempts", MAX_ATTEMPTS)
     if exhausted:
@@ -603,11 +656,14 @@ async def protect_business(
     )
     # Все текущие попытки по этому бизнесу аннулируются.
     await db.cityroof_sessions.delete_many({"businessId": business_id})
+    updated_doc = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated_doc, "")})
     return {
         "protectionLevel": payload.level,
         "cost": cost,
         "warcoin": await _get_wc(db, user_id),
-        "business": _serialize_business(await db.cityroof_businesses.find_one({"_id": business["_id"]}), user_id),
+        "business": _serialize_business(updated_doc, user_id),
     }
 
 
@@ -642,4 +698,7 @@ async def admin_close_season(
         # Форсируем закрытие, откатив неделю на «прошлую».
         await db.cityroof_state.update_one({"key": "current"}, {"$set": {"week": "0000-W00"}})
         await _ensure_season(db)
+        # Realtime-оповещение всех игроков: карта сброшена, нужно перечитать состояние.
+        from ws import broadcast
+        await broadcast({"type": "cityroof_season_closed"})
     return {"message": "Сезон закрыт"}

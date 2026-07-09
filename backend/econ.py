@@ -81,8 +81,7 @@ def _asset_value(a: dict) -> float:
     return a.get("price", 0) * (1 + 0.35 * (a.get("level", 1) - 1))
 
 
-@router.get("/analytics")
-async def analytics(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def compute_analytics(db: AsyncIOMotorDatabase) -> dict:
     """Полная сводка состояния экономики проекта."""
     # Цены.
     stock_prices = {s["symbol"]: float(s.get("price", 0.0)) async for s in db.stocks.find({}, {"symbol": 1, "price": 1})}
@@ -150,3 +149,8 @@ async def analytics(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = De
         "dailyVolume": round(daily_volume, 2),
         "dailyOperations": daily_ops,
     }
+
+
+@router.get("/analytics")
+async def analytics(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+    return await compute_analytics(db)

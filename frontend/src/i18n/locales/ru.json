@@ -434,8 +434,11 @@
     "tryAgain": "Попытка {{attempts}}/{{max}}. Не угадали, продолжайте!",
     "protected": "Защита установлена (ур. {{level}})",
     "yourBonuses": "Бонусы ваших зданий",
-    "claim": "Забрать +{{amount}} $",
-    "claimIn": "Бонус через {{hours}} ч",
+    "autoCollect": "Автосбор",
+    "nextIncome": "След. начисление: {{time}}",
+    "incomeReady": "Начислено",
+    "capturedWithIncome": "Бизнес захвачен! +{{amount}} $",
+    "seasonClosed": "Сезон принудительно закрыт администратором. Карта обновлена.",
     "leagues": {
       "bronze": "Бронза",
       "silver": "Серебро",
@@ -589,6 +592,7 @@
     "totalTransactions": "Всего транзакций",
     "noUsers": "Нет пользователей",
     "noTransactions": "Нет транзакций",
+    "refresh": "Обновить",
     "loadError": "Ошибка загрузки",
     "error": "Ошибка",
     "stockAdded": "Акция добавлена",
@@ -768,7 +772,9 @@
     "title": "Уведомления",
     "markAllRead": "Прочитать все",
     "noNotifications": "Нет уведомлений",
-    "new": "Новое"
+    "new": "Новое",
+    "worldEventStarted": "Мировое событие: {{name}}",
+    "worldEventEnded": "Завершено: {{name}}"
   },
   "confirm": {
     "collect": "Собрать накопленную прибыль ${{amount}}?",

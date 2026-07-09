@@ -1,0 +1,21 @@
+{
+  "name": "TradeVerse",
+  "short_name": "TradeVerse",
+  "description": "Браузерная экономическая игра: трейдинг акций и криптовалюты, недвижимость, компании, майнинг и рейтинг.",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "categories": ["games", "finance", "entertainment"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

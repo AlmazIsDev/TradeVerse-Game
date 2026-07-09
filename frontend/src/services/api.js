@@ -680,10 +680,6 @@ export async function fetchCityBonuses() {
   return request('/api/cityroof/bonuses')
 }
 
-export async function claimCityBonuses() {
-  return request('/api/cityroof/bonuses/claim', { method: 'POST' })
-}
-
 // ── Hardware shop ───────────────────────────────────────────────────────────────
 
 export async function fetchShopCatalog(category) {

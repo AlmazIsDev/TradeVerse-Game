@@ -20,8 +20,8 @@ function LeaderboardTab({ currentUserId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const data = await fetchLeaderboard(20, sort)
       setEntries(data)
@@ -29,11 +29,22 @@ function LeaderboardTab({ currentUserId }) {
     } catch (err) {
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [sort])
 
   useEffect(() => { load() }, [load])
+
+  // Периодический сигнал от scheduler'а (см. backend/scheduler.py) — не сами
+  // данные (расчёт капитала всех игроков тяжёлый), а лёгкий триггер перечитать
+  // уже закэшированный на бэкенде GET /api/leaderboard.
+  useEffect(() => {
+    const onRealtime = (ev) => {
+      if (ev.detail?.type === 'leaderboard_update') load(true)
+    }
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => window.removeEventListener('tv:realtime', onRealtime)
+  }, [load])
 
   return (
     <div className="leaderboard-tab">

@@ -149,9 +149,16 @@ async def admin_stop_event(
 ):
     if not ObjectId.is_valid(event_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
-    res = await db.market_events.update_one(
+    doc = await db.market_events.find_one({"_id": ObjectId(event_id)})
+    if not doc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Событие не найдено")
+    await db.market_events.update_one(
         {"_id": ObjectId(event_id)}, {"$set": {"active": False, "ends_at": _now()}},
     )
-    if res.matched_count == 0:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Событие не найдено")
+    # Realtime-оповещение всех клиентов о завершении мирового события.
+    try:
+        from ws import broadcast
+        await broadcast({"type": "event_ended", "name": doc.get("name"), "icon": doc.get("icon")})
+    except Exception:
+        pass
     return {"ok": True}

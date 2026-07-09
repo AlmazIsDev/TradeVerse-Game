@@ -429,8 +429,10 @@
     "tryAgain": "Attempt {{attempts}}/{{max}}. Keep trying!",
     "protected": "Protection set (lvl {{level}})",
     "yourBonuses": "Your building bonuses",
-    "claim": "Claim +{{amount}} $",
-    "claimIn": "Bonus in {{hours}} h",
+    "autoCollect": "Auto-collect",
+    "nextIncome": "Next payout: {{time}}",
+    "incomeReady": "Collected",
+    "capturedWithIncome": "Business captured! +{{amount}} $",
     "leagues": {
       "bronze": "Bronze",
       "silver": "Silver",
@@ -584,6 +586,7 @@
     "totalTransactions": "Total Transactions",
     "noUsers": "No users",
     "noTransactions": "No transactions",
+    "refresh": "Refresh",
     "loadError": "Loading error",
     "error": "Error",
     "stockAdded": "Stock added",
@@ -749,7 +752,9 @@
     "title": "Notifications",
     "markAllRead": "Mark all read",
     "noNotifications": "No notifications",
-    "new": "New"
+    "new": "New",
+    "worldEventStarted": "World event: {{name}}",
+    "worldEventEnded": "Ended: {{name}}"
   },
   "confirm": {
     "collect": "Collect accrued profit ${{amount}}?",

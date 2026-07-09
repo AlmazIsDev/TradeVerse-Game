@@ -133,7 +133,7 @@ function Dashboard({ user, onLogout }) {
       case 'shop':
         return <ShopTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cityroof':
-        return <CityRoofTab balance={balance} onBalanceChange={handleBalanceChange} />
+        return <CityRoofTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'mining':
         return <MiningTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'crypto':

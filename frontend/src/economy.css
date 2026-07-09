@@ -1124,19 +1124,20 @@
 .cbonus-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-sm); }
 .cbonus-head > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--color-text-primary); }
 .cbonus-head svg { color: #eab308; }
-.cbonus-claim {
-  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
-  border: none; border-radius: var(--radius-md); background: linear-gradient(135deg,#eab308,#d97706);
-  color: #1a1d26; font-weight: 700; font-size: 13px; cursor: pointer;
+.cbonus-auto {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px;
+  border-radius: var(--radius-md); background: rgba(234,179,8,0.12);
+  color: #eab308; font-weight: 600; font-size: 12px;
 }
-.cbonus-claim:disabled { opacity: 0.5; cursor: not-allowed; background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
 .cbonus-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--spacing-sm); }
 .cbonus-item { display: flex; align-items: center; gap: var(--spacing-sm); padding: 8px 10px; background: var(--color-bg-tertiary); border-radius: var(--radius-md); }
 .cbonus-emoji { font-size: 26px; }
 .cbonus-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .cbonus-name { font-weight: 600; font-size: 13px; color: var(--color-text-primary); }
 .cbonus-effect { font-size: 11px; color: var(--color-text-secondary); }
+.cbonus-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .cbonus-daily { font-weight: 700; font-size: 13px; color: var(--color-success); white-space: nowrap; }
+.cbonus-timer { font-size: 10px; color: var(--color-text-secondary); white-space: nowrap; }
 
 /* ===================== REAL MARKET DATA (logos / live badge) ===================== */
 .ad-logo-img { width: 56px; height: 56px; border-radius: 16px; object-fit: cover; background: var(--color-bg-tertiary); box-shadow: 0 8px 20px rgba(0,0,0,0.35); flex-shrink: 0; }
@@ -1614,7 +1615,10 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
   flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(135deg, #6366f1, #4338ca); color: #fff;
+  font-size: 20px;
 }
+.tv-popup-event { border-color: rgba(245, 158, 11, 0.45); }
+.tv-popup-event .tv-popup-icon { background: linear-gradient(135deg, #f59e0b, #b45309); }
 .tv-popup-body { display: flex; flex-direction: column; gap: 4px; padding-right: 12px; }
 .tv-popup-title { font-weight: 700; font-size: 14px; color: var(--color-text-primary); }
 .tv-popup-text { font-size: 12.5px; color: var(--color-text-secondary); line-height: 1.4; }

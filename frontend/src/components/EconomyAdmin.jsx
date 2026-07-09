@@ -56,6 +56,22 @@ function EconomyAdmin() {
 
   useEffect(() => { load() }, [load])
 
+  // Живые обновления: аналитика приходит периодическим пушем только админам
+  // (см. push_to_admins в scheduler.py), события — тем же broadcast, что и
+  // NotificationCenter, но здесь мы ещё и обновляем список активных/историю.
+  useEffect(() => {
+    const onRealtime = (ev) => {
+      const d = ev.detail
+      if (d?.type === 'economy_stats' && d.stats) {
+        setAnalytics(d.stats)
+      } else if (d?.type === 'event' || d?.type === 'event_ended') {
+        fetchEconomyEvents().then(setEvents).catch(() => {})
+      }
+    }
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => window.removeEventListener('tv:realtime', onRealtime)
+  }, [])
+
   const save = async () => {
     setSaving(true)
     setMsg(null)

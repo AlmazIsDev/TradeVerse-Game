@@ -615,6 +615,15 @@ async def admin_update_user(
     updated_user["id"] = str(updated_user.pop("_id"))
     updated_user.pop("hashed_password", None)
     updated_user["role"] = updated_user.get("role", "user")
+
+    # Живое обновление списка пользователей у других открытых админ-панелей —
+    # только админам, не всем игрокам (см. push_to_admins).
+    try:
+        from ws import push_to_admins
+        await push_to_admins(db, {"type": "admin_user_modified", "userId": user_id})
+    except Exception:
+        pass
+
     return updated_user
 
 
@@ -642,6 +651,13 @@ async def admin_delete_user(
                 _admin.get("username", "unknown"), user_id, existing.get("username", "unknown"))
 
     await db.users.delete_one({"_id": ObjectId(user_id)})
+
+    try:
+        from ws import push_to_admins
+        await push_to_admins(db, {"type": "admin_user_deleted", "userId": user_id})
+    except Exception:
+        pass
+
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}
 
 

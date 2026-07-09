@@ -65,6 +65,28 @@ class UserResponse(BaseModel):
     card_visible: bool = True
 
 
+class AuthResponse(UserResponse):
+    """Ответ /api/register и /api/login: данные пользователя + пара токенов.
+
+    response_model для этих эндпоинтов — гарантирует, что в ответ уходят
+    только перечисленные здесь поля (например, hashed_password никогда не
+    сможет случайно "утечь", даже если реализация эндпоинта изменится).
+    """
+    token: str
+    refresh_token: str
+
+
+class RefreshRequest(BaseModel):
+    """Тело запроса для обновления/выхода: содержит сырой refresh-токен."""
+    refresh_token: str
+
+
+class TokenPair(BaseModel):
+    """Ответ /api/auth/refresh: новая пара access + refresh токенов."""
+    token: str
+    refresh_token: str
+
+
 class AdminUserUpdate(BaseModel):
     username: Optional[str] = None
     balance: Optional[float] = None

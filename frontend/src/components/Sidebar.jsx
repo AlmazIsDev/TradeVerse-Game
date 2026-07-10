@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { fetchConfig } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
-import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Briefcase, Store, Trophy, Cpu } from 'lucide-react'
+import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Briefcase, Store, Trophy, Cpu, Settings } from 'lucide-react'
 
 const ICON_MAP = {
   account: Wallet,
@@ -16,6 +16,7 @@ const ICON_MAP = {
   mybusiness: Briefcase,
   mycompany: Store,
   leaderboard: Trophy,
+  settings: Settings,
 }
 
 function Sidebar({ activeTab, onTabChange }) {
@@ -57,6 +58,15 @@ function Sidebar({ activeTab, onTabChange }) {
           )
         })}
       </nav>
+      <div className="sidebar-footer">
+        <button
+          className={`sidebar-item ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => onTabChange('settings')}
+        >
+          <span className="sidebar-item-icon"><Settings size={18} /></span>
+          <span className="sidebar-item-label">{t('nav.settings')}</span>
+        </button>
+      </div>
     </aside>
   )
 }

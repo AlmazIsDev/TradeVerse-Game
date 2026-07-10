@@ -3820,3 +3820,31 @@ body {
   color: var(--color-text-tertiary, #9ca3af);
 }
 
+/* ===================== SIDEBAR FOOTER (Настройки) ===================== */
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: var(--spacing-md) var(--spacing-md) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ===================== HEADER AVATAR / USER BUTTON ===================== */
+
+.header-user-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-family: var(--font-primary);
+  transition: all 0.2s ease;
+}
+
+.header-user-btn:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.header-avatar-img {
+  object-fit: cover;
+}
+

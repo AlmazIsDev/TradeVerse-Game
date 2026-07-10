@@ -32,6 +32,7 @@ from crypto import router as crypto_router
 from stocks import router as stocks_router
 from assets import router as assets_router
 from company import router as company_router
+from user_profile import router as user_profile_router
 from cityroof import router as cityroof_router
 from notifications import router as notifications_router
 from market_data import router as market_router
@@ -130,6 +131,7 @@ app.include_router(crypto_router)
 app.include_router(stocks_router)
 app.include_router(assets_router)
 app.include_router(company_router)
+app.include_router(user_profile_router)
 app.include_router(cityroof_router)
 app.include_router(notifications_router)
 app.include_router(market_router)
@@ -191,6 +193,8 @@ async def register_user(
         "balance": 1000.0,
         "card_number": card_number,
         "card_visible": True,
+        "avatar": None,
+        "created_at": datetime.now(timezone.utc),
     }
     result = await users.insert_one(new_user)
     return UserResponse(
@@ -199,6 +203,7 @@ async def register_user(
         balance=1000.0,
         card_number=card_number,
         card_visible=True,
+        avatar=None,
     )
 
 
@@ -234,6 +239,7 @@ async def login_user(
         "balance": user.get("balance", 1000.0),
         "card_number": user.get("card_number"),
         "card_visible": user.get("card_visible", True),
+        "avatar": user.get("avatar"),
         "token": token,
     }
 
@@ -241,6 +247,7 @@ async def login_user(
 @app.get("/api/user/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
     """Возвращает полные данные текущего пользователя (из БД)."""
+    created_at = current_user.get("created_at")
     return {
         "id": str(current_user["_id"]),
         "username": current_user["username"],
@@ -249,6 +256,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "card_number": current_user.get("card_number"),
         "card_visible": current_user.get("card_visible", True),
         "crypto_account_opened": bool(current_user.get("crypto_account_opened", False)),
+        "avatar": current_user.get("avatar"),
+        "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
     }
 
 
@@ -418,7 +427,7 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
         entries.append({
             "userId": uid,
             "username": u.get("username", "—"),
-            "avatar": None,
+            "avatar": u.get("avatar"),
             "cash": round(cash, 2),
             "stocks": stocks_value,
             "crypto": crypto_value,

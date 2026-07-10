@@ -591,6 +591,28 @@
     "since": "Участник с",
     "card": "TradeVerse Card"
   },
+  "settings": {
+    "profileTitle": "Профиль",
+    "securityTitle": "Безопасность",
+    "avatarTitle": "Аватар",
+    "localizationTitle": "Язык",
+    "newNickname": "Новый никнейм",
+    "saveProfile": "Сохранить никнейм",
+    "profileSaved": "Никнейм обновлён",
+    "currentPassword": "Текущий пароль",
+    "newPassword": "Новый пароль",
+    "savePassword": "Сменить пароль",
+    "passwordSaved": "Пароль изменён",
+    "chooseImage": "Выбрать изображение",
+    "saveAvatar": "Сохранить аватар",
+    "avatarSaved": "Аватар обновлён",
+    "removeAvatar": "Удалить аватар",
+    "removeAvatarConfirmTitle": "Удалить аватар?",
+    "removeAvatarConfirmMsg": "Вы вернётесь к отображению по инициалам. Это действие можно отменить, загрузив новое изображение.",
+    "avatarRemoved": "Аватар удалён",
+    "avatarHint": "PNG, JPEG, WEBP или GIF. Изображение автоматически уменьшается перед загрузкой.",
+    "avatarInvalidType": "Не удалось прочитать файл — выберите изображение (PNG/JPEG/WEBP/GIF)"
+  },
   "auth": {
     "login": "Вход",
     "register": "Регистрация",

@@ -586,6 +586,28 @@
     "since": "Member since",
     "card": "TradeVerse Card"
   },
+  "settings": {
+    "profileTitle": "Profile",
+    "securityTitle": "Security",
+    "avatarTitle": "Avatar",
+    "localizationTitle": "Language",
+    "newNickname": "New nickname",
+    "saveProfile": "Save nickname",
+    "profileSaved": "Nickname updated",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "savePassword": "Change password",
+    "passwordSaved": "Password changed",
+    "chooseImage": "Choose image",
+    "saveAvatar": "Save avatar",
+    "avatarSaved": "Avatar updated",
+    "removeAvatar": "Remove avatar",
+    "removeAvatarConfirmTitle": "Remove avatar?",
+    "removeAvatarConfirmMsg": "You'll go back to showing your initials. You can undo this any time by uploading a new image.",
+    "avatarRemoved": "Avatar removed",
+    "avatarHint": "PNG, JPEG, WEBP or GIF. The image is automatically downscaled before upload.",
+    "avatarInvalidType": "Couldn't read the file — pick an image (PNG/JPEG/WEBP/GIF)"
+  },
   "auth": {
     "login": "Login",
     "register": "Register",

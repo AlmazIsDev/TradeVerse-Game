@@ -126,7 +126,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
                     <span className="asset-banner-emoji">{emojiFor(a)}</span>
                     <span className="asset-level">{t('myassets.level')} {a.level}</span>
                   </div>
-                  <div className="asset-card-head"><span className="asset-name">{a.name}</span></div>
+                  <div className="asset-card-head"><span className="asset-name">{t(`assetNames.${a.slug}`, a.name)}</span></div>
                   <div className="asset-stats">
                     <div className="asset-stat"><span>{t('myassets.value')}</span><b>${formatMoney(a.value)}</b></div>
                     {!isCar && a.profitPerHour !== 0 && (
@@ -149,7 +149,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
           <div className="modal-overlay" onClick={() => setRentModal(null)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
               <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
-              <h3>{t('rent.title')}: {rentModal.name}</h3>
+              <h3>{t('rent.title')}: {t(`assetNames.${rentModal.slug}`, rentModal.name)}</h3>
               <p className="modal-price">{t('company.rentDesc')}</p>
               <div className="modal-quantity"><label>{t('rent.minHours')}:</label>
                 <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>

@@ -225,7 +225,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   <span className="asset-level">{t('myassets.level')} {a.level}</span>
                 </div>
                 <div className="asset-card-head">
-                  <span className="asset-name">{a.name}</span>
+                  <span className="asset-name">{t(`assetNames.${a.slug}`, a.name)}</span>
                 </div>
                 <div className="asset-stats">
                   <div className="asset-stat"><span>{t('myassets.value')}</span><b>${formatMoney(a.value)}</b></div>
@@ -270,12 +270,12 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   )}
                   {isCompanyOwner && (
                     <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
-                      onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: a.name }) })}>
+                      onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) })}>
                       <Building2 size={15} /> {t('myassets.toCompany')}
                     </button>
                   )}
                   <button className="asset-act sell" disabled={busy}
-                    onClick={() => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: a.name, value: formatMoney(a.value) }) })}>
+                    onClick={() => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: t(`assetNames.${a.slug}`, a.name), value: formatMoney(a.value) }) })}>
                     <Trash2 size={15} /> {t('myassets.sell')}
                   </button>
                 </div>
@@ -289,7 +289,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="modal-overlay" onClick={() => setRentModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
-            <h3>{t('rent.title')}: {rentModal.name}</h3>
+            <h3>{t('rent.title')}: {t(`assetNames.${rentModal.slug}`, rentModal.name)}</h3>
             <p className="modal-price">{t('rent.desc')}</p>
             <div className="modal-quantity"><label>{t('rent.minHours')}:</label>
               <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>
@@ -307,7 +307,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="modal-overlay" onClick={() => busyId !== tuneModal.id && setTuneModal(null)}>
           <div className="modal-content tune-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTuneModal(null)}><X size={18} /></button>
-            <h3><Wrench size={18} /> {t('tune.title')}: {tuneModal.name}</h3>
+            <h3><Wrench size={18} /> {t('tune.title')}: {t(`assetNames.${tuneModal.slug}`, tuneModal.name)}</h3>
             <div className="tune-summary">
               <div><span>{t('market.prestige')}</span><b>{tuneModal.meta?.prestige ?? 0}</b></div>
               <div><span>{t('myassets.value')}</span><b>${formatMoney(tuneModal.value)}</b></div>

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchCompany, createCompany, inviteEmployee, updateMemberSalary,
   fireMember, collectCompanyProfit, companyDeposit, companyWithdraw,
-  fetchCompanies, applyToCompany, updateCompanySettings, disbandCompany,
+  fetchCompanies, applyToCompany, updateCompanySettings, disbandCompany, leaveCompany,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import CompanyAssetsPanel from './CompanyAssetsPanel'
@@ -36,6 +36,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [showAssets, setShowAssets] = useState(false)
   const [settingsModal, setSettingsModal] = useState(null) // { name, description, logo, isOpen, visibleInSearch }
   const [confirmDisband, setConfirmDisband] = useState(false)
+  const [confirmLeave, setConfirmLeave] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -154,6 +155,20 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+  const doLeave = async () => {
+    setBusy(true)
+    try {
+      await leaveCompany()
+      setConfirmLeave(false)
+      setData(null)
+      flash(t('company.left'))
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="company-tab">
@@ -236,9 +251,13 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         {!data.isOwner && data.viewerRole && (
           <span className="company-role-badge">{t('company.yourRole')}: {t(`company.roles.${data.viewerRole}`, data.viewerRole)}</span>
         )}
-        {data.isOwner && (
+        {data.isOwner ? (
           <button className="company-settings-btn" onClick={openSettings} title={t('company.settings')}>
             <Settings size={18} />
+          </button>
+        ) : (
+          <button className="company-disband-btn compact" disabled={busy} onClick={() => setConfirmLeave(true)}>
+            <LogIn size={15} /> {t('company.leave')}
           </button>
         )}
       </div>
@@ -274,7 +293,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         </div>
       )}
 
-      {/* Активы компании — отдельная карточка (интерфейс как «Моё имущество») */}
+      {/* Активы компании — видят все сотрудники (интерфейс как «Моё имущество»);
+          управлять арендой (внутри панели) может только владелец. */}
       <button className="company-assets-card" onClick={() => setShowAssets(true)}>
         <span className="cac-icon"><Package size={22} /></span>
         <div className="cac-info">
@@ -329,7 +349,9 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                   <span className="company-emp-name">{m.username}</span>
                   <span className="company-emp-role">{t(`company.roles.${m.role}`, m.role)}</span>
                 </div>
-                {!data.isOwner ? (
+                {m.role === 'owner' ? (
+                  <span className="company-emp-salary">—</span>
+                ) : !data.isOwner ? (
                   <span className="company-emp-salary">${formatMoney(m.salary)}/ч</span>
                 ) : editing?.userId === m.userId ? (
                   <div className="company-emp-edit">
@@ -460,6 +482,18 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         cancelLabel={t('common.no')}
         onConfirm={doDisband}
         onCancel={() => setConfirmDisband(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmLeave}
+        danger
+        busy={busy}
+        title={t('company.leave')}
+        message={t('company.leaveConfirm')}
+        confirmLabel={t('common.yes')}
+        cancelLabel={t('common.no')}
+        onConfirm={doLeave}
+        onCancel={() => setConfirmLeave(false)}
       />
     </div>
   )

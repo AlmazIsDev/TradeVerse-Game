@@ -174,6 +174,16 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
     viewer_role = "owner" if is_owner else next(
         (m.get("role", "worker") for m in members if m["userId"] == viewer_id), None
     )
+    owner_user = await db.users.find_one({"_id": ObjectId(owner_id)}) if ObjectId.is_valid(owner_id) else None
+    display_members = [
+        {"id": owner_id, "userId": owner_id, "username": owner_user.get("username") if owner_user else "—",
+         "role": "owner", "salary": None},
+        *[
+            {"id": str(m["_id"]), "userId": m["userId"], "username": m.get("username"),
+             "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2)}
+            for m in members
+        ],
+    ]
     return {
         "id": cid,
         "name": company["name"],
@@ -187,16 +197,13 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         "payrollPerHour": payroll,
         "profitPerHour": round(revenue - payroll, 2),
         "accrued": round(revenue * hours, 2),
-        "memberCount": len(members),
+        "memberCount": len(members) + 1,
         "assetCount": len(assets),
         "ownerId": owner_id,
+        "ownerName": owner_user.get("username") if owner_user else None,
         "isOwner": is_owner,
         "viewerRole": viewer_role,
-        "members": [
-            {"id": str(m["_id"]), "userId": m["userId"], "username": m.get("username"),
-             "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2)}
-            for m in members
-        ],
+        "members": display_members,
         "assets": assets,
     }
 
@@ -490,6 +497,27 @@ async def fire_member(
         data={"companyId": str(company["_id"])},
     )
     return {"company": await _serialize(db, company, user_id)}
+
+
+@router.post("/leave")
+async def leave_company(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Уйти из компании самостоятельно (сотрудник; владелец должен распустить компанию)."""
+    user_id = str(current_user["_id"])
+    member = await db.company_members.find_one({"userId": user_id})
+    if not member:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Вы не состоите в компании")
+    company = await db.companies.find_one({"_id": ObjectId(member["companyId"])}) if ObjectId.is_valid(member["companyId"]) else None
+    await db.company_members.delete_one({"_id": member["_id"]})
+    if company:
+        await push_notification(
+            db, company["ownerId"], "company",
+            "Сотрудник ушёл", f"{current_user.get('username')} покинул «{company['name']}».",
+            data={"companyId": str(company["_id"])},
+        )
+    return {"ok": True}
 
 
 # ── Companies directory + applications (заявки игроков) ──────────────────────

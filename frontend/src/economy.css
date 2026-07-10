@@ -1708,6 +1708,7 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
 }
 .company-disband-btn:hover { background: rgba(239,68,68,0.2); }
 .company-disband-btn:disabled { opacity: 0.5; cursor: default; }
+.company-disband-btn.compact { width: auto; margin-top: 0; margin-left: auto; padding: 8px 14px; }
 
 /* Общее оживление интерфейса */
 .transfer-feedback.success { animation: tvSuccessPulse 0.9s ease-out; }

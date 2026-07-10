@@ -402,6 +402,9 @@
     "disband": "Disband company",
     "disbandConfirm": "Do you really want to disband the company? This action is irreversible.",
     "disbanded": "Company disbanded",
+    "leave": "Leave company",
+    "leaveConfirm": "Do you really want to leave the company?",
+    "left": "You left the company",
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "A short description…",
     "logoLabel": "Logo",
@@ -457,7 +460,53 @@
     "realestate": "Real Estate Agency (Homes)",
     "realestateDesc": "In this agency you can purchase a home of any type",
     "business": "Buy Businesses",
-    "businessDesc": "Here you can buy various businesses, from a simple shawarma stand to a huge multi-million dollar per day business"
+    "businessDesc": "Here you can buy various businesses, from a simple shawarma stand to a huge multi-million dollar per day business",
+    "psuName": "{{w}}W PSU",
+    "cpuName": "{{cores}}-Core CPU",
+    "mbName": "Motherboard ({{slots}} GPU)",
+    "ramName": "{{gb}} GB RAM",
+    "ssdName": "{{gb}} GB SSD",
+    "upsName": "{{w}}VA UPS",
+    "rackName": "{{slots}}-GPU Rack",
+    "rackIndName": "Industrial Rack ({{slots}} GPU)",
+    "coolingName": {
+      "air": "Air Cooling",
+      "tower": "Tower Cooling",
+      "liquid": "Liquid Cooling",
+      "immersion": "Immersion Cooling"
+    },
+    "caseName": {
+      "mini": "Mini Case",
+      "midi": "Midi Tower",
+      "full": "Full Tower"
+    },
+    "fanName": {
+      "set120": "120mm Fan Kit",
+      "set140": "140mm Fan Kit",
+      "industrial": "Industrial Fans"
+    },
+    "networkName": {
+      "router": "1Gbit Router",
+      "switch": "10Gbit Switch",
+      "rack": "Network Rack"
+    }
+  },
+  "assetNames": {
+    "studio": "Studio",
+    "flat2": "2-Room Apartment",
+    "townhouse": "Townhouse",
+    "villa": "Seaside Villa",
+    "penthouse": "Penthouse",
+    "castle": "Castle",
+    "shawarma": "Shawarma Stand",
+    "coffee": "Coffee Shop",
+    "carwash": "Car Wash",
+    "itstudio": "IT Studio",
+    "factory": "Factory",
+    "citycar": "City Hatchback",
+    "sedan": "Business Sedan",
+    "sport": "Sports Car",
+    "super": "Supercar"
   },
   "gpu": {
     "company": "Company",

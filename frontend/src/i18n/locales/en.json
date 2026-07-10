@@ -92,11 +92,8 @@
     "insufficientShares": "Not enough shares",
     "portfolio": "My Portfolio",
     "portfolioValue": "Portfolio value",
-<<<<<<< HEAD
-=======
     "market": "Stock market",
     "pnl": "Profit / loss",
->>>>>>> origin/Marlow
     "owned": "Owned",
     "issue": "Issue stock",
     "issued": "own",
@@ -246,9 +243,6 @@
     "iv_3m": "3M",
     "iv_6m": "6M",
     "iv_1y": "1Y",
-<<<<<<< HEAD
-    "iv_all": "All"
-=======
     "iv_all": "All",
     "analytics": "Analytics",
     "forecast": "Forecast",
@@ -274,7 +268,6 @@
     "trendUp": "Up",
     "trendDown": "Down",
     "history": "Transaction history"
->>>>>>> origin/Marlow
   },
   "leaderboard": {
     "player": "Player",
@@ -400,9 +393,6 @@
       "manager": "Manager",
       "engineer": "Engineer",
       "director": "Director"
-<<<<<<< HEAD
-    }
-=======
     },
     "settings": "Company settings",
     "settingsSaved": "Settings saved",
@@ -417,7 +407,6 @@
     "closed": "Closed",
     "visible": "Visible in search",
     "hidden": "Hidden from search"
->>>>>>> origin/Marlow
   },
   "cityroof": {
     "buyWc": "Buy WC",

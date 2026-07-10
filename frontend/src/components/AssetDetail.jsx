@@ -4,18 +4,11 @@ import {
   fetchMarketAsset, fetchMarketHistory, toggleFavorite, tradeStock, tradeCrypto,
 } from '../services/api'
 import PriceChart from './PriceChart'
-<<<<<<< HEAD
-import { formatMoney } from './TransactionsPanel'
-import {
-  ArrowLeft, Star, TrendingUp, TrendingDown, CandlestickChart, LineChart,
-  AlertTriangle, Check, X,
-=======
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import { computeAnalytics } from '../utils/assetAnalytics'
 import {
   ArrowLeft, Star, TrendingUp, TrendingDown, CandlestickChart, LineChart,
   AlertTriangle, Check, X, Activity, Gauge, Wallet, Gift, Sparkles, Flame, ShieldCheck,
->>>>>>> origin/Marlow
 } from 'lucide-react'
 
 const INTERVALS = ['1h', '24h', '7d', '1m', '3m', '6m', '1y', 'all']
@@ -139,8 +132,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
   const changes = asset.stats?.changes || {}
   const held = asset.heldQuantity || 0
-<<<<<<< HEAD
-=======
   const digits = market === 'crypto' ? 4 : 0
 
   const a = computeAnalytics(asset, history, market)
@@ -149,7 +140,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   const estDividend = market === 'stock' ? positionValue * (a.dividendYield / 100) : 0
   const riskLabel = { low: t('asset.riskLow'), medium: t('asset.riskMedium'), high: t('asset.riskHigh') }[a.risk]
   const recLabel = { buy: t('asset.recBuy'), hold: t('asset.recHold'), sell: t('asset.recSell') }[a.recommendation]
->>>>>>> origin/Marlow
 
   return (
     <div className="asset-detail">
@@ -179,60 +169,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
         </div>
       </div>
 
-<<<<<<< HEAD
-      {/* Статы */}
-      <div className="ad-stats-grid">
-        <div className="ad-stat"><span>{t('asset.change24h')}</span><Change value={changes['24h']} /></div>
-        <div className="ad-stat"><span>{t('asset.change7d')}</span><Change value={changes['7d']} /></div>
-        <div className="ad-stat"><span>{t('asset.change1m')}</span><Change value={changes['1m']} /></div>
-        <div className="ad-stat"><span>{t('asset.change1y')}</span><Change value={changes['1y']} /></div>
-        <div className="ad-stat"><span>{t('asset.marketCap')}</span><b>${fmtNum(asset.marketCap)}</b></div>
-        <div className="ad-stat"><span>{t('asset.volume')}</span><b>${fmtNum(asset.volume24h)}</b></div>
-        {market === 'stock' && <div className="ad-stat"><span>{t('asset.shares')}</span><b>{fmtNum(asset.totalShares, 0)}</b></div>}
-        {market === 'stock' && <div className="ad-stat"><span>{t('common.freeShares')}</span><b>{fmtNum(asset.freeShares, 0)}</b></div>}
-        {market === 'crypto' && <div className="ad-stat"><span>{t('asset.supply')}</span><b>{fmtNum(asset.supply, 0)}</b></div>}
-        {market === 'crypto' && <div className="ad-stat"><span>{t('asset.ath')}</span><b>${formatMoney(asset.ath)}</b></div>}
-        {market === 'crypto' && <div className="ad-stat"><span>{t('asset.atl')}</span><b>${formatMoney(asset.atl)}</b></div>}
-        {held > 0 && <div className="ad-stat"><span>{t('stocks.owned')}</span><b className="up">{fmtNum(held, market === 'crypto' ? 4 : 0)}</b></div>}
-      </div>
-
-      {asset.description && <p className="ad-description">{asset.description}</p>}
-
-      {/* График */}
-      <div className="ad-chart-card">
-        <div className="ad-chart-toolbar">
-          <div className="ad-intervals">
-            {INTERVALS.map(iv => (
-              <button key={iv} className={`ad-iv ${timeframe === iv ? 'active' : ''}`} onClick={() => setTimeframe(iv)}>
-                {t(`asset.iv_${iv}`)}
-              </button>
-            ))}
-          </div>
-          <div className="ad-charttype">
-            <button className={chartType === 'line' ? 'active' : ''} onClick={() => setChartType('line')} title={t('asset.line')}><LineChart size={15} /></button>
-            <button className={chartType === 'candle' ? 'active' : ''} onClick={() => setChartType('candle')} title={t('asset.candle')}><CandlestickChart size={15} /></button>
-          </div>
-        </div>
-        <div className={`ad-chart ${chartLoading ? 'loading' : ''}`}>
-          <PriceChart
-            candles={history.candles}
-            line={history.line}
-            type={chartType}
-            color={asset.color || '#6366f1'}
-            height={340}
-          />
-        </div>
-        <p className="ad-chart-hint">{t('asset.chartHint')}</p>
-      </div>
-
-      {/* Действия */}
-      <div className="ad-actions">
-        <button className="ad-buy" onClick={() => { setTrade('buy'); setQty('1'); setFeedback(null) }}>{t('common.buy')}</button>
-        <button className="ad-sell" onClick={() => { setTrade('sell'); setQty('1'); setFeedback(null) }} disabled={held <= 0}>{t('common.sell')}</button>
-        <button className={`ad-fav-btn ${asset.isFavorite ? 'active' : ''}`} onClick={doFavorite}>
-          <Star size={16} fill={asset.isFavorite ? '#fbbf24' : 'none'} /> {t('asset.favorite')}
-        </button>
-=======
       {/* Двухколоночная «биржа»: слева график, справа аналитика */}
       <div className="ad-layout">
         {/* ЛЕВО: статы, график, действия */}
@@ -361,7 +297,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <TransactionsPanel category={market === 'crypto' ? 'crypto' : 'trade'} />
           </div>
         </div>
->>>>>>> origin/Marlow
       </div>
 
       {/* Модалка сделки */}

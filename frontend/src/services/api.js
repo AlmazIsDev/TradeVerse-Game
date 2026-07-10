@@ -95,9 +95,12 @@ async function request(endpoint, options = {}) {
     authHeaders['Authorization'] = `Bearer ${token}`
   }
 
+  // Для FormData (загрузка файлов, напр. аватар) НЕ проставляем Content-Type —
+  // браузер сам подставит правильный multipart/form-data с boundary.
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const config = {
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...authHeaders,
       ...options.headers,
     },
@@ -222,6 +225,31 @@ export async function toggleCardVisibility() {
 
 export async function fetchCurrentUser() {
   return request('/api/user/me')
+}
+
+/** Сменить никнейм. */
+export async function updateProfile(data) {
+  return request('/api/user/profile', { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+/** Сменить пароль (требует текущий пароль). */
+export async function changePassword(data) {
+  return request('/api/user/password', { method: 'POST', body: JSON.stringify(data) })
+}
+
+/**
+ * Загрузить/сменить аватар. dataUrl — уже сжатое на клиенте изображение
+ * (см. SettingsPage: canvas resize → toDataURL), передаётся как обычный JSON
+ * (не multipart) и хранится строкой в документе пользователя — без отдельной
+ * инфраструктуры файлового хранилища. Возвращает { avatar }.
+ */
+export async function uploadAvatar(dataUrl) {
+  return request('/api/user/avatar', { method: 'PATCH', body: JSON.stringify({ avatar: dataUrl }) })
+}
+
+/** Удалить аватар — сброс на инициалы. */
+export async function deleteAvatar() {
+  return request('/api/user/avatar', { method: 'DELETE' })
 }
 
 export async function adminUpdateUser(userId, data) {

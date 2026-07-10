@@ -68,11 +68,23 @@ function App() {
     return () => window.removeEventListener('auth:force-logout', onForceLogout)
   }, [])
 
+  // Обновление профиля (никнейм/аватар) из страницы «Настройки» — без
+  // перезахода: мержим изменения в состояние и localStorage, всё дерево
+  // компонентов (Header, Sidebar, …) получает свежие данные через пропсы.
+  const handleUserUpdate = useCallback((patch) => {
+    setUser(prev => {
+      if (!prev) return prev
+      const merged = { ...prev, ...patch }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+      return merged
+    })
+  }, [])
+
   if (!user) {
     return <AuthPage onLogin={handleLogin} />
   }
 
-  return <Dashboard user={user} onLogout={handleLogout} />
+  return <Dashboard user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
 }
 
 export default App

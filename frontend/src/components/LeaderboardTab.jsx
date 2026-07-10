@@ -91,7 +91,11 @@ function LeaderboardTab({ currentUserId }) {
               >
                 <span className="lb-rank"><RankBadge rank={entry.rank} /></span>
                 <span className="lb-player">
-                  <span className="lb-avatar">{(entry.username || '?').slice(0, 2).toUpperCase()}</span>
+                  {entry.avatar ? (
+                    <img className="lb-avatar lb-avatar-img" src={entry.avatar} alt={entry.username} />
+                  ) : (
+                    <span className="lb-avatar">{(entry.username || '?').slice(0, 2).toUpperCase()}</span>
+                  )}
                   <span className="lb-name">
                     {entry.username}
                     {isMe && <span className="lb-you">{t('leaderboard.you')}</span>}

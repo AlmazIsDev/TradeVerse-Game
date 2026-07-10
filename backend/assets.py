@@ -51,12 +51,42 @@ def _tune_cost(asset: dict, level: int) -> float:
 RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
 RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
 RENT_MAX_HOURS = 720     # максимальный срок аренды (30 суток)
-RENT_MIN_DAILY = 2000    # минимальная суточная ставка — даже за 1 день можно заработать $2000
-RENT_DAILY_PCT = 0.02    # суточная ставка = 2% от текущей стоимости актива (если это больше минимума)
 RENTABLE_TYPES = {"realestate", "car", "business"}
+
+# ── Экономика аренды ─────────────────────────────────────────────────────────
+# У каждого актива — своя суточная ставка аренды: она НЕ одинакова для всего
+# имущества, а рассчитывается из совокупности факторов:
+#   1) текущая стоимость актива (цена + уровень апгрейда + тюнинг, см. _current_value);
+#   2) редкость/класс объекта (rarity) — определяет % от стоимости в сутки;
+# Чем реже и роскошнее объект — тем выше именно ПРОЦЕНТ доходности (не только
+# абсолютная сумма за счёт более высокой цены). Поэтому дешёвая недвижимость
+# даёт скромный доход, а элитная — кратно выгоднее как в долларах, так и в %,
+# и не бывает ситуации, когда дешёвый объект почти не уступает дорогому.
+# Ориентир баланса: «хорошая» недвижимость редкости rare (напр. Вилла, $160k)
+# должна приносить ≈$2000/сутки только за счёт аренды.
+RARITY_RENT_PCT = {
+    "common": 0.008,      # 0.8%/сутки — дешёвое имущество: небольшой доход
+    "uncommon": 0.011,    # 1.1%/сутки — средний класс: заметный доход
+    "rare": 0.013,        # 1.3%/сутки — хорошее имущество: высокий доход (~$2000/сутки для Виллы)
+    "epic": 0.019,        # 1.9%/сутки — дорогое имущество: очень высокий доход
+    "legendary": 0.026,   # 2.6%/сутки — элитное имущество: максимальная доходность
+}
+# Минимальный суточный доход по редкости — подстраховка от вырожденных случаев
+# (например, сильно уценённый на рынке актив), а НЕ основной драйвер экономики,
+# как было раньше (плоский пол в $2000 одинаковый для всех — тот самый баг,
+# из-за которого дешёвая студия зарабатывала как элитная недвижимость).
+RARITY_RENT_FLOOR = {
+    "common": 40.0,
+    "uncommon": 150.0,
+    "rare": 500.0,
+    "epic": 2000.0,
+    "legendary": 6000.0,
+}
 
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
 # income_per_hour — пассивный доход; upkeep_per_hour — расход (для бизнесов).
+# rarity — определяет и рыночный дрейф цены (RARITY_FLOOR), и ставку аренды
+# (RARITY_RENT_PCT/RARITY_RENT_FLOOR) — есть у всех типов, включая бизнесы.
 
 CATALOG = [
     # Недвижимость: аренда как доход, налог как расход
@@ -72,18 +102,19 @@ CATALOG = [
      "price": 480000, "income_per_hour": 950, "upkeep_per_hour": 140, "rooms": 8, "meta": {"tax": 140}},
     {"slug": "castle", "type": TYPE_REALESTATE, "name": "Замок", "rarity": "legendary",
      "price": 1500000, "income_per_hour": 3000, "upkeep_per_hour": 400, "rooms": 20, "meta": {"tax": 400}},
-    # Бизнесы: доход и расходы, есть сотрудники
-    {"slug": "shawarma", "type": TYPE_BUSINESS, "name": "Шаурмечная", "category": "retail",
+    # Бизнесы: доход и расходы, есть сотрудники. rarity — экономический класс
+    # бизнеса (отдельно от category, которая отвечает только за тематику/иконку).
+    {"slug": "shawarma", "type": TYPE_BUSINESS, "name": "Шаурмечная", "category": "retail", "rarity": "common",
      "price": 8000, "income_per_hour": 60, "upkeep_per_hour": 20, "employees": 2},
-    {"slug": "coffee", "type": TYPE_BUSINESS, "name": "Кофейня", "category": "retail",
+    {"slug": "coffee", "type": TYPE_BUSINESS, "name": "Кофейня", "category": "retail", "rarity": "uncommon",
      "price": 25000, "income_per_hour": 170, "upkeep_per_hour": 55, "employees": 4},
-    {"slug": "carwash", "type": TYPE_BUSINESS, "name": "Автомойка", "category": "service",
+    {"slug": "carwash", "type": TYPE_BUSINESS, "name": "Автомойка", "category": "service", "rarity": "rare",
      "price": 60000, "income_per_hour": 380, "upkeep_per_hour": 110, "employees": 6},
-    {"slug": "itstudio", "type": TYPE_BUSINESS, "name": "IT-студия", "category": "tech",
+    {"slug": "itstudio", "type": TYPE_BUSINESS, "name": "IT-студия", "category": "tech", "rarity": "epic",
      "price": 200000, "income_per_hour": 1300, "upkeep_per_hour": 420, "employees": 12},
-    {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office",
+    {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office", "rarity": "legendary",
      "price": 750000, "income_per_hour": 4600, "upkeep_per_hour": 1500, "employees": 40},
-    # Автомобили: престиж (без дохода), учитываются в капитале
+    # Автомобили: престиж (без дохода), учитываются в капитале, но сдаются в аренду
     {"slug": "citycar", "type": TYPE_CAR, "name": "Городской хэтчбек", "rarity": "common",
      "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 5}},
     {"slug": "sedan", "type": TYPE_CAR, "name": "Бизнес-седан", "rarity": "uncommon",
@@ -249,12 +280,30 @@ def _income_per_hour(asset: dict) -> float:
     return round(base * (1 + 0.25 * (level - 1)), 2)
 
 
+def _rent_rarity(asset: dict) -> str:
+    """Редкость актива для расчёта аренды. Берётся из самого экземпляра (в него
+    копируется при покупке из каталога — buy_asset), с запасным вариантом через
+    каталог по slug — на случай активов, купленных до появления rarity у бизнесов."""
+    rarity = asset.get("rarity")
+    if rarity in RARITY_RENT_PCT:
+        return rarity
+    catalog_rarity = CATALOG_BY_SLUG.get(asset.get("slug"), {}).get("rarity")
+    return catalog_rarity if catalog_rarity in RARITY_RENT_PCT else "common"
+
+
 def _rent_daily_rate(asset: dict) -> float:
-    """Суточная ставка аренды — своя для каждого актива (по его текущей стоимости),
-    но не ниже RENT_MIN_DAILY, чтобы даже дешёвый актив приносил ощутимый доход."""
+    """Суточная ставка аренды — СВОЯ для каждого объекта, а не единый коэффициент
+    для всего имущества. Зависит от текущей стоимости актива (цена + апгрейды +
+    тюнинг — см. _current_value) и его редкости/класса (RARITY_RENT_PCT): чем
+    реже и роскошнее объект, тем выше именно % доходности, а не только сумма.
+    RARITY_RENT_FLOOR — лишь подстраховка от вырожденно низких значений, а не
+    основной регулятор (как было раньше с плоским полом в $2000 для всех)."""
     if asset.get("type") not in RENTABLE_TYPES:
         return 0.0
-    return round(max(RENT_MIN_DAILY, _current_value(asset) * RENT_DAILY_PCT), 2)
+    rarity = _rent_rarity(asset)
+    pct = RARITY_RENT_PCT[rarity]
+    floor = RARITY_RENT_FLOOR[rarity]
+    return round(max(floor, _current_value(asset) * pct), 2)
 
 
 def _rent_rate_per_hour(asset: dict) -> float:
@@ -812,21 +861,48 @@ async def total_asset_value(db: AsyncIOMotorDatabase, user_id: str) -> float:
 if __name__ == "__main__":
     # Санити-чек формулы аренды: цена обязана расти линейно со сроком (в часах)
     # и совпадать с той же формулой, что используется при выставлении объявления.
-    demo_asset = {"type": "realestate", "price": 40000, "level": 1, "tuning_value": 0.0}
+    demo_asset = {"type": "realestate", "price": 40000, "rarity": "uncommon", "level": 1, "tuning_value": 0.0}
     rate = _rent_rate_per_hour(demo_asset)
     assert rate > 0
     assert abs(_rent_total(demo_asset, 1) - rate) < 0.01
     assert abs(_rent_total(demo_asset, 6) - rate * 6) < 0.05
     assert _rent_total(demo_asset, RENT_MAX_HOURS) == round(_rent_daily_rate(demo_asset) * RENT_MAX_HOURS / 24, 2)
-    # 1 час не должен стоить столько же, сколько 30 суток — старая формула это позволяла.
+    # 1 час не должен стоить столько же, сколько 30 суток.
     assert _rent_total(demo_asset, 1) < _rent_total(demo_asset, RENT_MAX_HOURS)
-    # Даже дешёвый актив приносит не меньше RENT_MIN_DAILY за 1 игровой день (24ч).
-    cheap_asset = {"type": "realestate", "price": 5000, "level": 1, "tuning_value": 0.0}
-    assert _rent_total(cheap_asset, 24) >= RENT_MIN_DAILY
-    # Бизнесы теперь тоже сдаются в аренду — у каждого своя ставка.
-    business_asset = {"type": "business", "price": 40000, "level": 1}
-    assert _rent_rate_per_hour(business_asset) > 0
-    assert _rent_total(business_asset, 24) >= RENT_MIN_DAILY
-    non_rentable = {"type": "crypto", "price": 40000, "level": 1}
+
+    # «Хорошая» недвижимость (rare, напр. Вилла за $160k) должна приносить
+    # примерно $2000/сутки только за счёт аренды — таков ориентир баланса.
+    villa = {"type": "realestate", "price": 160000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
+    assert 1800 <= _rent_daily_rate(villa) <= 2200, _rent_daily_rate(villa)
+
+    # Один и тот же тип актива с разной редкостью НЕ должен зарабатывать одинаково:
+    # дешёвый/частый объект уступает дорогому/редкому и в % доходности, и в сумме.
+    common_re = {"type": "realestate", "price": 160000, "rarity": "common", "level": 1, "tuning_value": 0.0}
+    uncommon_re = {"type": "realestate", "price": 160000, "rarity": "uncommon", "level": 1, "tuning_value": 0.0}
+    epic_re = {"type": "realestate", "price": 160000, "rarity": "epic", "level": 1, "tuning_value": 0.0}
+    legendary_re = {"type": "realestate", "price": 160000, "rarity": "legendary", "level": 1, "tuning_value": 0.0}
+    assert _rent_daily_rate(common_re) < _rent_daily_rate(uncommon_re) < _rent_daily_rate(villa) \
+        < _rent_daily_rate(epic_re) < _rent_daily_rate(legendary_re)
+
+    # Настоящий каталог: дешёвая студия НЕ должна почти совпадать по доходности
+    # с элитным замком (старый баг — единый пол в $2000 для всех активов).
+    studio_rate = _rent_daily_rate(CATALOG_BY_SLUG["studio"] | {"level": 1, "tuning_value": 0.0})
+    castle_rate = _rent_daily_rate(CATALOG_BY_SLUG["castle"] | {"level": 1, "tuning_value": 0.0})
+    assert studio_rate < 100, studio_rate
+    assert castle_rate > 30000, castle_rate
+    assert castle_rate / studio_rate > 100
+
+    # Бизнесы и авто тоже сдаются в аренду — у каждого своя ставка через rarity,
+    # добавленную в каталог (не одинаковый коэффициент для всего имущества).
+    business_asset = {"type": "business", "price": 60000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
+    assert _rent_daily_rate(business_asset) > 0
+    car_asset = {"type": "car", "price": 150000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
+    assert _rent_daily_rate(car_asset) > 0
+
+    non_rentable = {"type": "crypto", "price": 40000, "rarity": "rare", "level": 1}
     assert _rent_rate_per_hour(non_rentable) == 0.0
+
     print("assets.py rent formula: OK")
+    print(f"  studio(common,$5k)   = ${studio_rate}/сутки")
+    print(f"  villa(rare,$160k)    = ${_rent_daily_rate(villa)}/сутки")
+    print(f"  castle(legendary,$1.5M) = ${castle_rate}/сутки")

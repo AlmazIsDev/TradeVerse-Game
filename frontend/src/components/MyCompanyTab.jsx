@@ -346,8 +346,15 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
             {data.members.map(m => (
               <div key={m.userId} className="company-emp">
                 <div className="company-emp-info">
-                  <span className="company-emp-name">{m.username}</span>
-                  <span className="company-emp-role">{t(`company.roles.${m.role}`, m.role)}</span>
+                  {m.avatar ? (
+                    <img className="company-emp-avatar company-emp-avatar-img" src={m.avatar} alt={m.username} />
+                  ) : (
+                    <span className="company-emp-avatar">{(m.username || '?').slice(0, 2).toUpperCase()}</span>
+                  )}
+                  <div className="company-emp-text">
+                    <span className="company-emp-name">{m.username}</span>
+                    <span className="company-emp-role">{t(`company.roles.${m.role}`, m.role)}</span>
+                  </div>
                 </div>
                 {m.role === 'owner' ? (
                   <span className="company-emp-salary">—</span>

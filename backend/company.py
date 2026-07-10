@@ -175,11 +175,25 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         (m.get("role", "worker") for m in members if m["userId"] == viewer_id), None
     )
     owner_user = await db.users.find_one({"_id": ObjectId(owner_id)}) if ObjectId.is_valid(owner_id) else None
+
+    # Живой username/avatar по userId — не полагаемся на снапшот-поле "username"
+    # в company_members (оно устаревает после смены никнейма в Настройках), а
+    # avatar там и вовсе никогда не хранился.
+    member_ids = [ObjectId(m["userId"]) for m in members if ObjectId.is_valid(m["userId"])]
+    users_by_id: dict = {}
+    if member_ids:
+        async for u in db.users.find({"_id": {"$in": member_ids}}, {"username": 1, "avatar": 1}):
+            users_by_id[str(u["_id"])] = u
+
     display_members = [
-        {"id": owner_id, "userId": owner_id, "username": owner_user.get("username") if owner_user else "—",
+        {"id": owner_id, "userId": owner_id,
+         "username": owner_user.get("username") if owner_user else "—",
+         "avatar": owner_user.get("avatar") if owner_user else None,
          "role": "owner", "salary": None},
         *[
-            {"id": str(m["_id"]), "userId": m["userId"], "username": m.get("username"),
+            {"id": str(m["_id"]), "userId": m["userId"],
+             "username": users_by_id.get(m["userId"], {}).get("username", m.get("username")),
+             "avatar": users_by_id.get(m["userId"], {}).get("avatar"),
              "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2)}
             for m in members
         ],

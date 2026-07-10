@@ -6,6 +6,7 @@ import {
   repairFarm, farmManager,
 } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
+import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
@@ -289,7 +290,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                   <span className="mslot-desc">{t(`mining.desc.${cat}`, '')}</span>
                   {installed.map(it => (
                     <div key={it.hwId} className="mslot-item">
-                      <span>{it.name}</span>
+                      <span>{hwName(it, t)}</span>
                       <button className="mslot-rm" disabled={busy} onClick={() => run(() => uninstallComponent(farm.id, it.hwId))}><X size={12} /></button>
                     </div>
                   ))}
@@ -298,7 +299,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                       <select className="mslot-pick" disabled={busy} value=""
                         onChange={e => { if (e.target.value) run(() => installComponent(farm.id, cat, e.target.value)) }}>
                         <option value="">{t('mining.pickPart')}</option>
-                        {avail.map(p => <option key={p.hwId} value={p.hwId}>{p.name}{partSpec(cat, p.specs)}</option>)}
+                        {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs)}</option>)}
                       </select>
                     ) : (
                       <span className="mslot-empty">{t('mining.noParts')}</span>

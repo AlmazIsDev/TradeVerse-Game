@@ -473,6 +473,10 @@ export async function disbandCompany() {
   return request('/api/company', { method: 'DELETE' })
 }
 
+export async function leaveCompany() {
+  return request('/api/company/leave', { method: 'POST' })
+}
+
 export async function updateMemberSalary(memberUserId, salary) {
   return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, {
     method: 'PATCH', body: JSON.stringify({ salary }),

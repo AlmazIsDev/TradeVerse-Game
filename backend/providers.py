@@ -1,19 +1,16 @@
 """Провайдеры реальных рыночных данных.
 
 Архитектура:
-    MarketDataService → CoinGeckoProvider / StockProvider → Database → Frontend
+    MarketDataService → CoinGeckoProvider → Database → Frontend
 
 Ключи читаются ТОЛЬКО из окружения (.env):
     COINGECKO_API_KEY   — необязателен (без него используется public API CoinGecko)
-    FINNHUB_API_KEY     — для акций (Finnhub, бесплатный тариф)
-    TWELVEDATA_API_KEY  — альтернатива для акций (Twelve Data, бесплатный тариф)
+
+Акции больше не тянут внешние котировки (см. stocks.py) — цена системных
+акций двигается только объёмом сделок (игроки + боты), как и у пользовательских.
 
 Все сетевые вызовы обёрнуты вызывающим кодом в try/except: при недоступности
 API используются последние сохранённые значения из базы (см. MarketDataService).
-
-⚠️ НЕ ПРОВЕРЕНО В ТЕКУЩЕЙ СРЕДЕ: среда выполнения не имеет доступа к сети,
-поэтому реальные HTTP-запросы здесь не тестировались. Код интеграции написан
-полностью и рассчитан на работу при развёртывании с доступом в интернет.
 """
 import logging
 import os
@@ -111,86 +108,3 @@ class CoinGeckoProvider:
             data = resp.json()
         prices = data.get("prices", [])
         return [(ts / 1000.0, float(p)) for ts, p in prices]
-
-
-# ── Акции (Finnhub / Twelve Data) ────────────────────────────────────────────
-
-
-class StockProvider:
-    """Реальные котировки акций.
-
-    Приоритет: Finnhub (если задан FINNHUB_API_KEY), иначе Twelve Data
-    (TWELVEDATA_API_KEY). Без ключей провайдер недоступен → используется
-    последняя сохранённая цена (fallback в MarketDataService).
-    """
-
-    def __init__(self):
-        self.finnhub_key = os.getenv("FINNHUB_API_KEY")
-        self.twelvedata_key = os.getenv("TWELVEDATA_API_KEY")
-
-    @property
-    def available(self) -> bool:
-        return bool(self.finnhub_key or self.twelvedata_key)
-
-    @property
-    def source(self) -> str:
-        return "finnhub" if self.finnhub_key else ("twelvedata" if self.twelvedata_key else "none")
-
-    async def get_quotes(self, symbols: list[str]) -> dict[str, dict]:
-        """Котировки для списка тикеров: {symbol: {price, change, changePercent}}."""
-        if self.finnhub_key:
-            return await self._finnhub_quotes(symbols)
-        if self.twelvedata_key:
-            return await self._twelvedata_quotes(symbols)
-        return {}
-
-    async def _finnhub_quotes(self, symbols: list[str]) -> dict[str, dict]:
-        httpx = _load_httpx()
-        out: dict[str, dict] = {}
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            for sym in symbols:
-                try:
-                    resp = await client.get(
-                        "https://finnhub.io/api/v1/quote",
-                        params={"symbol": sym, "token": self.finnhub_key},
-                    )
-                    resp.raise_for_status()
-                    q = resp.json()
-                    price = float(q.get("c") or 0.0)
-                    if price <= 0:
-                        continue
-                    out[sym.upper()] = {
-                        "price": price,
-                        "change": float(q.get("d") or 0.0),
-                        "changePercent": float(q.get("dp") or 0.0),
-                    }
-                except Exception as exc:  # одна ошибка не должна ронять всю партию
-                    logger.warning("Finnhub quote failed for %s: %s", sym, exc)
-        return out
-
-    async def _twelvedata_quotes(self, symbols: list[str]) -> dict[str, dict]:
-        httpx = _load_httpx()
-        out: dict[str, dict] = {}
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            resp = await client.get(
-                "https://api.twelvedata.com/quote",
-                params={"symbol": ",".join(symbols), "apikey": self.twelvedata_key},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        # Twelve Data возвращает объект-по-символу для нескольких символов, либо один объект.
-        items = data.values() if isinstance(data, dict) and "symbol" not in data else [data]
-        for q in items:
-            try:
-                sym = (q.get("symbol") or "").upper()
-                price = float(q.get("close") or 0.0)
-                if not sym or price <= 0:
-                    continue
-                out[sym] = {
-                    "price": price,
-                    "change": float(q.get("change") or 0.0),
-                    "changePercent": float(q.get("percent_change") or 0.0),
-                }
-            except Exception:
-                continue
-        return out

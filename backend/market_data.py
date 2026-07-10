@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import get_db
-from providers import CoinGeckoProvider, StockProvider
+from providers import CoinGeckoProvider
 
 logger = logging.getLogger("tradeverse.market")
 
@@ -237,40 +237,6 @@ class MarketDataService:
             await MarketDataService._set_meta(db, "crypto", "sim")
             return "sim"
 
-    @staticmethod
-    async def refresh_stocks(db, symbols: list[str]) -> str:
-        """Обновляет котировки акций реальными данными (Finnhub/Twelve Data)."""
-        if not symbols:
-            return "sim"
-        if await MarketDataService._throttled(db, "stock"):
-            return await MarketDataService._mode(db, "stock")
-        provider = StockProvider()
-        if not provider.available:
-            await MarketDataService._set_meta(db, "stock", "sim")
-            return "sim"
-        try:
-            quotes = await provider.get_quotes(symbols)
-            if not quotes:
-                raise RuntimeError("no quotes")
-            for sym, q in quotes.items():
-                await db.stocks.update_one(
-                    {"symbol": sym},
-                    {"$set": {
-                        "price": round(q["price"], 2),
-                        "change": round(q["change"], 2),
-                        "changePercent": round(q["changePercent"], 2),
-                        "source": provider.source, "updated_at": _now(),
-                    }},
-                )
-                await MarketDataService.record_snapshot(db, "stock", sym, q["price"], force=True)
-            await MarketDataService._set_meta(db, "stock", "live")
-            logger.info("StockProvider(%s): обновлено %d тикеров", provider.source, len(quotes))
-            return "live"
-        except Exception as exc:
-            logger.warning("StockProvider недоступен (%s) — используются сохранённые данные", exc)
-            await MarketDataService._set_meta(db, "stock", "sim")
-            return "sim"
-
 
 # ── History endpoint ─────────────────────────────────────────────────────────
 
@@ -297,7 +263,6 @@ STOCK_META = {
     "AAPL": {"sector": "Технологии", "description": "Apple Inc. — производитель потребительской электроники, ПО и услуг."},
     "GOOGL": {"sector": "Технологии", "description": "Alphabet (Google) — поиск, реклама, облако и ИИ."},
     "MSFT": {"sector": "Технологии", "description": "Microsoft — ПО, облако Azure, игровое подразделение."},
-    "AMZN": {"sector": "Ритейл / Облако", "description": "Amazon — крупнейший онлайн-ритейл и облачный провайдер AWS."},
     "TSLA": {"sector": "Автомобили / Энергетика", "description": "Tesla — электромобили и решения для хранения энергии."},
     "NVDA": {"sector": "Полупроводники", "description": "NVIDIA — графические и ИИ-ускорители."},
 }

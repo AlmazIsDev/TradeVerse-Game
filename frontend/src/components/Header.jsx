@@ -126,6 +126,7 @@ function Header({ username, balance, onLogout, rtKey = 0 }) {
       else await declineInvite(inviteId)
       await markNotificationRead(notif.id)
       await loadNotifs()
+      window.dispatchEvent(new CustomEvent('tv:company-refresh'))
     } catch { /* ignore */ }
   }
 
@@ -137,6 +138,7 @@ function Header({ username, balance, onLogout, rtKey = 0 }) {
       else await declineApplication(appId)
       await markNotificationRead(notif.id)
       await loadNotifs()
+      window.dispatchEvent(new CustomEvent('tv:company-refresh'))
     } catch { /* ignore */ }
   }
 

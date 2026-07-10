@@ -316,15 +316,16 @@
     "list": "Rent out",
     "title": "Rent out",
     "desc": "A tenant appears randomly within 1–48 hours. Money is credited automatically when the term ends.",
-    "price": "Rent price, $",
+    "ratePerHour": "Rate: {{rate}} $/h",
+    "total": "Total rent price",
     "minHours": "Min term, h",
     "publish": "Publish",
     "listed": "Listing published",
     "waiting": "Waiting for a tenant…",
     "rented": "Rented out",
     "cancelled": "Listing removed",
-    "invalid": "Enter a valid price and term",
-    "maxHint": "Maximum: {{max}} $ — calculated from the asset value"
+    "invalid": "Enter a valid rental term",
+    "maxHint": "Price recalculates automatically as the term changes"
   },
   "tune": {
     "title": "Tuning",
@@ -392,8 +393,10 @@
       "worker": "Worker",
       "manager": "Manager",
       "engineer": "Engineer",
-      "director": "Director"
+      "director": "Director",
+      "owner": "Owner"
     },
+    "yourRole": "Your role",
     "settings": "Company settings",
     "settingsSaved": "Settings saved",
     "disband": "Disband company",

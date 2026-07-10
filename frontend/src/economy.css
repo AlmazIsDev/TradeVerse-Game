@@ -1105,11 +1105,11 @@
 
 /* ===================== BIG-NUMBER OVERFLOW GUARDS ===================== */
 .header-balance { max-width: 280px; }
-.asset-summary-card, .ad-stat, .bank-mini, .bank-crypto-val, .portfolio-item-values, .stat-info { min-width: 0; }
+.asset-summary-card, .ad-stat, .bank-mini, .bank-crypto-val, .portfolio-item-values, .stat-info, .profile-card { min-width: 0; }
 /* Числа переносятся, а не обрезаются */
 .asset-summary-card b, .ad-stat b, .bank-mini b, .stat-value,
 .portfolio-value, .portfolio-total strong, .company-emp-salary, .ad-price,
-.bank-crypto-val b, .bank-hero-balance {
+.bank-crypto-val b, .bank-hero-balance, .profile-card-number {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -1674,6 +1674,10 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
   color: var(--color-text-secondary); border-radius: 10px; padding: 8px; cursor: pointer; transition: all .18s ease;
 }
 .company-settings-btn:hover { color: var(--color-text-primary); border-color: rgba(99,102,241,0.5); transform: rotate(30deg); }
+.company-role-badge {
+  margin-left: auto; font-size: 12px; font-weight: 600; color: var(--color-accent-hover);
+  background: rgba(99,102,241,0.12); border-radius: 999px; padding: 5px 12px; white-space: nowrap;
+}
 .company-description { color: var(--color-text-secondary); font-size: 13.5px; margin: -4px 0 12px; }
 .company-settings-modal { max-width: 460px; text-align: left; }
 .settings-label { display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin: 14px 0 6px; }

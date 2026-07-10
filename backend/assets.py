@@ -50,7 +50,8 @@ def _tune_cost(asset: dict, level: int) -> float:
 
 RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
 RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
-RENT_MAX_PCT = 0.25      # макс. суммарная аренда = 25% от стоимости актива
+RENT_MAX_HOURS = 720     # максимальный срок аренды (30 суток)
+RENT_MAX_PCT = 0.25      # макс. суммарная аренда за RENT_MAX_HOURS = 25% от стоимости актива
 RENTABLE_TYPES = {"realestate", "car"}
 
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
@@ -217,21 +218,13 @@ class TuneBody(BaseModel):
 
 
 class RentListing(BaseModel):
-    price: float
     minHours: int
-
-    @field_validator("price")
-    @classmethod
-    def price_ok(cls, v):
-        if v is None or v <= 0:
-            raise ValueError("Стоимость аренды должна быть положительной")
-        return round(float(v), 2)
 
     @field_validator("minHours")
     @classmethod
     def hours_ok(cls, v):
-        if v < 1 or v > 720:
-            raise ValueError("Срок аренды: 1–720 часов")
+        if v < 1 or v > RENT_MAX_HOURS:
+            raise ValueError(f"Срок аренды: 1–{RENT_MAX_HOURS} часов")
         return int(v)
 
 
@@ -255,11 +248,20 @@ def _income_per_hour(asset: dict) -> float:
     return round(base * (1 + 0.25 * (level - 1)), 2)
 
 
-def _rent_max(asset: dict) -> float:
-    """Максимальная суммарная стоимость аренды — авто-расчёт от стоимости актива."""
+def _rent_rate_per_hour(asset: dict) -> float:
+    """Ставка аренды в час — для отображения клиенту (не используется в расчёте
+    итоговой суммы, чтобы округление ставки не накапливалось на длинных сроках)."""
     if asset.get("type") not in RENTABLE_TYPES:
         return 0.0
-    return round(_current_value(asset) * RENT_MAX_PCT, 2)
+    return round(_current_value(asset) * RENT_MAX_PCT / RENT_MAX_HOURS, 2)
+
+
+def _rent_total(asset: dict, hours: int) -> float:
+    """Итоговая стоимость аренды за срок — линейно от часов, единая формула для
+    клиента (превью) и сервера (авторитетный пересчёт при выставлении объявления)."""
+    if asset.get("type") not in RENTABLE_TYPES:
+        return 0.0
+    return round(_current_value(asset) * RENT_MAX_PCT * hours / RENT_MAX_HOURS, 2)
 
 
 def _upkeep_per_hour(asset: dict) -> float:
@@ -438,7 +440,7 @@ def _serialize(asset: dict) -> dict:
         "meta": asset.get("meta", {}),
         "companyId": asset.get("companyId"),
         "rental": _rental_view(asset),
-        "rentMax": _rent_max(asset),
+        "rentRatePerHour": _rent_rate_per_hour(asset),
         "tuning": asset.get("tuning", {}),
         "tuneMaxLevel": TUNE_MAX_LEVEL,
         "purchasedAt": asset.get("purchased_at").isoformat() if isinstance(asset.get("purchased_at"), datetime) else None,
@@ -757,9 +759,8 @@ async def rent_list(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость и авто")
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
-    # Цена аренды не может превышать авто-предел от стоимости актива.
-    max_rent = _rent_max(asset)
-    price = min(payload.price, max_rent) if max_rent > 0 else payload.price
+    # Итоговая цена всегда пересчитывается сервером из срока — клиентской цене не доверяем.
+    price = _rent_total(asset, payload.minHours)
     wait_h = random.randint(RENT_MIN_WAIT_H, RENT_MAX_WAIT_H)
     rental = {
         "status": "listed",
@@ -799,3 +800,19 @@ async def total_asset_value(db: AsyncIOMotorDatabase, user_id: str) -> float:
     async for a in db.user_assets.find({"userId": user_id}):
         total += _current_value(a)
     return round(total, 2)
+
+
+if __name__ == "__main__":
+    # Санити-чек формулы аренды: цена обязана расти линейно со сроком (в часах)
+    # и совпадать с той же формулой, что используется при выставлении объявления.
+    demo_asset = {"type": "realestate", "price": 40000, "level": 1, "tuning_value": 0.0}
+    rate = _rent_rate_per_hour(demo_asset)
+    assert rate > 0
+    assert abs(_rent_total(demo_asset, 1) - rate) < 0.01
+    assert abs(_rent_total(demo_asset, 6) - rate * 6) < 0.05
+    assert _rent_total(demo_asset, RENT_MAX_HOURS) == round(_current_value(demo_asset) * RENT_MAX_PCT, 2)
+    # 1 час не должен стоить столько же, сколько 30 суток — старая формула это позволяла.
+    assert _rent_total(demo_asset, 1) < _rent_total(demo_asset, RENT_MAX_HOURS)
+    non_rentable = {"type": "business", "price": 40000, "level": 1}
+    assert _rent_rate_per_hour(non_rentable) == 0.0
+    print("assets.py rent formula: OK")

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchMyAssets, collectAsset, upgradeAsset, sellAsset,
+  fetchMyAssets, collectAsset, upgradeAsset, sellAsset, fetchCompany,
   transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
@@ -45,9 +45,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)   // asset
-  const [rentForm, setRentForm] = useState({ price: '', minHours: '6' })
+  const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [tuneModal, setTuneModal] = useState(null)   // car asset
   const [confirm, setConfirm] = useState(null)       // { title, message, danger, onConfirm }
+  const [isCompanyOwner, setIsCompanyOwner] = useState(false)
+
+  useEffect(() => {
+    fetchCompany().then(res => setIsCompanyOwner(!!res.company?.isOwner)).catch(() => setIsCompanyOwner(false))
+  }, [])
 
   // Синхронизируем открытую модалку тюнинга с обновлёнными данными.
   useEffect(() => {
@@ -98,12 +103,11 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
   const submitRent = async () => {
     if (!rentModal) return
-    const price = Number(rentForm.price)
     const minHours = Math.floor(Number(rentForm.minHours))
-    if (!(price > 0) || !(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
+    if (!(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
     setBusyId(rentModal.id)
     try {
-      await listPropertyForRent(rentModal.id, price, minHours)
+      await listPropertyForRent(rentModal.id, minHours)
       flash(t('rent.listed'))
       setRentModal(null)
       await load()
@@ -153,7 +157,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
     return (
       <button className="asset-act" disabled={busyId === a.id}
-        onClick={() => { setRentModal(a); setRentForm({ price: String(Math.round((a.rentMax || 200) * 0.5)), minHours: '6' }) }}>
+        onClick={() => { setRentModal(a); setRentForm({ minHours: '6' }) }}>
         <KeyRound size={15} /> {t('rent.list')}
       </button>
     )
@@ -264,10 +268,12 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                       <Wrench size={15} /> {t('tune.title')}
                     </button>
                   )}
-                  <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
-                    onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: a.name }) })}>
-                    <Building2 size={15} /> {t('myassets.toCompany')}
-                  </button>
+                  {isCompanyOwner && (
+                    <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
+                      onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: a.name }) })}>
+                      <Building2 size={15} /> {t('myassets.toCompany')}
+                    </button>
+                  )}
                   <button className="asset-act sell" disabled={busy}
                     onClick={() => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: a.name, value: formatMoney(a.value) }) })}>
                     <Trash2 size={15} /> {t('myassets.sell')}
@@ -285,17 +291,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
             <h3>{t('rent.title')}: {rentModal.name}</h3>
             <p className="modal-price">{t('rent.desc')}</p>
-            <div className="modal-quantity"><label>{t('rent.price')}:</label>
-              <input type="number" min="1" max={rentModal.rentMax}
-                value={rentForm.price}
-                onChange={e => {
-                  const v = Number(e.target.value)
-                  const capped = rentModal.rentMax && v > rentModal.rentMax ? String(Math.round(rentModal.rentMax)) : e.target.value
-                  setRentForm({ ...rentForm, price: capped })
-                }} /></div>
-            <p className="rent-max-hint">{t('rent.maxHint', { max: formatMoney(rentModal.rentMax) })}</p>
             <div className="modal-quantity"><label>{t('rent.minHours')}:</label>
               <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>
+            <p className="rent-max-hint">{t('rent.ratePerHour', { rate: formatMoney(rentModal.rentRatePerHour) })}</p>
+            <p className="modal-price">{t('rent.total')}: <b>${formatMoney((rentModal.rentRatePerHour || 0) * (Number(rentForm.minHours) || 0))}</b></p>
             <div className="modal-buttons">
               <button className="stock-btn buy-btn" onClick={submitRent} disabled={busyId === rentModal.id}>{t('rent.publish')}</button>
               <button className="stock-btn cancel-btn" onClick={() => setRentModal(null)}>{t('common.cancel')}</button>

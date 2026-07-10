@@ -413,9 +413,9 @@ export async function tuneCar(id, part) {
   return request(`/api/assets/${encodeURIComponent(id)}/tune`, { method: 'POST', body: JSON.stringify({ part }) })
 }
 
-export async function listPropertyForRent(id, price, minHours) {
+export async function listPropertyForRent(id, minHours) {
   return request(`/api/assets/${encodeURIComponent(id)}/rent/list`, {
-    method: 'POST', body: JSON.stringify({ price, minHours }),
+    method: 'POST', body: JSON.stringify({ minHours }),
   })
 }
 

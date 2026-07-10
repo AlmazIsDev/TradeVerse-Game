@@ -31,13 +31,13 @@ const RARITY_GRAD = {
  * Активы компании — интерфейс, аналогичный «Моё имущество», с вкладками.
  * Недвижимость и авто можно сдавать в аренду — доход идёт в бюджет компании.
  */
-function CompanyAssetsPanel({ assets = [], onClose, onRefresh }) {
+function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState('all')
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)
-  const [rentForm, setRentForm] = useState({ price: '', minHours: '6' })
+  const [rentForm, setRentForm] = useState({ minHours: '6' })
 
   const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2400) }
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
@@ -51,12 +51,11 @@ function CompanyAssetsPanel({ assets = [], onClose, onRefresh }) {
 
   const submitRent = async () => {
     if (!rentModal) return
-    const price = Number(rentForm.price)
     const minHours = Math.floor(Number(rentForm.minHours))
-    if (!(price > 0) || !(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
+    if (!(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
     setBusyId(rentModal.id)
     try {
-      await listPropertyForRent(rentModal.id, price, minHours)
+      await listPropertyForRent(rentModal.id, minHours)
       flash(t('rent.listed'))
       setRentModal(null)
       await onRefresh?.()
@@ -69,16 +68,19 @@ function CompanyAssetsPanel({ assets = [], onClose, onRefresh }) {
       return (
         <div className="asset-rental listed">
           <KeyRound size={13} /> {t('rent.waiting')}
-          <button className="asset-rental-cancel" disabled={busyId === a.id} onClick={() => doCancel(a.id)}>{t('common.cancel')}</button>
+          {isOwner && (
+            <button className="asset-rental-cancel" disabled={busyId === a.id} onClick={() => doCancel(a.id)}>{t('common.cancel')}</button>
+          )}
         </div>
       )
     }
     if (a.rental?.status === 'rented') {
       return <div className="asset-rental rented"><KeyRound size={13} /> {t('rent.rented')} · ${formatMoney(a.rental.price)}</div>
     }
+    if (!isOwner) return null
     return (
       <button className="asset-act" disabled={busyId === a.id}
-        onClick={() => { setRentModal(a); setRentForm({ price: String(Math.round((a.rentMax || 200) * 0.5)), minHours: '6' }) }}>
+        onClick={() => { setRentModal(a); setRentForm({ minHours: '6' }) }}>
         <KeyRound size={15} /> {t('rent.list')}
       </button>
     )
@@ -149,16 +151,10 @@ function CompanyAssetsPanel({ assets = [], onClose, onRefresh }) {
               <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
               <h3>{t('rent.title')}: {rentModal.name}</h3>
               <p className="modal-price">{t('company.rentDesc')}</p>
-              <div className="modal-quantity"><label>{t('rent.price')}:</label>
-                <input type="number" min="1" max={rentModal.rentMax} value={rentForm.price}
-                  onChange={e => {
-                    const v = Number(e.target.value)
-                    const capped = rentModal.rentMax && v > rentModal.rentMax ? String(Math.round(rentModal.rentMax)) : e.target.value
-                    setRentForm({ ...rentForm, price: capped })
-                  }} /></div>
-              <p className="rent-max-hint">{t('rent.maxHint', { max: formatMoney(rentModal.rentMax) })}</p>
               <div className="modal-quantity"><label>{t('rent.minHours')}:</label>
                 <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>
+              <p className="rent-max-hint">{t('rent.ratePerHour', { rate: formatMoney(rentModal.rentRatePerHour) })}</p>
+              <p className="modal-price">{t('rent.total')}: <b>${formatMoney((rentModal.rentRatePerHour || 0) * (Number(rentForm.minHours) || 0))}</b></p>
               <div className="modal-buttons">
                 <button className="stock-btn buy-btn" onClick={submitRent} disabled={busyId === rentModal.id}>{t('rent.publish')}</button>
                 <button className="stock-btn cancel-btn" onClick={() => setRentModal(null)}>{t('common.cancel')}</button>

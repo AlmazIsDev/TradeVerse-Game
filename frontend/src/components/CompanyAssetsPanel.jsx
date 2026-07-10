@@ -19,6 +19,14 @@ const ASSET_EMOJI = {
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
 }
 const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }
+
+// Пресеты срока аренды (в часах) — кнопки в модалке сдачи в аренду.
+const RENT_DURATIONS = [
+  { key: 'd1', hours: 24 }, { key: 'd2', hours: 48 }, { key: 'd4', hours: 96 },
+  { key: 'd7', hours: 168 }, { key: 'd10', hours: 240 }, { key: 'd12', hours: 288 },
+  { key: 'd14', hours: 336 }, { key: 'd16', hours: 384 }, { key: 'd18', hours: 432 },
+  { key: 'd30', hours: 720 },
+]
 const RARITY_GRAD = {
   common: 'linear-gradient(135deg,#334155,#1e293b)',
   uncommon: 'linear-gradient(135deg,#166534,#14532d)',
@@ -29,7 +37,7 @@ const RARITY_GRAD = {
 
 /**
  * Активы компании — интерфейс, аналогичный «Моё имущество», с вкладками.
- * Недвижимость и авто можно сдавать в аренду — доход идёт в бюджет компании.
+ * Недвижимость, авто и бизнесы можно сдавать в аренду — доход идёт в бюджет компании.
  */
 function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }) {
   const { t } = useTranslation()
@@ -63,7 +71,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
   }
 
   const renderRental = (a) => {
-    if (a.type !== 'realestate' && a.type !== 'car') return null
+    if (a.type !== 'realestate' && a.type !== 'car' && a.type !== 'business') return null
     if (a.rental?.status === 'listed') {
       return (
         <div className="asset-rental listed">
@@ -151,7 +159,16 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
               <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
               <h3>{t('rent.title')}: {t(`assetNames.${rentModal.slug}`, rentModal.name)}</h3>
               <p className="modal-price">{t('company.rentDesc')}</p>
-              <div className="modal-quantity"><label>{t('rent.minHours')}:</label>
+              <div className="rent-duration-grid">
+                {RENT_DURATIONS.map(d => (
+                  <button key={d.key} type="button"
+                    className={`tx-pill ${Number(rentForm.minHours) === d.hours ? 'active' : ''}`}
+                    onClick={() => setRentForm({ ...rentForm, minHours: String(d.hours) })}>
+                    {t(`rent.${d.key}`)}
+                  </button>
+                ))}
+              </div>
+              <div className="modal-quantity"><label>{t('rent.custom')}:</label>
                 <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>
               <p className="rent-max-hint">{t('rent.ratePerHour', { rate: formatMoney(rentModal.rentRatePerHour) })}</p>
               <p className="modal-price">{t('rent.total')}: <b>${formatMoney((rentModal.rentRatePerHour || 0) * (Number(rentForm.minHours) || 0))}</b></p>

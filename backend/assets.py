@@ -51,8 +51,9 @@ def _tune_cost(asset: dict, level: int) -> float:
 RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
 RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
 RENT_MAX_HOURS = 720     # максимальный срок аренды (30 суток)
-RENT_MAX_PCT = 0.25      # макс. суммарная аренда за RENT_MAX_HOURS = 25% от стоимости актива
-RENTABLE_TYPES = {"realestate", "car"}
+RENT_MIN_DAILY = 2000    # минимальная суточная ставка — даже за 1 день можно заработать $2000
+RENT_DAILY_PCT = 0.02    # суточная ставка = 2% от текущей стоимости актива (если это больше минимума)
+RENTABLE_TYPES = {"realestate", "car", "business"}
 
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
 # income_per_hour — пассивный доход; upkeep_per_hour — расход (для бизнесов).
@@ -248,12 +249,18 @@ def _income_per_hour(asset: dict) -> float:
     return round(base * (1 + 0.25 * (level - 1)), 2)
 
 
+def _rent_daily_rate(asset: dict) -> float:
+    """Суточная ставка аренды — своя для каждого актива (по его текущей стоимости),
+    но не ниже RENT_MIN_DAILY, чтобы даже дешёвый актив приносил ощутимый доход."""
+    if asset.get("type") not in RENTABLE_TYPES:
+        return 0.0
+    return round(max(RENT_MIN_DAILY, _current_value(asset) * RENT_DAILY_PCT), 2)
+
+
 def _rent_rate_per_hour(asset: dict) -> float:
     """Ставка аренды в час — для отображения клиенту (не используется в расчёте
     итоговой суммы, чтобы округление ставки не накапливалось на длинных сроках)."""
-    if asset.get("type") not in RENTABLE_TYPES:
-        return 0.0
-    return round(_current_value(asset) * RENT_MAX_PCT / RENT_MAX_HOURS, 2)
+    return round(_rent_daily_rate(asset) / 24, 2)
 
 
 def _rent_total(asset: dict, hours: int) -> float:
@@ -261,7 +268,7 @@ def _rent_total(asset: dict, hours: int) -> float:
     клиента (превью) и сервера (авторитетный пересчёт при выставлении объявления)."""
     if asset.get("type") not in RENTABLE_TYPES:
         return 0.0
-    return round(_current_value(asset) * RENT_MAX_PCT * hours / RENT_MAX_HOURS, 2)
+    return round(_rent_daily_rate(asset) * hours / 24, 2)
 
 
 def _upkeep_per_hour(asset: dict) -> float:
@@ -756,7 +763,7 @@ async def rent_list(
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
     if asset.get("type") not in RENTABLE_TYPES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость и авто")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость, авто и бизнесы")
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
     # Итоговая цена всегда пересчитывается сервером из срока — клиентской цене не доверяем.
@@ -810,9 +817,16 @@ if __name__ == "__main__":
     assert rate > 0
     assert abs(_rent_total(demo_asset, 1) - rate) < 0.01
     assert abs(_rent_total(demo_asset, 6) - rate * 6) < 0.05
-    assert _rent_total(demo_asset, RENT_MAX_HOURS) == round(_current_value(demo_asset) * RENT_MAX_PCT, 2)
+    assert _rent_total(demo_asset, RENT_MAX_HOURS) == round(_rent_daily_rate(demo_asset) * RENT_MAX_HOURS / 24, 2)
     # 1 час не должен стоить столько же, сколько 30 суток — старая формула это позволяла.
     assert _rent_total(demo_asset, 1) < _rent_total(demo_asset, RENT_MAX_HOURS)
-    non_rentable = {"type": "business", "price": 40000, "level": 1}
+    # Даже дешёвый актив приносит не меньше RENT_MIN_DAILY за 1 игровой день (24ч).
+    cheap_asset = {"type": "realestate", "price": 5000, "level": 1, "tuning_value": 0.0}
+    assert _rent_total(cheap_asset, 24) >= RENT_MIN_DAILY
+    # Бизнесы теперь тоже сдаются в аренду — у каждого своя ставка.
+    business_asset = {"type": "business", "price": 40000, "level": 1}
+    assert _rent_rate_per_hour(business_asset) > 0
+    assert _rent_total(business_asset, 24) >= RENT_MIN_DAILY
+    non_rentable = {"type": "crypto", "price": 40000, "level": 1}
     assert _rent_rate_per_hour(non_rentable) == 0.0
     print("assets.py rent formula: OK")

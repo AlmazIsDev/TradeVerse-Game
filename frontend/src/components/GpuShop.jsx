@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-<<<<<<< HEAD
-<<<<<<< HEAD
-import { ArrowLeft, Monitor, Filter, Zap, DollarSign, ArrowUpDown, Gem, Diamond, Snowflake, Flame, FlameKindling, Lock, BookOpen, Sparkles } from 'lucide-react'
-import BuyModal from './BuyModal'
-import ShopCard from './ShopCard'
-import { applyShopPrices } from '../utils/shopPrices'
+import { ArrowLeft, Monitor, Zap, DollarSign, ArrowUpDown, AlertTriangle, Check } from 'lucide-react'
+import { fetchShopCatalog, buyHardware } from '../services/api'
+import { formatMoney } from './TransactionsPanel'
 
+// Статические определения GPU для админ-редактора цен (см. PriceEditorTab).
+// Сам магазин ниже рендерит живой каталог из /api/shop (fetchShopCatalog).
 const GPU_PRODUCTS = [
   { id: 1, name: 'CrystalCore Quartz Q320', hashrate: 180, price: null, company: 'CrystalCore', line: 'Quartz' },
   { id: 2, name: 'CrystalCore Quartz Q340', hashrate: 220, price: null, company: 'CrystalCore', line: 'Quartz' },
@@ -100,100 +99,6 @@ const GPU_PRODUCTS = [
   { id: 90, name: 'Archivex Genesis G1060', hashrate: 25000, price: null, company: 'Archivex', line: 'Genesis' },
 ]
 
-const COMPANIES = ['CrystalCore', 'Pyronix', 'Archivex']
-
-const LINE_COLORS = {
-  // CrystalCore
-  Quartz:    { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.3)', icon: '#818cf8', accent: '#6366f1' },
-  Topaz:     { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.3)', icon: '#60a5fa', accent: '#3b82f6' },
-  Sapphire:  { bg: 'rgba(6, 182, 212, 0.10)', border: 'rgba(6, 182, 212, 0.3)', icon: '#22d3ee', accent: '#06b6d4' },
-  Diamond:   { bg: 'rgba(168, 85, 247, 0.10)', border: 'rgba(168, 85, 247, 0.3)', icon: '#c084fc', accent: '#a855f7' },
-  // Pyronix
-  Spark:     { bg: 'rgba(249, 115, 22, 0.10)', border: 'rgba(249, 115, 22, 0.3)', icon: '#fb923c', accent: '#f97316' },
-  Flare:     { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.3)', icon: '#f87171', accent: '#ef4444' },
-  Blaze:     { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.3)', icon: '#fbbf24', accent: '#f59e0b' },
-  Inferno:   { bg: 'rgba(220, 38, 38, 0.10)', border: 'rgba(220, 38, 38, 0.3)', icon: '#fca5a5', accent: '#dc2626' },
-  // Archivex
-  Vault:     { bg: 'rgba(34, 197, 94, 0.10)', border: 'rgba(34, 197, 94, 0.3)', icon: '#4ade80', accent: '#22c55e' },
-  Legacy:    { bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.3)', icon: '#34d399', accent: '#10b981' },
-  Archive:   { bg: 'rgba(20, 184, 166, 0.10)', border: 'rgba(20, 184, 166, 0.3)', icon: '#2dd4bf', accent: '#14b8a6' },
-  Genesis:   { bg: 'rgba(132, 204, 22, 0.10)', border: 'rgba(132, 204, 22, 0.3)', icon: '#a3e635', accent: '#84cc16' },
-}
-
-const LINE_ICONS = {
-  // CrystalCore
-  Quartz: Gem,
-  Topaz: Snowflake,
-  Sapphire: Diamond,
-  Diamond: Sparkles,
-  // Pyronix
-  Spark: Zap,
-  Flare: Flame,
-  Blaze: FlameKindling,
-  Inferno: Flame,
-  // Archivex
-  Vault: Lock,
-  Legacy: BookOpen,
-  Archive: Monitor,
-  Genesis: Sparkles,
-}
-
-const COMPANY_COLORS = {
-  CrystalCore: LINE_COLORS.Quartz,
-  Pyronix: LINE_COLORS.Spark,
-  Archivex: LINE_COLORS.Vault,
-=======
-import { ArrowLeft, Monitor, Zap, DollarSign, ArrowUpDown, AlertTriangle, Check } from 'lucide-react'
-import { fetchShopCatalog, buyHardware } from '../services/api'
-import { formatMoney } from './TransactionsPanel'
-
-const BRAND_COLORS = {
-  CrystalCore: '#818cf8', Pyronix: '#fb923c', Archivex: '#4ade80',
->>>>>>> origin/Marlow
-}
-
-function GpuShop({ onBack, balance = 0, onBalanceChange }) {
-  const { t } = useTranslation()
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [brand, setBrand] = useState('')
-  const [sortBy, setSortBy] = useState('price')
-  const [sortOrder, setSortOrder] = useState('asc')
-  const [busyId, setBusyId] = useState(null)
-  const [msg, setMsg] = useState(null)
-
-<<<<<<< HEAD
-  const filteredProducts = useMemo(() => {
-    let result = applyShopPrices(GPU_PRODUCTS).filter(product => {
-      if (selectedCompany && product.company !== selectedCompany) return false
-      if (priceFrom && product.price !== null && product.price < Number(priceFrom)) return false
-      if (priceTo && product.price !== null && product.price > Number(priceTo)) return false
-      if (hashrateFrom && product.hashrate < Number(hashrateFrom)) return false
-      if (hashrateTo && product.hashrate > Number(hashrateTo)) return false
-      return true
-    })
-
-    if (sortBy) {
-      result.sort((a, b) => {
-        let compare = 0
-        if (sortBy === 'price') {
-          const priceA = a.price ?? 0
-          const priceB = b.price ?? 0
-          compare = priceA - priceB
-        } else if (sortBy === 'company') {
-          compare = a.company.localeCompare(b.company)
-        } else {
-          compare = a.hashrate - b.hashrate
-        }
-        return sortOrder === 'asc' ? compare : -compare
-      })
-=======
-=======
-import { ArrowLeft, Monitor, Zap, DollarSign, ArrowUpDown, AlertTriangle, Check } from 'lucide-react'
-import { fetchShopCatalog, buyHardware } from '../services/api'
-import { formatMoney } from './TransactionsPanel'
-
 const BRAND_COLORS = {
   CrystalCore: '#818cf8', Pyronix: '#fb923c', Archivex: '#4ade80',
 }
@@ -209,7 +114,6 @@ function GpuShop({ onBack, balance = 0, onBalanceChange }) {
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
 
->>>>>>> origin/Marlow
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -219,10 +123,6 @@ function GpuShop({ onBack, balance = 0, onBalanceChange }) {
       setError(err.message)
     } finally {
       setLoading(false)
-<<<<<<< HEAD
->>>>>>> origin/Marlow
-=======
->>>>>>> origin/Marlow
     }
   }, [])
 
@@ -289,39 +189,12 @@ function GpuShop({ onBack, balance = 0, onBalanceChange }) {
         </button>
       </div>
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-      <div className="shop-grid">
-        {filteredProducts.map(product => {
-          const colors = LINE_COLORS[product.line] || COMPANY_COLORS[product.company] || LINE_COLORS.Quartz
-          const LineIcon = LINE_ICONS[product.line] || Monitor
-          return (
-            <ShopCard
-              key={product.id}
-              icon={LineIcon}
-              name={product.name}
-              subtitle={product.line}
-              specs={[{ icon: Zap, label: `${formatHashrate(product.hashrate)} H/s` }]}
-              price={product.price}
-              colors={colors}
-              onBuy={() => setSelectedProduct(product)}
-            />
-          )
-        })}
-      </div>
-=======
-=======
->>>>>>> origin/Marlow
       {loading && (
         <div className="gpu-grid">
           {Array.from({ length: 8 }).map((_, i) => <div key={i} className="gpu-card skeleton" style={{ height: 150 }} />)}
         </div>
       )}
       {error && <div className="error-state"><AlertTriangle size={24} className="error-icon" color="#fca5a5" /><p>{t('common.error')}: {error}</p></div>}
-<<<<<<< HEAD
->>>>>>> origin/Marlow
-=======
->>>>>>> origin/Marlow
 
       {!loading && !error && (
         <div className="gpu-grid">

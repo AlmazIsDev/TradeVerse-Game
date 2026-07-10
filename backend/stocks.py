@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import random
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -40,6 +41,15 @@ DEFAULT_STOCK_CONFIG = {
 
 LISTING_FEE = 5000.0        # стоимость размещения пользовательской акции
 FOUNDER_SHARE_PCT = 0.2     # доля основателя при эмиссии
+
+# ── Боты-покупатели ──────────────────────────────────────────────────────────
+# Заменяют реальный рыночный фид: на каждом тике планировщика с вероятностью
+# BOT_TRADE_PROBABILITY каждая системная акция получает симулированную
+# buy/sell-сделку, которая двигает цену той же формулой ΔP, что и игроки.
+BOT_USER_ID = "bot"
+BOT_TRADE_PROBABILITY = 0.4
+BOT_MIN_SHARES = 10
+BOT_MAX_ORDER_PERCENT = 0.003   # доля от total_shares за одну сделку бота
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -199,18 +209,82 @@ async def list_stocks(
     return out
 
 
+async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
+    """Боты-покупатели: имитируют рыночную активность по системным акциям.
+
+    Только для системных тикеров (issuer пуст) — пользовательские эмиссии
+    двигают только реальные игроки. Сам бот не имеет баланса/портфеля: сделка
+    просто двигает цену и пул свободных акций, как buy/sell от игрока.
+    """
+    for s in stocks:
+        if s.get("issuer"):
+            continue
+        if random.random() > BOT_TRADE_PROBABILITY:
+            continue
+
+        cfg = _resolve_config(s)
+        total_shares = cfg["total_shares"]
+        price = float(s.get("price", 0))
+        if total_shares <= 0 or price <= 0:
+            continue
+        free_shares = s.get("free_shares", total_shares)
+
+        max_qty = max(BOT_MIN_SHARES, int(total_shares * BOT_MAX_ORDER_PERCENT))
+        action = random.choice(["buy", "sell"])
+
+        if action == "buy":
+            qty = min(max_qty, free_shares)
+            if qty < BOT_MIN_SHARES:
+                continue
+            delta = price * cfg["volatility_k"] * (qty / total_shares)
+            new_price = round(price + delta, 2)
+            update = {"$inc": {"free_shares": -qty}, "$set": {"price": new_price}}
+        else:
+            qty = min(max_qty, total_shares - free_shares)
+            if qty < BOT_MIN_SHARES:
+                continue
+            delta = price * cfg["volatility_k"] * (qty / total_shares)
+            new_price = round(max(0.01, price - delta), 2)
+            update = {"$inc": {"free_shares": qty}, "$set": {"price": new_price}}
+
+        update["$set"].update({
+            "change": round(new_price - price, 2),
+            "changePercent": round((new_price - price) / price * 100, 2) if price else 0.0,
+            "updated_at": datetime.now(timezone.utc),
+        })
+        await db.stocks.update_one({"symbol": s["symbol"], "free_shares": free_shares}, update)
+        await db.stock_events.insert_one({
+            "symbol": s["symbol"],
+            "type": action,
+            "quantity": qty,
+            "priceBefore": price,
+            "priceAfter": new_price,
+            "userId": BOT_USER_ID,
+            "timestamp": datetime.now(timezone.utc),
+        })
+        await MarketDataService.record_snapshot(db, "stock", s["symbol"], new_price, force=True)
+        change = ((new_price - price) / price * 100) if price else 0.0
+        await broadcast({
+            "type": "price_tick",
+            "market": "stock",
+            "symbol": s["symbol"],
+            "price": new_price,
+            "changePercent": round(change, 2),
+        })
+
+
 async def maintain_stock_market(db: AsyncIOMotorDatabase):
     """Фоновое обслуживание рынка акций (вызывается Scheduler'ом).
 
-    Обновляет реальные котировки, делает одноразовый бэкфилл истории и пишет
-    периодические снимки — всё, что раньше выполнялось на каждом запросе списка.
+    Системные акции НЕ привязаны к реальным котировкам — цена двигается только
+    объёмом сделок (игроки + боты), как и у пользовательских эмиссий. Здесь же
+    делаем одноразовый бэкфилл истории и пишем периодические снимки — всё, что
+    раньше выполнялось на каждом запросе списка.
     """
     stocks = await find_all_stocks(db)
     if not stocks:
         return
-    # Реальные котировки — ТОЛЬКО для настоящих тикеров (не пользовательских эмиссий).
-    real_symbols = [s["symbol"] for s in stocks if not s.get("issuer")]
-    await MarketDataService.refresh_stocks(db, real_symbols)
+    await _run_bots(db, stocks)
     updates = []
     for s in await find_all_stocks(db):
         old_price = float(s.get("price", 0))
@@ -279,6 +353,31 @@ async def get_orders(
             "price": doc.get("price"),
             "amount": doc.get("amount"),
             "timestamp": _iso(doc.get("timestamp")),
+        })
+    return orders
+
+
+@router.get("/bot-orders")
+async def get_bot_orders(
+    limit: int = Query(100, ge=1, le=500),
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Лента сделок ботов-покупателей (только для админов)."""
+    orders = []
+    cursor = (
+        db.stock_events.find({"userId": BOT_USER_ID})
+        .sort("timestamp", -1)
+        .limit(limit)
+    )
+    async for e in cursor:
+        orders.append({
+            "id": str(e["_id"]),
+            "symbol": e.get("symbol"),
+            "action": e.get("type"),
+            "quantity": e.get("quantity"),
+            "pricePerShare": e.get("priceAfter"),
+            "timestamp": _iso(e.get("timestamp")),
         })
     return orders
 

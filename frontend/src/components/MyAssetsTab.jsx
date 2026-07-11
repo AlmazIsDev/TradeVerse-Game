@@ -4,13 +4,16 @@ import {
   fetchMyAssets, collectAsset, upgradeAsset, sellAsset,
   transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
   fetchCompany, fetchMaterialsPrice, buyMaterials,
+  fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import RentModal from './RentModal'
+import ItStudioOrderModal from './ItStudioOrderModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
+  Swords, ShieldPlus, Cpu,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -26,7 +29,8 @@ const TYPE_TABS = [
 // «Изображения» объектов (эмодзи-баннеры вместо фото — работает без внешних ассетов)
 const ASSET_EMOJI = {
   studio: '🏠', flat2: '🏢', townhouse: '🏘️', villa: '🏖️', penthouse: '🌆', castle: '🏰',
-  shawarma: '🌯', coffee: '☕', carwash: '🚿', itstudio: '💻', factory: '🏭',
+  shawarma: '🌯', coffee: '☕', carwash: '🚿', factory: '🏭',
+  itstudio_basic: '💻', itstudio_medium: '💻', itstudio_advanced: '💻', itstudio_premium: '💻',
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
 }
 const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }
@@ -53,6 +57,12 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [materialsModal, setMaterialsModal] = useState(null)   // business asset
   const [materialsInfo, setMaterialsInfo] = useState(null)     // { unitPrice, boostPerUnit, boostCap }
   const [materialsQty, setMaterialsQty] = useState('10')
+  const [studios, setStudios] = useState([])                   // IT-студии игрока (см. cityroof.py mystudios)
+  const [studioMaterialsModal, setStudioMaterialsModal] = useState(null)   // studio entry
+  const [studioMaterialsQty, setStudioMaterialsQty] = useState('10')
+  const [orderModal, setOrderModal] = useState(null)            // { mode, businessId }
+  const [cityMap, setCityMap] = useState(null)
+  const [orderBusy, setOrderBusy] = useState(false)
 
   // Синхронизируем открытую модалку тюнинга с обновлёнными данными.
   useEffect(() => {
@@ -78,6 +88,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
   useEffect(() => { load() }, [load])
 
+  // IT-студии: уровень/опыт/материалы/активный заказ — источник правды сервер
+  // (см. GET /api/cityroof/itstudio/mystudios), используется и здесь, и в
+  // ItStudioOrderModal.
+  const loadStudios = useCallback(() => {
+    fetchMyStudios().then(setStudios).catch(() => setStudios([]))
+  }, [])
+  useEffect(() => { loadStudios() }, [loadStudios])
+
   // Владеет ли игрок компанией — определяет доступность «Передать компании».
   // Проверка дублируется на сервере (см. backend/assets.py transfer_to_company).
   useEffect(() => {
@@ -88,11 +106,11 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   // тихо перечитываем список, без скелетона, чтобы не терять раскрытые модалки.
   useEffect(() => {
     const onRealtime = (ev) => {
-      if (ev.detail?.type === 'asset_update') load(true)
+      if (ev.detail?.type === 'asset_update') { load(true); loadStudios() }
     }
     window.addEventListener('tv:realtime', onRealtime)
     return () => window.removeEventListener('tv:realtime', onRealtime)
-  }, [load])
+  }, [load, loadStudios])
 
   const flash = (text, type = 'success') => {
     setMsg({ text, type })
@@ -156,6 +174,54 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
   }
 
+  const openStudioMaterials = (studio) => {
+    setStudioMaterialsModal(studio)
+    setStudioMaterialsQty('10')
+  }
+
+  const submitStudioMaterials = async () => {
+    if (!studioMaterialsModal) return
+    const qty = Math.floor(Number(studioMaterialsQty))
+    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    setBusyId(studioMaterialsModal.assetId)
+    try {
+      const res = await buyStudioMaterials(studioMaterialsModal.assetId, qty)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      flash(t('materials.bought'))
+      setStudioMaterialsModal(null)
+      await loadStudios()
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // Атака/защита требуют карты «Крыши города» (список целей + актуальный
+  // конфиг цены/материалов) — подгружаем лениво, только когда открывают заказ.
+  const openOrder = async (mode) => {
+    setOrderModal({ mode })
+    if (!cityMap) {
+      try { setCityMap(await fetchCityMap()) } catch { setCityMap(null) }
+    }
+  }
+
+  const submitOrder = async (assetId, businessId) => {
+    if (!orderModal) return
+    setOrderBusy(true)
+    try {
+      const res = await orderStudioJob(assetId, businessId, orderModal.mode)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      flash(t('itstudio.ordered', { hours: res.readyInHours }))
+      setOrderModal(null)
+      await loadStudios()
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setOrderBusy(false)
+    }
+  }
+
   const tuneCost = (car, part) => Math.round((car.price || 0) * 0.05 * ((car.tuning?.[part] || 0) + 1))
 
   const doTune = async (car, part) => {
@@ -197,6 +263,30 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       <button className="asset-act" disabled={busyId === a.id} onClick={() => setRentModal(a)}>
         <KeyRound size={15} /> {t('rent.list')}
       </button>
+    )
+  }
+
+  // Прокачка/материалы IT-студии (см. cityroof.py studio_progress) — уровень
+  // и инвентарь материалов приходят с сервера, отдельно от общего дохода.
+  const renderStudio = (a) => {
+    if (!a.slug?.startsWith('itstudio_')) return null
+    const s = studios.find(x => x.assetId === a.id)
+    if (!s) return null
+    const xpPct = s.xpToNext == null ? 100 : Math.round(((s.xpPerLevel - s.xpToNext) / s.xpPerLevel) * 100)
+    return (
+      <div className="itstudio-progress">
+        <div className="itstudio-progress-head">
+          <span><Cpu size={13} /> {t(`itstudio.tier.${s.tier}`)} · {t('itstudio.level')} {s.level}</span>
+          <span className="itstudio-xp">{s.xpToNext == null ? t('itstudio.maxLevel') : `${s.xp} XP`}</span>
+        </div>
+        {s.xpToNext != null && (
+          <div className="itstudio-xp-bar"><div className="itstudio-xp-fill" style={{ width: `${Math.min(100, Math.max(4, xpPct))}%` }} /></div>
+        )}
+        <div className="itstudio-material">
+          <span>{s.material.name}</span>
+          <b>{s.material.qty}</b>
+        </div>
+      </div>
     )
   }
 
@@ -286,6 +376,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   <div className="asset-accrued"><Wallet size={14} /> {t('myassets.accrued')}: <b>${formatMoney(a.accrued)}</b></div>
                 )}
                 {renderRental(a)}
+                {renderStudio(a)}
 
                 <div className={`asset-actions ${isCar ? 'compact' : ''}`}>
                   {!isCar && a.profitPerHour > 0 && (
@@ -311,6 +402,27 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                       {a.materialsBoostPct > 0 && <span className="materials-boost-badge">+{Math.round(a.materialsBoostPct * 100)}%</span>}
                     </button>
                   )}
+                  {/* IT-студия: атака/защита требуют владения активом — см.
+                      backend/cityroof.py order_itstudio (сервер тоже проверяет). */}
+                  {a.slug?.startsWith('itstudio_') && (() => {
+                    const s = studios.find(x => x.assetId === a.id)
+                    if (s?.pendingJob) {
+                      return <div className="itstudio-pending"><Package size={13} /> {t('itstudio.pending')}</div>
+                    }
+                    return (
+                      <>
+                        <button className="asset-act" disabled={busy} onClick={() => openStudioMaterials(s || { assetId: a.id, name: a.name })}>
+                          <Package size={15} /> {t('itstudio.buyMaterials')}
+                        </button>
+                        <button className="asset-act itstudio-btn" disabled={busy} onClick={() => openOrder('attack')}>
+                          <Swords size={15} /> {t('itstudio.attack')}
+                        </button>
+                        <button className="asset-act" disabled={busy} onClick={() => openOrder('defense')}>
+                          <ShieldPlus size={15} /> {t('itstudio.defense')}
+                        </button>
+                      </>
+                    )
+                  })()}
                   {/* Доступно только владельцу компании — сервер тоже это проверяет (backend/assets.py transfer_to_company). */}
                   {ownsCompany && (
                     <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
@@ -355,6 +467,37 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             </div>
           </div>
         </div>
+      )}
+
+      {studioMaterialsModal && (
+        <div className="modal-overlay" onClick={() => setStudioMaterialsModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setStudioMaterialsModal(null)}><X size={18} /></button>
+            <h3><Package size={17} /> {t('itstudio.buyMaterials')}: {studioMaterialsModal.name}</h3>
+            {studioMaterialsModal.material && (
+              <p className="modal-price">{studioMaterialsModal.material.name}: <strong>${formatMoney(studioMaterialsModal.material.unitCost)}</strong> / {t('common.quantity').toLowerCase()}</p>
+            )}
+            <div className="modal-quantity"><label>{t('common.quantity')}:</label>
+              <input type="number" min="1" max="500" value={studioMaterialsQty} autoFocus
+                onChange={e => setStudioMaterialsQty(e.target.value)} /></div>
+            <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Math.floor(Number(studioMaterialsQty)) || 0) * (studioMaterialsModal.material?.unitCost || 0))}</strong></p>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={submitStudioMaterials} disabled={busyId === studioMaterialsModal.assetId}>{t('itstudio.buyMaterials')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setStudioMaterialsModal(null)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {orderModal && (
+        <ItStudioOrderModal
+          mode={orderModal.mode}
+          map={cityMap}
+          studios={studios}
+          busy={orderBusy}
+          onSubmit={submitOrder}
+          onClose={() => setOrderModal(null)}
+        />
       )}
 
       {tuneModal && (

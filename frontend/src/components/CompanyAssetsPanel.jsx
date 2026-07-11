@@ -16,7 +16,8 @@ const TABS = [
 
 const ASSET_EMOJI = {
   studio: '🏠', flat2: '🏢', townhouse: '🏘️', villa: '🏖️', penthouse: '🌆', castle: '🏰',
-  shawarma: '🌯', coffee: '☕', carwash: '🚿', itstudio: '💻', factory: '🏭',
+  shawarma: '🌯', coffee: '☕', carwash: '🚿', factory: '🏭',
+  itstudio_basic: '💻', itstudio_medium: '💻', itstudio_advanced: '💻', itstudio_premium: '💻',
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
 }
 const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }

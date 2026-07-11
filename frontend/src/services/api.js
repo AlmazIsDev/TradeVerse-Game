@@ -721,8 +721,16 @@ export async function fetchCityBonuses() {
   return request('/api/cityroof/bonuses')
 }
 
-export async function orderItStudio(businessId) {
-  return request(`/api/cityroof/itstudio/order/${encodeURIComponent(businessId)}`, { method: 'POST' })
+export async function fetchMyStudios() {
+  return request('/api/cityroof/itstudio/mystudios')
+}
+
+export async function buyStudioMaterials(assetId, qty) {
+  return request('/api/cityroof/itstudio/materials/buy', { method: 'POST', body: JSON.stringify({ assetId, qty }) })
+}
+
+export async function orderStudioJob(assetId, businessId, type) {
+  return request('/api/cityroof/itstudio/order', { method: 'POST', body: JSON.stringify({ assetId, businessId, type }) })
 }
 
 export async function fetchItStudioJobs() {

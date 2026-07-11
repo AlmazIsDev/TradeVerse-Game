@@ -1155,6 +1155,40 @@
   color: #eab308; font-size: 13px; font-weight: 600; justify-content: center;
 }
 
+/* Прокачка студии (карточка актива в «Моя недвижимость») */
+.itstudio-progress {
+  margin-top: var(--spacing-sm); padding: 10px; border-radius: var(--radius-md);
+  background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2);
+}
+.itstudio-progress-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 12px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 6px;
+}
+.itstudio-progress-head svg { color: var(--color-accent-hover); }
+.itstudio-xp { color: var(--color-text-secondary); font-weight: 500; }
+.itstudio-xp-bar {
+  height: 5px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin-bottom: 6px;
+}
+.itstudio-xp-fill { height: 100%; background: var(--color-accent-hover); border-radius: 999px; }
+.itstudio-material {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--color-text-secondary);
+}
+.itstudio-material b { color: var(--color-text-primary); }
+
+/* Модалка заказа атаки/защиты (ItStudioOrderModal) */
+.itstudio-preview {
+  display: flex; flex-direction: column; gap: 6px; margin: var(--spacing-md) 0;
+  padding: 10px 12px; border-radius: var(--radius-md); background: var(--color-bg-tertiary);
+}
+.itstudio-preview > div { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.itstudio-preview span { color: var(--color-text-secondary); }
+.itstudio-preview b { color: var(--color-text-primary); }
+.itstudio-preview b.down { color: var(--color-danger, #ef4444); }
+.itstudio-shield-warn {
+  display: inline-flex; align-items: center; gap: 6px; color: #eab308; font-size: 12px; font-weight: 600;
+}
+
 /* ===================== CITY ROOF: BUILDING BONUSES ===================== */
 .cityroof-bonuses {
   background: var(--color-bg-secondary); border: 1px solid rgba(234,179,8,0.2);

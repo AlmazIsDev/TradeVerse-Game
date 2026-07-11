@@ -11,6 +11,10 @@
 Доход зависит от: числа и характеристик GPU, температуры, износа, стоимости
 электроэнергии, курса крипты, эффективности охлаждения, разгона и БП.
 """
+from __future__ import annotations
+
+from typing import Optional
+
 import math
 from datetime import datetime, timezone
 
@@ -58,7 +62,7 @@ def _aware(dt):
 # ── Расчёт показателей фермы ─────────────────────────────────────────────────
 
 
-def _coin_profitability(coin: dict | None) -> float:
+def _coin_profitability(coin: Optional[dict]) -> float:
     if not coin or coin.get("price", 0) <= 0:
         return 0.0
     price = float(coin["price"])
@@ -92,7 +96,7 @@ async def _city_bonus(db, user_id: str) -> dict:
         return {}
 
 
-def choose_best_coin(market: dict) -> str | None:
+def choose_best_coin(market: dict) -> Optional[str]:
     """ИИ-выбор самой прибыльной монеты: курс × момент − комиссия."""
     best, best_p = None, -1.0
     for sym, c in market.items():
@@ -103,7 +107,7 @@ def choose_best_coin(market: dict) -> str | None:
 
 
 def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float = 1.0,
-             city: dict | None = None) -> dict:
+             city: Optional[dict] = None) -> dict:
     # city — бонусы зданий «Крыши города»: yield (+% к добыче), energy (−% к счёту за свет).
     city = city or {}
     yield_bonus = float(city.get("yield", 0.0))
@@ -238,7 +242,7 @@ class CreateFarm(BaseModel):
 
 class InstallBody(BaseModel):
     category: str
-    hwId: str | None = None   # конкретная деталь из инвентаря (игрок выбирает сам)
+    hwId: Optional[str] = None   # конкретная деталь из инвентаря (игрок выбирает сам)
 
 
 class CoinBody(BaseModel):

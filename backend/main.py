@@ -26,6 +26,9 @@ from auth import (
     hash_password,
     verify_password,
     create_access_token,
+    create_refresh_token,
+    use_refresh_token,
+    delete_refresh_token,
 )
 from economy import router as economy_router
 from crypto import router as crypto_router
@@ -60,6 +63,9 @@ from schemas import (
     UserCreate,
     UserLogin,
     UserResponse,
+    AuthResponse,
+    RefreshRequest,
+    TokenPair,
     AdminUserUpdate,
     StockCreate,
     StockResponse,
@@ -108,6 +114,9 @@ async def lifespan(app: FastAPI):
     await db.mining_farms.create_index("status")
     await db.cityroof_sessions.create_index("attackerId")
     await db.cityroof_seasons.create_index("closed_at")
+    # Refresh-токены: уникальный индекс по хешу + TTL для авто-очистки истёкших.
+    await db.refresh_tokens.create_index("token_hash", unique=True)
+    await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
     await init_db()
     start_scheduler()   # единый фоновый планировщик всех систем
     yield
@@ -116,10 +125,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="TradeVerse API", version="1.0.0", lifespan=lifespan)
 
-# CORS — разрешаем запросы с frontend (Vite на порту 5173)
+# CORS — разрешаем запросы с frontend (прод-домен + локальная разработка)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "https://tradeverse.weissx.net",   # прод-фронтенд
+        "http://localhost:20300",          # локальный vite (dev/preview)
+        "http://localhost:5173",           # локальный vite (дефолтный порт)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -145,10 +158,6 @@ app.include_router(ws_router)
 # ── App-specific helpers ─────────────────────────────────────────────────────
 
 
-def get_users_collection(db: AsyncIOMotorDatabase = Depends(get_db)):
-    return db.users
-
-
 def generate_card_number() -> str:
     """Генерирует номер карты формата XXXX-XXXX-XXXX-XXXXX."""
     parts = [str(random.randint(1000, 9999)) for _ in range(3)]
@@ -165,18 +174,30 @@ async def ensure_unique_card_number(users) -> str:
             return card
 
 
+async def issue_token_pair(db: AsyncIOMotorDatabase, user: dict) -> tuple[str, str]:
+    """Выдаёт (access_token, refresh_token) для пользователя.
+
+    Единая точка выдачи токенов — используется register/login/refresh, чтобы
+    состав payload JWT не приходилось синхронизировать вручную в трёх местах.
+    """
+    token = create_access_token({
+        "sub": str(user["_id"]),
+        "username": user["username"],
+        "role": user.get("role", "user"),
+    })
+    refresh_token = await create_refresh_token(db, user["_id"])
+    return token, refresh_token
+
+
 # ── Auth Endpoints ───────────────────────────────────────────────────────────
 
 
-@app.post(
-    "/api/register",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@app.post("/api/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
 async def register_user(
     user_data: UserCreate,
-    users=Depends(get_users_collection),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    users = db.users
     existing = await users.find_one({"username": user_data.username})
     if existing:
         raise HTTPException(
@@ -197,22 +218,29 @@ async def register_user(
         "created_at": datetime.now(timezone.utc),
     }
     result = await users.insert_one(new_user)
-    return UserResponse(
-        id=str(result.inserted_id),
-        username=user_data.username,
-        balance=1000.0,
-        card_number=card_number,
-        card_visible=True,
-        avatar=None,
-    )
+    new_user["_id"] = result.inserted_id
+
+    # Авто-логин: сразу выдаём access- и refresh-токены (та же форма, что у /api/login).
+    token, refresh_token = await issue_token_pair(db, new_user)
+
+    return {
+        "id": str(result.inserted_id),
+        "username": user_data.username,
+        "role": "user",
+        "balance": 1000.0,
+        "card_number": card_number,
+        "card_visible": True,
+        "token": token,
+        "refresh_token": refresh_token,
+    }
 
 
-@app.post("/api/login")
+@app.post("/api/login", response_model=AuthResponse)
 async def login_user(
     user_data: UserLogin,
-    users=Depends(get_users_collection),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    user = await users.find_one({"username": user_data.username})
+    user = await db.users.find_one({"username": user_data.username})
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -225,12 +253,7 @@ async def login_user(
             detail="Неверное имя пользователя или пароль",
         )
 
-    # Создаём JWT-токен с id, username и role
-    token = create_access_token({
-        "sub": str(user["_id"]),
-        "username": user["username"],
-        "role": user.get("role", "user"),
-    })
+    token, refresh_token = await issue_token_pair(db, user)
 
     return {
         "id": str(user["_id"]),
@@ -241,7 +264,53 @@ async def login_user(
         "card_visible": user.get("card_visible", True),
         "avatar": user.get("avatar"),
         "token": token,
+        "refresh_token": refresh_token,
     }
+
+
+@app.post("/api/auth/refresh", response_model=TokenPair)
+async def refresh_tokens(
+    body: RefreshRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Ротация refresh-токена: выдаёт новую пару токенов, сбрасывая 30-дневный срок.
+
+    Старый refresh-токен атомарно находится и удаляется одним запросом
+    (см. use_refresh_token) — это гарантирует, что при двух параллельных
+    запросах с одним и тем же refresh-токеном (например, две открытые вкладки)
+    ротацию совершит только один из них, а не оба.
+    """
+    doc = await use_refresh_token(db, body.refresh_token)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Недействительный или истёкший refresh-токен",
+        )
+
+    user = await db.users.find_one({"_id": doc["user_id"]})
+    if not user:
+        # Пользователь удалён, а осиротевший токен уже удалён выше.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Пользователь не найден",
+        )
+
+    token, new_refresh = await issue_token_pair(db, user)
+
+    return {"token": token, "refresh_token": new_refresh}
+
+
+@app.post("/api/auth/logout")
+async def logout(
+    body: RefreshRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Выход: удаляет refresh-токен. Идемпотентно — 200 даже если токен не найден.
+
+    Не требует валидного access-токена: пользователь может выходить с истёкшим.
+    """
+    await delete_refresh_token(db, body.refresh_token)
+    return {"message": "Выход выполнен"}
 
 
 @app.get("/api/user/me")
@@ -554,6 +623,15 @@ async def admin_update_user(
     updated_user["id"] = str(updated_user.pop("_id"))
     updated_user.pop("hashed_password", None)
     updated_user["role"] = updated_user.get("role", "user")
+
+    # Живое обновление списка пользователей у других открытых админ-панелей —
+    # только админам, не всем игрокам (см. push_to_admins).
+    try:
+        from ws import push_to_admins
+        await push_to_admins(db, {"type": "admin_user_modified", "userId": user_id})
+    except Exception:
+        pass
+
     return updated_user
 
 
@@ -581,6 +659,13 @@ async def admin_delete_user(
                 _admin.get("username", "unknown"), user_id, existing.get("username", "unknown"))
 
     await db.users.delete_one({"_id": ObjectId(user_id)})
+
+    try:
+        from ws import push_to_admins
+        await push_to_admins(db, {"type": "admin_user_deleted", "userId": user_id})
+    except Exception:
+        pass
+
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}
 
 
@@ -675,4 +760,4 @@ def _serialize_datetime(dt: Optional[datetime]) -> str:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=20301, reload=True)

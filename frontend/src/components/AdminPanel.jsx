@@ -5,7 +5,7 @@ import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 
@@ -81,6 +81,20 @@ function AdminPanel({ user, onClose }) {
 
   useEffect(() => {
     loadData()
+  }, [activeSection])
+
+  // Живое обновление списка пользователей (только для админов — см. push_to_admins
+  // в backend/ws.py). Транзакции намеренно НЕ обновляются пушем — по решению
+  // пользователя они обновляются только вручную кнопкой (см. handleRefreshTransactions).
+  useEffect(() => {
+    const onRealtime = (ev) => {
+      const d = ev.detail
+      if (d?.type === 'admin_user_modified' || d?.type === 'admin_user_deleted') {
+        if (activeSection === 'users') loadData()
+      }
+    }
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => window.removeEventListener('tv:realtime', onRealtime)
   }, [activeSection])
 
   const loadData = async () => {
@@ -659,6 +673,12 @@ function AdminPanel({ user, onClose }) {
 
         {!loading && activeSection === 'transactions' && (
           <>
+            <div className="admin-toolbar">
+              <span className="admin-count">{t('admin.transactions')}: {transactions.length + botOrders.length}</span>
+              <button className="admin-btn" onClick={loadData} title={t('admin.refresh')}>
+                <RefreshCw size={14} /> {t('admin.refresh')}
+              </button>
+            </div>
             <div className="admin-list">
               {transactions.map(tx => (
                 <div key={tx.id} className="admin-tx-item">

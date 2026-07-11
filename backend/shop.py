@@ -7,6 +7,10 @@
 изменение цен в админ-панели не ломает покупку. Купленное железо попадает в
 инвентарь пользователя (user_hardware) — основа для будущих майнинг-ферм.
 """
+from __future__ import annotations
+
+from typing import Optional
+
 import json
 from datetime import datetime, timezone
 
@@ -280,10 +284,10 @@ async def get_inventory(
 
 
 class ShopConfigUpdate(BaseModel):
-    gpu: float | None = None
-    psu: float | None = None
-    cooling: float | None = None
-    rack: float | None = None
+    gpu: Optional[float] = None
+    psu: Optional[float] = None
+    cooling: Optional[float] = None
+    rack: Optional[float] = None
 
 
 @router.get("/config")

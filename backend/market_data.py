@@ -10,6 +10,10 @@
 Также здесь живёт роутер /api/market/* (история, детальная карточка актива)
 и /api/favorites/* (избранное игрока).
 """
+from __future__ import annotations
+
+from typing import Optional
+
 import logging
 import os
 import random
@@ -44,7 +48,7 @@ def _coin_color(symbol: str) -> str:
     return _COIN_COLORS[sum(ord(c) for c in symbol) % len(_COIN_COLORS)]
 
 # interval → (lookback, bucket_seconds).  None bucket = адаптивный (для "all").
-INTERVALS: dict[str, tuple[timedelta | None, int | None]] = {
+INTERVALS: dict[str, tuple[Optional[timedelta], Optional[int]]] = {
     "1h": (timedelta(hours=1), 60),
     "24h": (timedelta(hours=24), 15 * 60),
     "7d": (timedelta(days=7), 60 * 60),
@@ -156,7 +160,7 @@ class MarketDataService:
         ath = max(p for _, p in prices)
         atl = min(p for _, p in prices)
 
-        def change(window: timedelta) -> float | None:
+        def change(window: timedelta) -> Optional[float]:
             cutoff = _now() - window
             base = None
             for ts, p in prices:

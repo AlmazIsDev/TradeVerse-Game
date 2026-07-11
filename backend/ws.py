@@ -66,6 +66,20 @@ async def broadcast(message: dict):
         logger.debug("ws broadcast failed: %s", exc)
 
 
+async def push_to_admins(db, message: dict):
+    """Отправить событие только пользователям с ролью admin (не всем игрокам).
+
+    JWT не содержит роль (только sub), поэтому список админов ищем в БД на
+    момент отправки — это дешевле, чем помечать соединения ролью при коннекте
+    и держать её в синхронизации.
+    """
+    try:
+        async for admin in db.users.find({"role": "admin"}, {"_id": 1}):
+            await push_to_user(str(admin["_id"]), message)
+    except Exception as exc:
+        logger.debug("ws push_to_admins failed: %s", exc)
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
     user_id = None

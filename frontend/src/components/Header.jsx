@@ -90,9 +90,12 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
     } catch { /* ignore */ }
   }, [])
 
+  // 30с был основным источником обновлений до WS; теперь rtKey (см. ниже) и
+  // tv:notif уже покрывают live-обновления, поэтому интервал — редкий
+  // резервный фолбэк на случай пропущенного push, как и у остальных вкладок.
   useEffect(() => {
     loadNotifs()
-    const id = setInterval(loadNotifs, 30000)
+    const id = setInterval(loadNotifs, 120000)
     return () => clearInterval(id)
   }, [loadNotifs])
 

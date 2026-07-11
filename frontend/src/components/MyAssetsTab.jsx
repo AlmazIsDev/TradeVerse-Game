@@ -71,8 +71,8 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const data = await fetchMyAssets()
       setAssets(data.assets || [])
@@ -80,11 +80,21 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     } catch (err) {
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Аренда заселяется/завершается на сервере (см. backend/assets.py _process_rental) —
+  // тихо перечитываем список, без скелетона, чтобы не терять раскрытые модалки.
+  useEffect(() => {
+    const onRealtime = (ev) => {
+      if (ev.detail?.type === 'asset_update') load(true)
+    }
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => window.removeEventListener('tv:realtime', onRealtime)
+  }, [load])
 
   const flash = (text, type = 'success') => {
     setMsg({ text, type })

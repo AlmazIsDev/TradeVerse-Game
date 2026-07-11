@@ -4,6 +4,10 @@ import { ArrowLeft, Monitor, Zap, DollarSign, ArrowUpDown, AlertTriangle, Check 
 import { fetchShopCatalog, buyHardware } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 
+const BRAND_COLORS = {
+  CrystalCore: '#818cf8', Pyronix: '#fb923c', Archivex: '#4ade80',
+}
+
 // Статические определения GPU для админ-редактора цен (см. PriceEditorTab).
 // Сам магазин ниже рендерит живой каталог из /api/shop (fetchShopCatalog).
 const GPU_PRODUCTS = [
@@ -98,10 +102,6 @@ const GPU_PRODUCTS = [
   { id: 89, name: 'Archivex Genesis G1040', hashrate: 22000, price: null, company: 'Archivex', line: 'Genesis' },
   { id: 90, name: 'Archivex Genesis G1060', hashrate: 25000, price: null, company: 'Archivex', line: 'Genesis' },
 ]
-
-const BRAND_COLORS = {
-  CrystalCore: '#818cf8', Pyronix: '#fb923c', Archivex: '#4ade80',
-}
 
 function GpuShop({ onBack, balance = 0, onBalanceChange }) {
   const { t } = useTranslation()

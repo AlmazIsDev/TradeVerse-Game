@@ -32,10 +32,19 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
 
   // Realtime через WebSocket: обновляет баланс и уведомления без перезагрузки.
   // Polling в Header остаётся резервным механизмом, если WS недоступен.
+  //
+  // Access-токен ротируется каждые ~30 минут (см. ACCESS_TOKEN_EXPIRE_MINUTES
+  // в backend/auth.py), а сервер валидирует токен только один раз — при
+  // хендшейке (backend/ws.py). Поэтому при любом закрытии сокета мы обязаны
+  // переподключаться со свежим токеном из localStorage, а не переиспользовать
+  // токен, снятый при монтировании компонента — иначе после первой ротации
+  // переподключение с устаревшим токеном будет неизменно отклоняться сервером.
   useEffect(() => {
     let socket
     let ping
     let debounce
+    let reconnectTimer
+    let cancelled = false
     // Всплески событий (напр. серия тиков майнинга) схлопываем в один запрос
     // за баланс/обновление — иначе fetchCurrentUser бил бы на каждое сообщение.
     const scheduleSync = () => {
@@ -46,31 +55,47 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         setRtKey(k => k + 1)
       }, 1200)
     }
-    try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-      const token = stored.token
-      if (!token) return undefined
-      const url = API_BASE_URL.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(token)
-      socket = new WebSocket(url)
-      socket.onmessage = (ev) => {
-        let data = null
-        try { data = JSON.parse(ev.data) } catch { /* ignore */ }
-        // Событие баланса применяем мгновенно (без сетевого запроса) — верхняя
-        // панель обновляется сразу при любом изменении баланса.
-        if (data?.type === 'balance' && data.balance != null) {
-          handleBalanceChange(data.balance)
-        } else {
-          scheduleSync()
+    const connect = () => {
+      if (cancelled) return
+      try {
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+        const token = stored.token
+        if (!token) return
+        const url = API_BASE_URL.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(token)
+        socket = new WebSocket(url)
+        socket.onmessage = (ev) => {
+          let data = null
+          try { data = JSON.parse(ev.data) } catch { /* ignore */ }
+          // Событие баланса применяем мгновенно (без сетевого запроса) — верхняя
+          // панель обновляется сразу при любом изменении баланса.
+          if (data?.type === 'balance' && data.balance != null) {
+            handleBalanceChange(data.balance)
+          } else {
+            scheduleSync()
+          }
+          // Ретрансляция события другим вкладкам (напр. MiningTab слушает 'tv:realtime').
+          if (data) { try { window.dispatchEvent(new CustomEvent('tv:realtime', { detail: data })) } catch { /* ignore */ } }
         }
-        // Ретрансляция события другим вкладкам (напр. MiningTab слушает 'tv:realtime').
-        if (data) { try { window.dispatchEvent(new CustomEvent('tv:realtime', { detail: data })) } catch { /* ignore */ } }
-      }
-      ping = setInterval(() => {
-        try { if (socket.readyState === 1) socket.send('ping') } catch { /* ignore */ }
-      }, 25000)
-    } catch { /* ignore — останется polling */ }
+        ping = setInterval(() => {
+          try { if (socket.readyState === 1) socket.send('ping') } catch { /* ignore */ }
+        }, 25000)
+        socket.onclose = () => {
+          clearInterval(ping)
+          if (cancelled) return
+          // Переподключаемся с актуальным (возможно, уже обновлённым) токеном.
+          reconnectTimer = setTimeout(connect, 5000)
+        }
+      } catch { /* ignore — останется polling */ }
+    }
+    connect()
     return () => {
-      try { clearInterval(ping); clearTimeout(debounce); if (socket) socket.close() } catch { /* ignore */ }
+      cancelled = true
+      try {
+        clearInterval(ping)
+        clearTimeout(debounce)
+        clearTimeout(reconnectTimer)
+        if (socket) { socket.onclose = null; socket.close() }
+      } catch { /* ignore */ }
     }
   }, [])
 
@@ -110,7 +135,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'shop':
         return <ShopTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cityroof':
-        return <CityRoofTab balance={balance} onBalanceChange={handleBalanceChange} />
+        return <CityRoofTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'mining':
         return <MiningTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'crypto':

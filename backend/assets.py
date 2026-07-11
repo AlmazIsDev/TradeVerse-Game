@@ -54,8 +54,27 @@ def _tune_cost(asset: dict, level: int) -> float:
 
 RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
 RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
-RENT_MAX_PCT = 0.25      # макс. суммарная аренда = 25% от стоимости актива
 RENTABLE_TYPES = {"realestate", "car"}
+
+# ── Аренда: срок фиксированными пресетами, цена считается от стоимости актива ──
+# Формула откалибрована так, чтобы самый дешёвый объект рынка (studio, ~5000$)
+# сдавался за минимальный срок (1 день) примерно за 1500–2000$: 5000 × 0.052 ×
+# 24^0.6 ≈ 1750$. Показатель степени < 1 даёт убывающую отдачу за час при
+# длинных сроках (аренда на месяц дешевле в пересчёте на день, чем на сутки).
+RENT_DURATIONS_H = [24, 48, 72, 144, 288, 336, 384, 720]   # 1,2,3,6,12,14,16 дней, 1 месяц
+RENT_MAX_HOURS = 720
+RENT_RATE = 0.052
+RENT_DIMINISH = 0.6
+
+# ── Материалы для бизнеса ────────────────────────────────────────────────────
+# Цена за единицу = базовая × economy_mult × множитель текущего мирового
+# события (см. market_events.EVENT_TYPES["materials"], настраивается через
+# админ-панель — событие меняется, цена пересчитывается автоматически, без
+# правки кода). Закупка временно поднимает доход бизнеса.
+MATERIALS_BASE_COST = 45.0
+MATERIALS_BOOST_PER_UNIT = 0.01     # +1% к доходу за единицу
+MATERIALS_BOOST_CAP = 0.30          # максимум +30%
+MATERIALS_DURATION_H = 6            # действует 6 часов с момента закупки
 
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
 # income_per_hour — пассивный доход; upkeep_per_hour — расход (для бизнесов).
@@ -221,21 +240,28 @@ class TuneBody(BaseModel):
 
 
 class RentListing(BaseModel):
-    price: float
-    minHours: int
+    hours: int
 
-    @field_validator("price")
-    @classmethod
-    def price_ok(cls, v):
-        if v is None or v <= 0:
-            raise ValueError("Стоимость аренды должна быть положительной")
-        return round(float(v), 2)
-
-    @field_validator("minHours")
+    @field_validator("hours")
     @classmethod
     def hours_ok(cls, v):
-        if v < 1 or v > 720:
-            raise ValueError("Срок аренды: 1–720 часов")
+        # Только фиксированные пресеты (см. RENT_DURATIONS_H) — никакого
+        # произвольного ввода, максимум enforced и здесь, и в самом наборе.
+        if v not in RENT_DURATIONS_H or v > RENT_MAX_HOURS:
+            raise ValueError(f"Срок аренды должен быть одним из: {RENT_DURATIONS_H}")
+        return int(v)
+
+
+class MaterialsBuy(BaseModel):
+    qty: int
+
+    @field_validator("qty")
+    @classmethod
+    def qty_ok(cls, v):
+        if v is None or v < 1:
+            raise ValueError("Количество должно быть не меньше 1")
+        if v > 500:
+            raise ValueError("Слишком большое количество")
         return int(v)
 
 
@@ -253,17 +279,41 @@ def _current_value(asset: dict) -> float:
     return round(base * (1 + 0.35 * (level - 1)) + asset.get("tuning_value", 0.0), 2)
 
 
+def _materials_boost(asset: dict) -> float:
+    """Активный бонус к доходу бизнеса от закупленных материалов (0, если срок истёк)."""
+    m = asset.get("materials")
+    if not m:
+        return 0.0
+    expires = m.get("expires_at")
+    if not isinstance(expires, datetime):
+        return 0.0
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if _now() >= expires:
+        return 0.0
+    return float(m.get("boostPct", 0.0))
+
+
 def _income_per_hour(asset: dict) -> float:
     base = asset.get("income_per_hour", 0)
     level = asset.get("level", 1)
-    return round(base * (1 + 0.25 * (level - 1)), 2)
+    value = base * (1 + 0.25 * (level - 1))
+    if asset.get("type") == TYPE_BUSINESS:
+        value *= (1 + _materials_boost(asset))
+    return round(value, 2)
 
 
-def _rent_max(asset: dict) -> float:
-    """Максимальная суммарная стоимость аренды — авто-расчёт от стоимости актива."""
+def _rent_price(asset: dict, hours: int) -> float:
+    """Стоимость аренды за срок — масштабируется от стоимости актива и срока
+    (убывающая отдача за час: длинные сроки дешевле в пересчёте на день)."""
+    return round(_current_value(asset) * RENT_RATE * (hours ** RENT_DIMINISH), 2)
+
+
+def _rent_quotes(asset: dict) -> list[dict]:
+    """Цена аренды на каждый из фиксированных сроков — для выбора на клиенте."""
     if asset.get("type") not in RENTABLE_TYPES:
-        return 0.0
-    return round(_current_value(asset) * RENT_MAX_PCT, 2)
+        return []
+    return [{"hours": h, "price": _rent_price(asset, h)} for h in RENT_DURATIONS_H]
 
 
 def _upkeep_per_hour(asset: dict) -> float:
@@ -457,9 +507,10 @@ def _serialize(asset: dict) -> dict:
         "meta": asset.get("meta", {}),
         "companyId": asset.get("companyId"),
         "rental": _rental_view(asset),
-        "rentMax": _rent_max(asset),
+        "rentQuotes": _rent_quotes(asset),
         "tuning": asset.get("tuning", {}),
         "tuneMaxLevel": TUNE_MAX_LEVEL,
+        "materialsBoostPct": _materials_boost(asset),
         "purchasedAt": asset.get("purchased_at").isoformat() if isinstance(asset.get("purchased_at"), datetime) else None,
     }
 
@@ -765,7 +816,10 @@ async def rent_list(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Выставить недвижимость/авто в аренду. Арендатор появится через 1–48 часов.
+    """Выставить недвижимость/авто в аренду на фиксированный срок (см.
+    RENT_DURATIONS_H). Арендатор появится через 1–48 часов. Цена всегда
+    пересчитывается сервером от стоимости актива и срока — клиент выбирает
+    только срок (см. _rent_price), поэтому её нельзя подделать.
 
     Работает и для личных активов, и для активов компании (владелец компании
     управляет ими) — в последнем случае выплата поступит в бюджет компании.
@@ -776,14 +830,12 @@ async def rent_list(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость и авто")
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
-    # Цена аренды не может превышать авто-предел от стоимости актива.
-    max_rent = _rent_max(asset)
-    price = min(payload.price, max_rent) if max_rent > 0 else payload.price
+    price = _rent_price(asset, payload.hours)
     wait_h = random.randint(RENT_MIN_WAIT_H, RENT_MAX_WAIT_H)
     rental = {
         "status": "listed",
         "price": price,
-        "minHours": payload.minHours,
+        "minHours": payload.hours,
         "tenant_at": _now() + timedelta(hours=wait_h),
         "ends_at": None,
         "listed_at": _now(),
@@ -808,6 +860,68 @@ async def rent_cancel(
     await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"rental": None}})
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
     return {"ok": True, "asset": _serialize(updated)}
+
+
+# ── Материалы для бизнеса ────────────────────────────────────────────────────
+
+
+async def _materials_unit_price(db: AsyncIOMotorDatabase) -> float:
+    econ = await get_econ(db)
+    mult = econ.get("economy_mult", 1.0)
+    try:
+        from market_events import event_shifts
+        mult *= (await event_shifts(db)).get("materials", 1.0)
+    except Exception:
+        pass
+    return round(MATERIALS_BASE_COST * mult, 2)
+
+
+@router.get("/materials/price")
+async def materials_price(
+    _user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Текущая цена материалов за единицу — зависит от активного мирового события."""
+    return {
+        "unitPrice": await _materials_unit_price(db),
+        "boostPerUnit": MATERIALS_BOOST_PER_UNIT,
+        "boostCap": MATERIALS_BOOST_CAP,
+        "durationHours": MATERIALS_DURATION_H,
+    }
+
+
+@router.post("/{asset_id}/materials/buy")
+async def buy_materials(
+    asset_id: str,
+    payload: MaterialsBuy,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Закупить материалы для бизнеса — временно (на MATERIALS_DURATION_H)
+    поднимает его доход. Цена за единицу пересчитывается сервером от текущего
+    мирового события — клиентская цена никогда не используется."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("type") != TYPE_BUSINESS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Материалы закупаются только для бизнеса")
+
+    unit_price = await _materials_unit_price(db)
+    total = round(unit_price * payload.qty, 2)
+    new_balance = await adjust_balance(db, user_id, -total)
+    if new_balance is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+
+    boost = min(MATERIALS_BOOST_CAP, _materials_boost(asset) + MATERIALS_BOOST_PER_UNIT * payload.qty)
+    materials = {"boostPct": round(boost, 4), "expires_at": _now() + timedelta(hours=MATERIALS_DURATION_H)}
+    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"materials": materials}})
+
+    await record_transaction(
+        db, user_id, EXPENSE, total, CAT_BUSINESS,
+        f"Материалы: {asset.get('name')} ×{payload.qty}", balance_after=new_balance,
+        meta={"assetId": asset_id, "qty": payload.qty, "unitPrice": unit_price},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    return {"asset": _serialize(updated), "balance": new_balance, "unitPrice": unit_price, "total": total}
 
 
 # ── Aggregate value (для лидерборда/капитала) ────────────────────────────────

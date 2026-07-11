@@ -25,6 +25,7 @@ from pydantic import BaseModel, field_validator
 from auth import get_current_user, require_admin
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_CITYROOF, adjust_balance, record_transaction
+from notifications import push_notification
 
 router = APIRouter(prefix="/api/cityroof", tags=["cityroof"])
 
@@ -38,6 +39,18 @@ WARCOIN_PRICE_DEFAULT = 50.0
 
 # Стоимость уровней защиты (WC).
 PROTECTION_COSTS = {1: 1000, 2: 3000, 3: 4000, 4: 6500, 5: 10000}
+
+# ── IT-студия: заказ снижения чужой защиты ───────────────────────────────────
+# Оплачивается в $ (не WC — отдельная услуга, не завязанная на PvP-экономику
+# карты). Стоимость растёт с текущим уровнем защиты цели (сложнее взломать
+# лучше защищённый бизнес). Выполняется через 1–3ч реального времени.
+ITSTUDIO_COST_BASE = 8000.0
+ITSTUDIO_COST_PER_PROTECTION = 4000.0
+ITSTUDIO_MIN_HOURS = 1.0
+ITSTUDIO_MAX_HOURS = 3.0
+# Взвешенный случайный выбор снижения защиты: −1/−2 — часто, −3 — заметно
+# реже, −4 — редко, −5 — очень редко.
+ITSTUDIO_REDUCTION_WEIGHTS = [(1, 38), (2, 30), (3, 18), (4, 9), (5, 5)]
 
 BONUS_CLAIM_INTERVAL_MIN = 5    # КД дохода — свой у каждого бизнеса, раз в 5 минут
 DAILY_TO_INTERVAL_DIVISOR = 288  # 24ч·60/5мин — делим дневную ставку на кол-во 5-минуток в сутках
@@ -332,6 +345,26 @@ async def _spend_wc(db, user_id: str, amount: int) -> bool:
     return res is not None
 
 
+def _roll_itstudio_reduction() -> int:
+    values = [v for v, _ in ITSTUDIO_REDUCTION_WEIGHTS]
+    weights = [w for _, w in ITSTUDIO_REDUCTION_WEIGHTS]
+    return random.choices(values, weights=weights, k=1)[0]
+
+
+def _serialize_itstudio_job(j: dict) -> dict:
+    return {
+        "id": str(j["_id"]),
+        "businessId": j.get("businessId"),
+        "businessName": j.get("businessName"),
+        "cost": j.get("cost"),
+        "status": j.get("status"),
+        # Результат раскрывается только после завершения — до этого момента
+        # игрок видит лишь факт, что заказ выполняется.
+        "reduction": j.get("reduction") if j.get("status") == "done" else None,
+        "readyAt": j["ready_at"].isoformat() if isinstance(j.get("ready_at"), datetime) else None,
+    }
+
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -357,6 +390,12 @@ async def get_map(
         "attackCost": ATTACK_COST_WC,
         "maxAttempts": MAX_ATTEMPTS,
         "protectionCosts": PROTECTION_COSTS,
+        "itstudio": {
+            "costBase": ITSTUDIO_COST_BASE,
+            "costPerProtection": ITSTUDIO_COST_PER_PROTECTION,
+            "minHours": ITSTUDIO_MIN_HOURS,
+            "maxHours": ITSTUDIO_MAX_HOURS,
+        },
         "warcoin": {
             "balance": await _get_wc(db, user_id),
             "price": price,
@@ -431,6 +470,108 @@ async def get_bonuses(
         "totalDaily": total_daily,
         "intervalSec": interval_s,
     }
+
+
+# ── IT-студия ────────────────────────────────────────────────────────────────
+
+
+@router.post("/itstudio/order/{business_id}")
+async def order_itstudio(
+    business_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Заказать работу IT-студии против чужого бизнеса: через 1–3ч реального
+    времени защита цели снизится на случайную величину (чаще всего −1/−2,
+    редко больше — см. ITSTUDIO_REDUCTION_WEIGHTS)."""
+    if not ObjectId.is_valid(business_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
+    user_id = str(current_user["_id"])
+    business = await db.cityroof_businesses.find_one({"_id": ObjectId(business_id)})
+    if not business:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Бизнес не найден")
+    if not business.get("ownerId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У бизнеса нет владельца")
+    if business.get("ownerId") == user_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя заказать атаку на свой бизнес")
+    if await db.cityroof_itstudio_jobs.find_one(
+        {"orderedBy": user_id, "businessId": business_id, "status": "pending"}
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Заказ по этому бизнесу уже выполняется")
+
+    cost = round(ITSTUDIO_COST_BASE + business.get("protection_level", 0) * ITSTUDIO_COST_PER_PROTECTION, 2)
+    new_balance = await adjust_balance(db, user_id, -cost)
+    if new_balance is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+
+    reduction = _roll_itstudio_reduction()
+    hours = round(random.uniform(ITSTUDIO_MIN_HOURS, ITSTUDIO_MAX_HOURS), 2)
+    job = {
+        "orderedBy": user_id, "businessId": business_id, "businessName": business.get("name"),
+        "reduction": reduction, "cost": cost, "status": "pending",
+        "created_at": _now(), "ready_at": _now() + timedelta(hours=hours),
+    }
+    result = await db.cityroof_itstudio_jobs.insert_one(job)
+    await record_transaction(
+        db, user_id, EXPENSE, cost, CAT_CITYROOF,
+        f"Заказ IT-студии: {business.get('name')}", balance_after=new_balance,
+        meta={"businessId": business_id},
+    )
+    return {"ok": True, "jobId": str(result.inserted_id), "cost": cost, "readyInHours": hours, "balance": new_balance}
+
+
+@router.get("/itstudio/jobs")
+async def my_itstudio_jobs(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Заказы IT-студии текущего игрока (новые сверху)."""
+    uid = str(current_user["_id"])
+    out = []
+    async for j in db.cityroof_itstudio_jobs.find({"orderedBy": uid}).sort("created_at", -1).limit(20):
+        out.append(_serialize_itstudio_job(j))
+    return out
+
+
+async def sweep_itstudio_jobs(db: AsyncIOMotorDatabase):
+    """Завершает готовые заказы IT-студии: снижает защиту цели, уведомляет
+    заказчика и владельца. Вызывается Scheduler'ом."""
+    now = _now()
+    async for j in db.cityroof_itstudio_jobs.find({"status": "pending", "ready_at": {"$lte": now}}):
+        try:
+            if not ObjectId.is_valid(j.get("businessId", "")):
+                await db.cityroof_itstudio_jobs.update_one({"_id": j["_id"]}, {"$set": {"status": "done"}})
+                continue
+            business = await db.cityroof_businesses.find_one({"_id": ObjectId(j["businessId"])})
+            if not business:
+                await db.cityroof_itstudio_jobs.update_one({"_id": j["_id"]}, {"$set": {"status": "done"}})
+                continue
+
+            reduction = j.get("reduction", 1)
+            new_level = max(0, business.get("protection_level", 0) - reduction)
+            await db.cityroof_businesses.update_one(
+                {"_id": business["_id"]}, {"$set": {"protection_level": new_level}},
+            )
+            await db.cityroof_itstudio_jobs.update_one({"_id": j["_id"]}, {"$set": {"status": "done"}})
+
+            await push_notification(
+                db, j["orderedBy"], "itstudio",
+                "IT-студия завершила работу",
+                f"Защита «{business.get('name')}» снижена на {reduction} (сейчас {new_level}).",
+                data={"businessId": j["businessId"], "reduction": reduction},
+            )
+            if business.get("ownerId"):
+                await push_notification(
+                    db, business["ownerId"], "itstudio_attack",
+                    "Взлом системы защиты",
+                    f"Защита «{business.get('name')}» снижена на {reduction} неизвестными хакерами.",
+                    data={"businessId": j["businessId"], "reduction": reduction},
+                )
+            updated_doc = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+            from ws import broadcast
+            await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated_doc, "")})
+        except Exception:
+            continue
 
 
 async def sweep_business_income(db: AsyncIOMotorDatabase):

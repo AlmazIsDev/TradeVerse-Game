@@ -552,14 +552,26 @@ export async function tuneCar(id, part) {
   return request(`/api/assets/${encodeURIComponent(id)}/tune`, { method: 'POST', body: JSON.stringify({ part }) })
 }
 
-export async function listPropertyForRent(id, price, minHours) {
+export async function listPropertyForRent(id, hours) {
   return request(`/api/assets/${encodeURIComponent(id)}/rent/list`, {
-    method: 'POST', body: JSON.stringify({ price, minHours }),
+    method: 'POST', body: JSON.stringify({ hours }),
   })
 }
 
 export async function cancelRent(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/rent/cancel`, { method: 'POST' })
+}
+
+// ── Materials for business ───────────────────────────────────────────────────
+
+export async function fetchMaterialsPrice() {
+  return request('/api/assets/materials/price')
+}
+
+export async function buyMaterials(id, qty) {
+  return request(`/api/assets/${encodeURIComponent(id)}/materials/buy`, {
+    method: 'POST', body: JSON.stringify({ qty }),
+  })
 }
 
 // ── Notifications API ───────────────────────────────────────────────────────────
@@ -707,6 +719,14 @@ export async function fetchSeasons() {
 
 export async function fetchCityBonuses() {
   return request('/api/cityroof/bonuses')
+}
+
+export async function orderItStudio(businessId) {
+  return request(`/api/cityroof/itstudio/order/${encodeURIComponent(businessId)}`, { method: 'POST' })
+}
+
+export async function fetchItStudioJobs() {
+  return request('/api/cityroof/itstudio/jobs')
 }
 
 // ── Hardware shop ───────────────────────────────────────────────────────────────

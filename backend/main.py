@@ -114,6 +114,8 @@ async def lifespan(app: FastAPI):
     await db.mining_farms.create_index("status")
     await db.cityroof_sessions.create_index("attackerId")
     await db.cityroof_seasons.create_index("closed_at")
+    await db.cityroof_itstudio_jobs.create_index("orderedBy")
+    await db.cityroof_itstudio_jobs.create_index([("status", 1), ("ready_at", 1)])
     # Refresh-токены: уникальный индекс по хешу + TTL для авто-очистки истёкших.
     await db.refresh_tokens.create_index("token_hash", unique=True)
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)

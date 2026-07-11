@@ -1710,8 +1710,30 @@ body {
     padding: var(--spacing-md);
   }
 
+  /* Номер карты раньше просто скрывался на мобильных (display: none) — вместо
+     этого сжимаем карточку, чтобы номер помещался в шапке и оставался виден. */
   .profile-card {
+    min-width: 0;
+    max-width: 128px;
+    padding: 6px 10px;
+    gap: 2px;
+  }
+
+  .profile-card-number {
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .profile-card-label {
     display: none;
+  }
+
+  .profile-card-visibility-btn {
+    width: 20px;
+    height: 20px;
+    top: 4px;
+    right: 4px;
   }
 
   .account-stats {
@@ -1729,6 +1751,19 @@ body {
   }
 
   .header-username {
+    display: none;
+  }
+
+  .profile-card {
+    max-width: 104px;
+    padding: 6px 8px;
+  }
+
+  .profile-card-number {
+    font-size: 9px;
+  }
+
+  .profile-card-chip {
     display: none;
   }
 }

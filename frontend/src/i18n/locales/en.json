@@ -315,16 +315,30 @@
   "rent": {
     "list": "Rent out",
     "title": "Rent out",
-    "desc": "A tenant appears randomly within 1–48 hours. Money is credited automatically when the term ends.",
-    "price": "Rent price, $",
-    "minHours": "Min term, h",
+    "desc": "Pick a rental term. The price is calculated from the property value. A tenant appears randomly within 1–48 hours, money is credited automatically when the term ends.",
     "publish": "Publish",
     "listed": "Listing published",
     "waiting": "Waiting for a tenant…",
     "rented": "Rented out",
     "cancelled": "Listing removed",
-    "invalid": "Enter a valid price and term",
-    "maxHint": "Maximum: {{max}} $ — calculated from the asset value"
+    "duration": {
+      "1d": "1 day",
+      "2d": "2 days",
+      "3d": "3 days",
+      "6d": "6 days",
+      "12d": "12 days",
+      "14d": "14 days",
+      "16d": "16 days",
+      "1m": "1 month"
+    }
+  },
+  "materials": {
+    "title": "Buy materials",
+    "buy": "Buy materials",
+    "desc": "Each unit gives +{{boost}}% business income (max +{{cap}}%) for {{hours}}h. Price depends on the current world event.",
+    "unitPrice": "Unit price",
+    "bought": "Materials purchased",
+    "invalid": "Enter a valid quantity"
   },
   "tune": {
     "title": "Tuning",
@@ -445,6 +459,11 @@
       "platinum": "Platinum",
       "diamond": "Diamond"
     }
+  },
+  "itstudio": {
+    "order": "Order IT studio",
+    "ordered": "Order placed. Ready in ~{{hours}}h.",
+    "pending": "IT studio job in progress…"
   },
   "shop": {
     "nexusDesc": "One store for all components: GPUs, CPUs, motherboards, memory, drives, PSUs, cooling, cases, racks and networking.",
@@ -794,7 +813,8 @@
     "dismantle": "Dismantle farm \"{{name}}\"? All components will be lost.",
     "cryptoTransfer": "Send {{amount}} {{symbol}} to {{recipient}}?",
     "protect": "Set protection level {{level}} for {{cost}} WC?",
-    "attack": "Attack \"{{name}}\" for {{cost}} WC?"
+    "attack": "Attack \"{{name}}\" for {{cost}} WC?",
+    "itstudio": "Order an IT studio job against \"{{name}}\" for ${{cost}}? Will lower its protection in 1-3 hours."
   },
   "landing": {
     "nav": {

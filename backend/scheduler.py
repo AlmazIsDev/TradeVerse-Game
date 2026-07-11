@@ -65,6 +65,11 @@ async def _tick():
         await cityroof.sweep_business_income(db)
     except Exception as exc:
         logger.debug("cityroof income sweep failed: %s", exc)
+    # 5b) Крыша города: завершение готовых заказов IT-студии (снижение защиты).
+    try:
+        await cityroof.sweep_itstudio_jobs(db)
+    except Exception as exc:
+        logger.debug("cityroof itstudio sweep failed: %s", exc)
     # 6) Аналитика экономики — только админам (не всем игрокам), для живого
     #    обновления вкладки EconomyAdmin без ручного релоада.
     try:

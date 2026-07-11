@@ -19,16 +19,18 @@ from database import get_db
 router = APIRouter(prefix="/api/admin/economy", tags=["economy-events"])
 
 # effects: сдвиг целевой цены по типу актива ("realestate"/"business"/"car"/"all")
-#          или по конкретному slug. income/rental/crypto — временные множители.
+#          или по конкретному slug. income/rental/crypto/materials — временные
+#          множители (materials — стоимость закупки материалов для бизнеса,
+#          см. assets._materials_unit_price).
 EVENT_TYPES = {
-    "crisis":            {"name": "Экономический кризис",     "icon": "📉", "effects": {"all": -0.15}, "income": -0.20, "duration_h": 12},
-    "construction_boom": {"name": "Строительный бум",         "icon": "🏗️", "effects": {"realestate": 0.20}, "duration_h": 10},
+    "crisis":            {"name": "Экономический кризис",     "icon": "📉", "effects": {"all": -0.15}, "income": -0.20, "materials": -0.10, "duration_h": 12},
+    "construction_boom": {"name": "Строительный бум",         "icon": "🏗️", "effects": {"realestate": 0.20}, "materials": 0.20, "duration_h": 10},
     "tourist_season":    {"name": "Туристический сезон",       "icon": "🏖️", "effects": {"realestate": 0.10, "hotel": 0.25}, "rental": 0.20, "duration_h": 24},
-    "fuel_prices":       {"name": "Рост цен на топливо",       "icon": "⛽", "effects": {"car": -0.12, "business": -0.05}, "duration_h": 10},
+    "fuel_prices":       {"name": "Рост цен на топливо",       "icon": "⛽", "effects": {"car": -0.12, "business": -0.05}, "materials": 0.08, "duration_h": 10},
     "banking_reform":    {"name": "Банковская реформа",        "icon": "🏦", "effects": {}, "income": 0.10, "duration_h": 14},
-    "industrial_growth": {"name": "Промышленный рост",         "icon": "🏭", "effects": {"business": 0.15}, "income": 0.08, "duration_h": 12},
-    "tech_breakthrough": {"name": "Технологический прорыв",    "icon": "🚀", "effects": {"business": 0.10}, "crypto": 0.06, "duration_h": 12},
-    "material_shortage": {"name": "Дефицит материалов",        "icon": "📦", "effects": {"realestate": 0.15, "car": 0.10}, "duration_h": 8},
+    "industrial_growth": {"name": "Промышленный рост",         "icon": "🏭", "effects": {"business": 0.15}, "income": 0.08, "materials": 0.05, "duration_h": 12},
+    "tech_breakthrough": {"name": "Технологический прорыв",    "icon": "🚀", "effects": {"business": 0.10}, "crypto": 0.06, "materials": -0.05, "duration_h": 12},
+    "material_shortage": {"name": "Дефицит материалов",        "icon": "📦", "effects": {"realestate": 0.15, "car": 0.10}, "materials": 0.45, "duration_h": 8},
 }
 
 
@@ -49,6 +51,7 @@ async def start_event(db: AsyncIOMotorDatabase, etype: str, source: str = "admin
         "type": etype, "name": spec["name"], "icon": spec.get("icon", "🌐"),
         "effects": spec.get("effects", {}),
         "income": spec.get("income", 0.0), "rental": spec.get("rental", 0.0), "crypto": spec.get("crypto", 0.0),
+        "materials": spec.get("materials", 0.0),
         "started_at": now, "ends_at": now + timedelta(hours=spec.get("duration_h", 12)),
         "active": True, "source": source,
     }
@@ -83,14 +86,18 @@ async def maybe_autostart(db: AsyncIOMotorDatabase):
 async def event_shifts(db: AsyncIOMotorDatabase) -> dict:
     """Сводное влияние активных событий: сдвиги цен + множители доходов."""
     shifts: dict[str, float] = {}
-    income, rental, crypto = 1.0, 1.0, 1.0
+    income, rental, crypto, materials = 1.0, 1.0, 1.0, 1.0
     for e in await get_active_events(db):
         for key, val in (e.get("effects") or {}).items():
             shifts[key] = shifts.get(key, 0.0) + float(val)
         income *= 1 + e.get("income", 0.0)
         rental *= 1 + e.get("rental", 0.0)
         crypto *= 1 + e.get("crypto", 0.0)
-    return {"shifts": shifts, "income": round(income, 4), "rental": round(rental, 4), "crypto": round(crypto, 4)}
+        materials *= 1 + e.get("materials", 0.0)
+    return {
+        "shifts": shifts, "income": round(income, 4), "rental": round(rental, 4),
+        "crypto": round(crypto, 4), "materials": round(materials, 4),
+    }
 
 
 def slug_event_shift(shifts: dict, slug: str, atype: str) -> float:
@@ -104,6 +111,7 @@ def _serialize(e: dict) -> dict:
         "type": e.get("type"), "name": e.get("name"), "icon": e.get("icon"),
         "effects": e.get("effects", {}),
         "income": e.get("income", 0.0), "rental": e.get("rental", 0.0), "crypto": e.get("crypto", 0.0),
+        "materials": e.get("materials", 0.0),
         "source": e.get("source"),
         "active": bool(e.get("active")),
         "startedAt": _aware(e["started_at"]).isoformat() if isinstance(e.get("started_at"), datetime) else None,

@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCityMap, buyWarcoin, attackBusiness, guessCombination, protectBusiness,
-  fetchCityBonuses,
+  fetchCityBonuses, orderItStudio, fetchItStudioJobs,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
-  Gift, Zap,
+  Gift, Zap, Laptop, Clock,
 } from 'lucide-react'
 
 // Форматирует секунды в M:SS для таймера автосбора.
@@ -56,12 +56,17 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [bonuses, setBonuses] = useState(null)
   const [clockTick, setClockTick] = useState(0)     // тикает раз в секунду для обратного отсчёта автосбора
   const bonusAnchors = useRef({})     // slug -> момент (мс), от которого считаем локальный отсчёт readyInSec
+  const [itStudioJobs, setItStudioJobs] = useState([])
+  const [itStudioBusy, setItStudioBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [data, b] = await Promise.all([fetchCityMap(), fetchCityBonuses().catch(() => null)])
+      const [data, b, jobs] = await Promise.all([
+        fetchCityMap(), fetchCityBonuses().catch(() => null), fetchItStudioJobs().catch(() => []),
+      ])
       setMap(data)
       setBonuses(b)
+      setItStudioJobs(jobs)
       const now = Date.now()
       const anchors = {}
       for (const item of b?.bonuses || []) anchors[item.slug] = now
@@ -114,6 +119,9 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         setSession(null)
         setFeedback(null)
         load()
+      } else if (data.type === 'notification' && data.notification?.type === 'itstudio') {
+        // Заказ IT-студии завершился (см. backend/cityroof.py sweep_itstudio_jobs).
+        fetchItStudioJobs().then(setItStudioJobs).catch(() => {})
       }
     }
     window.addEventListener('tv:realtime', onRealtime)
@@ -210,6 +218,28 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       setFeedback({ type: 'error', text: err.message })
     } finally {
       setBusy(false)
+    }
+  }
+
+  const itStudioCost = (business) => {
+    const cfg = map?.itstudio
+    if (!cfg || !business) return 0
+    return Math.round(cfg.costBase + (business.protectionLevel || 0) * cfg.costPerProtection)
+  }
+
+  const doOrderItStudio = async () => {
+    if (!selected) return
+    setItStudioBusy(true)
+    setFeedback(null)
+    try {
+      const res = await orderItStudio(selected.id)
+      onBalanceChange?.(res.balance)
+      setFeedback({ type: 'success', text: t('itstudio.ordered', { hours: res.readyInHours }) })
+      setItStudioJobs(await fetchItStudioJobs())
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message })
+    } finally {
+      setItStudioBusy(false)
     }
   }
 
@@ -369,6 +399,29 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <Swords size={16} /> {busy ? t('bank.processing') : t('cityroof.attack', { cost: map?.attackCost ?? 10 })}
               </button>
             )}
+
+            {/* IT-студия: платная диверсия против чужого бизнеса — со временем
+                (1–3ч) снижает его защиту на случайную величину. */}
+            {!selected.isMine && selected.ownerId && !session && (() => {
+              const pendingJob = itStudioJobs.find(j => j.businessId === selected.id && j.status === 'pending')
+              if (pendingJob) {
+                return (
+                  <div className="itstudio-pending">
+                    <Clock size={13} /> {t('itstudio.pending')}
+                  </div>
+                )
+              }
+              return (
+                <button className="itstudio-btn" disabled={itStudioBusy}
+                  onClick={() => setConfirm({
+                    title: t('itstudio.order'),
+                    message: t('confirm.itstudio', { name: selected.name, cost: itStudioCost(selected).toLocaleString('ru-RU') }),
+                    onConfirm: doOrderItStudio,
+                  })}>
+                  <Laptop size={15} /> {itStudioBusy ? t('bank.processing') : t('itstudio.order')} (${itStudioCost(selected).toLocaleString('ru-RU')})
+                </button>
+              )
+            })()}
 
             {/* Мини-игра */}
             {session && (

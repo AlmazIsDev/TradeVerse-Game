@@ -129,6 +129,10 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
       else await declineInvite(inviteId)
       await markNotificationRead(notif.id)
       await loadNotifs()
+      // Обновляем вкладку «Моя компания» — иначе после принятия приглашения
+      // здесь (в колокольчике, в отличие от всплывающего попапа) её состояние
+      // не перечитывалось, и игрок не видел себя в компании.
+      window.dispatchEvent(new CustomEvent('tv:company-refresh'))
     } catch { /* ignore */ }
   }
 
@@ -140,6 +144,7 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
       else await declineApplication(appId)
       await markNotificationRead(notif.id)
       await loadNotifs()
+      window.dispatchEvent(new CustomEvent('tv:company-refresh'))
     } catch { /* ignore */ }
   }
 

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listPropertyForRent, cancelRent } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import RentModal from './RentModal'
 import {
   LayoutGrid, Home, Car, Briefcase, KeyRound, X, Check, AlertTriangle, TrendingUp, Users,
 } from 'lucide-react'
@@ -38,7 +39,6 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)
-  const [rentForm, setRentForm] = useState({ price: '', minHours: '6' })
 
   const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2400) }
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
@@ -50,14 +50,11 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
     catch (err) { flash(err.message, 'error') } finally { setBusyId(null) }
   }
 
-  const submitRent = async () => {
+  const submitRent = async (hours) => {
     if (!rentModal) return
-    const price = Number(rentForm.price)
-    const minHours = Math.floor(Number(rentForm.minHours))
-    if (!(price > 0) || !(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
     setBusyId(rentModal.id)
     try {
-      await listPropertyForRent(rentModal.id, price, minHours)
+      await listPropertyForRent(rentModal.id, hours)
       flash(t('rent.listed'))
       setRentModal(null)
       await onRefresh?.()
@@ -81,8 +78,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
     }
     if (!isOwner) return null
     return (
-      <button className="asset-act" disabled={busyId === a.id}
-        onClick={() => { setRentModal(a); setRentForm({ price: String(Math.round((a.rentMax || 200) * 0.5)), minHours: '6' }) }}>
+      <button className="asset-act" disabled={busyId === a.id} onClick={() => setRentModal(a)}>
         <KeyRound size={15} /> {t('rent.list')}
       </button>
     )
@@ -148,27 +144,12 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }
         )}
 
         {rentModal && (
-          <div className="modal-overlay" onClick={() => setRentModal(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
-              <h3>{t('rent.title')}: {rentModal.name}</h3>
-              <p className="modal-price">{t('company.rentDesc')}</p>
-              <div className="modal-quantity"><label>{t('rent.price')}:</label>
-                <input type="number" min="1" max={rentModal.rentMax} value={rentForm.price}
-                  onChange={e => {
-                    const v = Number(e.target.value)
-                    const capped = rentModal.rentMax && v > rentModal.rentMax ? String(Math.round(rentModal.rentMax)) : e.target.value
-                    setRentForm({ ...rentForm, price: capped })
-                  }} /></div>
-              <p className="rent-max-hint">{t('rent.maxHint', { max: formatMoney(rentModal.rentMax) })}</p>
-              <div className="modal-quantity"><label>{t('rent.minHours')}:</label>
-                <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>
-              <div className="modal-buttons">
-                <button className="stock-btn buy-btn" onClick={submitRent} disabled={busyId === rentModal.id}>{t('rent.publish')}</button>
-                <button className="stock-btn cancel-btn" onClick={() => setRentModal(null)}>{t('common.cancel')}</button>
-              </div>
-            </div>
-          </div>
+          <RentModal
+            asset={rentModal}
+            busy={busyId === rentModal.id}
+            onConfirm={submitRent}
+            onClose={() => setRentModal(null)}
+          />
         )}
       </div>
     </div>

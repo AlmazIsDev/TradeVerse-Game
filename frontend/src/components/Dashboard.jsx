@@ -13,6 +13,7 @@ import MyAssetsTab from './MyAssetsTab'
 import MyCompanyTab from './MyCompanyTab'
 import CityRoofTab from './CityRoofTab'
 import MiningTab from './MiningTab'
+import SettingsPage from './SettingsPage'
 import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
 import { fetchCurrentUser, API_BASE_URL } from '../services/api'
@@ -20,7 +21,7 @@ import { Shield } from 'lucide-react'
 
 const STORAGE_KEY = 'tradeverse_user'
 
-function Dashboard({ user, onLogout }) {
+function Dashboard({ user, onLogout, onUserUpdate }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('account')
   const [showAdmin, setShowAdmin] = useState(false)
@@ -98,17 +99,18 @@ function Dashboard({ user, onLogout }) {
     }
   }, [])
 
-  // Синхронизируем баланс с сервером при монтировании (localStorage может устареть)
+  // Синхронизируем баланс/профиль с сервером при монтировании (localStorage
+  // может устареть — напр. никнейм/аватар были изменены в другой вкладке/сессии).
   useEffect(() => {
     let cancelled = false
     fetchCurrentUser()
       .then(data => {
-        if (cancelled || data?.balance == null) return
-        setBalance(data.balance)
-        try {
-          const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, balance: data.balance }))
-        } catch { /* ignore */ }
+        if (cancelled || !data) return
+        if (data.balance != null) setBalance(data.balance)
+        onUserUpdate?.({
+          balance: data.balance, username: data.username,
+          avatar: data.avatar, created_at: data.created_at,
+        })
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -148,6 +150,8 @@ function Dashboard({ user, onLogout }) {
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'leaderboard':
         return <LeaderboardTab currentUserId={user?.id} />
+      case 'settings':
+        return <SettingsPage user={user} onUserUpdate={onUserUpdate} />
       default:
         return <AccountTab balance={balance} />
     }
@@ -157,7 +161,13 @@ function Dashboard({ user, onLogout }) {
     <div className="dashboard">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={user} />
       <div className="dashboard-main">
-        <Header username={user?.username} balance={balance} onLogout={onLogout} rtKey={rtKey} />
+        <Header
+          user={user}
+          balance={balance}
+          onLogout={onLogout}
+          rtKey={rtKey}
+          onOpenSettings={() => setActiveTab('settings')}
+        />
         <div className="dashboard-content">
           {renderContent()}
         </div>

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 const languages = [
   { code: 'ru', label: 'RU' },
   { code: 'en', label: 'EN' },
-  { code: 'uk', label: 'UA' },
 ];
 
 export default function LanguageSwitcher() {

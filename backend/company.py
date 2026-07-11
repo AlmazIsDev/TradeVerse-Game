@@ -162,13 +162,42 @@ def _hours_since(company: dict) -> float:
     return min((_now() - last).total_seconds() / 3600.0, MAX_ACCRUAL_HOURS)
 
 
-async def _serialize(db, company: dict) -> dict:
+async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
     cid = str(company["_id"])
     members = await _members(db, cid)
     assets = await list_company_assets(db, cid)
     revenue = await company_income_per_hour(db, cid)   # реальный доход от активов
     payroll = round(sum(m.get("salary", 0) for m in members), 2)
     hours = _hours_since(company)
+    owner_id = company["ownerId"]
+    is_owner = viewer_id is not None and viewer_id == owner_id
+    viewer_role = "owner" if is_owner else next(
+        (m.get("role", "worker") for m in members if m["userId"] == viewer_id), None
+    )
+    owner_user = await db.users.find_one({"_id": ObjectId(owner_id)}) if ObjectId.is_valid(owner_id) else None
+
+    # Живой username/avatar по userId — не полагаемся на снапшот-поле "username"
+    # в company_members (оно устаревает после смены никнейма в Настройках), а
+    # avatar там и вовсе никогда не хранился.
+    member_ids = [ObjectId(m["userId"]) for m in members if ObjectId.is_valid(m["userId"])]
+    users_by_id: dict = {}
+    if member_ids:
+        async for u in db.users.find({"_id": {"$in": member_ids}}, {"username": 1, "avatar": 1}):
+            users_by_id[str(u["_id"])] = u
+
+    display_members = [
+        {"id": owner_id, "userId": owner_id,
+         "username": owner_user.get("username") if owner_user else "—",
+         "avatar": owner_user.get("avatar") if owner_user else None,
+         "role": "owner", "salary": None},
+        *[
+            {"id": str(m["_id"]), "userId": m["userId"],
+             "username": users_by_id.get(m["userId"], {}).get("username", m.get("username")),
+             "avatar": users_by_id.get(m["userId"], {}).get("avatar"),
+             "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2)}
+            for m in members
+        ],
+    ]
     return {
         "id": cid,
         "name": company["name"],
@@ -182,19 +211,31 @@ async def _serialize(db, company: dict) -> dict:
         "payrollPerHour": payroll,
         "profitPerHour": round(revenue - payroll, 2),
         "accrued": round(revenue * hours, 2),
-        "memberCount": len(members),
+        "memberCount": len(members) + 1,
         "assetCount": len(assets),
-        "members": [
-            {"id": str(m["_id"]), "userId": m["userId"], "username": m.get("username"),
-             "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2)}
-            for m in members
-        ],
+        "ownerId": owner_id,
+        "ownerName": owner_user.get("username") if owner_user else None,
+        "isOwner": is_owner,
+        "viewerRole": viewer_role,
+        "members": display_members,
         "assets": assets,
     }
 
 
 async def _my_company(db, user_id):
+    """Компания, которой владеет игрок (для операций управления — только владелец)."""
     return await db.companies.find_one({"ownerId": user_id})
+
+
+async def _my_company_or_membership(db, user_id):
+    """Компания игрока — как владельца, так и как сотрудника (для чтения)."""
+    company = await _my_company(db, user_id)
+    if company:
+        return company
+    member = await db.company_members.find_one({"userId": user_id})
+    if member and ObjectId.is_valid(member["companyId"]):
+        return await db.companies.find_one({"_id": ObjectId(member["companyId"])})
+    return None
 
 
 async def _require_company(db, user_id):
@@ -212,10 +253,11 @@ async def get_my_company(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    company = await _my_company(db, str(current_user["_id"]))
+    user_id = str(current_user["_id"])
+    company = await _my_company_or_membership(db, user_id)
     if not company:
         return {"company": None, "foundingFee": FOUNDING_FEE, "roles": ROLES}
-    return {"company": await _serialize(db, company), "roles": ROLES}
+    return {"company": await _serialize(db, company, user_id), "roles": ROLES}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -239,7 +281,7 @@ async def create_company(
         db, user_id, EXPENSE, FOUNDING_FEE, CAT_COMPANY,
         f"Регистрация компании «{payload.name}»", balance_after=new_balance,
     )
-    return {"company": await _serialize(db, doc), "balance": new_balance}
+    return {"company": await _serialize(db, doc, user_id), "balance": new_balance}
 
 
 @router.patch("")
@@ -259,7 +301,7 @@ async def update_company(
     if updates:
         await db.companies.update_one({"_id": company["_id"]}, {"$set": updates})
     updated = await db.companies.find_one({"_id": company["_id"]})
-    return {"company": await _serialize(db, updated)}
+    return {"company": await _serialize(db, updated, user_id)}
 
 
 @router.delete("")
@@ -446,7 +488,7 @@ async def update_salary(
     )
     if res.matched_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")
-    return {"company": await _serialize(db, company)}
+    return {"company": await _serialize(db, company, user_id)}
 
 
 @router.delete("/members/{member_user_id}")
@@ -468,7 +510,28 @@ async def fire_member(
         "Увольнение", f"Вы больше не работаете в «{company['name']}».",
         data={"companyId": str(company["_id"])},
     )
-    return {"company": await _serialize(db, company)}
+    return {"company": await _serialize(db, company, user_id)}
+
+
+@router.post("/leave")
+async def leave_company(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Уйти из компании самостоятельно (сотрудник; владелец должен распустить компанию)."""
+    user_id = str(current_user["_id"])
+    member = await db.company_members.find_one({"userId": user_id})
+    if not member:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Вы не состоите в компании")
+    company = await db.companies.find_one({"_id": ObjectId(member["companyId"])}) if ObjectId.is_valid(member["companyId"]) else None
+    await db.company_members.delete_one({"_id": member["_id"]})
+    if company:
+        await push_notification(
+            db, company["ownerId"], "company",
+            "Сотрудник ушёл", f"{current_user.get('username')} покинул «{company['name']}».",
+            data={"companyId": str(company["_id"])},
+        )
+    return {"ok": True}
 
 
 # ── Companies directory + applications (заявки игроков) ──────────────────────
@@ -672,7 +735,7 @@ async def collect_profit(
         {"$set": {"budget": budget, "last_tick": _now()}},
     )
     updated = await db.companies.find_one({"_id": company["_id"]})
-    return {"collected": gross, "payrollPaid": paid, "company": await _serialize(db, updated)}
+    return {"collected": gross, "payrollPaid": paid, "company": await _serialize(db, updated, user_id)}
 
 
 @router.post("/deposit")
@@ -692,7 +755,7 @@ async def deposit_to_budget(
         f"Пополнение бюджета «{company['name']}»", balance_after=new_balance,
     )
     updated = await db.companies.find_one({"_id": company["_id"]})
-    return {"balance": new_balance, "company": await _serialize(db, updated)}
+    return {"balance": new_balance, "company": await _serialize(db, updated, user_id)}
 
 
 @router.post("/withdraw")
@@ -715,7 +778,7 @@ async def withdraw_from_budget(
         db, user_id, INCOME, payload.amount, CAT_COMPANY,
         f"Вывод прибыли «{company['name']}»", balance_after=new_balance,
     )
-    return {"balance": new_balance, "company": await _serialize(db, updated)}
+    return {"balance": new_balance, "company": await _serialize(db, updated, user_id)}
 
 
 @router.get("/history")

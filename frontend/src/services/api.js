@@ -338,6 +338,31 @@ export async function fetchCurrentUser() {
   return request('/api/user/me')
 }
 
+/** Сменить никнейм. */
+export async function updateProfile(data) {
+  return request('/api/user/profile', { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+/** Сменить пароль (требует текущий пароль). */
+export async function changePassword(data) {
+  return request('/api/user/password', { method: 'POST', body: JSON.stringify(data) })
+}
+
+/**
+ * Загрузить/сменить аватар. dataUrl — уже сжатое на клиенте изображение
+ * (см. SettingsPage: canvas resize → toDataURL), передаётся как обычный JSON
+ * (не multipart) и хранится строкой в документе пользователя — без отдельной
+ * инфраструктуры файлового хранилища. Возвращает { avatar }.
+ */
+export async function uploadAvatar(dataUrl) {
+  return request('/api/user/avatar', { method: 'PATCH', body: JSON.stringify({ avatar: dataUrl }) })
+}
+
+/** Удалить аватар — сброс на инициалы. */
+export async function deleteAvatar() {
+  return request('/api/user/avatar', { method: 'DELETE' })
+}
+
 export async function adminUpdateUser(userId, data) {
   return request(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
@@ -585,6 +610,10 @@ export async function updateCompanySettings(payload) {
 
 export async function disbandCompany() {
   return request('/api/company', { method: 'DELETE' })
+}
+
+export async function leaveCompany() {
+  return request('/api/company/leave', { method: 'POST' })
 }
 
 export async function updateMemberSalary(memberUserId, salary) {

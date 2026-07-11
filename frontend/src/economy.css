@@ -595,6 +595,7 @@
   font-weight: 700;
   flex-shrink: 0;
 }
+.lb-avatar-img { object-fit: cover; }
 .lb-name { font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lb-you { margin-left: var(--spacing-xs); font-size: 11px; font-weight: 600; color: var(--color-accent-hover); text-transform: uppercase; }
 .lb-networth { text-align: right; font-weight: 600; color: var(--color-text-primary); }
@@ -731,9 +732,17 @@
   border: 1px solid rgba(255, 255, 255, 0.05); border-radius: var(--radius-md);
   flex-wrap: wrap;
 }
-.company-emp-info { display: flex; flex-direction: column; gap: 2px; }
+.company-emp-info { display: flex; align-items: center; gap: var(--spacing-sm); }
+.company-emp-text { display: flex; flex-direction: column; gap: 2px; }
 .company-emp-name { font-weight: 600; color: var(--color-text-primary); }
 .company-emp-role { font-size: 12px; color: var(--color-text-secondary); }
+.company-emp-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.company-emp-avatar-img { object-fit: cover; }
 .company-emp-actions, .company-emp-edit { display: flex; align-items: center; gap: var(--spacing-xs); }
 .company-emp-salary { font-weight: 600; color: var(--color-success); margin-right: var(--spacing-xs); }
 .company-emp-edit input {
@@ -1678,6 +1687,10 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
   color: var(--color-text-secondary); border-radius: 10px; padding: 8px; cursor: pointer; transition: all .18s ease;
 }
 .company-settings-btn:hover { color: var(--color-text-primary); border-color: rgba(99,102,241,0.5); transform: rotate(30deg); }
+.company-role-badge {
+  margin-left: auto; font-size: 12px; font-weight: 600; color: var(--color-accent-hover);
+  background: rgba(99,102,241,0.12); border-radius: 999px; padding: 5px 12px; white-space: nowrap;
+}
 .company-description { color: var(--color-text-secondary); font-size: 13.5px; margin: -4px 0 12px; }
 .company-settings-modal { max-width: 460px; text-align: left; }
 .settings-label { display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin: 14px 0 6px; }
@@ -1708,6 +1721,7 @@ b.ok { color: var(--color-success); } b.warn { color: #eab308; } b.crit { color:
 }
 .company-disband-btn:hover { background: rgba(239,68,68,0.2); }
 .company-disband-btn:disabled { opacity: 0.5; cursor: default; }
+.company-disband-btn.compact { width: auto; margin-top: 0; margin-left: auto; padding: 8px 14px; }
 
 /* Общее оживление интерфейса */
 .transfer-feedback.success { animation: tvSuccessPulse 0.9s ease-out; }

@@ -30,8 +30,9 @@ const RARITY_GRAD = {
 /**
  * Активы компании — интерфейс, аналогичный «Моё имущество», с вкладками.
  * Недвижимость и авто можно сдавать в аренду — доход идёт в бюджет компании.
+ * Видеть список могут все сотрудники, управлять арендой — только владелец.
  */
-function CompanyAssetsPanel({ assets = [], onClose, onRefresh }) {
+function CompanyAssetsPanel({ assets = [], isOwner = false, onClose, onRefresh }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState('all')
   const [busyId, setBusyId] = useState(null)
@@ -69,13 +70,16 @@ function CompanyAssetsPanel({ assets = [], onClose, onRefresh }) {
       return (
         <div className="asset-rental listed">
           <KeyRound size={13} /> {t('rent.waiting')}
-          <button className="asset-rental-cancel" disabled={busyId === a.id} onClick={() => doCancel(a.id)}>{t('common.cancel')}</button>
+          {isOwner && (
+            <button className="asset-rental-cancel" disabled={busyId === a.id} onClick={() => doCancel(a.id)}>{t('common.cancel')}</button>
+          )}
         </div>
       )
     }
     if (a.rental?.status === 'rented') {
       return <div className="asset-rental rented"><KeyRound size={13} /> {t('rent.rented')} · ${formatMoney(a.rental.price)}</div>
     }
+    if (!isOwner) return null
     return (
       <button className="asset-act" disabled={busyId === a.id}
         onClick={() => { setRentModal(a); setRentForm({ price: String(Math.round((a.rentMax || 200) * 0.5)), minHours: '6' }) }}>

@@ -22,7 +22,7 @@ from database import get_db, find_config_by_key, upsert_config
 router = APIRouter(prefix="/api/admin/economy", tags=["economy-admin"])
 
 ECON_KEY = "economy_config"
-STARTING_BALANCE = 1000.0
+STARTING_BALANCE = 15000.0
 WARCOIN_USD = 50.0
 
 DEFAULT_ECON = {

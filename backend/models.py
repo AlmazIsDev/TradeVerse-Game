@@ -24,7 +24,7 @@ class UserDocument(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     username: str
     hashed_password: str
-    balance: float = 1000.0
+    balance: float = 15000.0
     card_number: Optional[str] = None
     card_visible: bool = True
     # data URL (base64), см. user_profile.py — без отдельной инфраструктуры файлового хранилища.

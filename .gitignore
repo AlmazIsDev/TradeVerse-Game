@@ -1,0 +1,12 @@
+.vscode/
+backend/__pycache__/
+node_modules
+.claude/
+.roo/
+.roomodes
+.npmrc
+article.md
+
+# Секреты
+backend/.env
+frontend/.env

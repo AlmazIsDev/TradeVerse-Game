@@ -1,0 +1,183 @@
+/* ===================== SETTINGS PAGE ===================== */
+/* Полноценная страница настроек: Профиль, Безопасность, Аватар, Язык.
+   Использует общие design-токены (index.css) и общие классы форм (App.css:
+   .form-group/.submit-btn), чтобы выглядеть частью единого интерфейса. */
+
+.settings-page {
+  max-width: 980px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.settings-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.settings-title-row .icon { color: var(--color-accent-hover); }
+.settings-title-row .tab-title { margin: 0; }
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.settings-card {
+  background: var(--color-bg-secondary);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  animation: settingsCardIn 0.3s ease both;
+}
+
+.settings-card:hover {
+  border-color: rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-md);
+}
+
+@keyframes settingsCardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.settings-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.settings-card-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.settings-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(99, 102, 241, 0.08));
+  color: var(--color-accent-hover);
+  flex-shrink: 0;
+}
+
+.settings-current-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+}
+
+.settings-current-info b { color: var(--color-text-primary); }
+
+.settings-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ── Аватар ────────────────────────────────────────────────────────────── */
+
+.settings-avatar-body {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.settings-avatar-preview {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  color: #fff;
+  font-size: 30px;
+  font-weight: 700;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+}
+
+.settings-avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.settings-avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: var(--color-text-tertiary, #9ca3af);
+  margin: 0;
+}
+
+/* ── Локализация ───────────────────────────────────────────────────────── */
+
+.settings-lang-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.settings-lang-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text-secondary);
+  font-family: var(--font-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-lang-card:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+  color: var(--color-text-primary);
+  transform: translateY(-1px);
+}
+
+.settings-lang-card.active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.settings-lang-flag { font-size: 20px; }
+
+.settings-lang-check {
+  margin-left: auto;
+  color: var(--color-accent-hover);
+}

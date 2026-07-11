@@ -1,6 +1,8 @@
 .vscode/settings.json
-backend/__pycache__/database.cpython-313.pyc
-backend/__pycache__/main.cpython-313.pyc
-backend/__pycache__/schemas.cpython-313.pyc
+backend/__pycache__/
 node_modules
-.claude/settings.json
+.claude/
+
+# Секреты
+backend/.env
+frontend/.env

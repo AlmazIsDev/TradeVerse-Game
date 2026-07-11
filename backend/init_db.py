@@ -1,4 +1,7 @@
 import asyncio
+import os
+import secrets
+
 import bcrypt
 from database import get_db, get_stocks_collection, get_app_config_collection, delete_stock_by_symbol
 from ledger import adjust_balance
@@ -15,14 +18,21 @@ async def init():
     # Create default admin user
     existing_admin = await db.users.find_one({"username": "admin"})
     if not existing_admin:
+        admin_password = os.getenv("ADMIN_PASSWORD")
+        generated = admin_password is None
+        if generated:
+            admin_password = secrets.token_urlsafe(18)
         salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(b"9HfrvyIVe5LDkQ63TRFEOZNP8SsJab4h", salt).decode("utf-8")
+        hashed = bcrypt.hashpw(admin_password.encode("utf-8"), salt).decode("utf-8")
         await db.users.insert_one({
             "username": "admin",
             "hashed_password": hashed,
             "role": "admin",
         })
-        print("Default admin user created (admin / 9HfrvyIVe5LDkQ63TRFEOZNP8SsJab4h)")
+        if generated:
+            print(f"Default admin user created (admin / {admin_password}) — ADMIN_PASSWORD not set, generated a random one. Save it now, it won't be shown again.")
+        else:
+            print("Default admin user created (admin / <ADMIN_PASSWORD from .env>)")
     else:
         print("Admin user already exists")
 

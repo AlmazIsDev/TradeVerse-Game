@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchMyAssets, collectAsset, upgradeAsset, sellAsset,
+  fetchMyAssets, collectAsset, upgradeAsset, sellAsset, fetchCompany,
   transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
-  fetchCompany, fetchMaterialsPrice, buyMaterials,
+  fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
-import RentModal from './RentModal'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
@@ -34,6 +33,14 @@ const ASSET_EMOJI = {
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
 }
 const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }
+
+// Пресеты срока аренды (в часах) — кнопки в модалке сдачи в аренду.
+const RENT_DURATIONS = [
+  { key: 'd1', hours: 24 }, { key: 'd2', hours: 48 }, { key: 'd4', hours: 96 },
+  { key: 'd7', hours: 168 }, { key: 'd10', hours: 240 }, { key: 'd12', hours: 288 },
+  { key: 'd14', hours: 336 }, { key: 'd16', hours: 384 }, { key: 'd18', hours: 432 },
+  { key: 'd30', hours: 720 },
+]
 const RARITY_GRAD = {
   common: 'linear-gradient(135deg,#334155,#1e293b)',
   uncommon: 'linear-gradient(135deg,#166534,#14532d)',
@@ -51,9 +58,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)   // asset
+  const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [tuneModal, setTuneModal] = useState(null)   // car asset
   const [confirm, setConfirm] = useState(null)       // { title, message, danger, onConfirm }
-  const [ownsCompany, setOwnsCompany] = useState(false)
+  const [isCompanyOwner, setIsCompanyOwner] = useState(false)
   const [materialsModal, setMaterialsModal] = useState(null)   // business asset
   const [materialsInfo, setMaterialsInfo] = useState(null)     // { unitPrice, boostPerUnit, boostCap }
   const [materialsQty, setMaterialsQty] = useState('10')
@@ -99,7 +107,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   // Владеет ли игрок компанией — определяет доступность «Передать компании».
   // Проверка дублируется на сервере (см. backend/assets.py transfer_to_company).
   useEffect(() => {
-    fetchCompany().then(res => setOwnsCompany(!!res?.company?.isOwner)).catch(() => setOwnsCompany(false))
+    fetchCompany().then(res => setIsCompanyOwner(!!res?.company?.isOwner)).catch(() => setIsCompanyOwner(false))
   }, [])
 
   // Аренда заселяется/завершается на сервере (см. backend/assets.py _process_rental) —
@@ -135,11 +143,13 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const askAct = (id, fn, okKey, conf) =>
     setConfirm({ ...conf, onConfirm: () => act(id, fn, okKey) })
 
-  const submitRent = async (hours) => {
+  const submitRent = async () => {
     if (!rentModal) return
+    const minHours = Math.floor(Number(rentForm.minHours))
+    if (!(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
     setBusyId(rentModal.id)
     try {
-      await listPropertyForRent(rentModal.id, hours)
+      await listPropertyForRent(rentModal.id, minHours)
       flash(t('rent.listed'))
       setRentModal(null)
       await load()
@@ -246,7 +256,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
 
   const renderRental = (a) => {
-    if (a.type !== 'realestate' && a.type !== 'car') return null
+    if (a.type !== 'realestate' && a.type !== 'car' && a.type !== 'business') return null
     if (a.rental?.status === 'listed') {
       return (
         <div className="asset-rental listed">
@@ -260,7 +270,8 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       return <div className="asset-rental rented"><KeyRound size={13} /> {t('rent.rented')} · ${formatMoney(a.rental.price)}</div>
     }
     return (
-      <button className="asset-act" disabled={busyId === a.id} onClick={() => setRentModal(a)}>
+      <button className="asset-act" disabled={busyId === a.id}
+        onClick={() => { setRentModal(a); setRentForm({ minHours: '6' }) }}>
         <KeyRound size={15} /> {t('rent.list')}
       </button>
     )
@@ -352,7 +363,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   <span className="asset-level">{t('myassets.level')} {a.level}</span>
                 </div>
                 <div className="asset-card-head">
-                  <span className="asset-name">{a.name}</span>
+                  <span className="asset-name">{t(`assetNames.${a.slug}`, a.name)}</span>
                 </div>
                 <div className="asset-stats">
                   <div className="asset-stat"><span>{t('myassets.value')}</span><b>${formatMoney(a.value)}</b></div>
@@ -424,14 +435,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                     )
                   })()}
                   {/* Доступно только владельцу компании — сервер тоже это проверяет (backend/assets.py transfer_to_company). */}
-                  {ownsCompany && (
+                  {isCompanyOwner && (
                     <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
-                      onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: a.name }) })}>
+                      onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) })}>
                       <Building2 size={15} /> {t('myassets.toCompany')}
                     </button>
                   )}
                   <button className="asset-act sell" disabled={busy}
-                    onClick={() => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: a.name, value: formatMoney(a.value) }) })}>
+                    onClick={() => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: t(`assetNames.${a.slug}`, a.name), value: formatMoney(a.value) }) })}>
                     <Trash2 size={15} /> {t('myassets.sell')}
                   </button>
                 </div>
@@ -442,19 +453,37 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       )}
 
       {rentModal && (
-        <RentModal
-          asset={rentModal}
-          busy={busyId === rentModal.id}
-          onConfirm={submitRent}
-          onClose={() => setRentModal(null)}
-        />
+        <div className="modal-overlay" onClick={() => setRentModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
+            <h3>{t('rent.title')}: {t(`assetNames.${rentModal.slug}`, rentModal.name)}</h3>
+            <p className="modal-price">{t('rent.desc')}</p>
+            <div className="rent-duration-grid">
+              {RENT_DURATIONS.map(d => (
+                <button key={d.key} type="button"
+                  className={`tx-pill ${Number(rentForm.minHours) === d.hours ? 'active' : ''}`}
+                  onClick={() => setRentForm({ ...rentForm, minHours: String(d.hours) })}>
+                  {t(`rent.${d.key}`)}
+                </button>
+              ))}
+            </div>
+            <div className="modal-quantity"><label>{t('rent.custom')}:</label>
+              <input type="number" min="1" max="720" value={rentForm.minHours} onChange={e => setRentForm({ ...rentForm, minHours: e.target.value })} /></div>
+            <p className="rent-max-hint">{t('rent.ratePerHour', { rate: formatMoney(rentModal.rentRatePerHour) })}</p>
+            <p className="modal-price">{t('rent.total')}: <b>${formatMoney((rentModal.rentRatePerHour || 0) * (Number(rentForm.minHours) || 0))}</b></p>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={submitRent} disabled={busyId === rentModal.id}>{t('rent.publish')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setRentModal(null)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {materialsModal && (
         <div className="modal-overlay" onClick={() => setMaterialsModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setMaterialsModal(null)}><X size={18} /></button>
-            <h3><Package size={17} /> {t('materials.title')}: {materialsModal.name}</h3>
+            <h3><Package size={17} /> {t('materials.title')}: {t(`assetNames.${materialsModal.slug}`, materialsModal.name)}</h3>
             <p className="modal-price">{t('materials.desc', { boost: Math.round((materialsInfo?.boostPerUnit || 0) * 100), cap: Math.round((materialsInfo?.boostCap || 0) * 100), hours: materialsInfo?.durationHours || 0 })}</p>
             <p className="modal-price">{t('materials.unitPrice')}: <strong>${formatMoney(materialsInfo?.unitPrice)}</strong></p>
             <div className="modal-quantity"><label>{t('common.quantity')}:</label>
@@ -504,7 +533,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="modal-overlay" onClick={() => busyId !== tuneModal.id && setTuneModal(null)}>
           <div className="modal-content tune-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTuneModal(null)}><X size={18} /></button>
-            <h3><Wrench size={18} /> {t('tune.title')}: {tuneModal.name}</h3>
+            <h3><Wrench size={18} /> {t('tune.title')}: {t(`assetNames.${tuneModal.slug}`, tuneModal.name)}</h3>
             <div className="tune-summary">
               <div><span>{t('market.prestige')}</span><b>{tuneModal.meta?.prestige ?? 0}</b></div>
               <div><span>{t('myassets.value')}</span><b>${formatMoney(tuneModal.value)}</b></div>

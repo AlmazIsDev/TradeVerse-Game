@@ -8,7 +8,8 @@ const BRAND_COLORS = {
   CrystalCore: '#818cf8', Pyronix: '#fb923c', Archivex: '#4ade80',
 }
 
-// Статический каталог используется админ-панелью (PriceEditorTab) для управления ценами.
+// Статические определения GPU для админ-редактора цен (см. PriceEditorTab).
+// Сам магазин ниже рендерит живой каталог из /api/shop (fetchShopCatalog).
 const GPU_PRODUCTS = [
   { id: 1, name: 'CrystalCore Quartz Q320', hashrate: 180, price: null, company: 'CrystalCore', line: 'Quartz' },
   { id: 2, name: 'CrystalCore Quartz Q340', hashrate: 220, price: null, company: 'CrystalCore', line: 'Quartz' },

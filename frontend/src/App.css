@@ -478,7 +478,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  min-width: 200px;
+  max-width: 200px;
+  flex-shrink: 1;
   cursor: pointer;
   position: relative;
   transition: all 0.2s ease;
@@ -1714,19 +1715,13 @@ body {
      этого сжимаем карточку, чтобы номер помещался в шапке и оставался виден. */
   .profile-card {
     min-width: 0;
-    max-width: 128px;
-    padding: 6px 10px;
-    gap: 2px;
+    max-width: 130px;
+    padding: var(--spacing-sm) var(--spacing-md);
   }
 
   .profile-card-number {
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-  }
-
-  .profile-card-label {
-    display: none;
+    font-size: 12px;
+    letter-spacing: 1px;
   }
 
   .profile-card-visibility-btn {
@@ -1754,17 +1749,22 @@ body {
     display: none;
   }
 
+  .header-right {
+    gap: var(--spacing-sm);
+  }
+
   .profile-card {
-    max-width: 104px;
-    padding: 6px 8px;
+    max-width: 100px;
+    padding: 6px var(--spacing-sm);
+  }
+
+  .profile-card-label {
+    display: none;
   }
 
   .profile-card-number {
-    font-size: 9px;
-  }
-
-  .profile-card-chip {
-    display: none;
+    font-size: 11px;
+    letter-spacing: 0.5px;
   }
 }
 
@@ -3853,5 +3853,33 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 12px;
   color: var(--color-text-tertiary, #9ca3af);
+}
+
+/* ===================== SIDEBAR FOOTER (Настройки) ===================== */
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: var(--spacing-md) var(--spacing-md) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ===================== HEADER AVATAR / USER BUTTON ===================== */
+
+.header-user-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-family: var(--font-primary);
+  transition: all 0.2s ease;
+}
+
+.header-user-btn:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.header-avatar-img {
+  object-fit: cover;
 }
 

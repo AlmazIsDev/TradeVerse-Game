@@ -1114,27 +1114,14 @@
 
 /* ===================== BIG-NUMBER OVERFLOW GUARDS ===================== */
 .header-balance { max-width: 280px; }
-.asset-summary-card, .ad-stat, .bank-mini, .bank-crypto-val, .portfolio-item-values, .stat-info { min-width: 0; }
+.asset-summary-card, .ad-stat, .bank-mini, .bank-crypto-val, .portfolio-item-values, .stat-info, .profile-card { min-width: 0; }
 /* Числа переносятся, а не обрезаются */
 .asset-summary-card b, .ad-stat b, .bank-mini b, .stat-value,
 .portfolio-value, .portfolio-total strong, .company-emp-salary, .ad-price,
-.bank-crypto-val b, .bank-hero-balance {
+.bank-crypto-val b, .bank-hero-balance, .profile-card-number {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
-/* ===================== RENT DURATION PICKER ===================== */
-.rent-duration-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--spacing-xs); margin-top: var(--spacing-sm); }
-.rent-duration-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 10px 8px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md);
-  background: var(--color-bg-tertiary); color: var(--color-text-primary); cursor: pointer;
-  transition: all 0.15s ease;
-}
-.rent-duration-btn:hover:not(:disabled) { border-color: var(--color-accent); transform: translateY(-1px); }
-.rent-duration-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.rent-duration-label { font-size: 12px; color: var(--color-text-secondary); }
-.rent-duration-price { font-size: 14px; font-weight: 700; color: var(--color-success); }
-
 /* ===================== MATERIALS (business) ===================== */
 .materials-boost-badge {
   margin-left: 4px; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 700;
@@ -1188,6 +1175,14 @@
 .itstudio-shield-warn {
   display: inline-flex; align-items: center; gap: 6px; color: #eab308; font-size: 12px; font-weight: 600;
 }
+
+/* ===================== RENT DURATION PICKER ===================== */
+.rent-max-hint { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; }
+.rent-duration-grid {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: var(--spacing-md);
+}
+.rent-duration-grid .tx-pill { padding: 6px 12px; font-size: 12px; }
 
 /* ===================== CITY ROOF: BUILDING BONUSES ===================== */
 .cityroof-bonuses {

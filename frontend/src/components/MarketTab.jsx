@@ -149,7 +149,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                   <span className="asset-banner-emoji">{ASSET_EMOJI[item.slug] || TYPE_EMOJI[item.type] || '📦'}</span>
                 </div>
                 <div className="asset-card-head">
-                  <span className="asset-name">{item.name}</span>
+                  <span className="asset-name">{t(`assetNames.${item.slug}`, item.name)}</span>
                   {item.rarity && <span className="asset-rarity" style={{ color: rc }}>{t(`realestate.rarities.${item.rarity}`, item.rarity)}</span>}
                   {item.category && <span className="asset-rarity">{t(`business.categories.${item.category}`, item.category)}</span>}
                 </div>
@@ -187,7 +187,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         <div className="modal-overlay" onClick={() => !busy && setConfirm(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setConfirm(null)}><X size={18} /></button>
-            <h3>{t('common.buy')}: {confirm.name}</h3>
+            <h3>{t('common.buy')}: {t(`assetNames.${confirm.slug}`, confirm.name)}</h3>
             <p className="modal-total">{t('common.total')}: <strong>${formatMoney(confirm.price)}</strong></p>
             {feedback && (
               <div className={`transfer-feedback ${feedback.type}`}>

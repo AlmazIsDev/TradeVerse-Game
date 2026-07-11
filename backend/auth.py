@@ -3,6 +3,8 @@
 Вынесено из main.py, чтобы модули-роутеры (economy, crypto, ...) могли
 переиспользовать зависимости без циклических импортов.
 """
+from __future__ import annotations
+
 import hashlib
 import logging
 import os

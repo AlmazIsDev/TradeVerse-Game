@@ -214,7 +214,7 @@ async def register_user(
         "username": user_data.username,
         "hashed_password": hash_password(user_data.password),
         "role": "user",
-        "balance": 1000.0,
+        "balance": STARTING_BALANCE,
         "card_number": card_number,
         "card_visible": True,
         "avatar": None,
@@ -230,7 +230,7 @@ async def register_user(
         "id": str(result.inserted_id),
         "username": user_data.username,
         "role": "user",
-        "balance": 1000.0,
+        "balance": STARTING_BALANCE,
         "card_number": card_number,
         "card_visible": True,
         "token": token,
@@ -426,7 +426,7 @@ async def update_config(
 # ── Leaderboard Endpoints ────────────────────────────────────────────────────
 
 
-STARTING_BALANCE = 1000.0
+STARTING_BALANCE = 15000.0
 WARCOIN_USD = 50.0
 
 # Ключ сортировки → реальное имя поля в записи лидерборда (camelCase).

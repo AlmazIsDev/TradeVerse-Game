@@ -64,7 +64,7 @@ class UserResponse(BaseModel):
     id: str
     username: str
     role: str = "user"
-    balance: float = 1000.0
+    balance: float = 15000.0
     card_number: Optional[str] = None
     card_visible: bool = True
     avatar: str | None = None

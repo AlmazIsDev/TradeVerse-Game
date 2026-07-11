@@ -315,22 +315,28 @@
   "rent": {
     "list": "Rent out",
     "title": "Rent out",
-    "desc": "Pick a rental term. The price is calculated from the property value. A tenant appears randomly within 1–48 hours, money is credited automatically when the term ends.",
+    "desc": "A tenant appears randomly within 1–48 hours. Money is credited automatically when the term ends.",
+    "ratePerHour": "Rate: {{rate}} $/h",
+    "total": "Total rent price",
+    "minHours": "Min term, h",
+    "custom": "Custom term, h",
+    "d1": "1 day",
+    "d2": "2 days",
+    "d4": "4 days",
+    "d7": "7 days",
+    "d10": "10 days",
+    "d12": "12 days",
+    "d14": "14 days",
+    "d16": "16 days",
+    "d18": "18 days",
+    "d30": "1 month",
     "publish": "Publish",
     "listed": "Listing published",
     "waiting": "Waiting for a tenant…",
     "rented": "Rented out",
     "cancelled": "Listing removed",
-    "duration": {
-      "1d": "1 day",
-      "2d": "2 days",
-      "3d": "3 days",
-      "6d": "6 days",
-      "12d": "12 days",
-      "14d": "14 days",
-      "16d": "16 days",
-      "1m": "1 month"
-    }
+    "invalid": "Enter a valid rental term",
+    "maxHint": "Price recalculates automatically as the term changes"
   },
   "materials": {
     "title": "Buy materials",
@@ -393,7 +399,7 @@
     "assets": "Company assets",
     "noAssets": "Transfer assets from “My Property” — the company will earn from them.",
     "incomeNote": "Company income comes only from its assets. Salaries are paid to employees from the budget.",
-    "rentNote": "Company real estate and cars can be rented out — income goes to the company budget.",
+    "rentNote": "Company real estate, cars and businesses can be rented out — income goes to the company budget.",
     "rentDesc": "A tenant appears within 1–48 hours. When the term ends, the money goes to the company budget.",
     "applied": "Application sent",
     "browseTitle": "Find a company",
@@ -410,14 +416,14 @@
       "owner": "Owner"
     },
     "yourRole": "Your role",
-    "leave": "Leave company",
-    "leaveConfirm": "Do you really want to leave the company?",
-    "left": "You left the company",
     "settings": "Company settings",
     "settingsSaved": "Settings saved",
     "disband": "Disband company",
     "disbandConfirm": "Do you really want to disband the company? This action is irreversible.",
     "disbanded": "Company disbanded",
+    "leave": "Leave company",
+    "leaveConfirm": "Do you really want to leave the company?",
+    "left": "You left the company",
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "A short description…",
     "logoLabel": "Logo",
@@ -502,7 +508,53 @@
     "realestate": "Real Estate Agency (Homes)",
     "realestateDesc": "In this agency you can purchase a home of any type",
     "business": "Buy Businesses",
-    "businessDesc": "Here you can buy various businesses, from a simple shawarma stand to a huge multi-million dollar per day business"
+    "businessDesc": "Here you can buy various businesses, from a simple shawarma stand to a huge multi-million dollar per day business",
+    "psuName": "{{w}}W PSU",
+    "cpuName": "{{cores}}-Core CPU",
+    "mbName": "Motherboard ({{slots}} GPU)",
+    "ramName": "{{gb}} GB RAM",
+    "ssdName": "{{gb}} GB SSD",
+    "upsName": "{{w}}VA UPS",
+    "rackName": "{{slots}}-GPU Rack",
+    "rackIndName": "Industrial Rack ({{slots}} GPU)",
+    "coolingName": {
+      "air": "Air Cooling",
+      "tower": "Tower Cooling",
+      "liquid": "Liquid Cooling",
+      "immersion": "Immersion Cooling"
+    },
+    "caseName": {
+      "mini": "Mini Case",
+      "midi": "Midi Tower",
+      "full": "Full Tower"
+    },
+    "fanName": {
+      "set120": "120mm Fan Kit",
+      "set140": "140mm Fan Kit",
+      "industrial": "Industrial Fans"
+    },
+    "networkName": {
+      "router": "1Gbit Router",
+      "switch": "10Gbit Switch",
+      "rack": "Network Rack"
+    }
+  },
+  "assetNames": {
+    "studio": "Studio",
+    "flat2": "2-Room Apartment",
+    "townhouse": "Townhouse",
+    "villa": "Seaside Villa",
+    "penthouse": "Penthouse",
+    "castle": "Castle",
+    "shawarma": "Shawarma Stand",
+    "coffee": "Coffee Shop",
+    "carwash": "Car Wash",
+    "itstudio": "IT Studio",
+    "factory": "Factory",
+    "citycar": "City Hatchback",
+    "sedan": "Business Sedan",
+    "sport": "Sports Car",
+    "super": "Supercar"
   },
   "gpu": {
     "company": "Company",

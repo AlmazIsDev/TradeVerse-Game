@@ -51,34 +51,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
 
   useEffect(() => { load() }, [load])
 
-  // WebSocket: реальное обновление цен
-  useEffect(() => {
-    const handleRealtime = (event) => {
-      const data = event.detail
-      if (data.type === 'market_update' && data.market === 'stock') {
-        setStocks(prev => {
-          const updates = new Map(data.updates.map(u => [u.symbol, u]))
-          return prev.map(stock => {
-            const upd = updates.get(stock.symbol)
-            if (upd) {
-              return { ...stock, price: upd.price, changePercent: upd.changePercent }
-            }
-            return stock
-          })
-        })
-      } else if (data.type === 'price_tick' && data.market === 'stock') {
-        setStocks(prev => prev.map(stock => 
-          stock.symbol === data.symbol 
-            ? { ...stock, price: data.price, changePercent: data.changePercent }
-            : stock
-        ))
-      }
-    }
-    
-    window.addEventListener('tv:realtime', handleRealtime)
-    return () => window.removeEventListener('tv:realtime', handleRealtime)
-  }, [])
-
   const openTrade = (stock, action) => {
     setTrade({ ...stock, action })
     setQty('1')

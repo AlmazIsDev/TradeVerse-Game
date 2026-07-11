@@ -209,9 +209,12 @@ async function request(endpoint, options = {}) {
     authHeaders['Authorization'] = `Bearer ${token}`
   }
 
+  // Для FormData (загрузка файлов, напр. аватар) НЕ проставляем Content-Type —
+  // браузер сам подставит правильный multipart/form-data с boundary.
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const config = {
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...authHeaders,
       ...options.headers,
     },
@@ -250,7 +253,7 @@ async function request(endpoint, options = {}) {
 
     if (!response.ok) {
       const raw = await response.text().catch(() => '')
-      // При 401 автоматически разлогиниваем
+      // При 401 без refresh-токена автоматически разлогиниваем
       if (response.status === 401 && typeof window !== 'undefined') {
         localStorage.removeItem(STORAGE_KEY)
         window.dispatchEvent(new CustomEvent('auth:unauthorized'))
@@ -552,9 +555,9 @@ export async function tuneCar(id, part) {
   return request(`/api/assets/${encodeURIComponent(id)}/tune`, { method: 'POST', body: JSON.stringify({ part }) })
 }
 
-export async function listPropertyForRent(id, hours) {
+export async function listPropertyForRent(id, minHours) {
   return request(`/api/assets/${encodeURIComponent(id)}/rent/list`, {
-    method: 'POST', body: JSON.stringify({ hours }),
+    method: 'POST', body: JSON.stringify({ minHours }),
   })
 }
 

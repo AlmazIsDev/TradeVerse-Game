@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchShopCatalog, buyHardware } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Monitor, Cpu, HardDrive, Zap, Fan, Box, Server, Battery, Network,
@@ -161,7 +162,7 @@ function ShopTab({ balance = 0, onBalanceChange }) {
               <div key={item.id} className="gpu-card" style={{ borderColor: `${color}55` }}>
                 <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={20} /></span>
                 <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
-                <span className="gpu-card-name">{item.name}</span>
+                <span className="gpu-card-name">{hwName(item, t)}</span>
                 <div className="gpu-card-specs"><span>{specLine(item.category, item.specs)}</span></div>
                 <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
                 <button
@@ -182,7 +183,7 @@ function ShopTab({ balance = 0, onBalanceChange }) {
         open={!!confirm}
         busy={busyId === confirm?.id}
         title={t('common.buy')}
-        message={confirm ? t('confirm.buyHardware', { name: confirm.name, price: formatMoney(confirm.price) }) : ''}
+        message={confirm ? t('confirm.buyHardware', { name: hwName(confirm, t), price: formatMoney(confirm.price) }) : ''}
         confirmLabel={t('common.buy')}
         onConfirm={async () => { const it = confirm; setConfirm(null); await buy(it) }}
         onCancel={() => setConfirm(null)}

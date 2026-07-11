@@ -7,6 +7,10 @@ import re
 from pydantic import BaseModel, field_validator
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+# data:image/<png|jpeg|jpg|webp>;base64,<...> — тот же формат, что отдаёт
+# canvas.toDataURL() на клиенте (см. SettingsPage).
+AVATAR_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]+={0,2})$")
+AVATAR_MAX_BASE64_CHARS = 700_000  # ≈ 525 КБ декодированного изображения — с запасом
 
 
 class UserCreate(BaseModel):
@@ -63,6 +67,62 @@ class UserResponse(BaseModel):
     balance: float = 1000.0
     card_number: Optional[str] = None
     card_visible: bool = True
+    avatar: str | None = None
+
+
+class ProfileUpdate(BaseModel):
+    """Самостоятельная смена никнейма (страница «Настройки»)."""
+    username: str
+
+    @field_validator("username")
+    @classmethod
+    def username_valid(cls, v):
+        v = (v or "").strip()
+        if len(v) < 3:
+            raise ValueError("Имя пользователя должно содержать минимум 3 символа")
+        if len(v) > 32:
+            raise ValueError("Имя пользователя должно содержать максимум 32 символа")
+        if not USERNAME_RE.match(v):
+            raise ValueError(
+                "Имя пользователя может содержать только латинские буквы, цифры, _ и -"
+            )
+        return v
+
+
+class PasswordChangeRequest(BaseModel):
+    """Смена пароля — требует подтверждения текущего пароля."""
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_min_length(cls, v):
+        if len(v) < 6:
+            raise ValueError("Новый пароль должен содержать минимум 6 символов")
+        return v
+
+    @field_validator("confirm_password")
+    @classmethod
+    def passwords_match(cls, v, info):
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Пароли не совпадают")
+        return v
+
+
+class AvatarUpdate(BaseModel):
+    """Аватар — data URL (canvas.toDataURL() на клиенте), хранится строкой в
+    документе пользователя. Формат/размер валидируются здесь же."""
+    avatar: str
+
+    @field_validator("avatar")
+    @classmethod
+    def avatar_valid(cls, v):
+        if not v or not AVATAR_DATA_URL_RE.match(v):
+            raise ValueError("Некорректный формат изображения (нужны PNG/JPEG/WEBP)")
+        if len(v) > AVATAR_MAX_BASE64_CHARS:
+            raise ValueError("Изображение слишком большое — выберите файл поменьше")
+        return v
 
 
 class AuthResponse(UserResponse):

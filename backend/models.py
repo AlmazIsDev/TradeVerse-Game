@@ -27,6 +27,8 @@ class UserDocument(BaseModel):
     balance: float = 1000.0
     card_number: Optional[str] = None
     card_visible: bool = True
+    # data URL (base64), см. user_profile.py — без отдельной инфраструктуры файлового хранилища.
+    avatar: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:

@@ -7,7 +7,6 @@ import {
 } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import ProfileCard from './ProfileCard'
-import LanguageSwitcher from './LanguageSwitcher'
 import { formatCompact } from './TransactionsPanel'
 import { Bell, LogOut, X, Check, Wallet } from 'lucide-react'
 
@@ -25,7 +24,7 @@ function getStoredUser() {
   return null
 }
 
-function Header({ username, balance, onLogout, rtKey = 0 }) {
+function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
   const { t } = useTranslation()
   const { data: headerConfig } = useApiOnMount(() => fetchConfig('header_title'))
   const [showNotifications, setShowNotifications] = useState(false)
@@ -39,7 +38,8 @@ function Header({ username, balance, onLogout, rtKey = 0 }) {
   )
   const [copied, setCopied] = useState(false)
 
-  const displayName = username || storedUser?.username || t('header.user')
+  const displayName = user?.username || storedUser?.username || t('header.user')
+  const avatar = user?.avatar || storedUser?.avatar || null
   const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'TV'
   const headerTitle = headerConfig?.value || 'TradeVerse'
   const unreadCount = notifications.filter(n => !n.read).length
@@ -203,7 +203,6 @@ function Header({ username, balance, onLogout, rtKey = 0 }) {
             <span className="header-balance-value">{formatCompact(balance)} $</span>
           </div>
         )}
-        <LanguageSwitcher />
         <div className="notification-wrapper" ref={notifRef}>
           <button
             className="header-icon-btn notification-btn"
@@ -270,10 +269,19 @@ function Header({ username, balance, onLogout, rtKey = 0 }) {
           cardVisible={cardVisible}
           onVisibilityChange={(v) => setCardVisible(v)}
         />
-        <div className="header-user">
+        <button
+          type="button"
+          className="header-user header-user-btn"
+          title={t('nav.settings')}
+          onClick={onOpenSettings}
+        >
           <span className="header-username">{displayName}</span>
-          <div className="header-avatar">{initials}</div>
-        </div>
+          {avatar ? (
+            <img className="header-avatar header-avatar-img" src={avatar} alt={displayName} />
+          ) : (
+            <div className="header-avatar">{initials}</div>
+          )}
+        </button>
         <button className="header-icon-btn" title={t('header.logout')} onClick={onLogout}>
           <LogOut size={20} />
         </button>

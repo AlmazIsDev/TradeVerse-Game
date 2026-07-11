@@ -25,6 +25,8 @@ from ledger import (
 )
 from notifications import push_notification
 from econ import get_econ
+from game_config import RENTAL_CONFIG
+from timeutil import now_utc, to_aware
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -52,19 +54,9 @@ def _tune_cost(asset: dict, level: int) -> float:
     """Стоимость следующего уровня детали (растёт с ценой авто и уровнем)."""
     return round(asset.get("price", 0) * TUNE_COST_FACTOR * (level + 1), 2)
 
-RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
-RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
 RENTABLE_TYPES = {"realestate", "car"}
-
-# ── Аренда: срок фиксированными пресетами, цена считается от стоимости актива ──
-# Формула откалибрована так, чтобы самый дешёвый объект рынка (studio, ~5000$)
-# сдавался за минимальный срок (1 день) примерно за 1500–2000$: 5000 × 0.052 ×
-# 24^0.6 ≈ 1750$. Показатель степени < 1 даёт убывающую отдачу за час при
-# длинных сроках (аренда на месяц дешевле в пересчёте на день, чем на сутки).
-RENT_DURATIONS_H = [24, 48, 72, 144, 288, 336, 384, 720]   # 1,2,3,6,12,14,16 дней, 1 месяц
-RENT_MAX_HOURS = 720
-RENT_RATE = 0.052
-RENT_DIMINISH = 0.6
+# Все коэффициенты аренды (ставка, степень убывающей отдачи, мин. цена,
+# доступные сроки) — в одном месте, см. game_config.RENTAL_CONFIG.
 
 # ── Материалы для бизнеса ────────────────────────────────────────────────────
 # Цена за единицу = базовая × economy_mult × множитель текущего мирового
@@ -100,8 +92,17 @@ CATALOG = [
      "price": 25000, "income_per_hour": 170, "upkeep_per_hour": 55, "employees": 4},
     {"slug": "carwash", "type": TYPE_BUSINESS, "name": "Автомойка", "category": "service",
      "price": 60000, "income_per_hour": 380, "upkeep_per_hour": 110, "employees": 6},
-    {"slug": "itstudio", "type": TYPE_BUSINESS, "name": "IT-студия", "category": "tech",
+    # IT-студия — 4 тира (slug = "itstudio_" + ключ тира в game_config.ITSTUDIO_CONFIG).
+    # Владение экземпляром открывает заказ атаки/защиты «Крыши города»
+    # (см. cityroof.py) — материалы, шанс успеха и опыт зависят от тира.
+    {"slug": "itstudio_basic", "type": TYPE_BUSINESS, "name": "IT-студия: Базовая", "category": "tech",
      "price": 200000, "income_per_hour": 1300, "upkeep_per_hour": 420, "employees": 12},
+    {"slug": "itstudio_medium", "type": TYPE_BUSINESS, "name": "IT-студия: Средняя", "category": "tech",
+     "price": 450000, "income_per_hour": 2600, "upkeep_per_hour": 850, "employees": 20},
+    {"slug": "itstudio_advanced", "type": TYPE_BUSINESS, "name": "IT-студия: Продвинутая", "category": "tech",
+     "price": 900000, "income_per_hour": 5000, "upkeep_per_hour": 1700, "employees": 32},
+    {"slug": "itstudio_premium", "type": TYPE_BUSINESS, "name": "IT-студия: Премиальная", "category": "tech",
+     "price": 1800000, "income_per_hour": 9200, "upkeep_per_hour": 3200, "employees": 50},
     {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office",
      "price": 750000, "income_per_hour": 4600, "upkeep_per_hour": 1500, "employees": 40},
     # Автомобили: престиж (без дохода), учитываются в капитале
@@ -245,10 +246,11 @@ class RentListing(BaseModel):
     @field_validator("hours")
     @classmethod
     def hours_ok(cls, v):
-        # Только фиксированные пресеты (см. RENT_DURATIONS_H) — никакого
+        # Только фиксированные пресеты (см. game_config.RENTAL_CONFIG) — никакого
         # произвольного ввода, максимум enforced и здесь, и в самом наборе.
-        if v not in RENT_DURATIONS_H or v > RENT_MAX_HOURS:
-            raise ValueError(f"Срок аренды должен быть одним из: {RENT_DURATIONS_H}")
+        durations = RENTAL_CONFIG["durations_hours"]
+        if v not in durations or v > RENTAL_CONFIG["max_hours"]:
+            raise ValueError(f"Срок аренды должен быть одним из: {durations}")
         return int(v)
 
 
@@ -268,8 +270,7 @@ class MaterialsBuy(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
+_now = now_utc
 
 
 def _current_value(asset: dict) -> float:
@@ -305,15 +306,17 @@ def _income_per_hour(asset: dict) -> float:
 
 def _rent_price(asset: dict, hours: int) -> float:
     """Стоимость аренды за срок — масштабируется от стоимости актива и срока
-    (убывающая отдача за час: длинные сроки дешевле в пересчёте на день)."""
-    return round(_current_value(asset) * RENT_RATE * (hours ** RENT_DIMINISH), 2)
+    (убывающая отдача за час: длинные сроки дешевле в пересчёте на день),
+    но не ниже настроенного минимума (см. game_config.RENTAL_CONFIG)."""
+    raw = _current_value(asset) * RENTAL_CONFIG["rate"] * (hours ** RENTAL_CONFIG["diminish"])
+    return round(max(RENTAL_CONFIG["min_price"], raw), 2)
 
 
 def _rent_quotes(asset: dict) -> list[dict]:
     """Цена аренды на каждый из фиксированных сроков — для выбора на клиенте."""
     if asset.get("type") not in RENTABLE_TYPES:
         return []
-    return [{"hours": h, "price": _rent_price(asset, h)} for h in RENT_DURATIONS_H]
+    return [{"hours": h, "price": _rent_price(asset, h)} for h in RENTAL_CONFIG["durations_hours"]]
 
 
 def _upkeep_per_hour(asset: dict) -> float:
@@ -366,12 +369,9 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
         return asset
     now = _now()
 
-    def _aware(dt):
-        return dt.replace(tzinfo=timezone.utc) if isinstance(dt, datetime) and dt.tzinfo is None else dt
-
     # Заселение арендатора
     if r.get("status") == "listed":
-        tenant_at = _aware(r.get("tenant_at"))
+        tenant_at = to_aware(r.get("tenant_at"))
         if tenant_at and now >= tenant_at:
             ends_at = tenant_at + timedelta(hours=r.get("minHours", 1))
             r["status"] = "rented"
@@ -391,7 +391,7 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
 
     # Завершение аренды и выплата
     if r.get("status") == "rented":
-        ends_at = _aware(r.get("ends_at"))
+        ends_at = to_aware(r.get("ends_at"))
         if ends_at and now >= ends_at:
             payout = round(float(r.get("price", 0)), 2)
             # Админ-коэффициент аренды + влияние мировых событий (напр. туристический сезон).
@@ -486,6 +486,19 @@ async def tick_market(db: AsyncIOMotorDatabase):
         pass
 
 
+def _studio_view(asset: dict) -> Optional[dict]:
+    """Прокачка/материалы IT-студии (см. cityroof.py) — None для остальных активов."""
+    slug = asset.get("slug") or ""
+    if not slug.startswith("itstudio_"):
+        return None
+    tier = slug[len("itstudio_"):]
+    try:
+        from cityroof import studio_progress
+    except Exception:
+        return None
+    return studio_progress(tier, asset.get("studioXp", 0), asset.get("itstudioMaterials", {}))
+
+
 def _serialize(asset: dict) -> dict:
     return {
         "id": str(asset["_id"]),
@@ -511,6 +524,7 @@ def _serialize(asset: dict) -> dict:
         "tuning": asset.get("tuning", {}),
         "tuneMaxLevel": TUNE_MAX_LEVEL,
         "materialsBoostPct": _materials_boost(asset),
+        "studio": _studio_view(asset),
         "purchasedAt": asset.get("purchased_at").isoformat() if isinstance(asset.get("purchased_at"), datetime) else None,
     }
 
@@ -817,9 +831,10 @@ async def rent_list(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Выставить недвижимость/авто в аренду на фиксированный срок (см.
-    RENT_DURATIONS_H). Арендатор появится через 1–48 часов. Цена всегда
-    пересчитывается сервером от стоимости актива и срока — клиент выбирает
-    только срок (см. _rent_price), поэтому её нельзя подделать.
+    game_config.RENTAL_CONFIG). Арендатор появится через настроенный
+    диапазон часов. Цена всегда пересчитывается сервером от стоимости
+    актива и срока — клиент выбирает только срок (см. _rent_price),
+    поэтому её нельзя подделать.
 
     Работает и для личных активов, и для активов компании (владелец компании
     управляет ими) — в последнем случае выплата поступит в бюджет компании.
@@ -831,7 +846,7 @@ async def rent_list(
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
     price = _rent_price(asset, payload.hours)
-    wait_h = random.randint(RENT_MIN_WAIT_H, RENT_MAX_WAIT_H)
+    wait_h = random.randint(RENTAL_CONFIG["min_wait_hours"], RENTAL_CONFIG["max_wait_hours"])
     rental = {
         "status": "listed",
         "price": price,

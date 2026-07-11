@@ -57,6 +57,24 @@ async def init():
     if stale_symbols:
         print(f"Migration: removed {len(stale_symbols)} stale system stocks ({', '.join(stale_symbols)}), holders refunded")
 
+    # Одноразовая миграция: слаг "itstudio" (старая единая IT-студия) заменён
+    # на 4 тира (itstudio_basic/medium/advanced/premium, см. assets.py CATALOG)
+    # — существующие экземпляры переносим в базовый тир и инициализируем поля
+    # прокачки/материалов, которых раньше не было.
+    migrated = await db.user_assets.update_many(
+        {"slug": "itstudio"},
+        {"$set": {"slug": "itstudio_basic", "studioXp": 0, "itstudioMaterials": {}}},
+    )
+    if migrated.modified_count:
+        print(f"Migration: {migrated.modified_count} IT-студия → itstudio_basic (новые тиры)")
+    await db.user_assets.update_many(
+        {
+            "slug": {"$in": ["itstudio_basic", "itstudio_medium", "itstudio_advanced", "itstudio_premium"]},
+            "studioXp": {"$exists": False},
+        },
+        {"$set": {"studioXp": 0, "itstudioMaterials": {}}},
+    )
+
     # Seed default config
     default_config = [
         {"key": "sidebar_menu", "value": '{"items":["account","bank","shop","events","crypto","stocks","realestate","myhomes","mybusiness","mycompany","leaderboard"]}'},

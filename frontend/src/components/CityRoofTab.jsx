@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCityMap, buyWarcoin, attackBusiness, guessCombination, protectBusiness,
-  fetchCityBonuses, orderItStudio, fetchItStudioJobs,
+  fetchCityBonuses, fetchItStudioJobs, fetchMyStudios, orderStudioJob,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
+import ItStudioOrderModal from './ItStudioOrderModal'
 import {
   Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
-  Gift, Zap, Laptop, Clock,
+  Gift, Zap, ShieldPlus, Clock,
 } from 'lucide-react'
 
 // Форматирует секунды в M:SS для таймера автосбора.
@@ -57,16 +58,20 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [clockTick, setClockTick] = useState(0)     // тикает раз в секунду для обратного отсчёта автосбора
   const bonusAnchors = useRef({})     // slug -> момент (мс), от которого считаем локальный отсчёт readyInSec
   const [itStudioJobs, setItStudioJobs] = useState([])
-  const [itStudioBusy, setItStudioBusy] = useState(false)
+  const [studios, setStudios] = useState([])          // собственные IT-студии игрока
+  const [orderModal, setOrderModal] = useState(null)   // { mode, businessId }
+  const [orderBusy, setOrderBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [data, b, jobs] = await Promise.all([
+      const [data, b, jobs, myStudios] = await Promise.all([
         fetchCityMap(), fetchCityBonuses().catch(() => null), fetchItStudioJobs().catch(() => []),
+        fetchMyStudios().catch(() => []),
       ])
       setMap(data)
       setBonuses(b)
       setItStudioJobs(jobs)
+      setStudios(myStudios)
       const now = Date.now()
       const anchors = {}
       for (const item of b?.bonuses || []) anchors[item.slug] = now
@@ -122,6 +127,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       } else if (data.type === 'notification' && data.notification?.type === 'itstudio') {
         // Заказ IT-студии завершился (см. backend/cityroof.py sweep_itstudio_jobs).
         fetchItStudioJobs().then(setItStudioJobs).catch(() => {})
+        fetchMyStudios().then(setStudios).catch(() => {})
       }
     }
     window.addEventListener('tv:realtime', onRealtime)
@@ -221,25 +227,42 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
     }
   }
 
-  const itStudioCost = (business) => {
-    const cfg = map?.itstudio
-    if (!cfg || !business) return 0
-    return Math.round(cfg.costBase + (business.protectionLevel || 0) * cfg.costPerProtection)
+  // IT-студия: атака/защита требуют владения активом-студией (см. «Моя
+  // недвижимость») — здесь только точка входа, вся логика/валидация в
+  // ItStudioOrderModal + backend/cityroof.py order_itstudio.
+  const renderStudioAction = (mode) => {
+    const pendingJob = itStudioJobs.find(j => j.businessId === selected?.id && j.type === mode && j.status === 'pending')
+    if (pendingJob) {
+      return <div className="itstudio-pending"><Clock size={13} /> {t('itstudio.pending')}</div>
+    }
+    if (studios.length === 0) {
+      return (
+        <button className="itstudio-btn" disabled title={t('itstudio.needStudio')}>
+          {mode === 'attack' ? <Swords size={15} /> : <ShieldPlus size={15} />} {t('itstudio.needStudio')}
+        </button>
+      )
+    }
+    return (
+      <button className="itstudio-btn" onClick={() => setOrderModal({ mode, businessId: selected.id })}>
+        {mode === 'attack' ? <Swords size={15} /> : <ShieldPlus size={15} />}
+        {' '}{t(mode === 'attack' ? 'itstudio.attack' : 'itstudio.defense')}
+      </button>
+    )
   }
 
-  const doOrderItStudio = async () => {
-    if (!selected) return
-    setItStudioBusy(true)
-    setFeedback(null)
+  const submitStudioOrder = async (assetId, businessId) => {
+    setOrderBusy(true)
     try {
-      const res = await orderItStudio(selected.id)
+      const res = await orderStudioJob(assetId, businessId, orderModal.mode)
       onBalanceChange?.(res.balance)
       setFeedback({ type: 'success', text: t('itstudio.ordered', { hours: res.readyInHours }) })
+      setOrderModal(null)
       setItStudioJobs(await fetchItStudioJobs())
+      setStudios(await fetchMyStudios())
     } catch (err) {
       setFeedback({ type: 'error', text: err.message })
     } finally {
-      setItStudioBusy(false)
+      setOrderBusy(false)
     }
   }
 
@@ -363,7 +386,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               </div>
             )}
 
-            {/* Владелец — защита */}
+            {/* Владелец — защита (WC) + IT-студия */}
             {selected.isMine && (
               <div className="cityroof-protect">
                 <h4><Lock size={14} /> {t('cityroof.protection')}</h4>
@@ -384,10 +407,11 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                     </button>
                   ))}
                 </div>
+                {renderStudioAction('defense')}
               </div>
             )}
 
-            {/* Не владелец — атака */}
+            {/* Не владелец — атака (мини-игра) + IT-студия */}
             {!selected.isMine && !session && (
               <button className="cityroof-attack-btn" disabled={busy}
                 onClick={() => setConfirm({
@@ -399,29 +423,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <Swords size={16} /> {busy ? t('bank.processing') : t('cityroof.attack', { cost: map?.attackCost ?? 10 })}
               </button>
             )}
-
-            {/* IT-студия: платная диверсия против чужого бизнеса — со временем
-                (1–3ч) снижает его защиту на случайную величину. */}
-            {!selected.isMine && selected.ownerId && !session && (() => {
-              const pendingJob = itStudioJobs.find(j => j.businessId === selected.id && j.status === 'pending')
-              if (pendingJob) {
-                return (
-                  <div className="itstudio-pending">
-                    <Clock size={13} /> {t('itstudio.pending')}
-                  </div>
-                )
-              }
-              return (
-                <button className="itstudio-btn" disabled={itStudioBusy}
-                  onClick={() => setConfirm({
-                    title: t('itstudio.order'),
-                    message: t('confirm.itstudio', { name: selected.name, cost: itStudioCost(selected).toLocaleString('ru-RU') }),
-                    onConfirm: doOrderItStudio,
-                  })}>
-                  <Laptop size={15} /> {itStudioBusy ? t('bank.processing') : t('itstudio.order')} (${itStudioCost(selected).toLocaleString('ru-RU')})
-                </button>
-              )
-            })()}
+            {!selected.isMine && selected.ownerId && !session && renderStudioAction('attack')}
 
             {/* Мини-игра */}
             {session && (
@@ -480,6 +482,18 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             </div>
           </div>
         </div>
+      )}
+
+      {orderModal && (
+        <ItStudioOrderModal
+          mode={orderModal.mode}
+          map={map}
+          studios={studios}
+          initialBusinessId={orderModal.businessId}
+          busy={orderBusy}
+          onSubmit={submitStudioOrder}
+          onClose={() => setOrderModal(null)}
+        />
       )}
 
       <ConfirmDialog

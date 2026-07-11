@@ -4,10 +4,15 @@
 - обновление реального рынка (крипта CoinGecko, акции Finnhub/TwelveData);
 - динамический рынок активов + мировые события (внутри дрейфа);
 - начисление аренды;
-- тик майнинг-ферм.
+- тик майнинг-ферм;
+- автосбор дохода бизнесов «Крыши города».
 
 Запускается в lifespan приложения, корректно останавливается при завершении.
 """
+from __future__ import annotations
+
+from typing import Optional
+
 import asyncio
 import logging
 import os
@@ -17,13 +22,15 @@ import assets
 import mining
 import crypto
 import stocks
-from ws import broadcast
+import cityroof
+import econ
+from ws import broadcast, push_to_admins
 
 logger = logging.getLogger("tradeverse.scheduler")
 
 SCHEDULER_INTERVAL_S = int(os.getenv("SCHEDULER_INTERVAL_SECONDS", "60"))
 
-_task: asyncio.Task | None = None
+_task: Optional[asyncio.Task] = None
 
 
 async def _tick():
@@ -53,6 +60,25 @@ async def _tick():
         await mining.tick_all(db)
     except Exception as exc:
         logger.debug("mining tick failed: %s", exc)
+    # 5) Крыша города: автосбор дохода со зданий (персональный КД у бизнеса).
+    try:
+        await cityroof.sweep_business_income(db)
+    except Exception as exc:
+        logger.debug("cityroof income sweep failed: %s", exc)
+    # 6) Аналитика экономики — только админам (не всем игрокам), для живого
+    #    обновления вкладки EconomyAdmin без ручного релоада.
+    try:
+        stats = await econ.compute_analytics(db)
+        await push_to_admins(db, {"type": "economy_stats", "stats": stats})
+    except Exception as exc:
+        logger.debug("economy stats push failed: %s", exc)
+    # 7) Лидерборд: лёгкий сигнал всем — сам расчёт капитала игроков тяжёлый
+    #    (обход users/holdings/assets/companies), поэтому шлём не данные,
+    #    а триггер; фронт дёргает уже закэшированный GET /api/leaderboard.
+    try:
+        await broadcast({"type": "leaderboard_update"})
+    except Exception as exc:
+        logger.debug("leaderboard broadcast failed: %s", exc)
 
 
 async def _loop():

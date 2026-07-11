@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from datetime import datetime
 from typing import Any, Optional
@@ -78,7 +80,7 @@ async def upsert_stock(db: AsyncIOMotorDatabase, stock_data: dict) -> dict:
 
 
 async def find_transactions_by_user(
-    db: AsyncIOMotorDatabase, user_id: str | None, limit: int = 50
+    db: AsyncIOMotorDatabase, user_id: Optional[str], limit: int = 50
 ) -> list[dict]:
     transactions = []
     query = {} if not user_id else {"userId": user_id}

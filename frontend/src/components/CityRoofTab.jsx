@@ -1,15 +1,23 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCityMap, buyWarcoin, attackBusiness, guessCombination, protectBusiness,
-  fetchCityBonuses, claimCityBonuses,
+  fetchCityBonuses,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
-  Gift, HandCoins,
+  Gift, Zap,
 } from 'lucide-react'
+
+// Форматирует секунды в M:SS для таймера автосбора.
+function formatCountdown(sec) {
+  const s = Math.max(0, Math.round(sec))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}:${String(r).padStart(2, '0')}`
+}
 
 // Ярлыки эффектов зданий. Каждый эффект реально подключён в игровой логике
 // (см. backend/cityroof.py BUSINESS_BONUS и player_city_effect).
@@ -33,7 +41,7 @@ const BUILDING_EMOJI = {
   stadium: '🏟️', airport: '✈️', hotel: '🏨', tower: '🏢', studio: '🎬', refinery: '🛢️',
 }
 
-function CityRoofTab({ balance = 0, onBalanceChange }) {
+function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
   const [map, setMap] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -46,29 +54,71 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
   const [buyModal, setBuyModal] = useState(false)
   const [buyAmount, setBuyAmount] = useState('10')
   const [bonuses, setBonuses] = useState(null)
+  const [clockTick, setClockTick] = useState(0)     // тикает раз в секунду для обратного отсчёта автосбора
+  const bonusAnchors = useRef({})     // slug -> момент (мс), от которого считаем локальный отсчёт readyInSec
 
   const load = useCallback(async () => {
     try {
       const [data, b] = await Promise.all([fetchCityMap(), fetchCityBonuses().catch(() => null)])
       setMap(data)
       setBonuses(b)
+      const now = Date.now()
+      const anchors = {}
+      for (const item of b?.bonuses || []) anchors[item.slug] = now
+      bonusAnchors.current = anchors
     } catch { /* ignore */ } finally {
       setLoading(false)
     }
   }, [])
 
-  const claimDaily = async () => {
-    setBusy(true)
-    try {
-      const res = await claimCityBonuses()
-      onBalanceChange?.(res.balance)
-      await load()
-    } catch { /* ignore */ } finally {
-      setBusy(false)
-    }
-  }
-
   useEffect(() => { load() }, [load])
+
+  // Доход зачисляется автоматически на сервере (Scheduler). Периодически
+  // подтягиваем актуальное состояние КД по каждому зданию + тикаем таймер.
+  useEffect(() => {
+    const refresh = setInterval(load, 30000)
+    const clock = setInterval(() => setClockTick(t => t + 1), 1000)
+    return () => { clearInterval(refresh); clearInterval(clock) }
+  }, [load])
+
+  // Живые обновления карты (захват/защита чужими игроками) и точечный сброс
+  // таймера автосбора в момент реального зачисления — вместо ожидания
+  // 30-сек резервного поллинга.
+  useEffect(() => {
+    const onRealtime = (e) => {
+      const data = e.detail
+      if (!data) return
+      if (data.type === 'cityroof_captured' || data.type === 'cityroof_protected') {
+        const merged = { ...data.business, isMine: currentUserId ? data.business.ownerId === currentUserId : false }
+        setMap(m => {
+          if (!m) return m
+          const idx = m.businesses.findIndex(b => b.id === merged.id)
+          if (idx === -1) return m
+          const businesses = [...m.businesses]
+          businesses[idx] = merged
+          return { ...m, businesses }
+        })
+        setSelected(sel => (sel && sel.id === merged.id) ? merged : sel)
+      } else if (data.type === 'cityroof_income') {
+        setBonuses(b => {
+          if (!b) return b
+          const idx = b.bonuses.findIndex(x => x.slug === data.slug)
+          if (idx === -1) return b
+          const items = [...b.bonuses]
+          items[idx] = { ...items[idx], amount: data.amount, readyInSec: data.intervalSec }
+          return { ...b, bonuses: items }
+        })
+        bonusAnchors.current = { ...bonusAnchors.current, [data.slug]: Date.now() }
+      } else if (data.type === 'cityroof_season_closed') {
+        setSelected(null)
+        setSession(null)
+        setFeedback(null)
+        load()
+      }
+    }
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => window.removeEventListener('tv:realtime', onRealtime)
+  }, [currentUserId, load])
 
   const wc = map?.warcoin || { balance: 0, price: 0, league: '' }
 
@@ -121,7 +171,12 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
     try {
       const res = await guessCombination(session.sessionId, guess)
       if (res.solved) {
-        setFeedback({ type: 'success', text: t('cityroof.captured') })
+        setFeedback({
+          type: 'success',
+          text: res.capturedIncome > 0
+            ? t('cityroof.capturedWithIncome', { amount: res.capturedIncome.toLocaleString('ru-RU') })
+            : t('cityroof.captured'),
+        })
         setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
         setSession(null)
         await load()
@@ -205,29 +260,34 @@ function CityRoofTab({ balance = 0, onBalanceChange }) {
 
       <p className="cityroof-hint">{t('cityroof.hint', { cost: map?.attackCost ?? 10 })}</p>
 
-      {/* Бонусы зданий во владении */}
+      {/* Бонусы зданий во владении — доход зачисляется автоматически (автосбор) */}
       {bonuses && bonuses.bonuses.length > 0 && (
         <div className="cityroof-bonuses">
           <div className="cbonus-head">
             <span><Gift size={16} /> {t('cityroof.yourBonuses')}</span>
-            <button className="cbonus-claim" disabled={busy || !bonuses.claimable} onClick={claimDaily}>
-              <HandCoins size={14} />
-              {bonuses.claimable
-                ? t('cityroof.claim', { amount: bonuses.totalDaily.toLocaleString('ru-RU') })
-                : t('cityroof.claimIn', { hours: bonuses.hoursUntilClaim })}
-            </button>
+            <span className="cbonus-auto"><Zap size={13} /> {t('cityroof.autoCollect')}</span>
           </div>
           <div className="cbonus-list">
-            {bonuses.bonuses.map(b => (
-              <div key={b.slug} className="cbonus-item">
-                <span className="cbonus-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
-                <div className="cbonus-info">
-                  <span className="cbonus-name">{b.name}</span>
-                  <span className="cbonus-effect">{EFFECT_LABEL[b.effect] || b.effect}{b.mult ? ` +${Math.round(b.mult * 100)}%` : ''}</span>
+            {bonuses.bonuses.map(b => {
+              const anchor = bonusAnchors.current[b.slug] ?? Date.now()
+              const elapsed = (Date.now() - anchor) / 1000
+              const remaining = Math.max(0, (b.readyInSec ?? 0) - elapsed)
+              return (
+                <div key={b.slug} className="cbonus-item">
+                  <span className="cbonus-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
+                  <div className="cbonus-info">
+                    <span className="cbonus-name">{b.name}</span>
+                    <span className="cbonus-effect">{EFFECT_LABEL[b.effect] || b.effect}{b.mult ? ` +${Math.round(b.mult * 100)}%` : ''}</span>
+                  </div>
+                  <div className="cbonus-right">
+                    <span className="cbonus-daily">+{(b.amount ?? b.daily).toLocaleString('ru-RU')} $</span>
+                    <span className="cbonus-timer">
+                      {remaining > 0 ? t('cityroof.nextIncome', { time: formatCountdown(remaining) }) : t('cityroof.incomeReady')}
+                    </span>
+                  </div>
                 </div>
-                <span className="cbonus-daily">+{b.daily.toLocaleString('ru-RU')} $/д</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import './App.css'
+import './landing.css'
 import AuthPage from './components/AuthPage'
 import Dashboard from './components/Dashboard'
+import Landing from './components/Landing'
+import { logoutUser, startTokenRefresh, stopTokenRefresh } from './services/api'
 
 const STORAGE_KEY = 'tradeverse_user'
 
@@ -14,6 +18,8 @@ function App() {
       try {
         const parsed = JSON.parse(stored)
         setUser(parsed)
+        // Проактивное обновление токена для уже залогиненной сессии
+        startTokenRefresh()
       } catch {
         setUser({ username: stored, id: null })
       }
@@ -22,41 +28,29 @@ function App() {
     // Автоматический логаут при 401 с сервера
     function onUnauthorized() {
       setUser(null)
+      stopTokenRefresh()
       localStorage.removeItem(STORAGE_KEY)
     }
     window.addEventListener('auth:unauthorized', onUnauthorized)
     return () => window.removeEventListener('auth:unauthorized', onUnauthorized)
   }, [])
 
-  const handleLogin = (userData) => {
+  const handleLogin = useCallback((userData) => {
     const userObj = typeof userData === 'string'
       ? { username: userData, id: null, role: 'user', token: null }
       : userData
     setUser(userObj)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(userObj))
-  }
+    // Запускаем проактивное обновление access-токена
+    startTokenRefresh()
+  }, [])
 
   const handleLogout = useCallback(() => {
-    // Инвалидируем refresh-токен на сервере (fire-and-forget)
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed.refresh_token) {
-          fetch(
-            `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/auth/logout`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refresh_token: parsed.refresh_token }),
-            }
-          ).catch(() => {})
-        }
-      }
-    } catch { /* ignore */ }
-
-    setUser(null)
-    localStorage.removeItem(STORAGE_KEY)
+    // Инвалидируем refresh-токен на сервере, затем чистим локальное состояние.
+    // logoutUser устойчив к сетевым ошибкам — локальный выход произойдёт в любом случае.
+    logoutUser().finally(() => {
+      setUser(null)
+    })
   }, [])
 
   // Слушаем принудительный логаут (истёк refresh-токен)
@@ -80,11 +74,40 @@ function App() {
     })
   }, [])
 
-  if (!user) {
-    return <AuthPage onLogin={handleLogin} />
-  }
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            user
+              ? <Dashboard user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
+              : <Landing />
+          }
+        />
+        <Route
+          path="/login"
+          element={
+            user
+              ? <Navigate to="/" replace />
+              : <LoginRoute onLogin={handleLogin} />
+          }
+        />
+        {/* SPA fallback: неизвестные пути ведут на корень */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
 
-  return <Dashboard user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
+/** Обёртка над AuthPage: после успешного логина уводим на корень (Dashboard). */
+function LoginRoute({ onLogin }) {
+  const navigate = useNavigate()
+  const handleLogin = (userData) => {
+    onLogin(userData)
+    navigate('/', { replace: true })
+  }
+  return <AuthPage onLogin={handleLogin} />
 }
 
 export default App

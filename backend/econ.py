@@ -5,6 +5,10 @@
 - /api/admin/economy/config  — просмотр/изменение коэффициентов.
 - /api/admin/economy/analytics — сводка состояния экономики.
 """
+from __future__ import annotations
+
+from typing import Optional
+
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -45,13 +49,13 @@ async def get_econ(db: AsyncIOMotorDatabase) -> dict:
 
 
 class EconConfigUpdate(BaseModel):
-    income_mult: float | None = None
-    rent_mult: float | None = None
-    tax_rate: float | None = None
-    inflation: float | None = None
-    energy_cost: float | None = None
-    wc_price: float | None = None
-    economy_mult: float | None = None
+    income_mult: Optional[float] = None
+    rent_mult: Optional[float] = None
+    tax_rate: Optional[float] = None
+    inflation: Optional[float] = None
+    energy_cost: Optional[float] = None
+    wc_price: Optional[float] = None
+    economy_mult: Optional[float] = None
 
 
 @router.get("/config")
@@ -77,8 +81,7 @@ def _asset_value(a: dict) -> float:
     return a.get("price", 0) * (1 + 0.35 * (a.get("level", 1) - 1))
 
 
-@router.get("/analytics")
-async def analytics(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def compute_analytics(db: AsyncIOMotorDatabase) -> dict:
     """Полная сводка состояния экономики проекта."""
     # Цены.
     stock_prices = {s["symbol"]: float(s.get("price", 0.0)) async for s in db.stocks.find({}, {"symbol": 1, "price": 1})}
@@ -146,3 +149,8 @@ async def analytics(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = De
         "dailyVolume": round(daily_volume, 2),
         "dailyOperations": daily_ops,
     }
+
+
+@router.get("/analytics")
+async def analytics(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+    return await compute_analytics(db)

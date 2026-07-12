@@ -40,50 +40,50 @@ async def _tick():
     try:
         await crypto.maintain_crypto_market(db)
     except Exception as exc:
-        logger.debug("crypto market maintain skipped: %s", exc)
+        logger.warning("crypto market maintain skipped: %s", exc, exc_info=True)
     try:
         await stocks.maintain_stock_market(db)
     except Exception as exc:
-        logger.debug("stock market maintain skipped: %s", exc)
+        logger.warning("stock market maintain skipped: %s", exc, exc_info=True)
     # 2) Динамический рынок активов + мировые события.
     try:
         await assets.tick_market(db)
     except Exception as exc:
-        logger.debug("asset market tick failed: %s", exc)
+        logger.warning("asset market tick failed: %s", exc, exc_info=True)
     # 3) Аренда (заселение/выплаты).
     try:
         await assets.sweep_rentals(db)
     except Exception as exc:
-        logger.debug("rental sweep failed: %s", exc)
+        logger.warning("rental sweep failed: %s", exc, exc_info=True)
     # 4) Майнинг-фермы.
     try:
         await mining.tick_all(db)
     except Exception as exc:
-        logger.debug("mining tick failed: %s", exc)
+        logger.warning("mining tick failed: %s", exc, exc_info=True)
     # 5) Крыша города: автосбор дохода со зданий (персональный КД у бизнеса).
     try:
         await cityroof.sweep_business_income(db)
     except Exception as exc:
-        logger.debug("cityroof income sweep failed: %s", exc)
+        logger.warning("cityroof income sweep failed: %s", exc, exc_info=True)
     # 5b) Крыша города: завершение готовых заказов IT-студии (снижение защиты).
     try:
         await cityroof.sweep_itstudio_jobs(db)
     except Exception as exc:
-        logger.debug("cityroof itstudio sweep failed: %s", exc)
+        logger.warning("cityroof itstudio sweep failed: %s", exc, exc_info=True)
     # 6) Аналитика экономики — только админам (не всем игрокам), для живого
     #    обновления вкладки EconomyAdmin без ручного релоада.
     try:
         stats = await econ.compute_analytics(db)
         await push_to_admins(db, {"type": "economy_stats", "stats": stats})
     except Exception as exc:
-        logger.debug("economy stats push failed: %s", exc)
+        logger.warning("economy stats push failed: %s", exc, exc_info=True)
     # 7) Лидерборд: лёгкий сигнал всем — сам расчёт капитала игроков тяжёлый
     #    (обход users/holdings/assets/companies), поэтому шлём не данные,
     #    а триггер; фронт дёргает уже закэшированный GET /api/leaderboard.
     try:
         await broadcast({"type": "leaderboard_update"})
     except Exception as exc:
-        logger.debug("leaderboard broadcast failed: %s", exc)
+        logger.warning("leaderboard broadcast failed: %s", exc, exc_info=True)
 
 
 async def _loop():

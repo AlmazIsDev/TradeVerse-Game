@@ -68,6 +68,7 @@ class UserResponse(BaseModel):
     card_number: Optional[str] = None
     card_visible: bool = True
     avatar: str | None = None
+    hideFromLeaderboard: bool = False
 
 
 class ProfileUpdate(BaseModel):

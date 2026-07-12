@@ -310,7 +310,8 @@
     "sold": "Asset sold",
     "toCompany": "Give to company",
     "toCompanyHint": "Your company will start earning from this asset",
-    "transferred": "Asset given to company"
+    "transferred": "Asset given to company",
+    "interact": "Interact"
   },
   "rent": {
     "list": "Rent out",
@@ -458,6 +459,16 @@
     "nextIncome": "Next payout: {{time}}",
     "incomeReady": "Collected",
     "capturedWithIncome": "Business captured! +{{amount}} $",
+    "effects": {
+      "rental_income": "Rental income",
+      "asset_income": "Business & real estate income",
+      "company_income": "Company income",
+      "mining_yield": "Mining yield",
+      "mining_energy": "Farm electricity discount",
+      "shop_discount": "Equipment discount",
+      "warcoin_discount": "WarCoin discount",
+      "daily_cash": "Daily income"
+    },
     "leagues": {
       "bronze": "Bronze",
       "silver": "Silver",
@@ -643,7 +654,9 @@
     "removeAvatarConfirmMsg": "You'll go back to showing your initials. You can undo this any time by uploading a new image.",
     "avatarRemoved": "Avatar removed",
     "avatarHint": "PNG, JPEG, WEBP or GIF. The image is automatically downscaled before upload.",
-    "avatarInvalidType": "Couldn't read the file — pick an image (PNG/JPEG/WEBP/GIF)"
+    "avatarInvalidType": "Couldn't read the file — pick an image (PNG/JPEG/WEBP/GIF)",
+    "hideFromLeaderboard": "Hide me from the leaderboard",
+    "hideFromLeaderboardHint": "Your profile will be excluded from the public player ranking — nothing else changes."
   },
   "auth": {
     "login": "Login",

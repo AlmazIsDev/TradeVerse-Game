@@ -56,14 +56,14 @@ async def push_to_user(user_id, message: dict):
     try:
         await manager.send(str(user_id), message)
     except Exception as exc:
-        logger.debug("ws push failed: %s", exc)
+        logger.warning("ws push failed: %s", exc, exc_info=True)
 
 
 async def broadcast(message: dict):
     try:
         await manager.broadcast(message)
     except Exception as exc:
-        logger.debug("ws broadcast failed: %s", exc)
+        logger.warning("ws broadcast failed: %s", exc, exc_info=True)
 
 
 async def push_to_admins(db, message: dict):
@@ -77,7 +77,7 @@ async def push_to_admins(db, message: dict):
         async for admin in db.users.find({"role": "admin"}, {"_id": 1}):
             await push_to_user(str(admin["_id"]), message)
     except Exception as exc:
-        logger.debug("ws push_to_admins failed: %s", exc)
+        logger.warning("ws push_to_admins failed: %s", exc, exc_info=True)
 
 
 @router.websocket("/ws")

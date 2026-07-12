@@ -138,6 +138,22 @@
   margin: 0;
 }
 
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.settings-toggle-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
 /* ── Локализация ───────────────────────────────────────────────────────── */
 
 .settings-lang-grid {

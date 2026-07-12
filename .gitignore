@@ -1,4 +1,5 @@
 .vscode/
+.vscode/settings.json
 backend/__pycache__/
 node_modules
 .claude/

@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { updateProfile, changePassword, uploadAvatar, deleteAvatar } from '../services/api'
+import { updateProfile, changePassword, uploadAvatar, deleteAvatar, toggleLeaderboardVisibility } from '../services/api'
 import ConfirmDialog from './ConfirmDialog'
 import {
-  Settings as SettingsIcon, User, Lock, Image as ImageIcon, Globe,
+  Settings as SettingsIcon, User, Lock, Globe,
   Save, Trash2, Check, AlertTriangle, Upload,
 } from 'lucide-react'
 
@@ -74,6 +74,23 @@ function SettingsPage({ user, onUserUpdate }) {
       flash(err.message, 'error')
     } finally {
       setSavingProfile(false)
+    }
+  }
+
+  // ── Видимость в таблице лидеров ──────────────────────────────────────────────
+  const [hideFromLeaderboard, setHideFromLeaderboard] = useState(!!user?.hideFromLeaderboard)
+  const [savingLbVisibility, setSavingLbVisibility] = useState(false)
+
+  const toggleLbVisibility = async () => {
+    setSavingLbVisibility(true)
+    try {
+      const res = await toggleLeaderboardVisibility()
+      setHideFromLeaderboard(res.hideFromLeaderboard)
+      onUserUpdate?.({ hideFromLeaderboard: res.hideFromLeaderboard })
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setSavingLbVisibility(false)
     }
   }
 
@@ -174,69 +191,11 @@ function SettingsPage({ user, onUserUpdate }) {
       )}
 
       <div className="settings-grid">
-        {/* Профиль */}
-        <div className="settings-card">
+        {/* Профиль (аватар + никнейм + видимость в лидерборде) */}
+        <div className="settings-card settings-avatar-card">
           <div className="settings-card-header">
             <span className="settings-card-icon"><User size={18} /></span>
             <h3>{t('settings.profileTitle')}</h3>
-          </div>
-
-          <div className="settings-current-info">
-            <span>{t('profile.name')}: <b>{user?.username}</b></span>
-            {since && <span>{t('profile.since')}: {since}</span>}
-          </div>
-
-          <div className="form-group">
-            <label>{t('settings.newNickname')}</label>
-            <input
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              placeholder={t('auth.enterUsername')}
-              maxLength={32}
-            />
-          </div>
-          <button
-            className="submit-btn settings-save-btn"
-            disabled={savingProfile || !usernameChanged}
-            onClick={saveProfile}
-          >
-            <Save size={15} /> {savingProfile ? t('bank.processing') : t('settings.saveProfile')}
-          </button>
-        </div>
-
-        {/* Пароль */}
-        <div className="settings-card">
-          <div className="settings-card-header">
-            <span className="settings-card-icon"><Lock size={18} /></span>
-            <h3>{t('settings.securityTitle')}</h3>
-          </div>
-
-          <div className="form-group">
-            <label>{t('settings.currentPassword')}</label>
-            <input type="password" value={pwd.current} onChange={e => setPwd({ ...pwd, current: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label>{t('settings.newPassword')}</label>
-            <input type="password" value={pwd.next} onChange={e => setPwd({ ...pwd, next: e.target.value })} placeholder={t('auth.enterPassword')} />
-          </div>
-          <div className="form-group">
-            <label>{t('auth.confirmPassword')}</label>
-            <input type="password" value={pwd.confirm} onChange={e => setPwd({ ...pwd, confirm: e.target.value })} />
-          </div>
-          <button
-            className="submit-btn settings-save-btn"
-            disabled={savingPwd || !pwd.current || !pwd.next || !pwd.confirm}
-            onClick={savePassword}
-          >
-            <Save size={15} /> {savingPwd ? t('bank.processing') : t('settings.savePassword')}
-          </button>
-        </div>
-
-        {/* Аватар */}
-        <div className="settings-card settings-avatar-card">
-          <div className="settings-card-header">
-            <span className="settings-card-icon"><ImageIcon size={18} /></span>
-            <h3>{t('settings.avatarTitle')}</h3>
           </div>
 
           <div className="settings-avatar-body">
@@ -265,6 +224,67 @@ function SettingsPage({ user, onUserUpdate }) {
             </div>
           </div>
           <p className="settings-hint">{t('settings.avatarHint')}</p>
+
+          <div className="settings-current-info">
+            <span>{t('profile.name')}: <b>{user?.username}</b></span>
+            {since && <span>{t('profile.since')}: {since}</span>}
+          </div>
+
+          <div className="form-group">
+            <label>{t('settings.newNickname')}</label>
+            <input
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              placeholder={t('auth.enterUsername')}
+              maxLength={32}
+            />
+          </div>
+          <button
+            className="submit-btn settings-save-btn"
+            disabled={savingProfile || !usernameChanged}
+            onClick={saveProfile}
+          >
+            <Save size={15} /> {savingProfile ? t('bank.processing') : t('settings.saveProfile')}
+          </button>
+
+          <label className="settings-toggle-row">
+            <input
+              type="checkbox"
+              checked={hideFromLeaderboard}
+              disabled={savingLbVisibility}
+              onChange={toggleLbVisibility}
+            />
+            <span>{t('settings.hideFromLeaderboard')}</span>
+          </label>
+          <p className="settings-hint">{t('settings.hideFromLeaderboardHint')}</p>
+        </div>
+
+        {/* Пароль */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><Lock size={18} /></span>
+            <h3>{t('settings.securityTitle')}</h3>
+          </div>
+
+          <div className="form-group">
+            <label>{t('settings.currentPassword')}</label>
+            <input type="password" value={pwd.current} onChange={e => setPwd({ ...pwd, current: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label>{t('settings.newPassword')}</label>
+            <input type="password" value={pwd.next} onChange={e => setPwd({ ...pwd, next: e.target.value })} placeholder={t('auth.enterPassword')} />
+          </div>
+          <div className="form-group">
+            <label>{t('auth.confirmPassword')}</label>
+            <input type="password" value={pwd.confirm} onChange={e => setPwd({ ...pwd, confirm: e.target.value })} />
+          </div>
+          <button
+            className="submit-btn settings-save-btn"
+            disabled={savingPwd || !pwd.current || !pwd.next || !pwd.confirm}
+            onClick={savePassword}
+          >
+            <Save size={15} /> {savingPwd ? t('bank.processing') : t('settings.savePassword')}
+          </button>
         </div>
 
         {/* Локализация */}

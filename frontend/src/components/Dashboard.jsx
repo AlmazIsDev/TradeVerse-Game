@@ -143,7 +143,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'realestate':
         return <MarketTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'myhomes':
-        return <MyAssetsTab defaultType="realestate" balance={balance} onBalanceChange={handleBalanceChange} />
+        return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mybusiness':
         return <MyAssetsTab defaultType="business" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':

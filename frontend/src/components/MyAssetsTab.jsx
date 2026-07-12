@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchMyAssets, collectAsset, upgradeAsset, sellAsset, fetchCompany,
@@ -12,7 +12,7 @@ import ItStudioOrderModal from './ItStudioOrderModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
-  Swords, ShieldPlus, Cpu,
+  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -71,6 +71,18 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [orderModal, setOrderModal] = useState(null)            // { mode, businessId }
   const [cityMap, setCityMap] = useState(null)
   const [orderBusy, setOrderBusy] = useState(false)
+  const [menuOpenId, setMenuOpenId] = useState(null)             // id актива с открытым меню «Взаимодействие»
+  const menuRef = useRef(null)
+
+  // Закрытие меню «Взаимодействие» по клику вне него.
+  useEffect(() => {
+    if (!menuOpenId) return
+    const onClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpenId(null)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [menuOpenId])
 
   // Синхронизируем открытую модалку тюнинга с обновлёнными данными.
   useEffect(() => {
@@ -255,26 +267,86 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
 
-  const renderRental = (a) => {
-    if (a.type !== 'realestate' && a.type !== 'car' && a.type !== 'business') return null
+  // Статус аренды — только инфо-бейдж; сами кнопки (сдать/отменить) вынесены
+  // в меню «Взаимодействие» (см. buildActions), чтобы не плодить кнопки на карточке.
+  const renderRentalStatus = (a) => {
     if (a.rental?.status === 'listed') {
-      return (
-        <div className="asset-rental listed">
-          <KeyRound size={13} /> {t('rent.waiting')}
-          <button className="asset-rental-cancel" disabled={busyId === a.id}
-            onClick={() => askAct(a.id, cancelRent, 'rent.cancelled', { title: t('rent.list'), message: t('confirm.cancelRent') })}>{t('common.cancel')}</button>
-        </div>
-      )
+      return <div className="asset-rental listed"><KeyRound size={13} /> {t('rent.waiting')}</div>
     }
     if (a.rental?.status === 'rented') {
       return <div className="asset-rental rented"><KeyRound size={13} /> {t('rent.rented')} · ${formatMoney(a.rental.price)}</div>
     }
-    return (
-      <button className="asset-act" disabled={busyId === a.id}
-        onClick={() => { setRentModal(a); setRentForm({ minHours: '6' }) }}>
-        <KeyRound size={15} /> {t('rent.list')}
-      </button>
-    )
+    return null
+  }
+
+  // Собирает все применимые к активу действия для меню «Взаимодействие» —
+  // раньше это был ряд из 6-7 отдельных кнопок на карточке.
+  const buildActions = (a) => {
+    const busy = busyId === a.id
+    const isCar = a.type === 'car'
+    const actions = []
+
+    if (!isCar && a.profitPerHour > 0) {
+      actions.push({
+        key: 'collect', className: 'collect', disabled: busy || a.accrued <= 0,
+        icon: <HandCoins size={15} />, label: t('myassets.collect'),
+        onClick: () => askAct(a.id, collectAsset, 'myassets.collected', { title: t('myassets.collect'), message: t('confirm.collect', { amount: formatMoney(a.accrued) }) }),
+      })
+    }
+    if (!isCar) {
+      actions.push({
+        key: 'upgrade', className: 'upgrade', disabled: busy,
+        icon: <ArrowUpCircle size={15} />, label: `${t('myassets.upgrade')} ($${formatMoney(a.upgradeCost)})`,
+        onClick: () => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) }),
+      })
+    } else {
+      actions.push({
+        key: 'tune', className: 'upgrade', disabled: busy,
+        icon: <Wrench size={15} />, label: t('tune.title'),
+        onClick: () => setTuneModal(a),
+      })
+    }
+    if (a.type === 'business') {
+      actions.push({
+        key: 'materials', disabled: busy, icon: <Package size={15} />,
+        label: t('materials.buy') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
+        onClick: () => openMaterials(a),
+      })
+    }
+    if (a.slug?.startsWith('itstudio_')) {
+      const s = studios.find(x => x.assetId === a.id)
+      if (s?.pendingJob) {
+        actions.push({ key: 'itstudio-pending', disabled: true, info: true, icon: <Package size={13} />, label: t('itstudio.pending') })
+      } else {
+        actions.push({ key: 'itstudio-materials', disabled: busy, icon: <Package size={15} />, label: t('itstudio.buyMaterials'), onClick: () => openStudioMaterials(s || { assetId: a.id, name: a.name }) })
+        actions.push({ key: 'itstudio-attack', disabled: busy, icon: <Swords size={15} />, label: t('itstudio.attack'), onClick: () => openOrder('attack') })
+        actions.push({ key: 'itstudio-defense', disabled: busy, icon: <ShieldPlus size={15} />, label: t('itstudio.defense'), onClick: () => openOrder('defense') })
+      }
+    }
+    if (isCompanyOwner) {
+      actions.push({
+        key: 'toCompany', disabled: busy, icon: <Building2 size={15} />, label: t('myassets.toCompany'),
+        onClick: () => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) }),
+      })
+    }
+    if (a.type === 'realestate' || a.type === 'car' || a.type === 'business') {
+      if (a.rental?.status === 'listed') {
+        actions.push({
+          key: 'rent-cancel', disabled: busy, icon: <KeyRound size={15} />, label: t('common.cancel'),
+          onClick: () => askAct(a.id, cancelRent, 'rent.cancelled', { title: t('rent.list'), message: t('confirm.cancelRent') }),
+        })
+      } else if (a.rental?.status !== 'rented') {
+        actions.push({
+          key: 'rent-list', disabled: busy, icon: <KeyRound size={15} />, label: t('rent.list'),
+          onClick: () => { setRentModal(a); setRentForm({ minHours: '6' }) },
+        })
+      }
+    }
+    actions.push({
+      key: 'sell', className: 'sell', disabled: busy, icon: <Trash2 size={15} />, label: t('myassets.sell'),
+      onClick: () => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: t(`assetNames.${a.slug}`, a.name), value: formatMoney(a.value) }) }),
+    })
+    return actions
   }
 
   // Прокачка/материалы IT-студии (см. cityroof.py studio_progress) — уровень
@@ -386,65 +458,25 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                 {!isCar && a.profitPerHour > 0 && (
                   <div className="asset-accrued"><Wallet size={14} /> {t('myassets.accrued')}: <b>${formatMoney(a.accrued)}</b></div>
                 )}
-                {renderRental(a)}
+                {renderRentalStatus(a)}
                 {renderStudio(a)}
 
-                <div className={`asset-actions ${isCar ? 'compact' : ''}`}>
-                  {!isCar && a.profitPerHour > 0 && (
-                    <button className="asset-act collect" disabled={busy || a.accrued <= 0}
-                      onClick={() => askAct(a.id, collectAsset, 'myassets.collected', { title: t('myassets.collect'), message: t('confirm.collect', { amount: formatMoney(a.accrued) }) })}>
-                      <HandCoins size={15} /> {t('myassets.collect')}
-                    </button>
-                  )}
-                  {!isCar && (
-                    <button className="asset-act upgrade" disabled={busy}
-                      onClick={() => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) })}>
-                      <ArrowUpCircle size={15} /> {t('myassets.upgrade')} (${formatMoney(a.upgradeCost)})
-                    </button>
-                  )}
-                  {isCar && (
-                    <button className="asset-act upgrade" disabled={busy} onClick={() => setTuneModal(a)}>
-                      <Wrench size={15} /> {t('tune.title')}
-                    </button>
-                  )}
-                  {a.type === 'business' && (
-                    <button className="asset-act" disabled={busy} onClick={() => openMaterials(a)}>
-                      <Package size={15} /> {t('materials.buy')}
-                      {a.materialsBoostPct > 0 && <span className="materials-boost-badge">+{Math.round(a.materialsBoostPct * 100)}%</span>}
-                    </button>
-                  )}
-                  {/* IT-студия: атака/защита требуют владения активом — см.
-                      backend/cityroof.py order_itstudio (сервер тоже проверяет). */}
-                  {a.slug?.startsWith('itstudio_') && (() => {
-                    const s = studios.find(x => x.assetId === a.id)
-                    if (s?.pendingJob) {
-                      return <div className="itstudio-pending"><Package size={13} /> {t('itstudio.pending')}</div>
-                    }
-                    return (
-                      <>
-                        <button className="asset-act" disabled={busy} onClick={() => openStudioMaterials(s || { assetId: a.id, name: a.name })}>
-                          <Package size={15} /> {t('itstudio.buyMaterials')}
-                        </button>
-                        <button className="asset-act itstudio-btn" disabled={busy} onClick={() => openOrder('attack')}>
-                          <Swords size={15} /> {t('itstudio.attack')}
-                        </button>
-                        <button className="asset-act" disabled={busy} onClick={() => openOrder('defense')}>
-                          <ShieldPlus size={15} /> {t('itstudio.defense')}
-                        </button>
-                      </>
-                    )
-                  })()}
-                  {/* Доступно только владельцу компании — сервер тоже это проверяет (backend/assets.py transfer_to_company). */}
-                  {isCompanyOwner && (
-                    <button className="asset-act" disabled={busy} title={t('myassets.toCompanyHint')}
-                      onClick={() => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) })}>
-                      <Building2 size={15} /> {t('myassets.toCompany')}
-                    </button>
-                  )}
-                  <button className="asset-act sell" disabled={busy}
-                    onClick={() => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: t(`assetNames.${a.slug}`, a.name), value: formatMoney(a.value) }) })}>
-                    <Trash2 size={15} /> {t('myassets.sell')}
+                <div className="asset-interact" ref={menuOpenId === a.id ? menuRef : null}>
+                  <button className="asset-interact-btn" disabled={busy}
+                    onClick={() => setMenuOpenId(id => id === a.id ? null : a.id)}>
+                    <SlidersHorizontal size={15} /> {t('myassets.interact')} <ChevronDown size={14} />
                   </button>
+                  {menuOpenId === a.id && (
+                    <div className="asset-menu">
+                      {buildActions(a).map(act => (
+                        <button key={act.key} className={`asset-menu-item ${act.className || ''}`}
+                          disabled={act.disabled}
+                          onClick={act.info ? undefined : () => { act.onClick(); setMenuOpenId(null) }}>
+                          {act.icon} {act.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )

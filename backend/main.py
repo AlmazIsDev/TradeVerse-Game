@@ -329,6 +329,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "card_visible": current_user.get("card_visible", True),
         "crypto_account_opened": bool(current_user.get("crypto_account_opened", False)),
         "avatar": current_user.get("avatar"),
+        "hideFromLeaderboard": bool(current_user.get("hideFromLeaderboard", False)),
         "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
     }
 
@@ -488,6 +489,8 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
 
     entries = []
     async for u in db.users.find({}):
+        if u.get("hideFromLeaderboard"):
+            continue
         uid = str(u["_id"])
         cash = float(u.get("balance", STARTING_BALANCE))
         stocks_value = round(stock_val.get(uid, 0.0), 2)

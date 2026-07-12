@@ -696,6 +696,38 @@
 .asset-act.upgrade { color: var(--color-accent-hover); border-color: rgba(99, 102, 241, 0.3); }
 .asset-act.sell { color: var(--color-danger); border-color: rgba(239, 68, 68, 0.3); }
 
+/* ── Меню «Взаимодействие» (заменяет ряд отдельных кнопок на карточке) ──── */
+.asset-interact { position: relative; }
+.asset-interact-btn {
+  width: 100%;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 10px; border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-md); background: rgba(99, 102, 241, 0.1);
+  color: var(--color-accent-hover); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.asset-interact-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.asset-interact-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.asset-interact-btn svg:last-child { margin-left: auto; }
+.asset-menu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 20;
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--color-bg-secondary); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+}
+.asset-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--color-text-primary);
+  font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+  transition: background 0.12s ease;
+}
+.asset-menu-item:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
+.asset-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.asset-menu-item.collect { color: var(--color-success); }
+.asset-menu-item.upgrade { color: var(--color-accent-hover); }
+.asset-menu-item.sell { color: var(--color-danger); }
+
 /* ===================== COMPANY ===================== */
 .company-name-input {
   width: 100%;
@@ -1122,12 +1154,6 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
-/* ===================== MATERIALS (business) ===================== */
-.materials-boost-badge {
-  margin-left: 4px; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 700;
-  background: rgba(34, 197, 94, 0.15); color: var(--color-success);
-}
-
 /* ===================== IT-STUDIO (city roof sabotage) ===================== */
 .itstudio-btn {
   width: 100%; margin-top: var(--spacing-sm);
@@ -1198,14 +1224,14 @@
   border-radius: var(--radius-md); background: rgba(234,179,8,0.12);
   color: #eab308; font-weight: 600; font-size: 12px;
 }
-.cbonus-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--spacing-sm); }
-.cbonus-item { display: flex; align-items: center; gap: var(--spacing-sm); padding: 8px 10px; background: var(--color-bg-tertiary); border-radius: var(--radius-md); }
+.cbonus-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--spacing-sm); }
+.cbonus-item { display: flex; align-items: flex-start; gap: var(--spacing-sm); padding: 8px 10px; background: var(--color-bg-tertiary); border-radius: var(--radius-md); }
 .cbonus-emoji { font-size: 26px; }
-.cbonus-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cbonus-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.cbonus-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--spacing-sm); }
 .cbonus-name { font-weight: 600; font-size: 13px; color: var(--color-text-primary); }
-.cbonus-effect { font-size: 11px; color: var(--color-text-secondary); }
-.cbonus-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.cbonus-daily { font-weight: 700; font-size: 13px; color: var(--color-success); white-space: nowrap; }
+.cbonus-effect { font-size: 11px; color: var(--color-text-secondary); white-space: normal; line-height: 1.4; }
+.cbonus-daily { font-weight: 700; font-size: 13px; color: var(--color-success); white-space: nowrap; flex-shrink: 0; }
 .cbonus-timer { font-size: 10px; color: var(--color-text-secondary); white-space: nowrap; }
 
 /* ===================== REAL MARKET DATA (logos / live badge) ===================== */

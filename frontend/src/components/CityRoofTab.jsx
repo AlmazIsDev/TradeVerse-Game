@@ -20,18 +20,10 @@ function formatCountdown(sec) {
   return `${m}:${String(r).padStart(2, '0')}`
 }
 
-// Ярлыки эффектов зданий. Каждый эффект реально подключён в игровой логике
-// (см. backend/cityroof.py BUSINESS_BONUS и player_city_effect).
-const EFFECT_LABEL = {
-  rental_income: 'Доход от аренды',
-  asset_income: 'Доход бизнеса и недвижимости',
-  company_income: 'Доход компании',
-  mining_yield: 'Доход майнинга',
-  mining_energy: 'Скидка на электричество фермы',
-  shop_discount: 'Скидка на оборудование',
-  warcoin_discount: 'Скидка на WarCoin',
-  daily_cash: 'Ежедневный доход',
-}
+// Эффекты-скидки показываются со знаком «-» (снижают стоимость), остальные — «+»
+// (см. backend/cityroof.py BUSINESS_BONUS и player_city_effect). Подписи — в i18n
+// (cityroof.effects.*), чтобы текст не оставался русским при английской локали.
+const DISCOUNT_EFFECTS = new Set(['shop_discount', 'warcoin_discount', 'mining_energy'])
 
 // Палитра «пегов» для комбинации (индекс символа → цвет)
 const PEG_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#ec4899', '#f5f5f5']
@@ -325,15 +317,18 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               const anchor = bonusAnchors.current[b.slug] ?? Date.now()
               const elapsed = (Date.now() - anchor) / 1000
               const remaining = Math.max(0, (b.readyInSec ?? 0) - elapsed)
+              const pctSign = DISCOUNT_EFFECTS.has(b.effect) ? '-' : '+'
               return (
                 <div key={b.slug} className="cbonus-item">
                   <span className="cbonus-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
-                  <div className="cbonus-info">
-                    <span className="cbonus-name">{b.name}</span>
-                    <span className="cbonus-effect">{EFFECT_LABEL[b.effect] || b.effect}{b.mult ? ` +${Math.round(b.mult * 100)}%` : ''}</span>
-                  </div>
-                  <div className="cbonus-right">
-                    <span className="cbonus-daily">+{(b.amount ?? b.daily).toLocaleString('ru-RU')} $</span>
+                  <div className="cbonus-body">
+                    <div className="cbonus-top">
+                      <span className="cbonus-name">{b.name}</span>
+                      <span className="cbonus-daily">+{(b.amount ?? b.daily).toLocaleString('ru-RU')} $</span>
+                    </div>
+                    <span className="cbonus-effect">
+                      {t(`cityroof.effects.${b.effect}`, b.effect)}{b.mult ? ` ${pctSign}${Math.round(b.mult * 100)}%` : ''}
+                    </span>
                     <span className="cbonus-timer">
                       {remaining > 0 ? t('cityroof.nextIncome', { time: formatCountdown(remaining) }) : t('cityroof.incomeReady')}
                     </span>

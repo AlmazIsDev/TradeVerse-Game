@@ -82,3 +82,14 @@ async def delete_avatar(
     """Удалить аватар — пользователь возвращается к отображению инициалами."""
     await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"avatar": None}})
     return {"avatar": None}
+
+
+@router.patch("/leaderboard-visibility")
+async def toggle_leaderboard_visibility(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Переключает участие в публичной таблице лидеров (см. GET /api/leaderboard)."""
+    new_hidden = not current_user.get("hideFromLeaderboard", False)
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"hideFromLeaderboard": new_hidden}})
+    return {"hideFromLeaderboard": new_hidden}

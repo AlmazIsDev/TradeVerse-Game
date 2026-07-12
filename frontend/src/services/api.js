@@ -366,6 +366,11 @@ export async function deleteAvatar() {
   return request('/api/user/avatar', { method: 'DELETE' })
 }
 
+/** Переключить участие в таблице лидеров. */
+export async function toggleLeaderboardVisibility() {
+  return request('/api/user/leaderboard-visibility', { method: 'PATCH' })
+}
+
 export async function adminUpdateUser(userId, data) {
   return request(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',

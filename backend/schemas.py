@@ -152,6 +152,7 @@ class AdminUserUpdate(BaseModel):
     balance: Optional[float] = None
     role: Optional[str] = None
     card_number: Optional[str] = None
+    hidden_from_leaderboard: Optional[bool] = None
 
     @field_validator("role")
     @classmethod

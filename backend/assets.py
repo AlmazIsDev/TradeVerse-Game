@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_REALESTATE, CAT_BUSINESS,
@@ -295,6 +295,18 @@ class MaterialsBuy(BaseModel):
         if v > 500:
             raise ValueError("Слишком большое количество")
         return int(v)
+
+
+class AdminAssetUpdate(BaseModel):
+    """Правки актива администратором — без ограничений, действующих на игрока."""
+    level: Optional[int] = None
+    price: Optional[float] = None
+    income_per_hour: Optional[float] = None
+    upkeep_per_hour: Optional[float] = None
+
+
+class AdminTransferBody(BaseModel):
+    toUsername: str
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -992,6 +1004,82 @@ async def buy_materials(
     )
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
     return {"asset": _serialize(updated), "balance": new_balance, "unitPrice": unit_price, "total": total}
+
+
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+
+async def _load_any(db: AsyncIOMotorDatabase, asset_id: str) -> dict:
+    if not ObjectId.is_valid(asset_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID актива")
+    asset = await db.user_assets.find_one({"_id": ObjectId(asset_id)})
+    if not asset:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
+    return asset
+
+
+@router.patch("/admin/{asset_id}")
+async def admin_update_asset(
+    asset_id: str,
+    payload: AdminAssetUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    asset = await _load_any(db, asset_id)
+    update_fields = payload.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": update_fields})
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(asset["userId"], {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"asset": _serialize(updated)}
+
+
+@router.delete("/admin/{asset_id}")
+async def admin_delete_asset(
+    asset_id: str,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    asset = await _load_any(db, asset_id)
+    await db.user_assets.delete_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(asset["userId"], {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"message": f"Актив «{asset.get('name')}» удалён"}
+
+
+@router.post("/admin/{asset_id}/transfer")
+async def admin_transfer_asset(
+    asset_id: str,
+    payload: AdminTransferBody,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    asset = await _load_any(db, asset_id)
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    old_owner_id = asset["userId"]
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"userId": new_owner_id, "companyId": None, "rental": None}},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(old_owner_id, {"type": "asset_update", "assetId": asset_id})
+        await push_to_user(new_owner_id, {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"asset": _serialize(updated)}
 
 
 # ── Aggregate value (для лидерборда/капитала) ────────────────────────────────

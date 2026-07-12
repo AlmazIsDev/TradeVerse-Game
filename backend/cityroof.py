@@ -189,6 +189,24 @@ class ItStudioMaterialsBuy(BaseModel):
         return int(v)
 
 
+class AdminBusinessUpdate(BaseModel):
+    """Правки бизнеса администратором — без ограничений, действующих на игрока."""
+    name: Optional[str] = None
+    reward: Optional[int] = None
+    protection_level: Optional[int] = None
+
+    @field_validator("protection_level")
+    @classmethod
+    def protection_level_ok(cls, v):
+        if v is not None and (v < 0 or v > PROTECTION_MAX):
+            raise ValueError(f"Уровень защиты 0..{PROTECTION_MAX}")
+        return v
+
+
+class AdminTransferBody(BaseModel):
+    toUsername: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -1120,3 +1138,108 @@ async def admin_close_season(
         from ws import broadcast
         await broadcast({"type": "cityroof_season_closed"})
     return {"message": "Сезон закрыт"}
+
+
+# ── Admin: управление бизнесами ───────────────────────────────────────────────
+
+
+async def _load_any_business(db: AsyncIOMotorDatabase, business_id: str) -> dict:
+    if not ObjectId.is_valid(business_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID бизнеса")
+    business = await db.cityroof_businesses.find_one({"_id": ObjectId(business_id)})
+    if not business:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Бизнес не найден")
+    return business
+
+
+@router.patch("/admin/businesses/{business_id}")
+async def admin_update_business(
+    business_id: str,
+    payload: AdminBusinessUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    business = await _load_any_business(db, business_id)
+    update_fields = payload.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+    if "protection_level" in update_fields:
+        update_fields.update(_make_secret(update_fields["protection_level"]))
+        await db.cityroof_sessions.delete_many({"businessId": business_id})
+    await db.cityroof_businesses.update_one({"_id": business["_id"]}, {"$set": update_fields})
+    updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated, "")})
+    return {"business": _serialize_business(updated, business.get("ownerId") or "")}
+
+
+@router.post("/admin/businesses/{business_id}/vacate")
+async def admin_vacate_business(
+    business_id: str,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Освободить бизнес: снять владельца и защиту (слот на карте не удаляется)."""
+    business = await _load_any_business(db, business_id)
+    old_owner_id = business.get("ownerId")
+    new_secret = _make_secret(0)
+    await db.cityroof_businesses.update_one(
+        {"_id": business["_id"]},
+        {"$set": {
+            "ownerId": None, "ownerName": None, "ownerColor": None,
+            "protection_level": 0, "last_captured": None, "last_collected": None,
+            **new_secret,
+        }},
+    )
+    await db.cityroof_sessions.delete_many({"businessId": business_id})
+    updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated, "")})
+    if old_owner_id:
+        await push_notification(
+            db, old_owner_id, "cityroof", "Бизнес изъят администратором",
+            f"Бизнес «{business.get('name')}» изъят администратором.",
+            data={"businessId": business_id},
+        )
+    return {"message": f"Бизнес «{business.get('name')}» освобождён"}
+
+
+@router.post("/admin/businesses/{business_id}/transfer")
+async def admin_transfer_business(
+    business_id: str,
+    payload: AdminTransferBody,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Передать бизнес другому игроку (защита и КД дохода сохраняются)."""
+    business = await _load_any_business(db, business_id)
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    old_owner_id = business.get("ownerId")
+    await db.cityroof_businesses.update_one(
+        {"_id": business["_id"]},
+        {"$set": {
+            "ownerId": new_owner_id,
+            "ownerName": target.get("username"),
+            "ownerColor": _color_for(new_owner_id),
+            "last_captured": _now(),
+        }},
+    )
+    await db.cityroof_sessions.delete_many({"businessId": business_id})
+    updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated, "")})
+    if old_owner_id:
+        await push_notification(
+            db, old_owner_id, "cityroof", "Бизнес передан",
+            f"Бизнес «{business.get('name')}» передан другому игроку администратором.",
+            data={"businessId": business_id},
+        )
+    await push_notification(
+        db, new_owner_id, "cityroof", "Вы получили бизнес",
+        f"Администратор передал вам бизнес «{business.get('name')}».",
+        data={"businessId": business_id},
+    )
+    return {"business": _serialize_business(updated, new_owner_id)}

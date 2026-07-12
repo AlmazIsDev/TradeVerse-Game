@@ -46,6 +46,11 @@ from mining import router as mining_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
 
+import assets as assets_module
+import mining as mining_module
+import company as company_module
+import cityroof as cityroof_module
+
 from database import (
     get_db,
     find_all_stocks,
@@ -487,7 +492,7 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
             company_val[oid] = company_val.get(oid, 0.0) + _asset_value(a)
 
     entries = []
-    async for u in db.users.find({}):
+    async for u in db.users.find({"hidden_from_leaderboard": {"$ne": True}}):
         uid = str(u["_id"])
         cash = float(u.get("balance", STARTING_BALANCE))
         stocks_value = round(stock_val.get(uid, 0.0), 2)
@@ -670,6 +675,42 @@ async def admin_delete_user(
         pass
 
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}
+
+
+@app.get("/api/admin/users/{user_id}/property")
+async def admin_get_user_property(
+    user_id: str,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Полный список имущества игрока для админ-панели: активы, майнинг-фермы,
+    компания (если владелец) и бизнесы «Крыши города» (если владелец)."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    existing = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not existing:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+
+    assets = [assets_module._serialize(a) async for a in db.user_assets.find({"userId": user_id})]
+
+    farms = []
+    async for f in db.mining_farms.find({"userId": user_id}):
+        farms.append(await mining_module._serialize_with_stats(db, f, user_id))
+
+    company_doc = await db.companies.find_one({"ownerId": user_id})
+    company = await company_module._serialize(db, company_doc, user_id) if company_doc else None
+
+    businesses = [
+        cityroof_module._serialize_business(b, user_id)
+        async for b in db.cityroof_businesses.find({"ownerId": user_id})
+    ]
+
+    return {
+        "assets": assets,
+        "farms": farms,
+        "company": company,
+        "businesses": businesses,
+    }
 
 
 @app.get("/api/admin/transactions")

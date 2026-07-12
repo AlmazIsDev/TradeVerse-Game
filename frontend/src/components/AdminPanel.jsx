@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig, fetchBotOrders } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
+import UserPropertyModal from './UserPropertyModal'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 
@@ -76,8 +77,10 @@ function AdminPanel({ user, onClose }) {
     balance: '',
     role: 'user',
     card_number: '',
+    hidden_from_leaderboard: false,
   })
   const [editErrors, setEditErrors] = useState({})
+  const [propertyUser, setPropertyUser] = useState(null)
 
   useEffect(() => {
     loadData()
@@ -178,6 +181,7 @@ function AdminPanel({ user, onClose }) {
       balance: u.balance != null ? String(u.balance) : '',
       role: u.role || 'user',
       card_number: u.card_number || '',
+      hidden_from_leaderboard: !!u.hidden_from_leaderboard,
     })
     setEditErrors({})
   }
@@ -189,6 +193,7 @@ function AdminPanel({ user, onClose }) {
       balance: '',
       role: 'user',
       card_number: '',
+      hidden_from_leaderboard: false,
     })
     setEditErrors({})
   }
@@ -200,6 +205,7 @@ function AdminPanel({ user, onClose }) {
       username: editForm.username.trim(),
       balance: parseFloat(editForm.balance),
       role: editForm.role,
+      hidden_from_leaderboard: editForm.hidden_from_leaderboard,
     }
 
     // Добавляем card_number только если заполнен
@@ -633,6 +639,16 @@ function AdminPanel({ user, onClose }) {
                         />
                         {editErrors.card_number && <span className="admin-field-error">{editErrors.card_number}</span>}
                       </div>
+                      <div className="admin-field-checkbox">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={editForm.hidden_from_leaderboard}
+                            onChange={e => setEditForm({ ...editForm, hidden_from_leaderboard: e.target.checked })}
+                          />
+                          {t('admin.fieldHiddenFromLeaderboard')}
+                        </label>
+                      </div>
                     </div>
                     <div className="admin-user-edit-actions">
                       <button className="admin-btn admin-btn-primary" onClick={handleSaveUser}>
@@ -649,6 +665,11 @@ function AdminPanel({ user, onClose }) {
                       <div>
                         <strong>{u.username}</strong>
                         <span className={`user-role ${u.role || 'user'}`}>{u.role || 'user'}</span>
+                        {u.hidden_from_leaderboard && (
+                          <span className="user-role admin" title={t('admin.fieldHiddenFromLeaderboard')}>
+                            <EyeOff size={12} />
+                          </span>
+                        )}
                       </div>
                       <div className="admin-user-meta">
                         <span className="user-balance">${u.balance != null ? u.balance.toFixed(2) : '0.00'}</span>
@@ -656,6 +677,9 @@ function AdminPanel({ user, onClose }) {
                       </div>
                     </div>
                     <div className="user-actions">
+                      <button className="admin-btn" onClick={() => setPropertyUser(u)} title={t('admin.property.title')}>
+                        <Briefcase size={14} />
+                      </button>
                       <button className="admin-btn" onClick={() => handleStartEditUser(u)}>
                         <Edit3 size={14} />
                       </button>
@@ -759,6 +783,14 @@ function AdminPanel({ user, onClose }) {
         )}
       </div>
       </div>
+
+      {propertyUser && (
+        <UserPropertyModal
+          username={propertyUser.username}
+          userId={propertyUser.id}
+          onClose={() => setPropertyUser(null)}
+        />
+      )}
     </div>
   )
 }

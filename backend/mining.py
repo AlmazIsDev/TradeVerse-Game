@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from ledger import INCOME, EXPENSE, CAT_MINING, adjust_balance, record_transaction
 from econ import get_econ
@@ -260,6 +260,18 @@ class OverclockBody(BaseModel):
 
 class ManagerBody(BaseModel):
     action: str  # hire | upgrade | fire
+
+
+class AdminFarmUpdate(BaseModel):
+    """Правки фермы администратором — без ограничений, действующих на игрока."""
+    condition: Optional[float] = None
+    overclock: Optional[float] = None
+    electricity_owed: Optional[float] = None
+    status: Optional[str] = None
+
+
+class AdminTransferBody(BaseModel):
+    toUsername: str
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -605,3 +617,81 @@ async def tick_all(db: AsyncIOMotorDatabase):
                                          "condition": round(new_condition, 2), "status": set_fields.get("status", "mining")})
         except Exception:
             pass
+
+
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+
+async def _load_any_farm(db: AsyncIOMotorDatabase, farm_id: str) -> dict:
+    if not ObjectId.is_valid(farm_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID фермы")
+    farm = await db.mining_farms.find_one({"_id": ObjectId(farm_id)})
+    if not farm:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ферма не найдена")
+    return farm
+
+
+@router.patch("/admin/farms/{farm_id}")
+async def admin_update_farm(
+    farm_id: str,
+    payload: AdminFarmUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    farm = await _load_any_farm(db, farm_id)
+    update_fields = payload.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": update_fields})
+    updated = await db.mining_farms.find_one({"_id": farm["_id"]})
+    result = await _serialize_with_stats(db, updated, farm["userId"])
+    try:
+        from ws import push_to_user
+        await push_to_user(farm["userId"], {"type": "mining", "farmId": farm_id, "stats": result.get("stats", {}),
+                                             "condition": result.get("condition"), "status": result.get("status")})
+    except Exception:
+        pass
+    return result
+
+
+@router.delete("/admin/farms/{farm_id}")
+async def admin_delete_farm(
+    farm_id: str,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    farm = await _load_any_farm(db, farm_id)
+    await db.user_hardware.update_many({"farmId": str(farm["_id"])}, {"$set": {"farmId": None}})
+    await db.mining_farms.delete_one({"_id": farm["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(farm["userId"], {"type": "mining", "farmId": farm_id, "deleted": True})
+    except Exception:
+        pass
+    return {"message": f"Ферма «{farm.get('name')}» удалена"}
+
+
+@router.post("/admin/farms/{farm_id}/transfer")
+async def admin_transfer_farm(
+    farm_id: str,
+    payload: AdminTransferBody,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    farm = await _load_any_farm(db, farm_id)
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    old_owner_id = farm["userId"]
+    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"userId": new_owner_id}})
+    await db.user_hardware.update_many({"farmId": str(farm["_id"])}, {"$set": {"userId": new_owner_id}})
+    updated = await db.mining_farms.find_one({"_id": farm["_id"]})
+    result = await _serialize_with_stats(db, updated, new_owner_id)
+    try:
+        from ws import push_to_user
+        await push_to_user(old_owner_id, {"type": "mining", "farmId": farm_id, "transferred": True})
+        await push_to_user(new_owner_id, {"type": "mining", "farmId": farm_id, "transferred": True})
+    except Exception:
+        pass
+    return result

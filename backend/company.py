@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_COMPANY,
@@ -140,6 +140,18 @@ class AmountBody(BaseModel):
         if v is None or v <= 0:
             raise ValueError("Сумма должна быть положительной")
         return round(float(v), 2)
+
+
+class AdminCompanyUpdate(BaseModel):
+    """Правки компании администратором — без ограничений, действующих на владельца."""
+    name: Optional[str] = None
+    budget: Optional[float] = None
+    isOpen: Optional[bool] = None
+    visibleInSearch: Optional[bool] = None
+
+
+class AdminTransferBody(BaseModel):
+    toUsername: str
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -304,22 +316,12 @@ async def update_company(
     return {"company": await _serialize(db, updated, user_id)}
 
 
-@router.delete("")
-async def disband_company(
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Распустить компанию (только владелец). Необратимо.
-
-    Активы компании возвращаются владельцу в личную собственность, сотрудники
-    уведомляются, все приглашения/заявки/сотрудники удаляются.
-    """
-    user_id = str(current_user["_id"])
-    company = await _require_company(db, user_id)
+async def _disband(db: AsyncIOMotorDatabase, company: dict):
+    """Распустить компанию: активы возвращаются владельцу, сотрудники уведомляются,
+    все приглашения/заявки/сотрудники удаляются. Общая логика для владельца и админа."""
     cid = str(company["_id"])
     name = company["name"]
 
-    # Уведомить всех сотрудников о роспуске (realtime через WS + persist).
     members = await _members(db, cid)
     for m in members:
         await push_notification(
@@ -328,14 +330,23 @@ async def disband_company(
             data={"companyId": cid},
         )
 
-    # Вернуть активы компании владельцу в личную собственность.
     await db.user_assets.update_many({"companyId": cid}, {"$set": {"companyId": None}})
 
-    # Удалить связанные записи и саму компанию.
     await db.company_members.delete_many({"companyId": cid})
     await db.company_invites.delete_many({"companyId": cid})
     await db.company_applications.delete_many({"companyId": cid})
     await db.companies.delete_one({"_id": company["_id"]})
+
+
+@router.delete("")
+async def disband_company(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Распустить компанию (только владелец). Необратимо."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    await _disband(db, company)
     return {"ok": True}
 
 
@@ -792,3 +803,94 @@ async def company_history(
         db, str(current_user["_id"]),
         category=CAT_COMPANY, sort="date_desc", skip=skip, limit=limit,
     )
+
+
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+
+async def _load_any_company(db: AsyncIOMotorDatabase, company_id: str) -> dict:
+    if not ObjectId.is_valid(company_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID компании")
+    company = await db.companies.find_one({"_id": ObjectId(company_id)})
+    if not company:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Компания не найдена")
+    return company
+
+
+@router.patch("/admin/{company_id}")
+async def admin_update_company(
+    company_id: str,
+    payload: AdminCompanyUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    company = await _load_any_company(db, company_id)
+    update_fields = payload.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+    await db.companies.update_one({"_id": company["_id"]}, {"$set": update_fields})
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    result = await _serialize(db, updated, company["ownerId"])
+    await push_notification(
+        db, company["ownerId"], "company", "Компания изменена администратором",
+        f"Администратор изменил параметры компании «{updated['name']}».",
+        data={"companyId": company_id},
+    )
+    return {"company": result}
+
+
+@router.delete("/admin/{company_id}")
+async def admin_delete_company(
+    company_id: str,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    company = await _load_any_company(db, company_id)
+    name = company["name"]
+    owner_id = company["ownerId"]
+    await _disband(db, company)
+    await push_notification(
+        db, owner_id, "company", "Компания удалена администратором",
+        f"Компания «{name}» была удалена администратором.",
+        data={},
+    )
+    return {"message": f"Компания «{name}» удалена"}
+
+
+@router.post("/admin/{company_id}/transfer")
+async def admin_transfer_company(
+    company_id: str,
+    payload: AdminTransferBody,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Передать право владения компанией другому игроку."""
+    company = await _load_any_company(db, company_id)
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    old_owner_id = company["ownerId"]
+    if new_owner_id == old_owner_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Игрок уже владеет этой компанией")
+    if await db.companies.find_one({"ownerId": new_owner_id}):
+        raise HTTPException(status.HTTP_409_CONFLICT, "У целевого игрока уже есть своя компания")
+
+    # Если целевой игрок был сотрудником этой же компании — снимаем устаревшую запись.
+    await db.company_members.delete_one({"companyId": company_id, "userId": new_owner_id})
+
+    await db.companies.update_one({"_id": company["_id"]}, {"$set": {"ownerId": new_owner_id}})
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    result = await _serialize(db, updated, new_owner_id)
+
+    await push_notification(
+        db, old_owner_id, "company", "Компания передана",
+        f"Владение компанией «{updated['name']}» передано другому игроку администратором.",
+        data={"companyId": company_id},
+    )
+    await push_notification(
+        db, new_owner_id, "company", "Вы стали владельцем компании",
+        f"Администратор передал вам компанию «{updated['name']}».",
+        data={"companyId": company_id},
+    )
+    return {"company": result}

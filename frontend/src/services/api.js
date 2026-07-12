@@ -379,6 +379,87 @@ export async function adminDeleteUser(userId) {
   })
 }
 
+// ── Admin: имущество игрока ─────────────────────────────────────────────────
+
+/** Полный список имущества игрока: активы, майнинг-фермы, компания, бизнесы «Крыши города». */
+export async function adminFetchUserProperty(userId) {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/property`)
+}
+
+export async function adminUpdateAsset(assetId, data) {
+  return request(`/api/assets/admin/${encodeURIComponent(assetId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminDeleteAsset(assetId) {
+  return request(`/api/assets/admin/${encodeURIComponent(assetId)}`, { method: 'DELETE' })
+}
+
+export async function adminTransferAsset(assetId, toUsername) {
+  return request(`/api/assets/admin/${encodeURIComponent(assetId)}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ toUsername }),
+  })
+}
+
+export async function adminUpdateFarm(farmId, data) {
+  return request(`/api/mining/admin/farms/${encodeURIComponent(farmId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminDeleteFarm(farmId) {
+  return request(`/api/mining/admin/farms/${encodeURIComponent(farmId)}`, { method: 'DELETE' })
+}
+
+export async function adminTransferFarm(farmId, toUsername) {
+  return request(`/api/mining/admin/farms/${encodeURIComponent(farmId)}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ toUsername }),
+  })
+}
+
+export async function adminUpdateCompany(companyId, data) {
+  return request(`/api/company/admin/${encodeURIComponent(companyId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminDeleteCompany(companyId) {
+  return request(`/api/company/admin/${encodeURIComponent(companyId)}`, { method: 'DELETE' })
+}
+
+export async function adminTransferCompany(companyId, toUsername) {
+  return request(`/api/company/admin/${encodeURIComponent(companyId)}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ toUsername }),
+  })
+}
+
+export async function adminUpdateBusiness(businessId, data) {
+  return request(`/api/cityroof/admin/businesses/${encodeURIComponent(businessId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminVacateBusiness(businessId) {
+  return request(`/api/cityroof/admin/businesses/${encodeURIComponent(businessId)}/vacate`, {
+    method: 'POST',
+  })
+}
+
+export async function adminTransferBusiness(businessId, toUsername) {
+  return request(`/api/cityroof/admin/businesses/${encodeURIComponent(businessId)}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ toUsername }),
+  })
+}
+
 // ── Admin economy panel ────────────────────────────────────────────────────────
 
 export async function fetchEconomyAnalytics() {

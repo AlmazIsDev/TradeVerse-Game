@@ -808,36 +808,87 @@
 .cityroof-status.active { background: rgba(52, 199, 89, 0.12); color: var(--color-success); }
 .cityroof-hint { font-size: 13px; color: var(--color-text-secondary); margin-bottom: var(--spacing-lg); }
 
+/* Карта «Крыши города» — фото города 4×3 с интерактивными плитками поверх. */
 .cityroof-map {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-md);
-  padding: var(--spacing-lg);
+  position: relative;
   border-radius: var(--radius-lg);
-  background:
-    linear-gradient(rgba(0, 113, 227, 0.05), rgba(0, 113, 227, 0.05)),
-    repeating-linear-gradient(0deg, transparent 0 38px, rgba(0, 0, 0, 0.03) 38px 39px),
-    repeating-linear-gradient(90deg, transparent 0 38px, rgba(0, 0, 0, 0.03) 38px 39px),
-    radial-gradient(circle at 30% 20%, #f0f0f3, #f5f5f7);
+  overflow: hidden;
   border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-md);
+  line-height: 0;
 }
-.city-cell {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: var(--spacing-md) var(--spacing-sm); min-height: 148px; text-align: center;
-  background: linear-gradient(180deg, rgba(30,34,48,0.9), rgba(20,22,30,0.95));
-  border: 2px solid var(--hairline); border-radius: var(--radius-lg);
-  cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease;
+.cityroof-map-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
 }
-.city-cell:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.12); }
-.city-cell.mine { background: linear-gradient(180deg, rgba(0, 113, 227, 0.22), rgba(20,22,30,0.95)); }
-.city-cell.free { border-style: dashed; }
-.city-cell-emoji { font-size: 46px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.14)); margin-top: 4px; }
-.city-cell-name { font-weight: 700; font-size: 13px; color: var(--color-text-primary); line-height: 1.2; }
-.city-cell-reward { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #ff9f0a; }
-.city-cell-owner { margin-top: auto; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
-.city-cell-shield {
+.cityroof-map-grid {
+  position: absolute;
+  inset: 0;
+  line-height: normal;
+}
+/* Каждая плитка занимает ровно одну ячейку сетки 4×3 (одно здание). */
+.city-tile {
+  position: absolute;
+  width: 25%;
+  height: 33.3333%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 6px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.18s var(--ease-out), border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+.city-tile:hover {
+  background: rgba(0, 113, 227, 0.16);
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 100vmax rgba(0, 113, 227, 0.08);
+}
+/* Владелец подсвечивает плитку своим цветом (через inline --tile-color). */
+.city-tile.owned {
+  border-color: var(--tile-color, var(--color-accent));
+  box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--tile-color, var(--color-accent)) 14%, transparent);
+}
+.city-tile.mine {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 100vmax rgba(0, 113, 227, 0.16);
+}
+/* Инфо-плашка снизу: имя, награда, владелец. Читается на любом фоне. */
+.city-tile-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  max-width: 100%;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.18s var(--ease-out), transform 0.18s var(--ease-out);
+  pointer-events: none;
+}
+.city-tile:hover .city-tile-info,
+.city-tile.owned .city-tile-info,
+.city-tile.mine .city-tile-info { opacity: 1; transform: translateY(0); }
+.city-tile-name {
+  font-weight: 700; font-size: 12px; color: #fff; line-height: 1.15;
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.city-tile-reward { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: #ffd60a; }
+.city-tile-owner { font-size: 10px; font-weight: 600; color: rgba(255, 255, 255, 0.8); }
+.city-tile-shield {
   position: absolute; top: 8px; right: 8px;
   display: inline-flex; align-items: center; gap: 2px;
-  font-size: 11px; font-weight: 700; color: #ff9f0a;
-  background: rgba(0, 0, 0, 0.3); padding: 2px 6px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; color: #fff;
+  background: rgba(0, 0, 0, 0.55); padding: 2px 6px; border-radius: 999px;
 }
 
 .cityroof-modal { max-width: 440px; }
@@ -1241,6 +1292,12 @@
 .itstudio-preview b.down { color: var(--color-danger, #ff3b30); }
 .itstudio-shield-warn {
   display: inline-flex; align-items: center; gap: 6px; color: #ff9f0a; font-size: 12px; font-weight: 600;
+}
+.itstudio-premium-note {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--color-accent); font-size: 12px; font-weight: 700;
+  padding: 6px 8px; border-radius: var(--radius-sm);
+  background: var(--accent-soft);
 }
 
 /* Единая закупка комплектующих IT-студии (MyAssetsTab suppliesModal) */

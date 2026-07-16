@@ -439,7 +439,9 @@ def _success_chance(tier: str, level: int, op_type: str, shield_active: bool) ->
     chance = base + _level_bonus(level)
     if op_type == "attack" and shield_active:
         chance -= ITSTUDIO_CONFIG["shield_penalty"]
-    return round(max(0.05, min(0.95, chance)), 4)
+    # Премиум-студия («имба») может пробивать даже щит — потолок шанса выше.
+    cap = cfg.get("success_cap", 0.95)
+    return round(max(0.05, min(cap, chance)), 4)
 
 
 def studio_progress(tier: Optional[str], xp: int, materials: dict) -> Optional[dict]:
@@ -740,14 +742,34 @@ async def order_itstudio(
     shield_active = op_type == "attack" and _shield_view(business) is not None
     chance = _success_chance(tier, level, op_type, shield_active)
     success = random.random() < chance
-    reduction = _roll_itstudio_reduction() if (op_type == "attack" and success) else None
-    hours = round(random.uniform(ITSTUDIO_CONFIG["min_hours"], ITSTUDIO_CONFIG["max_hours"]), 2)
+
+    # Премиум-студия («имба»): операция за 5–45 минут вместо часов; успешная
+    # атака сносит ВСЮ защиту цели за раз (full_break), а не 1–5 уровней.
+    min_min = cfg.get("min_minutes")
+    max_min = cfg.get("max_minutes")
+    if min_min is not None and max_min is not None:
+        minutes = round(random.uniform(min_min, max_min), 1)
+        ready_at = _now() + timedelta(minutes=minutes)
+        ready_in_hours = round(minutes / 60.0, 3)
+    else:
+        minutes = None
+        hours = round(random.uniform(ITSTUDIO_CONFIG["min_hours"], ITSTUDIO_CONFIG["max_hours"]), 2)
+        ready_at = _now() + timedelta(hours=hours)
+        ready_in_hours = hours
+
+    if op_type == "attack" and success:
+        if cfg.get("full_break"):
+            reduction = int(business.get("protection_level", 0))   # снос всей защиты
+        else:
+            reduction = _roll_itstudio_reduction()
+    else:
+        reduction = None
 
     job = {
-        "orderedBy": user_id, "studioAssetId": asset_id, "type": op_type,
+        "orderedBy": user_id, "studioAssetId": asset_id, "type": op_type, "tier": tier,
         "businessId": payload.businessId, "businessName": business.get("name"),
         "success": success, "reduction": reduction, "cost": cost,
-        "status": "pending", "created_at": _now(), "ready_at": _now() + timedelta(hours=hours),
+        "status": "pending", "created_at": _now(), "ready_at": ready_at,
     }
     result = await db.cityroof_itstudio_jobs.insert_one(job)
     label = "атаку" if op_type == "attack" else "защиту"
@@ -756,7 +778,8 @@ async def order_itstudio(
         f"Заказ IT-студии ({label}): {business.get('name')}", balance_after=new_balance,
         meta={"businessId": payload.businessId, "assetId": asset_id, "type": op_type},
     )
-    return {"ok": True, "jobId": str(result.inserted_id), "cost": cost, "readyInHours": hours, "balance": new_balance}
+    return {"ok": True, "jobId": str(result.inserted_id), "cost": cost,
+            "readyInHours": ready_in_hours, "readyInMinutes": minutes, "balance": new_balance}
 
 
 @router.get("/itstudio/jobs")
@@ -800,9 +823,13 @@ async def sweep_itstudio_jobs(db: AsyncIOMotorDatabase):
                 elif business.get("ownerId") == j.get("orderedBy"):
                     # Цель могла сменить владельца (захват) с момента заказа —
                     # щит ставим, только если бизнес всё ещё принадлежит заказчику.
+                    # Премиум-студия ставит усиленный и более длительный щит.
+                    tier_cfg = ITSTUDIO_CONFIG["tiers"].get(j.get("tier"), {})
+                    shield_value = tier_cfg.get("shield_bonus_on_success", ITSTUDIO_CONFIG["shield_bonus_on_success"])
+                    shield_hours = tier_cfg.get("shield_duration_hours", ITSTUDIO_CONFIG["shield_duration_hours"])
                     shield = {
-                        "value": ITSTUDIO_CONFIG["shield_bonus_on_success"],
-                        "expires_at": now + timedelta(hours=ITSTUDIO_CONFIG["shield_duration_hours"]),
+                        "value": shield_value,
+                        "expires_at": now + timedelta(hours=shield_hours),
                     }
                     await db.cityroof_businesses.update_one(
                         {"_id": business["_id"]}, {"$set": {"shield": shield}},
@@ -856,10 +883,12 @@ async def sweep_itstudio_jobs(db: AsyncIOMotorDatabase):
                     )
             else:
                 if applied:
+                    tier_cfg = ITSTUDIO_CONFIG["tiers"].get(j.get("tier"), {})
+                    shield_hours = tier_cfg.get("shield_duration_hours", ITSTUDIO_CONFIG["shield_duration_hours"])
                     await push_notification(
                         db, j["orderedBy"], "itstudio",
                         "Защита установлена",
-                        f"IT-студия усилила защиту «{business.get('name')}» на {ITSTUDIO_CONFIG['shield_duration_hours']:.0f}ч.",
+                        f"IT-студия усилила защиту «{business.get('name')}» на {shield_hours:.0f}ч.",
                         data={"businessId": j["businessId"], "success": True},
                     )
                 elif success:

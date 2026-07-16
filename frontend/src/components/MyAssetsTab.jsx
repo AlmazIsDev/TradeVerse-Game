@@ -278,7 +278,9 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await orderStudioJob(assetId, businessId, orderModal.mode)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('itstudio.ordered', { hours: res.readyInHours }))
+      flash(res.readyInMinutes != null
+        ? t('itstudio.orderedMinutes', { minutes: res.readyInMinutes })
+        : t('itstudio.ordered', { hours: res.readyInHours }))
       setOrderModal(null)
       await loadStudios()
     } catch (err) {

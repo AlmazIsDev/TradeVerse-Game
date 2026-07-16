@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, Swords, ShieldPlus, Clock, AlertTriangle } from 'lucide-react'
+import { X, Swords, ShieldPlus, Clock, AlertTriangle, Zap } from 'lucide-react'
 
 /**
  * Общая модалка заказа операции IT-студии (атака/защита) — используется и
@@ -32,6 +32,13 @@ function ItStudioOrderModal({ mode, map, initialBusinessId, studios = [], onSubm
   const effectiveChance = Math.max(0.05, baseChance - (shielded ? (cfg?.shieldPenalty || 0) : 0))
   const hasMaterials = studio && studio.material.qty >= (materialsNeeded || 0)
   const pendingJob = studio?.pendingJob
+
+  // Тайминг/эффект зависят от тира студии (премиум — 5–45 мин + полный снос защиты).
+  const tierCfg = studio ? cfg?.tiers?.[studio.tier] : null
+  const etaLabel = tierCfg?.min_minutes != null
+    ? t('itstudio.etaMinutes', { min: tierCfg.min_minutes, max: tierCfg.max_minutes })
+    : t('itstudio.etaHours', { min: cfg?.minHours ?? 1, max: cfg?.maxHours ?? 3 })
+  const fullBreak = mode === 'attack' && !!tierCfg?.full_break
 
   const canSubmit = !!studio && !!business && hasMaterials && !pendingJob && !busy
 
@@ -82,10 +89,14 @@ function ItStudioOrderModal({ mode, map, initialBusinessId, studios = [], onSubm
               <div className="itstudio-preview">
                 <div><span>{t('itstudio.cost')}</span><b>${cost.toLocaleString('ru-RU')}</b></div>
                 <div><span>{t('itstudio.chance')}</span><b>{Math.round(effectiveChance * 100)}%</b></div>
+                <div><span>{t('itstudio.eta')}</span><b>{etaLabel}</b></div>
                 <div>
                   <span>{studio.material.name}</span>
                   <b className={hasMaterials ? '' : 'down'}>{studio.material.qty}/{materialsNeeded}</b>
                 </div>
+                {fullBreak && (
+                  <div className="itstudio-premium-note"><Zap size={12} /> {t('itstudio.fullBreak')}</div>
+                )}
                 {shielded && (
                   <div className="itstudio-shield-warn"><AlertTriangle size={12} /> {t('itstudio.targetShielded')}</div>
                 )}

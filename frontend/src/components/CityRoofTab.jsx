@@ -265,7 +265,10 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
     try {
       const res = await orderStudioJob(assetId, businessId, orderModal.mode)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('itstudio.ordered', { hours: res.readyInHours }) })
+      const okText = res.readyInMinutes != null
+        ? t('itstudio.orderedMinutes', { minutes: res.readyInMinutes })
+        : t('itstudio.ordered', { hours: res.readyInHours })
+      setFeedback({ type: 'success', text: okText })
       setOrderModal(null)
       setItStudioJobs(await fetchItStudioJobs())
       setStudios(await fetchMyStudios())
@@ -354,26 +357,34 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       )}
 
-      {/* Карта */}
+      {/* Карта — реальное изображение города с интерактивными зданиями поверх */}
       <div className="cityroof-map">
-        {map?.businesses?.map(b => (
-          <button
-            key={b.id}
-            className={`city-cell ${b.isMine ? 'mine' : ''} ${b.ownerId ? 'owned' : 'free'}`}
-            style={b.ownerColor ? { borderColor: b.ownerColor, boxShadow: `0 0 0 1px ${b.ownerColor}55` } : undefined}
-            onClick={() => openBusiness(b)}
-          >
-            <span className="city-cell-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
-            <span className="city-cell-name">{b.name}</span>
-            <span className="city-cell-reward"><Coins size={11} /> {b.reward}</span>
-            <span className="city-cell-owner" style={b.ownerColor ? { color: b.ownerColor } : undefined}>
-              {b.isMine ? t('cityroof.yours') : (b.ownerName || t('cityroof.free'))}
-            </span>
-            {b.protectionLevel > 0 && (
-              <span className="city-cell-shield"><Shield size={11} /> {b.protectionLevel}</span>
-            )}
-          </button>
-        ))}
+        <img className="cityroof-map-img" src="/city.webp" alt="" aria-hidden="true" draggable="false" />
+        <div className="cityroof-map-grid">
+          {map?.businesses?.map(b => (
+            <button
+              key={b.id}
+              className={`city-tile ${b.isMine ? 'mine' : ''} ${b.ownerId ? 'owned' : 'free'}`}
+              style={{
+                left: `${(b.x ?? 0) * 25}%`,
+                top: `${(b.y ?? 0) * (100 / 3)}%`,
+                ...(b.ownerColor ? { '--tile-color': b.ownerColor } : {}),
+              }}
+              onClick={() => openBusiness(b)}
+            >
+              <span className="city-tile-info">
+                <span className="city-tile-name">{b.name}</span>
+                <span className="city-tile-reward"><Coins size={11} /> {b.reward}</span>
+                <span className="city-tile-owner">
+                  {b.isMine ? t('cityroof.yours') : (b.ownerName || t('cityroof.free'))}
+                </span>
+              </span>
+              {b.protectionLevel > 0 && (
+                <span className="city-tile-shield"><Shield size={11} /> {b.protectionLevel}</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Модалка бизнеса */}

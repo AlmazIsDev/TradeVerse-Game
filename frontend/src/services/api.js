@@ -625,6 +625,10 @@ export async function collectAsset(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/collect`, { method: 'POST' })
 }
 
+export async function collectAllAssets() {
+  return request('/api/assets/collect-all', { method: 'POST' })
+}
+
 export async function upgradeAsset(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/upgrade`, { method: 'POST' })
 }

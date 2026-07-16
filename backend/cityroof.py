@@ -693,6 +693,9 @@ async def order_itstudio(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "У бизнеса нет владельца")
         if business.get("ownerId") == user_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя заказать атаку на свой бизнес")
+        # Атака снижает уровень защиты — если защиты уже нет, снижать нечего.
+        if business.get("protection_level", 0) <= 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "У бизнеса нет защиты — снижать нечего")
     else:
         if business.get("ownerId") != user_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Можно защищать только свой бизнес")

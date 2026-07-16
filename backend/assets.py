@@ -750,25 +750,10 @@ async def collect_income(
     """Собрать накопленный доход (за вычетом расходов на содержание)."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    amount = _accrued(asset)
-    # Экономические коэффициенты (админ): множитель доходов.
     econ = await get_econ(db)
-    amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
-    # Влияние активных мировых событий на доход.
-    try:
-        from market_events import event_shifts
-        amount = round(amount * (await event_shifts(db)).get("income", 1.0), 2)
-    except Exception:
-        pass
-    # Бонус зданий «Крыши города»: +% к доходу с бизнеса/недвижимости.
-    try:
-        from cityroof import player_city_effect
-        city_bonus = await player_city_effect(db, user_id, "asset_income")
-        if city_bonus:
-            amount = round(amount * (1 + city_bonus), 2)
-    except Exception:
-        pass
-    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"last_collected": _now()}})
+    event_income = await _event_income_shift(db)
+    city_bonus = await _city_asset_bonus(db, user_id)
+    amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus)
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
     new_balance = await adjust_balance(db, user_id, amount)
@@ -779,6 +764,72 @@ async def collect_income(
         meta={"slug": asset.get("slug"), "assetId": asset_id},
     )
     return {"collected": amount, "balance": new_balance}
+
+
+async def _event_income_shift(db) -> float:
+    try:
+        from market_events import event_shifts
+        return (await event_shifts(db)).get("income", 1.0)
+    except Exception:
+        return 1.0
+
+
+async def _city_asset_bonus(db, user_id: str) -> float:
+    try:
+        from cityroof import player_city_effect
+        return await player_city_effect(db, user_id, "asset_income")
+    except Exception:
+        return 0.0
+
+
+async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
+                                event_income: float, city_bonus: float) -> float:
+    """Считает и применяет (обнуляет КД) доход одного актива, возвращает сумму.
+    Множители (econ/событие/город) передаются готовыми, чтобы при массовом
+    сборе не пересчитывать их на каждый актив."""
+    amount = _accrued(asset)
+    amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
+    amount = round(amount * event_income, 2)
+    if city_bonus:
+        amount = round(amount * (1 + city_bonus), 2)
+    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"last_collected": _now()}})
+    return amount
+
+
+@router.post("/collect-all")
+async def collect_all_income(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Собрать накопленный доход со всех личных активов игрока разом."""
+    user_id = str(current_user["_id"])
+    econ = await get_econ(db)
+    event_income = await _event_income_shift(db)
+    city_bonus = await _city_asset_bonus(db, user_id)
+
+    total = 0.0
+    count = 0
+    async for asset in db.user_assets.find({"userId": user_id, "companyId": None}):
+        if asset.get("income_per_hour", 0) <= 0:
+            continue
+        amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus)
+        if amount <= 0:
+            continue
+        new_balance = await adjust_balance(db, user_id, amount)
+        cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
+        await record_transaction(
+            db, user_id, INCOME, amount, cat,
+            f"Доход: {asset['name']}", balance_after=new_balance,
+            meta={"slug": asset.get("slug"), "assetId": str(asset["_id"])},
+        )
+        total = round(total + amount, 2)
+        count += 1
+
+    balance = current_user.get("balance", 0.0)
+    if count:
+        u = await db.users.find_one({"_id": ObjectId(user_id)}, {"balance": 1})
+        balance = (u or {}).get("balance", balance)
+    return {"collected": round(total, 2), "count": count, "balance": balance}
 
 
 @router.post("/{asset_id}/upgrade")

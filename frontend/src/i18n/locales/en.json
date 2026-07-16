@@ -311,7 +311,10 @@
     "toCompany": "Give to company",
     "toCompanyHint": "Your company will start earning from this asset",
     "transferred": "Asset given to company",
-    "interact": "Interact"
+    "interact": "Interact",
+    "collectAll": "Collect all profit",
+    "collectedAll": "Collected ${{amount}} from {{count}} assets",
+    "nothingToCollect": "Nothing to collect yet"
   },
   "rent": {
     "list": "Rent out",
@@ -345,7 +348,8 @@
     "desc": "Each unit gives +{{boost}}% business income (max +{{cap}}%) for {{hours}}h. Price depends on the current world event.",
     "unitPrice": "Unit price",
     "bought": "Materials purchased",
-    "invalid": "Enter a valid quantity"
+    "invalid": "Enter a valid quantity",
+    "incomeSection": "Business income materials"
   },
   "tune": {
     "title": "Tuning",
@@ -485,7 +489,9 @@
     "orderAttack": "Order IT studio attack",
     "orderDefense": "Order IT studio defense",
     "confirm": "Confirm order",
-    "buyMaterials": "Buy materials",
+    "buySupplies": "Buy supplies",
+    "studioSection": "Studio supplies (attack/defense)",
+    "inStock": "In stock",
     "needStudio": "Requires your own IT studio (see \"My property\")",
     "needMaterials": "Not enough materials for this operation",
     "noTargets": "No available attack targets",
@@ -656,7 +662,8 @@
     "avatarHint": "PNG, JPEG, WEBP or GIF. The image is automatically downscaled before upload.",
     "avatarInvalidType": "Couldn't read the file — pick an image (PNG/JPEG/WEBP/GIF)",
     "hideFromLeaderboard": "Hide me from the leaderboard",
-    "hideFromLeaderboardHint": "Your profile will be excluded from the public player ranking — nothing else changes."
+    "hideFromLeaderboardHint": "Your profile will be excluded from the public player ranking — nothing else changes.",
+    "leaderboardLocked": "Changing this setting has been disabled by an administrator."
   },
   "auth": {
     "login": "Login",
@@ -757,6 +764,7 @@
     "validationRoleInvalid": "Role must be user or admin",
     "validationCardFormat": "Format: XXXX-XXXX-XXXX-XXXXX",
     "fieldHiddenFromLeaderboard": "Hide from leaderboard",
+    "fieldLeaderboardLock": "Forbid player from changing leaderboard visibility",
     "property": {
       "title": "Player property",
       "tab_assets": "Assets",
@@ -856,6 +864,7 @@
     "newFarm": "New farm",
     "pickPart": "+ Add part",
     "noParts": "None free — buy in the shop",
+    "placementTaken": "{{other}} already installed — only one placement option allowed",
     "aiManagerHint": "Automatically picks the best coin and looks after the farm",
     "assembleForManager": "Assemble the farm to hire a manager",
     "notAssembled": "The farm isn't assembled yet — install all required components and stats will appear.",

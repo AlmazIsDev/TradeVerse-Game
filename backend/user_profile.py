@@ -89,7 +89,14 @@ async def toggle_leaderboard_visibility(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Переключает участие в публичной таблице лидеров (см. GET /api/leaderboard)."""
-    new_hidden = not current_user.get("hideFromLeaderboard", False)
-    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"hideFromLeaderboard": new_hidden}})
+    """Переключает участие в публичной таблице лидеров (см. GET /api/leaderboard).
+
+    Хранится в едином поле `hidden_from_leaderboard` — том же, что читают
+    таблица лидеров (main.py) и админ-панель, поэтому обе системы всегда
+    видят одно значение. В ответе — camelCase `hideFromLeaderboard` для фронта.
+    """
+    if current_user.get("leaderboard_lock"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Изменение этой настройки запрещено администратором")
+    new_hidden = not current_user.get("hidden_from_leaderboard", False)
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"hidden_from_leaderboard": new_hidden}})
     return {"hideFromLeaderboard": new_hidden}

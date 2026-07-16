@@ -49,6 +49,11 @@ MANAGER_BASE_COST = 25000.0
 MANAGER_UPGRADE_COST = 15000.0
 MANAGER_MAX_LEVEL = 5
 MANAGER_SALARY_PER_H = 40.0            # × уровень
+# ИИ-управляющий поддерживает ферму в рабочем состоянии, не дожидаясь
+# критического износа. Порог ремонта растёт с уровнем: чем опытнее управляющий,
+# тем в лучшем состоянии он держит оборудование (level 1 → ~56%, level 5 → 80%).
+MANAGER_REPAIR_BASE = 50.0
+MANAGER_REPAIR_PER_LEVEL = 6.0
 
 
 def _now() -> datetime:
@@ -159,6 +164,18 @@ def _repair_cost(farm: dict) -> float:
     gpus = len(farm.get("components", {}).get("gpus", []))
     missing = max(0.0, 100.0 - farm.get("condition", 100.0))
     return round(missing * (100 + 30 * gpus), 2)
+
+
+def _ai_should_repair(ai: bool, ai_level: int, condition: float,
+                      revenue: float, electricity: float, salary: float, repair_cost: float) -> bool:
+    """Решение ИИ-управляющего о ремонте: чинит, когда износ ниже порога уровня
+    И когда добыча за тик покрывает ремонт (не загоняя игрока в минус)."""
+    if not ai:
+        return False
+    threshold = min(80.0, MANAGER_REPAIR_BASE + ai_level * MANAGER_REPAIR_PER_LEVEL)
+    if condition >= threshold:
+        return False
+    return revenue - electricity - salary - repair_cost >= 0
 
 
 def _serialize(farm: dict, stats: dict) -> dict:
@@ -383,6 +400,13 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": payload.category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$push": {f"components.{role_key}": entry}})
     else:
+        # Корпус и стойка — взаимоисключающие варианты размещения: можно
+        # использовать только один. Установка одного снимает другой.
+        PLACEMENT_ALT = {"case": "rack", "rack": "case"}
+        alt = PLACEMENT_ALT.get(role)
+        if alt and comp.get(alt) and comp[alt].get("hwId"):
+            await db.user_hardware.update_one({"_id": ObjectId(comp[alt]["hwId"])}, {"$set": {"farmId": None}})
+            await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{alt}": None}})
         # Освобождаем ранее установленный компонент этой роли.
         old = comp.get(role)
         if old and old.get("hwId"):
@@ -571,12 +595,17 @@ async def tick_all(db: AsyncIOMotorDatabase):
         wear = stats["wearPerHour"] * elapsed_h
         new_condition = max(0.0, farm.get("condition", 100.0) - wear)
 
-        # ИИ авто-ремонт при сильном износе (эффективность зависит от уровня).
+        # ИИ авто-ремонт: держит ферму в рабочем состоянии, не дожидаясь
+        # критического износа (порог растёт с уровнем управляющего). Ремонт
+        # применяется только если добыча покрывает его стоимость — иначе
+        # управляющий не загоняет игрока в минус ради обслуживания.
         repair_cost = 0.0
-        if ai and new_condition < (20 + ai_level * 4):
-            farm["condition"] = new_condition
-            repair_cost = _repair_cost(farm)
-            new_condition = 100.0
+        if ai:
+            farm["condition"] = new_condition   # _repair_cost считает по текущему износу
+            candidate_cost = _repair_cost(farm)
+            if _ai_should_repair(ai, ai_level, new_condition, revenue, electricity, salary, candidate_cost):
+                repair_cost = candidate_cost
+                new_condition = 100.0
 
         set_fields = {
             "condition": round(new_condition, 2),
@@ -695,3 +724,18 @@ async def admin_transfer_farm(
     except Exception:
         pass
     return result
+
+
+if __name__ == "__main__":
+    # Самопроверка решения ИИ о ремонте (см. _ai_should_repair / tick_all).
+    # Без управляющего — не ремонтирует.
+    assert _ai_should_repair(False, 0, 10.0, 100, 1, 0, 50) is False
+    # Уровень 1 → порог ~56%; износ 40% ниже порога и добыча покрывает ремонт.
+    assert _ai_should_repair(True, 1, 40.0, 100, 10, 5, 50) is True
+    # Ниже порога, но добыча НЕ покрывает ремонт — не чинит (не уводит в минус).
+    assert _ai_should_repair(True, 1, 40.0, 20, 10, 5, 50) is False
+    # Состояние выше порога — чинить рано.
+    assert _ai_should_repair(True, 5, 90.0, 1000, 1, 1, 10) is False
+    # Порог растёт с уровнем: level 5 → 80%, износ 70% уже требует ремонта.
+    assert _ai_should_repair(True, 5, 70.0, 1000, 1, 1, 10) is True
+    print("mining self-check OK")

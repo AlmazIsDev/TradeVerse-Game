@@ -280,7 +280,11 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                 ? (cat === 'gpu' ? farm.components?.gpus : farm.components?.fans) || []
                 : (farm.components?.[cat] ? [farm.components[cat]] : [])
               const avail = parts[cat] || []
-              const canAdd = multi || installed.length === 0
+              // Корпус и стойка — взаимоисключающие способы размещения (см.
+              // backend/mining.py install_component): пока стоит один, другой недоступен.
+              const altPlacement = cat === 'case' ? 'rack' : cat === 'rack' ? 'case' : null
+              const blockedByAlt = altPlacement && farm.components?.[altPlacement]
+              const canAdd = (multi || installed.length === 0) && !blockedByAlt
               return (
                 <div key={cat} className={`mining-slot ${req ? 'req' : ''} ${installed.length ? 'filled' : ''}`}>
                   <div className="mslot-head">
@@ -294,7 +298,9 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                       <button className="mslot-rm" disabled={busy} onClick={() => run(() => uninstallComponent(farm.id, it.hwId))}><X size={12} /></button>
                     </div>
                   ))}
-                  {canAdd && (
+                  {blockedByAlt ? (
+                    <span className="mslot-empty">{t('mining.placementTaken', { other: t(`mining.comp.${altPlacement}`, altPlacement) })}</span>
+                  ) : canAdd && (
                     avail.length > 0 ? (
                       <select className="mslot-pick" disabled={busy} value=""
                         onChange={e => { if (e.target.value) run(() => installComponent(farm.id, cat, e.target.value)) }}>

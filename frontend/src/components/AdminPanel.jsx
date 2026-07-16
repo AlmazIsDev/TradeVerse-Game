@@ -78,6 +78,7 @@ function AdminPanel({ user, onClose }) {
     role: 'user',
     card_number: '',
     hidden_from_leaderboard: false,
+    leaderboard_lock: false,
   })
   const [editErrors, setEditErrors] = useState({})
   const [propertyUser, setPropertyUser] = useState(null)
@@ -182,6 +183,7 @@ function AdminPanel({ user, onClose }) {
       role: u.role || 'user',
       card_number: u.card_number || '',
       hidden_from_leaderboard: !!u.hidden_from_leaderboard,
+      leaderboard_lock: !!u.leaderboard_lock,
     })
     setEditErrors({})
   }
@@ -194,6 +196,7 @@ function AdminPanel({ user, onClose }) {
       role: 'user',
       card_number: '',
       hidden_from_leaderboard: false,
+      leaderboard_lock: false,
     })
     setEditErrors({})
   }
@@ -206,6 +209,7 @@ function AdminPanel({ user, onClose }) {
       balance: parseFloat(editForm.balance),
       role: editForm.role,
       hidden_from_leaderboard: editForm.hidden_from_leaderboard,
+      leaderboard_lock: editForm.leaderboard_lock,
     }
 
     // Добавляем card_number только если заполнен
@@ -647,6 +651,16 @@ function AdminPanel({ user, onClose }) {
                             onChange={e => setEditForm({ ...editForm, hidden_from_leaderboard: e.target.checked })}
                           />
                           {t('admin.fieldHiddenFromLeaderboard')}
+                        </label>
+                      </div>
+                      <div className="admin-field-checkbox">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={editForm.leaderboard_lock}
+                            onChange={e => setEditForm({ ...editForm, leaderboard_lock: e.target.checked })}
+                          />
+                          {t('admin.fieldLeaderboardLock')}
                         </label>
                       </div>
                     </div>

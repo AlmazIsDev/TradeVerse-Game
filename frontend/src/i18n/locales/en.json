@@ -666,13 +666,7 @@
     "leaderboardLocked": "Changing this setting has been disabled by an administrator.",
     "appearanceTitle": "Appearance",
     "darkMode": "Dark mode",
-    "darkModeHint": "Dark interface theme. The setting is saved on this device.",
-    "accentTitle": "Accent color",
-    "accentDefault": "Default",
-    "accentGreen": "Green",
-    "accentTradeverse": "Classic TradeVerse",
-    "accentCustom": "Custom color",
-    "accentHint": "The accent applies to buttons, links and active elements. Saved on this device."
+    "darkModeHint": "Dark interface theme. The setting is saved on this device."
   },
   "auth": {
     "login": "Login",

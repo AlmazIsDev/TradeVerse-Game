@@ -192,7 +192,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     : marketView).slice(0, 4)
 
   const badge = (stock) => (
-    <span className="crypto-coin-badge" style={{ background: '#6366f1' }}>{(stock.symbol || '?').slice(0, 2)}</span>
+    <span className="crypto-coin-badge" style={{ background: '#0071e3' }}>{(stock.symbol || '?').slice(0, 2)}</span>
   )
 
   return (
@@ -357,6 +357,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
             <p className="modal-total">
               {t('common.total')}: <strong>${formatMoney((Math.floor(Number(qty)) || 0) * trade.price)}</strong>
             </p>
+            <div className="crypto-modal-fee">{t('trade.fee', { pct: 0.5 })}: ${formatMoney((Math.floor(Number(qty)) || 0) * trade.price * 0.005)}</div>
 
             {feedback && (
               <div className={`transfer-feedback ${feedback.type}`}>

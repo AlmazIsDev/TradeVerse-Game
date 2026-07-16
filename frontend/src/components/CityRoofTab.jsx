@@ -20,6 +20,25 @@ function formatCountdown(sec) {
   return `${m}:${String(r).padStart(2, '0')}`
 }
 
+// Таймер автосбора одного бонуса. Владеет собственным 1-секундным тиком, чтобы
+// обратный отсчёт не заставлял перерисовываться всю вкладку (карта + все
+// карточки) каждую секунду — ре-рендерится только этот маленький лист.
+function BonusCountdown({ anchor, readyInSec }) {
+  const { t } = useTranslation()
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const elapsed = (Date.now() - anchor) / 1000
+  const remaining = Math.max(0, (readyInSec ?? 0) - elapsed)
+  return (
+    <span className="cbonus-timer">
+      {remaining > 0 ? t('cityroof.nextIncome', { time: formatCountdown(remaining) }) : t('cityroof.incomeReady')}
+    </span>
+  )
+}
+
 // Эффекты-скидки показываются со знаком «-» (снижают стоимость), остальные — «+»
 // (см. backend/cityroof.py BUSINESS_BONUS и player_city_effect). Подписи — в i18n
 // (cityroof.effects.*), чтобы текст не оставался русским при английской локали.
@@ -47,7 +66,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [buyModal, setBuyModal] = useState(false)
   const [buyAmount, setBuyAmount] = useState('10')
   const [bonuses, setBonuses] = useState(null)
-  const [clockTick, setClockTick] = useState(0)     // тикает раз в секунду для обратного отсчёта автосбора
   const bonusAnchors = useRef({})     // slug -> момент (мс), от которого считаем локальный отсчёт readyInSec
   const [itStudioJobs, setItStudioJobs] = useState([])
   const [studios, setStudios] = useState([])          // собственные IT-студии игрока
@@ -76,11 +94,11 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   useEffect(() => { load() }, [load])
 
   // Доход зачисляется автоматически на сервере (Scheduler). Периодически
-  // подтягиваем актуальное состояние КД по каждому зданию + тикаем таймер.
+  // подтягиваем актуальное состояние КД по каждому зданию. Посекундный отсчёт
+  // живёт в <BonusCountdown> — отдельном листе, чтобы не ре-рендерить вкладку.
   useEffect(() => {
     const refresh = setInterval(load, 30000)
-    const clock = setInterval(() => setClockTick(t => t + 1), 1000)
-    return () => { clearInterval(refresh); clearInterval(clock) }
+    return () => clearInterval(refresh)
   }, [load])
 
   // Живые обновления карты (захват/защита чужими игроками) и точечный сброс
@@ -315,8 +333,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
           <div className="cbonus-list">
             {bonuses.bonuses.map(b => {
               const anchor = bonusAnchors.current[b.slug] ?? Date.now()
-              const elapsed = (Date.now() - anchor) / 1000
-              const remaining = Math.max(0, (b.readyInSec ?? 0) - elapsed)
               const pctSign = DISCOUNT_EFFECTS.has(b.effect) ? '-' : '+'
               return (
                 <div key={b.slug} className="cbonus-item">
@@ -329,9 +345,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                     <span className="cbonus-effect">
                       {t(`cityroof.effects.${b.effect}`, b.effect)}{b.mult ? ` ${pctSign}${Math.round(b.mult * 100)}%` : ''}
                     </span>
-                    <span className="cbonus-timer">
-                      {remaining > 0 ? t('cityroof.nextIncome', { time: formatCountdown(remaining) }) : t('cityroof.incomeReady')}
-                    </span>
+                    <BonusCountdown anchor={anchor} readyInSec={b.readyInSec} />
                   </div>
                 </div>
               )

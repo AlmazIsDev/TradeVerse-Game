@@ -2,13 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Save, RotateCcw, Monitor, Cpu, Box, Wrench, Home, Briefcase, Search, DollarSign } from 'lucide-react'
 
-// Импортируем массивы товаров из shop-компонентов
-import { GPU_PRODUCTS } from './GpuShop'
-import { CPU_PRODUCTS } from './CpuShop'
-import { CASE_PRODUCTS } from './CaseShop'
-import { SUPPLIES_PRODUCTS } from './SuppliesShop'
-import { REAL_ESTATE_PRODUCTS } from './RealEstateShop'
-import { BUSINESS_PRODUCTS } from './BusinessShop'
+// Каталоги товаров (справочник позиций для редактора цен).
+import {
+  GPU_PRODUCTS, CPU_PRODUCTS, CASE_PRODUCTS,
+  SUPPLIES_PRODUCTS, REAL_ESTATE_PRODUCTS, BUSINESS_PRODUCTS,
+} from '../utils/shopCatalog'
 
 const PRICE_CATEGORIES = [
   { id: 'gpu', labelKey: 'admin.prices.gpu', icon: Monitor, products: GPU_PRODUCTS },

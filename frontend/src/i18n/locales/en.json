@@ -663,7 +663,16 @@
     "avatarInvalidType": "Couldn't read the file — pick an image (PNG/JPEG/WEBP/GIF)",
     "hideFromLeaderboard": "Hide me from the leaderboard",
     "hideFromLeaderboardHint": "Your profile will be excluded from the public player ranking — nothing else changes.",
-    "leaderboardLocked": "Changing this setting has been disabled by an administrator."
+    "leaderboardLocked": "Changing this setting has been disabled by an administrator.",
+    "appearanceTitle": "Appearance",
+    "darkMode": "Dark mode",
+    "darkModeHint": "Dark interface theme. The setting is saved on this device.",
+    "accentTitle": "Accent color",
+    "accentDefault": "Default",
+    "accentGreen": "Green",
+    "accentTradeverse": "Classic TradeVerse",
+    "accentCustom": "Custom color",
+    "accentHint": "The accent applies to buttons, links and active elements. Saved on this device."
   },
   "auth": {
     "login": "Login",
@@ -1049,5 +1058,8 @@
       "copyright": "© 2026 TradeVerse. All rights reserved.",
       "disclaimer": "In-game currency has no real-world value. TradeVerse is an entertainment simulator."
     }
+  },
+  "trade": {
+    "fee": "Fee ({{pct}}%)"
   }
 }

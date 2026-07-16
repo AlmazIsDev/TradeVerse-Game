@@ -767,11 +767,11 @@ def _format_stock(stock: dict) -> dict:
 def _format_transaction(tx: dict) -> dict:
     return {
         "id": tx.get("id", ""),
-        "userId": tx["userId"],
-        "type": tx["type"],
-        "symbol": tx["symbol"],
-        "amount": tx["amount"],
-        "price": tx["price"],
+        "userId": tx.get("userId", ""),
+        "type": tx.get("type", ""),
+        "symbol": tx.get("symbol", ""),
+        "amount": tx.get("amount", 0),
+        "price": tx.get("price", 0),
         "timestamp": _serialize_datetime(tx.get("timestamp")),
     }
 

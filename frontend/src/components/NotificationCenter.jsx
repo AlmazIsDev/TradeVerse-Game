@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { acceptInvite, declineInvite, acceptApplication, declineApplication } from '../services/api'
 import { Building2, UserPlus, Check, X, Globe } from 'lucide-react'
@@ -21,6 +21,7 @@ function NotificationCenter() {
   const { t } = useTranslation()
   const [popups, setPopups] = useState([])   // [{ id, type, title, body, data }]
   const [busyId, setBusyId] = useState(null)
+  const timersRef = useRef([])   // активные таймеры автоскрытия — чистим при unmount
 
   const dismiss = useCallback((id) => {
     setPopups(prev => prev.filter(p => p.id !== id))
@@ -34,16 +35,23 @@ function NotificationCenter() {
       // игрокам broadcast'ом, раньше нигде не показывалось на фронте.
       if (data.type === 'event' || data.type === 'event_ended') {
         const started = data.type === 'event'
+        // Дедуп по типу+имени: повторный broadcast того же события не плодит попапы.
+        const key = `${data.type}-${data.name}`
         const popup = {
-          id: `${data.type}-${data.name}-${Date.now()}`,
+          id: `${key}-${Date.now()}`,
           kind: 'event',
           icon: data.icon,
           title: started
             ? t('notifications.worldEventStarted', { name: data.name })
             : t('notifications.worldEventEnded', { name: data.name }),
         }
-        setPopups(prev => [popup, ...prev].slice(0, 4))
-        setTimeout(() => dismiss(popup.id), EVENT_POPUP_TTL_MS)
+        setPopups(prev => (
+          prev.some(p => p.kind === 'event' && p.title === popup.title)
+            ? prev
+            : [popup, ...prev].slice(0, 4)
+        ))
+        const timer = setTimeout(() => dismiss(popup.id), EVENT_POPUP_TTL_MS)
+        timersRef.current.push(timer)
         return
       }
       if (data.type !== 'notification' || !data.notification) return
@@ -54,7 +62,11 @@ function NotificationCenter() {
       setPopups(prev => (prev.some(p => p.id === n.id) ? prev : [{ ...n, kind: 'action' }, ...prev].slice(0, 4)))
     }
     window.addEventListener('tv:realtime', onRealtime)
-    return () => window.removeEventListener('tv:realtime', onRealtime)
+    return () => {
+      window.removeEventListener('tv:realtime', onRealtime)
+      timersRef.current.forEach(clearTimeout)
+      timersRef.current = []
+    }
   }, [t, dismiss])
 
   const act = async (popup, accept) => {

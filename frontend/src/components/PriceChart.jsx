@@ -8,7 +8,7 @@ import { useRef, useEffect, useCallback } from 'react'
  * props: candles [{t,o,h,l,c}], line [{t,p}], type 'line'|'candle',
  *        color, height, up, down
  */
-function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1', height = 340, up = '#22c55e', down = '#ef4444' }) {
+function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3', height = 340, up = '#34c759', down = '#ff3b30' }) {
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
   const view = useRef({ start: 0, count: 0 })
@@ -45,13 +45,24 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, W, H)
 
+    // Хром графика (сетка, оси, кроссхэйр, подсказка) зависит от темы —
+    // canvas не видит CSS-переменные, поэтому подбираем палитру по data-theme.
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+    const C = dark ? {
+      grid: 'rgba(255,255,255,0.08)', axis: '#8e8e93', crosshair: 'rgba(255,255,255,0.28)',
+      tipBg: 'rgba(28,28,30,0.94)', tipBorder: 'rgba(255,255,255,0.14)', tipText: '#f5f5f7', tipSub: '#8e8e93',
+    } : {
+      grid: 'rgba(0,0,0,0.07)', axis: '#86868b', crosshair: 'rgba(0,0,0,0.22)',
+      tipBg: 'rgba(255,255,255,0.94)', tipBorder: 'rgba(0,0,0,0.10)', tipText: '#1d1d1f', tipSub: '#86868b',
+    }
+
     const padL = 10, padR = 62, padT = 14, padB = 24
     const plotW = W - padL - padR
     const plotH = H - padT - padB
 
     if (len < 2) {
-      ctx.fillStyle = '#64748b'
-      ctx.font = '13px Inter, sans-serif'
+      ctx.fillStyle = C.axis
+      ctx.font = '13px -apple-system, Inter, sans-serif'
       ctx.textAlign = 'center'
       ctx.fillText('Недостаточно данных', W / 2, H / 2)
       return
@@ -78,9 +89,9 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     const yAt = (p) => padT + (1 - (p - min) / range) * plotH
 
     // Сетка + ось цены
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-    ctx.fillStyle = '#64748b'
-    ctx.font = '11px Inter, sans-serif'
+    ctx.strokeStyle = C.grid
+    ctx.fillStyle = C.axis
+    ctx.font = '11px -apple-system, Inter, sans-serif'
     ctx.lineWidth = 1
     ctx.textAlign = 'left'
     const gridN = 5
@@ -141,7 +152,7 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
       const d = vis[h]
       const x = xAt(h)
       const py = type === 'candle' ? yAt(d.c) : yAt(d.p)
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+      ctx.strokeStyle = C.crosshair
       ctx.setLineDash([4, 4])
       ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(padL + plotW, py); ctx.stroke()
@@ -153,19 +164,19 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
         ? `O ${fmtPrice(d.o)} H ${fmtPrice(d.h)} L ${fmtPrice(d.l)} C ${fmtPrice(d.c)}`
         : `$${fmtPrice(d.p)}`
       const timeLabel = fmtTime(d.t)
-      ctx.font = '11px Inter, sans-serif'
+      ctx.font = '11px -apple-system, Inter, sans-serif'
       const tw = Math.max(ctx.measureText(label).width, ctx.measureText(timeLabel).width) + 16
       let bx = x + 10
       if (bx + tw > padL + plotW) bx = x - tw - 10
-      ctx.fillStyle = 'rgba(15,17,23,0.92)'
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.fillStyle = C.tipBg
+      ctx.strokeStyle = C.tipBorder
       ctx.beginPath()
-      ctx.roundRect(bx, padT + 6, tw, 38, 6)
+      ctx.roundRect(bx, padT + 6, tw, 38, 8)
       ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#f1f5f9'
+      ctx.fillStyle = C.tipText
       ctx.textAlign = 'left'
       ctx.fillText(label, bx + 8, padT + 22)
-      ctx.fillStyle = '#94a3b8'
+      ctx.fillStyle = C.tipSub
       ctx.fillText(timeLabel, bx + 8, padT + 37)
     }
   }, [data, len, type, color, height, up, down])
@@ -182,6 +193,13 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     const ro = new ResizeObserver(() => draw())
     if (wrapRef.current) ro.observe(wrapRef.current)
     return () => ro.disconnect()
+  }, [draw])
+
+  // Перерисовка при смене темы — хром графика зависит от data-theme.
+  useEffect(() => {
+    const onTheme = () => draw()
+    window.addEventListener('tv:theme', onTheme)
+    return () => window.removeEventListener('tv:theme', onTheme)
   }, [draw])
 
   const idxFromEvent = (e) => {

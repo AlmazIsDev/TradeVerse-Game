@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { updateProfile, changePassword, uploadAvatar, deleteAvatar, toggleLeaderboardVisibility } from '../services/api'
+import { getTheme, applyTheme, getAccent, setAccent, ACCENT_PRESETS } from '../utils/theme'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Settings as SettingsIcon, User, Lock, Globe,
-  Save, Trash2, Check, AlertTriangle, Upload,
+  Save, Trash2, Check, AlertTriangle, Upload, Moon, Palette,
 } from 'lucide-react'
 
 // Итоговый размер аватара — сжимается на клиенте через canvas (cover-crop до
@@ -173,6 +174,18 @@ function SettingsPage({ user, onUserUpdate }) {
     localStorage.setItem('language', code)
   }
 
+  // ── Оформление (тема + акцент) ────────────────────────────────────────────────
+  // Тема управляется атрибутами/инлайн-переменными на <html> через theme.js,
+  // чтобы весь слой токенов дизайн-системы переключался разом. Две оси:
+  // база (светлая/тёмная/прошлая TradeVerse) и акцент (стандартный/зелёный/свой).
+  const [theme, setTheme] = useState(getTheme())
+  const [accent, setAccentState] = useState(getAccent())
+  const toggleDark = () => setTheme(applyTheme(theme === 'dark' ? 'light' : 'dark'))
+  const pickAccent = (value) => setAccentState(setAccent(value))
+  // «Свой цвет»: активен, когда текущий акцент — произвольный hex (не пресет).
+  const isCustomAccent = accent !== 'default' && accent !== ACCENT_PRESETS.green
+  const customColor = isCustomAccent ? accent : '#ff375f'
+
   const currentAvatar = stagedAvatar || user?.avatar || null
   const initials = (user?.username || '?').slice(0, 2).toUpperCase()
   const since = formatDate(user?.created_at)
@@ -312,6 +325,83 @@ function SettingsPage({ user, onUserUpdate }) {
                 {i18n.language === l.code && <Check size={16} className="settings-lang-check" />}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Оформление (тёмная тема + акцент) */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><Moon size={18} /></span>
+            <h3>{t('settings.appearanceTitle')}</h3>
+          </div>
+          <div className="settings-toggle-block settings-appearance-block">
+            <label className="settings-toggle-row">
+              <span className="settings-toggle-text">{t('settings.darkMode')}</span>
+              <span className="settings-switch">
+                <input
+                  type="checkbox"
+                  checked={theme === 'dark'}
+                  onChange={toggleDark}
+                />
+                <span className="settings-switch-track"><span className="settings-switch-thumb" /></span>
+              </span>
+            </label>
+            <p className="settings-hint">{t('settings.darkModeHint')}</p>
+          </div>
+
+          {/* Акцентный цвет: пресеты + свой */}
+          <div className="settings-accent-block">
+            <div className="settings-subhead">
+              <Palette size={15} />
+              <span>{t('settings.accentTitle')}</span>
+            </div>
+            <div className="settings-accent-grid">
+              <button
+                type="button"
+                className={`settings-accent-chip ${accent === 'default' ? 'active' : ''}`}
+                onClick={() => pickAccent('default')}
+              >
+                <span className="settings-accent-dot" style={{ background: '#0071e3' }} />
+                <span className="settings-accent-name">{t('settings.accentDefault')}</span>
+                {accent === 'default' && <Check size={14} className="settings-accent-check" />}
+              </button>
+
+              <button
+                type="button"
+                className={`settings-accent-chip ${accent === ACCENT_PRESETS.green ? 'active' : ''}`}
+                onClick={() => pickAccent(ACCENT_PRESETS.green)}
+              >
+                <span className="settings-accent-dot" style={{ background: ACCENT_PRESETS.green }} />
+                <span className="settings-accent-name">{t('settings.accentGreen')}</span>
+                {accent === ACCENT_PRESETS.green && <Check size={14} className="settings-accent-check" />}
+              </button>
+
+              <button
+                type="button"
+                className={`settings-accent-chip ${theme === 'tradeverse' ? 'active' : ''}`}
+                onClick={() => { setTheme(applyTheme('tradeverse', 'default')); setAccentState(setAccent('default')) }}
+              >
+                <span className="settings-accent-dot" style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }} />
+                <span className="settings-accent-name">{t('settings.accentTradeverse')}</span>
+                {theme === 'tradeverse' && <Check size={14} className="settings-accent-check" />}
+              </button>
+
+              <label className={`settings-accent-chip settings-accent-custom ${isCustomAccent ? 'active' : ''}`}>
+                <span
+                  className="settings-accent-dot"
+                  style={{ background: isCustomAccent ? customColor : 'conic-gradient(from 0deg,#ff375f,#ff9f0a,#34c759,#0071e3,#bf5af2,#ff375f)' }}
+                />
+                <span className="settings-accent-name">{t('settings.accentCustom')}</span>
+                <input
+                  type="color"
+                  className="settings-accent-input"
+                  value={customColor}
+                  onChange={e => pickAccent(e.target.value)}
+                />
+                {isCustomAccent && <Check size={14} className="settings-accent-check" />}
+              </label>
+            </div>
+            <p className="settings-hint">{t('settings.accentHint')}</p>
           </div>
         </div>
       </div>

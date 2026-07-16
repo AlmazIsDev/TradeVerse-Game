@@ -564,21 +564,6 @@ export async function updateStockConfig(symbol, configData) {
   })
 }
 
-// ── Shop Purchase API ────────────────────────────────────────────────────────
-
-export async function purchaseItem(purchaseData) {
-  return request('/api/shop/purchase', {
-    method: 'POST',
-    body: JSON.stringify(purchaseData),
-  })
-}
-
-export async function fetchMyPurchases(limit = 100) {
-  const params = new URLSearchParams()
-  if (limit) params.set('limit', limit)
-  return request(`/api/shop/purchases?${params.toString()}`)
-}
-
 export async function fetchBotOrders(limit = 100) {
   const params = new URLSearchParams()
   if (limit) params.set('limit', limit)

@@ -508,7 +508,12 @@
       "medium": "Medium",
       "advanced": "Advanced",
       "premium": "Premium"
-    }
+    },
+    "eta": "ETA",
+    "etaMinutes": "{{min}}–{{max}} min",
+    "etaHours": "{{min}}–{{max}} h",
+    "fullBreak": "Wipes all protection in a single operation",
+    "orderedMinutes": "Order placed. Ready in ~{{minutes}} min."
   },
   "shop": {
     "nexusDesc": "One store for all components: GPUs, CPUs, motherboards, memory, drives, PSUs, cooling, cases, racks and networking.",

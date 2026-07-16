@@ -54,7 +54,7 @@ function formatDateTime(iso) {
  * Полная панель истории операций: фильтр (все/доход/расход), поиск,
  * сортировка, пагинация, карточки. Данные — из JWT-scoped API.
  */
-function TransactionsPanel({ refreshKey = 0, category }) {
+function TransactionsPanel({ refreshKey = 0, category, companyId }) {
   const { t } = useTranslation()
   const [direction, setDirection] = useState('')
   const [sort, setSort] = useState('date_desc')
@@ -85,11 +85,12 @@ function TransactionsPanel({ refreshKey = 0, category }) {
       sort,
       skip: page * PAGE_SIZE,
       limit: PAGE_SIZE,
+      companyId: companyId || undefined,
     })
       .then(res => { if (!cancelled) { setData(res); setLoading(false) } })
       .catch(err => { if (!cancelled) { setError(err.message); setLoading(false) } })
     return () => { cancelled = true }
-  }, [direction, sort, search, page, refreshKey, category])
+  }, [direction, sort, search, page, refreshKey, category, companyId])
 
   const totalPages = Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE))
   const fromItem = data.total === 0 ? 0 : page * PAGE_SIZE + 1

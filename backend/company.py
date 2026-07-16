@@ -20,7 +20,7 @@ from pydantic import BaseModel, field_validator
 from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
-    INCOME, EXPENSE, CAT_COMPANY,
+    INCOME, EXPENSE, CAT_COMPANY, CAT_DIVIDEND, CAT_TRADE,
     adjust_balance, record_transaction, query_transactions,
 )
 from assets import company_income_per_hour, list_company_assets
@@ -131,6 +131,20 @@ class SalaryUpdate(BaseModel):
         return round(float(v), 2)
 
 
+class OwnerSalaryUpdate(BaseModel):
+    """Зарплата владельца: допускается 0 (отключить выплату себе)."""
+    salary: float
+
+    @field_validator("salary")
+    @classmethod
+    def salary_ok(cls, v):
+        if v is None or v < 0:
+            raise ValueError("Зарплата не может быть отрицательной")
+        if v > 1_000_000:
+            raise ValueError("Слишком большая зарплата")
+        return round(float(v), 2)
+
+
 class AmountBody(BaseModel):
     amount: float
 
@@ -152,6 +166,37 @@ class AdminCompanyUpdate(BaseModel):
 
 class AdminTransferBody(BaseModel):
     toUsername: str
+
+
+class CompanyIpo(BaseModel):
+    symbol: str
+    totalShares: int
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_ok(cls, v):
+        v = (v or "").strip().upper()
+        if not (1 <= len(v) <= 6) or not v.isalnum():
+            raise ValueError("Тикер: 1–6 латинских букв/цифр")
+        return v
+
+    @field_validator("totalShares")
+    @classmethod
+    def shares_ok(cls, v):
+        if v < 1000 or v > 10_000_000_000:
+            raise ValueError("Количество акций: 1 000 – 10 млрд")
+        return int(v)
+
+
+class CompanyDividend(BaseModel):
+    perShare: float
+
+    @field_validator("perShare")
+    @classmethod
+    def per_ok(cls, v):
+        if v is None or v <= 0:
+            raise ValueError("Дивиденд на акцию должен быть положительным")
+        return round(float(v), 4)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -178,8 +223,15 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
     cid = str(company["_id"])
     members = await _members(db, cid)
     assets = await list_company_assets(db, cid)
-    revenue = await company_income_per_hour(db, cid)   # реальный доход от активов
-    payroll = round(sum(m.get("salary", 0) for m in members), 2)
+    # Репутационный множитель СМИ владельца — доход бизнесов компании отражает кризис.
+    try:
+        from media import active_owner_income_factor
+        media_factor = await active_owner_income_factor(db, company["ownerId"])
+    except Exception:
+        media_factor = 1.0
+    revenue = await company_income_per_hour(db, cid, media_factor)   # реальный доход от активов
+    owner_salary = round(company.get("owner_salary", 0.0), 2)
+    payroll = round(sum(m.get("salary", 0) for m in members) + owner_salary, 2)
     hours = _hours_since(company)
     owner_id = company["ownerId"]
     is_owner = viewer_id is not None and viewer_id == owner_id
@@ -187,6 +239,23 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         (m.get("role", "worker") for m in members if m["userId"] == viewer_id), None
     )
     owner_user = await db.users.find_one({"_id": ObjectId(owner_id)}) if ObjectId.is_valid(owner_id) else None
+
+    # Биржевая акция компании (если размещена) — для секции «Акции компании».
+    stock_info = None
+    symbol = company.get("stockSymbol")
+    if symbol:
+        st = await db.stocks.find_one({"symbol": symbol})
+        if st:
+            cfg_total = (st.get("config") or {}).get("total_shares", 0)
+            price = float(st.get("price", 0.0))
+            stock_info = {
+                "symbol": symbol,
+                "price": round(price, 2),
+                "changePercent": round(st.get("changePercent", 0.0), 2),
+                "totalShares": cfg_total,
+                "freeShares": st.get("free_shares", cfg_total),
+                "marketCap": round(price * cfg_total, 2),
+            }
 
     # Живой username/avatar по userId — не полагаемся на снапшот-поле "username"
     # в company_members (оно устаревает после смены никнейма в Настройках), а
@@ -201,7 +270,7 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         {"id": owner_id, "userId": owner_id,
          "username": owner_user.get("username") if owner_user else "—",
          "avatar": owner_user.get("avatar") if owner_user else None,
-         "role": "owner", "salary": None},
+         "role": "owner", "salary": owner_salary},
         *[
             {"id": str(m["_id"]), "userId": m["userId"],
              "username": users_by_id.get(m["userId"], {}).get("username", m.get("username")),
@@ -221,12 +290,15 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         "createdAt": company.get("created_at").isoformat() if isinstance(company.get("created_at"), datetime) else None,
         "revenuePerHour": revenue,
         "payrollPerHour": payroll,
+        "ownerSalary": owner_salary,
+        "reputationFactor": media_factor,
         "profitPerHour": round(revenue - payroll, 2),
         "accrued": round(revenue * hours, 2),
         "memberCount": len(members) + 1,
         "assetCount": len(assets),
         "ownerId": owner_id,
         "ownerName": owner_user.get("username") if owner_user else None,
+        "stock": stock_info,
         "isOwner": is_owner,
         "viewerRole": viewer_role,
         "members": display_members,
@@ -292,6 +364,7 @@ async def create_company(
     await record_transaction(
         db, user_id, EXPENSE, FOUNDING_FEE, CAT_COMPANY,
         f"Регистрация компании «{payload.name}»", balance_after=new_balance,
+        meta={"companyId": str(doc["_id"])},
     )
     return {"company": await _serialize(db, doc, user_id), "balance": new_balance}
 
@@ -331,6 +404,31 @@ async def _disband(db: AsyncIOMotorDatabase, company: dict):
         )
 
     await db.user_assets.update_many({"companyId": cid}, {"$set": {"companyId": None}})
+
+    # Делистинг акции компании: замораживаем и удаляем тикер с биржи. Держателям
+    # выкупаем позиции по последней цене из бюджета (если хватает) — иначе просто
+    # снимаем акцию (позиции обесцениваются вместе с исчезнувшей компанией).
+    symbol = company.get("stockSymbol")
+    if symbol:
+        st = await db.stocks.find_one({"symbol": symbol})
+        if st:
+            price = float(st.get("price", 0.0))
+            budget = company.get("budget", 0.0)
+            async for h in db.stock_holdings.find({"symbol": symbol, "quantity": {"$gt": 0}}):
+                qty = h.get("quantity", 0)
+                payout = round(price * qty, 2)
+                if payout > 0 and budget >= payout and h["userId"] != company["ownerId"]:
+                    budget -= payout
+                    hb = await adjust_balance(db, h["userId"], payout)
+                    await record_transaction(
+                        db, h["userId"], INCOME, payout, CAT_DIVIDEND,
+                        f"Делистинг {symbol}", symbol=symbol, balance_after=hb,
+                        meta={"companyId": cid, "kind": "delisting"},
+                    )
+            await db.stock_holdings.delete_many({"symbol": symbol})
+            await db.stocks.delete_one({"symbol": symbol})
+
+    await db.company_debuffs.delete_many({"companyId": cid})
 
     await db.company_members.delete_many({"companyId": cid})
     await db.company_invites.delete_many({"companyId": cid})
@@ -500,6 +598,22 @@ async def update_salary(
     if res.matched_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")
     return {"company": await _serialize(db, company, user_id)}
+
+
+@router.patch("/owner-salary")
+async def update_owner_salary(
+    payload: OwnerSalaryUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Установить/изменить зарплату владельца (платится из бюджета при сборе прибыли)."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    await db.companies.update_one(
+        {"_id": company["_id"]}, {"$set": {"owner_salary": payload.salary}}
+    )
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    return {"company": await _serialize(db, updated, user_id)}
 
 
 @router.delete("/members/{member_user_id}")
@@ -719,7 +833,13 @@ async def collect_profit(
         return {"collected": 0.0, "payrollPaid": 0.0, "company": await _serialize(db, updated, user_id)}
 
     hours = _hours_since(company)
-    revenue_per_h = await company_income_per_hour(db, cid)
+    # Репутационный множитель СМИ владельца бьёт по доходной части бизнесов компании.
+    try:
+        from media import active_owner_income_factor
+        media_factor = await active_owner_income_factor(db, user_id)
+    except Exception:
+        media_factor = 1.0
+    revenue_per_h = await company_income_per_hour(db, cid, media_factor)
     econ = await get_econ(db)
     gross = round(revenue_per_h * hours * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
     # Бонус зданий «Крыши города»: +% к доходу компании (напр. «Бизнес-башня», «Городской банк»).
@@ -732,7 +852,14 @@ async def collect_profit(
         pass
 
     members = await _members(db, cid)
-    payroll_per_h = sum(m.get("salary", 0) for m in members)
+    members = await _members(db, cid)
+    owner_salary = round(company.get("owner_salary", 0.0), 2)
+    # ФОТ = зарплаты сотрудников + зарплата владельца (владелец платит её себе из
+    # бюджета компании, ровно как сотрудникам). Список выплат единый.
+    payouts = [(m["userId"], m.get("salary", 0)) for m in members]
+    if owner_salary > 0:
+        payouts.append((user_id, owner_salary))
+    payroll_per_h = sum(s for _, s in payouts)
     payroll_due = round(payroll_per_h * hours, 2)
 
     # Бюджет после дохода — для проверки, хватает ли на зарплаты. Обновляем его
@@ -741,18 +868,18 @@ async def collect_profit(
     budget_after_gross = round(company.get("budget", 0.0) + gross, 2)
     paid = 0.0
     if payroll_due > 0 and budget_after_gross >= payroll_due:
-        for m in members:
-            amt = round(m.get("salary", 0) * hours, 2)
+        for member_id, salary in payouts:
+            amt = round(salary * hours, 2)
             if amt <= 0:
                 continue
-            mb = await adjust_balance(db, m["userId"], amt)
+            mb = await adjust_balance(db, member_id, amt)
             await record_transaction(
-                db, m["userId"], INCOME, amt, CAT_COMPANY,
+                db, member_id, INCOME, amt, CAT_COMPANY,
                 f"Зарплата: {company['name']}", balance_after=mb,
                 meta={"companyId": cid},
             )
             await push_notification(
-                db, m["userId"], "salary", "Зарплата начислена",
+                db, member_id, "salary", "Зарплата начислена",
                 f"«{company['name']}» выплатила ${amt:.2f}.", data={"companyId": cid},
             )
         paid = payroll_due
@@ -782,6 +909,7 @@ async def deposit_to_budget(
     await record_transaction(
         db, user_id, EXPENSE, payload.amount, CAT_COMPANY,
         f"Пополнение бюджета «{company['name']}»", balance_after=new_balance,
+        meta={"companyId": str(company["_id"])},
     )
     updated = await db.companies.find_one({"_id": company["_id"]})
     return {"balance": new_balance, "company": await _serialize(db, updated, user_id)}
@@ -806,8 +934,162 @@ async def withdraw_from_budget(
     await record_transaction(
         db, user_id, INCOME, payload.amount, CAT_COMPANY,
         f"Вывод прибыли «{company['name']}»", balance_after=new_balance,
+        meta={"companyId": str(company["_id"])},
     )
     return {"balance": new_balance, "company": await _serialize(db, updated, user_id)}
+
+
+async def _company_capital(db, company: dict) -> float:
+    """Капитал компании = бюджет + суммарная стоимость её активов.
+
+    Служит фундаменталом для цены акции («как в жизни»): цена = капитал / выпуск."""
+    cid = str(company["_id"])
+    assets = await list_company_assets(db, cid)
+    return round(company.get("budget", 0.0) + sum(a["value"] for a in assets), 2)
+
+
+# ── Company shares (IPO / дивиденды) ─────────────────────────────────────────
+
+LISTING_FEE = 5000.0        # листинговый сбор (из бюджета компании)
+FOUNDER_SHARE_PCT = 0.2     # доля владельца при размещении (оплачивается бюджетом)
+
+
+@router.post("/ipo", status_code=status.HTTP_201_CREATED)
+async def company_ipo(
+    payload: CompanyIpo,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Разместить акцию компании на бирже (IPO).
+
+    Стартовая цена = капитал / выпуск (фундаментал). Листинговый сбор и доля
+    основателя оплачиваются ИЗ БЮДЖЕТА компании — каждая акция обеспечена реальными
+    деньгами (см. economy-integrity: cash-backed shares). Тикер привязан к компании
+    (companyId), поэтому цена в дальнейшем дрейфует к капиталу (stocks.maintain)."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    cid = str(company["_id"])
+
+    if company.get("stockSymbol"):
+        raise HTTPException(status.HTTP_409_CONFLICT, "У компании уже размещена акция")
+    symbol = payload.symbol
+    if await db.stocks.find_one({"symbol": symbol}):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Тикер «{symbol}» уже занят")
+
+    capital = await _company_capital(db, company)
+    if capital <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Нулевой капитал: пополните бюджет или передайте активы компании")
+    price = round(max(0.01, capital / payload.totalShares), 2)
+
+    founder_shares = int(payload.totalShares * FOUNDER_SHARE_PCT)
+    free_shares = payload.totalShares - founder_shares
+    founder_cost = round(founder_shares * price, 2)
+    total_charge = round(LISTING_FEE + founder_cost, 2)
+
+    # Оплата из бюджета — атомарно, с проверкой достаточности (не $set из stale-чтения).
+    paid = await db.companies.find_one_and_update(
+        {"_id": company["_id"], "budget": {"$gte": total_charge}, "stockSymbol": {"$exists": False}},
+        {"$inc": {"budget": -total_charge}, "$set": {"stockSymbol": symbol}},
+        return_document=True,
+    )
+    if not paid:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Недостаточно в бюджете: листинг ${LISTING_FEE:,.0f} + доля основателя ${founder_cost:,.0f}",
+        )
+
+    doc = {
+        "symbol": symbol,
+        "name": company["name"],
+        "description": company.get("description", "")[:280],
+        "price": price,
+        "change": 0.0,
+        "changePercent": 0.0,
+        "currency": "USD",
+        "issuer": user_id,
+        "issuer_name": current_user.get("username"),
+        "companyId": cid,
+        "config": {"total_shares": payload.totalShares},
+        "free_shares": free_shares,
+        "updated_at": _now(),
+    }
+    await db.stocks.insert_one(doc)
+
+    # Доля основателя зачисляется владельцу лично (он её оплатил из бюджета компании).
+    if founder_shares > 0:
+        await db.stock_holdings.update_one(
+            {"userId": user_id, "symbol": symbol},
+            {"$inc": {"quantity": founder_shares, "invested": founder_cost},
+             "$setOnInsert": {"userId": user_id, "symbol": symbol}},
+            upsert=True,
+        )
+    await record_transaction(
+        db, user_id, EXPENSE, total_charge, CAT_COMPANY,
+        f"IPO компании «{company['name']}» ({symbol})", balance_after=None,
+        meta={"companyId": cid, "kind": "ipo", "symbol": symbol,
+              "listingFee": LISTING_FEE, "founderCost": founder_cost},
+    )
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    return {
+        "symbol": symbol, "price": price, "founderShares": founder_shares,
+        "freeShares": free_shares, "totalShares": payload.totalShares,
+        "company": await _serialize(db, updated, user_id),
+    }
+
+
+@router.post("/dividend")
+async def company_pay_dividend(
+    payload: CompanyDividend,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Выплатить дивиденды держателям акции компании ИЗ БЮДЖЕТА компании.
+
+    Держатель-владелец исключается (он и так владеет компанией). Списание из
+    бюджета атомарно (проверка достаточности) — дивиденды обеспечены реальными
+    деньгами, не печатаются."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    symbol = company.get("stockSymbol")
+    if not symbol:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У компании нет размещённой акции")
+
+    per = payload.perShare
+    holders = [
+        h async for h in db.stock_holdings.find(
+            {"symbol": symbol, "quantity": {"$gt": 0}, "userId": {"$ne": user_id}}
+        )
+    ]
+    total = round(sum(per * h.get("quantity", 0) for h in holders), 2)
+    if total <= 0:
+        return {"paid": 0.0, "holders": 0, "company": await _serialize(db, company, user_id)}
+
+    paid_company = await db.companies.find_one_and_update(
+        {"_id": company["_id"], "budget": {"$gte": total}},
+        {"$inc": {"budget": -total}},
+        return_document=True,
+    )
+    if not paid_company:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств в бюджете компании")
+
+    for h in holders:
+        amt = round(per * h.get("quantity", 0), 2)
+        if amt <= 0:
+            continue
+        hb = await adjust_balance(db, h["userId"], amt)
+        await record_transaction(
+            db, h["userId"], INCOME, amt, CAT_DIVIDEND,
+            f"Дивиденды {symbol}", symbol=symbol, balance_after=hb,
+            meta={"perShare": per, "from": company["name"], "companyId": str(company["_id"])},
+        )
+    await record_transaction(
+        db, user_id, EXPENSE, total, CAT_COMPANY,
+        f"Выплата дивидендов {symbol}", balance_after=None,
+        meta={"companyId": str(company["_id"]), "kind": "dividend", "perShare": per, "holders": len(holders)},
+    )
+    return {"paid": total, "holders": len(holders),
+            "company": await _serialize(db, paid_company, user_id)}
 
 
 @router.get("/history")
@@ -817,9 +1099,17 @@ async def company_history(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    # История ТОЛЬКО текущей компании игрока. Раньше фильтр был лишь по
+    # category=company, из-за чего после роспуска и пересоздания компании в логах
+    # всплывали операции прошлой (реестр владельца хранит их вечно). Теперь все
+    # company-операции помечены meta.companyId, и историю сужаем по нему.
+    company = await _my_company_or_membership(db, str(current_user["_id"]))
+    if not company:
+        return {"items": [], "total": 0, "skip": skip, "limit": limit}
     return await query_transactions(
         db, str(current_user["_id"]),
         category=CAT_COMPANY, sort="date_desc", skip=skip, limit=limit,
+        meta_filter={"companyId": str(company["_id"])},
     )
 
 

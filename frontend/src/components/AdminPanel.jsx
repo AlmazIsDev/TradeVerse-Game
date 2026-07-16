@@ -470,7 +470,7 @@ function AdminPanel({ user, onClose }) {
                         <button className="admin-btn" onClick={() => setEditingStock({ ...stock })}>
                           <Edit3 size={14} />
                         </button>
-                        <button className="admin-btn" onClick={() => handleEditStockConfig({ ...stock })} title="Настроить конфиг">
+                        <button className="admin-btn" onClick={() => handleEditStockConfig({ ...stock })} title={t('admin.stockConfig') || 'Настроить конфиг'}>
                           <Sliders size={14} />
                         </button>
                         <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteStock(stock.symbol)}>

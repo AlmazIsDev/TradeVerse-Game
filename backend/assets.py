@@ -140,6 +140,10 @@ CATALOG = [
      "price": 1800000, "income_per_hour": 9200, "upkeep_per_hour": 3200, "employees": 50},
     {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office", "rarity": "legendary",
      "price": 750000, "income_per_hour": 4600, "upkeep_per_hour": 1500, "employees": 40},
+    # Медиахолдинг — открывает заказ разоблачений в СМИ (см. media.py): владелец
+    # может ударить по доходам бизнесов конкурента и цене его акции.
+    {"slug": "media_holding", "type": TYPE_BUSINESS, "name": "Медиахолдинг", "category": "media", "rarity": "legendary",
+     "price": 1200000, "income_per_hour": 6200, "upkeep_per_hour": 2100, "employees": 45},
     # Автомобили: престиж (без дохода), учитываются в капитале, но сдаются в аренду
     {"slug": "citycar", "type": TYPE_CAR, "name": "Городской хэтчбек", "rarity": "common",
      "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 5}},
@@ -309,6 +313,19 @@ class AdminAssetUpdate(BaseModel):
 
 class AdminTransferBody(BaseModel):
     toUsername: str
+
+
+class TransferToPlayer(BaseModel):
+    """Передача личного актива другому игроку по нику."""
+    toUsername: str
+
+    @field_validator("toUsername")
+    @classmethod
+    def name_ok(cls, v):
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Укажите ник игрока")
+        return v[:40]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -523,11 +540,18 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
 # ── Активы компании (реальный источник дохода) ───────────────────────────────
 
 
-async def company_income_per_hour(db: AsyncIOMotorDatabase, company_id: str) -> float:
-    """Чистый доход компании в час от принадлежащих ей активов."""
+async def company_income_per_hour(db: AsyncIOMotorDatabase, company_id: str,
+                                  media_factor: float = 1.0) -> float:
+    """Чистый доход компании в час от принадлежащих ей активов.
+
+    ``media_factor`` — репутационный множитель СМИ владельца: применяется только
+    к доходной части бизнесов (расходы/содержание и небизнес-активы не трогаем)."""
     total = 0.0
     async for a in db.user_assets.find({"companyId": company_id}):
-        total += (_income_per_hour(a) - _upkeep_per_hour(a))
+        income = _income_per_hour(a)
+        if media_factor != 1.0 and a.get("type") == TYPE_BUSINESS:
+            income = round(income * media_factor, 2)
+        total += (income - _upkeep_per_hour(a))
     return round(total, 2)
 
 
@@ -759,7 +783,8 @@ async def collect_income(
     econ = await get_econ(db)
     event_income = await _event_income_shift(db)
     city_bonus = await _city_asset_bonus(db, user_id)
-    amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus)
+    media_factor = await _media_income_factor(db, user_id)
+    amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
     new_balance = await adjust_balance(db, user_id, amount)
@@ -788,11 +813,24 @@ async def _city_asset_bonus(db, user_id: str) -> float:
         return 0.0
 
 
+async def _media_income_factor(db, user_id: str) -> float:
+    """Репутационный множитель СМИ для бизнесов игрока (1.0 — нет эффектов)."""
+    try:
+        from media import active_owner_income_factor
+        return await active_owner_income_factor(db, user_id)
+    except Exception:
+        return 1.0
+
+
 async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
-                                event_income: float, city_bonus: float) -> float:
+                                event_income: float, city_bonus: float,
+                                media_factor: float = 1.0) -> float:
     """Считает и применяет (обнуляет КД) доход одного актива, возвращает сумму.
-    Множители (econ/событие/город) передаются готовыми, чтобы при массовом
+    Множители (econ/событие/город/СМИ) передаются готовыми, чтобы при массовом
     сборе не пересчитывать их на каждый актив.
+
+    ``media_factor`` — репутационный множитель СМИ (media.py): применяется только
+    к бизнесам владельца (недвижимость/авто не затрагиваются разоблачением).
 
     Присвоение накопления атомарно: last_collected сбрасывается условным
     апдейтом по ТОМУ ЖЕ значению, что было прочитано. Если два параллельных
@@ -810,6 +848,8 @@ async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
     amount = round(amount * event_income, 2)
     if city_bonus:
         amount = round(amount * (1 + city_bonus), 2)
+    if media_factor != 1.0 and asset.get("type") == TYPE_BUSINESS:
+        amount = round(amount * media_factor, 2)
     return amount
 
 
@@ -823,13 +863,14 @@ async def collect_all_income(
     econ = await get_econ(db)
     event_income = await _event_income_shift(db)
     city_bonus = await _city_asset_bonus(db, user_id)
+    media_factor = await _media_income_factor(db, user_id)
 
     total = 0.0
     count = 0
     async for asset in db.user_assets.find({"userId": user_id, "companyId": None}):
         if asset.get("income_per_hour", 0) <= 0:
             continue
-        amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus)
+        amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
         if amount <= 0:
             continue
         new_balance = await adjust_balance(db, user_id, amount)
@@ -966,6 +1007,44 @@ async def transfer_to_company(
     )
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
     return {"ok": True, "asset": _serialize(updated)}
+
+
+@router.post("/{asset_id}/transfer-to-player")
+async def transfer_to_player(
+    asset_id: str,
+    payload: TransferToPlayer,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Подарить личный актив другому игроку по нику. Актив уходит целиком
+    (со всеми улучшениями/материалами) — доход по нему начнёт получать новый
+    владелец. Нельзя передавать активы, отданные компании или сдаваемые."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("companyId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Актив принадлежит компании — сначала верните его себе")
+    if asset.get("rental"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Актив сдаётся или ждёт арендатора — снимите с аренды")
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    if new_owner_id == user_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя передать актив самому себе")
+    # Копим доход у прежнего владельца обнуляется — новый владелец начинает с чистого КД.
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"userId": new_owner_id, "companyId": None, "rental": None, "last_collected": _now()}},
+    )
+    try:
+        from ws import push_to_user
+        await push_to_user(user_id, {"type": "asset_update", "assetId": asset_id})
+        await push_to_user(new_owner_id, {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"ok": True, "toUsername": payload.toUsername}
 
 
 @router.post("/{asset_id}/rent/list")

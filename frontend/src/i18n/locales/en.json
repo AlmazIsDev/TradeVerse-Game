@@ -436,7 +436,28 @@
     "open": "Open",
     "closed": "Closed",
     "visible": "Visible in search",
-    "hidden": "Hidden from search"
+    "hidden": "Hidden from search",
+    "reputationCrisis": "Reputation crisis: business income reduced by {{pct}}%",
+    "reputationBoost": "Surge of interest: business income increased by {{pct}}%",
+    "ipo": {
+      "title": "Company Shares",
+      "desc": "List your company on the exchange. Starting price = company capital / shares. Listing and founder stake are paid from the budget.",
+      "place": "Launch IPO",
+      "placed": "{{symbol}} listed at ${{price}}",
+      "confirm": "List",
+      "invalid": "Enter a ticker and share count (min 1,000)",
+      "ticker": "Ticker (1-6 chars)",
+      "shares": "Total shares",
+      "priceNote": "Starting price = company capital / shares. Price then drifts toward capital and fluctuates with trades.",
+      "marketCap": "Market cap",
+      "freeShares": "Free",
+      "payDividend": "Pay dividends",
+      "dividendNote": "Dividends are paid to holders from the company budget.",
+      "perShare": "Dividend per share",
+      "dividendPaid": "Paid ${{total}} · holders: {{holders}}",
+      "dividendInvalid": "Enter a positive dividend",
+      "none": "Company is not listed on the exchange yet"
+    }
   },
   "cityroof": {
     "buyWc": "Buy WC",
@@ -576,7 +597,8 @@
     "citycar": "City Hatchback",
     "sedan": "Business Sedan",
     "sport": "Sports Car",
-    "super": "Supercar"
+    "super": "Supercar",
+    "media_holding": "Media Holding"
   },
   "gpu": {
     "company": "Company",
@@ -621,7 +643,8 @@
       "retail": "Retail",
       "tech": "Technology",
       "service": "Services",
-      "office": "Offices"
+      "office": "Offices",
+      "media": "Media"
     }
   },
   "dashboard": {
@@ -937,7 +960,9 @@
       "rack": "Professional farm — a multi-GPU rack.",
       "ups": "Protects against power outages.",
       "network": "Keeps a stable connection to the pool."
-    }
+    },
+    "removeOne": "Remove one part",
+    "capacityFull": "No free slots — install a larger case/rack"
   },
   "notifications": {
     "title": "Notifications",
@@ -1060,5 +1085,53 @@
   },
   "trade": {
     "fee": "Fee ({{pct}}%)"
+  },
+  "gift": {
+    "toPlayer": "Transfer to player",
+    "desc": "The asset moves to another player in full, with all upgrades. Its income will go to the new owner. This is irreversible.",
+    "playerLabel": "Player nickname",
+    "playerPlaceholder": "Enter recipient nickname",
+    "send": "Transfer",
+    "sent": "Asset transferred to {{name}}",
+    "invalid": "Enter a player nickname"
+  },
+  "units": {
+    "perHour": "/h",
+    "perYear": "/yr",
+    "cores": "cores",
+    "gb": "GB",
+    "gpuSlots": "GPU slots",
+    "slots": "slots",
+    "gpuCap": "GPU",
+    "cooling": "cool.",
+    "industrial": "ind.",
+    "gbit": "Gbit",
+    "mbit": "Mbit",
+    "billion": "B",
+    "million": "M"
+  },
+  "chart": {
+    "noData": "Not enough data"
+  },
+  "media": {
+    "onboardTitle": "Media Holding required",
+    "onboardDesc": "Buy the \"Media Holding\" business in the shop to order exposes against rival companies.",
+    "intro": "Order exposes against companies. Success cuts the owner business income by {{hit}}% for {{hours}}h and drops the share price by {{stock}}%.",
+    "orderTitle": "Order an expose",
+    "targetLabel": "Target company",
+    "pickTarget": "Choose a company",
+    "budgetLabel": "Campaign budget",
+    "budgetPlaceholder": "Minimum ${{min}}",
+    "budgetTooLow": "Minimum budget is ${{min}}",
+    "chance": "Success chance: {{pct}}%",
+    "order": "Launch expose",
+    "warn": "Higher budget means higher chance. On failure the budget burns and the target income temporarily rises by {{backfire}}%.",
+    "resultSuccess": "Expose succeeded! Target income reduced for {{hours}}h.",
+    "resultFail": "Expose failed - budget burned, interest in the target rose for {{hours}}h.",
+    "feedTitle": "Expose feed",
+    "feedEmpty": "No exposes yet",
+    "feedSuccess": "Successful expose about \"{{company}}\"",
+    "feedFail": "Failed expose about \"{{company}}\"",
+    "noTargets": "No companies available to expose"
   }
 }

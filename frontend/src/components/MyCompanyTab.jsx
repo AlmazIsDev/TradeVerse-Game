@@ -4,6 +4,7 @@ import {
   fetchCompany, createCompany, inviteEmployee, updateMemberSalary,
   fireMember, collectCompanyProfit, companyDeposit, companyWithdraw,
   fetchCompanies, applyToCompany, updateCompanySettings, disbandCompany, leaveCompany,
+  updateOwnerSalary, companyIpo, companyDividend,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import CompanyAssetsPanel from './CompanyAssetsPanel'
@@ -11,7 +12,7 @@ import ConfirmDialog from './ConfirmDialog'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
   ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
-  Search, LogIn, ChevronRight, Settings, Eye, EyeOff, Unlock, Lock,
+  Search, LogIn, ChevronRight, Settings, Eye, EyeOff, Unlock, Lock, LineChart, Coins,
 } from 'lucide-react'
 
 const LOGO_EMOJI = ['🏢', '🏦', '🏭', '🚀', '💎', '⚙️', '🛰️', '🏗️', '💼', '🌐', '⚡', '🔧']
@@ -37,6 +38,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [settingsModal, setSettingsModal] = useState(null) // { name, description, logo, isOpen, visibleInSearch }
   const [confirmDisband, setConfirmDisband] = useState(false)
   const [confirmLeave, setConfirmLeave] = useState(false)
+  const [ipoModal, setIpoModal] = useState(null)   // { symbol, totalShares }
+  const [dividendModal, setDividendModal] = useState(null) // { perShare }
 
   const load = useCallback(async () => {
     try {
@@ -169,6 +172,42 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+  const doIpo = async () => {
+    const totalShares = Math.floor(Number(ipoModal.totalShares))
+    if (!ipoModal.symbol.trim() || !(totalShares >= 1000)) {
+      flash(t('company.ipo.invalid'), 'error'); return
+    }
+    setBusy(true)
+    try {
+      const res = await companyIpo({ symbol: ipoModal.symbol.trim().toUpperCase(), totalShares })
+      if (res?.company) setData(res.company)
+      flash(t('company.ipo.placed', { symbol: res.symbol, price: formatMoney(res.price) }))
+      setIpoModal(null)
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doDividend = async () => {
+    const per = Number(dividendModal.perShare)
+    if (!(per > 0)) { flash(t('company.ipo.dividendInvalid'), 'error'); return }
+    setBusy(true)
+    try {
+      const res = await companyDividend(per)
+      if (res?.company) setData(res.company)
+      flash(t('company.ipo.dividendPaid', { total: formatMoney(res.paid), holders: res.holders }))
+      setDividendModal(null)
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="company-tab">
@@ -263,6 +302,19 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       </div>
       {data.description && <p className="company-description">{data.description}</p>}
 
+      {data.reputationFactor != null && data.reputationFactor < 1 && (
+        <div className="transfer-feedback error" style={{ marginBottom: 'var(--spacing-md)' }}>
+          <AlertTriangle size={16} />
+          <span>{t('company.reputationCrisis', { pct: Math.round((1 - data.reputationFactor) * 100) })}</span>
+        </div>
+      )}
+      {data.reputationFactor != null && data.reputationFactor > 1 && (
+        <div className="transfer-feedback success" style={{ marginBottom: 'var(--spacing-md)' }}>
+          <Check size={16} />
+          <span>{t('company.reputationBoost', { pct: Math.round((data.reputationFactor - 1) * 100) })}</span>
+        </div>
+      )}
+
       {msg && (
         <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
           {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
@@ -271,9 +323,9 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
 
       <div className="asset-summary">
         <div className="asset-summary-card"><span><Wallet size={12} /> {t('company.budget')}</span><b>${formatMoney(data.budget)}</b></div>
-        <div className="asset-summary-card"><span><TrendingUp size={12} /> {t('company.revenue')}</span><b className="up">${formatMoney(data.revenuePerHour)}/ч</b></div>
-        <div className="asset-summary-card"><span>{t('company.payroll')}</span><b className="down">${formatMoney(data.payrollPerHour)}/ч</b></div>
-        <div className="asset-summary-card"><span>{t('company.profit')}</span><b className={data.profitPerHour >= 0 ? 'up' : 'down'}>${formatMoney(data.profitPerHour)}/ч</b></div>
+        <div className="asset-summary-card"><span><TrendingUp size={12} /> {t('company.revenue')}</span><b className="up">${formatMoney(data.revenuePerHour)}{t('units.perHour')}</b></div>
+        <div className="asset-summary-card"><span>{t('company.payroll')}</span><b className="down">${formatMoney(data.payrollPerHour)}{t('units.perHour')}</b></div>
+        <div className="asset-summary-card"><span>{t('company.profit')}</span><b className={data.profitPerHour >= 0 ? 'up' : 'down'}>${formatMoney(data.profitPerHour)}{t('units.perHour')}</b></div>
       </div>
 
       <p className="company-note">{t('company.incomeNote')}</p>
@@ -300,7 +352,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         <div className="cac-info">
           <span className="cac-title">{t('company.assets')}</span>
           <span className="cac-meta">
-            {data.assetCount} · +${formatMoney(data.assets.reduce((s, a) => s + (a.profitPerHour || 0), 0))}/ч
+            {data.assetCount} · +${formatMoney(data.assets.reduce((s, a) => s + (a.profitPerHour || 0), 0))}{t('units.perHour')}
           </span>
         </div>
         <ChevronRight size={20} className="cac-chevron" />
@@ -310,10 +362,47 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         <CompanyAssetsPanel
           assets={data.assets}
           isOwner={data.isOwner}
+          onBalanceChange={onBalanceChange}
           onClose={() => setShowAssets(false)}
           onRefresh={async () => { await load(); setRefreshKey(k => k + 1) }}
         />
       )}
+
+      {/* Акции компании — IPO и дивиденды (только владелец управляет) */}
+      <div className="company-section">
+        <h3><LineChart size={16} /> {t('company.ipo.title')}</h3>
+        {data.stock ? (
+          <div className="company-stock-card">
+            <div className="csc-row">
+              <span className="csc-symbol">{data.stock.symbol}</span>
+              <span className={`csc-price ${data.stock.changePercent >= 0 ? 'up' : 'down'}`}>
+                ${formatMoney(data.stock.price)}
+                {data.stock.changePercent != null && ` (${data.stock.changePercent >= 0 ? '+' : ''}${data.stock.changePercent}%)`}
+              </span>
+            </div>
+            <div className="csc-meta">
+              <span>{t('company.ipo.marketCap')}: ${formatCompact(data.stock.marketCap)}</span>
+              <span>{t('company.ipo.freeShares')}: {formatCompact(data.stock.freeShares)}</span>
+            </div>
+            {data.isOwner && (
+              <button className="asset-act upgrade" disabled={busy}
+                onClick={() => setDividendModal({ perShare: '' })}>
+                <Coins size={14} /> {t('company.ipo.payDividend')}
+              </button>
+            )}
+          </div>
+        ) : data.isOwner ? (
+          <div className="company-stock-empty">
+            <p className="company-note">{t('company.ipo.desc')}</p>
+            <button className="asset-act upgrade" disabled={busy}
+              onClick={() => setIpoModal({ symbol: '', totalShares: '1000000' })}>
+              <TrendingUp size={14} /> {t('company.ipo.place')}
+            </button>
+          </div>
+        ) : (
+          <p className="empty-state">{t('company.ipo.none')}</p>
+        )}
+      </div>
 
       {/* Сотрудники (по приглашению) */}
       <div className="company-section">
@@ -357,9 +446,26 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                   </div>
                 </div>
                 {m.role === 'owner' ? (
-                  <span className="company-emp-salary">—</span>
+                  !data.isOwner ? (
+                    <span className="company-emp-salary">${formatMoney(m.salary || 0)}{t('units.perHour')}</span>
+                  ) : editing?.userId === m.userId ? (
+                    <div className="company-emp-edit">
+                      <input type="number" min="0" value={editing.salary}
+                        onChange={ev => setEditing({ ...editing, salary: ev.target.value })} />
+                      <button className="asset-act collect" disabled={busy}
+                        onClick={() => run(() => updateOwnerSalary(Number(editing.salary)), 'company.salaryUpdated', () => setEditing(null))}>
+                        <Check size={14} />
+                      </button>
+                      <button className="asset-act" onClick={() => setEditing(null)}><X size={14} /></button>
+                    </div>
+                  ) : (
+                    <div className="company-emp-actions">
+                      <span className="company-emp-salary">${formatMoney(m.salary || 0)}{t('units.perHour')}</span>
+                      <button className="asset-act" onClick={() => setEditing({ userId: m.userId, salary: String(m.salary || 0) })}>{t('company.editSalary')}</button>
+                    </div>
+                  )
                 ) : !data.isOwner ? (
-                  <span className="company-emp-salary">${formatMoney(m.salary)}/ч</span>
+                  <span className="company-emp-salary">${formatMoney(m.salary)}{t('units.perHour')}</span>
                 ) : editing?.userId === m.userId ? (
                   <div className="company-emp-edit">
                     <input type="number" min="1" value={editing.salary}
@@ -372,7 +478,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                   </div>
                 ) : (
                   <div className="company-emp-actions">
-                    <span className="company-emp-salary">${formatMoney(m.salary)}/ч</span>
+                    <span className="company-emp-salary">${formatMoney(m.salary)}{t('units.perHour')}</span>
                     <button className="asset-act" onClick={() => setEditing({ userId: m.userId, salary: String(m.salary) })}>{t('company.editSalary')}</button>
                     <button className="asset-act sell" disabled={busy}
                       onClick={() => run(() => fireMember(m.userId), 'company.fired')}>
@@ -388,7 +494,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
 
       <div className="company-section">
         <h3>{t('bank.history')}</h3>
-        <TransactionsPanel category="company" refreshKey={refreshKey} />
+        <TransactionsPanel category="company" companyId={data.id} refreshKey={refreshKey} />
       </div>
 
       {moneyModal && (
@@ -416,6 +522,56 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                 {busy ? t('bank.processing') : t('common.confirm')}
               </button>
               <button className="stock-btn cancel-btn" onClick={() => setMoneyModal(null)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ipoModal && (
+        <div className="modal-overlay" onClick={() => !busy && setIpoModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setIpoModal(null)} disabled={busy}><X size={18} /></button>
+            <h3><TrendingUp size={18} /> {t('company.ipo.place')}</h3>
+            <p className="modal-price">{t('company.ipo.priceNote')}</p>
+            <label className="settings-label">{t('company.ipo.ticker')}</label>
+            <input className="company-name-input" maxLength={6} value={ipoModal.symbol}
+              placeholder="ABCD"
+              onChange={e => setIpoModal({ ...ipoModal, symbol: e.target.value.toUpperCase() })} />
+            <label className="settings-label">{t('company.ipo.shares')}</label>
+            <input className="company-name-input" type="number" min="1000" step="1000" value={ipoModal.totalShares}
+              onChange={e => setIpoModal({ ...ipoModal, totalShares: e.target.value })} />
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" disabled={busy || !ipoModal.symbol.trim() || !(Number(ipoModal.totalShares) >= 1000)}
+                onClick={doIpo}>
+                {busy ? t('bank.processing') : t('company.ipo.confirm')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setIpoModal(null)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dividendModal && (
+        <div className="modal-overlay" onClick={() => !busy && setDividendModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setDividendModal(null)} disabled={busy}><X size={18} /></button>
+            <h3><Coins size={18} /> {t('company.ipo.payDividend')}</h3>
+            <p className="modal-price">{t('company.ipo.dividendNote')}</p>
+            <div className="modal-quantity">
+              <label>{t('company.ipo.perShare')}:</label>
+              <input type="number" min="0" step="any" value={dividendModal.perShare} autoFocus
+                onChange={e => setDividendModal({ perShare: e.target.value })} />
+            </div>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" disabled={busy || !(Number(dividendModal.perShare) > 0)}
+                onClick={doDividend}>
+                {busy ? t('bank.processing') : t('common.confirm')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setDividendModal(null)} disabled={busy}>
                 {t('common.cancel')}
               </button>
             </div>

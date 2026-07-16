@@ -144,15 +144,19 @@ function MarketTab({ balance = 0, onBalanceChange }) {
             const rc = RARITY_COLOR[item.rarity] || 'var(--color-accent)'
             const affordable = balance >= item.price
             return (
-              <div key={item.slug} className={`asset-card ${item.type === 'car' ? 'car-card' : ''}`} style={{ borderTopColor: rc }}>
+              <div key={item.slug} className={`asset-card market-card ${item.type === 'car' ? 'car-card' : ''}`} style={{ borderTopColor: rc }}>
                 <div className="asset-banner" style={{ background: RARITY_GRAD[item.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
                   <span className="asset-banner-emoji">{ASSET_EMOJI[item.slug] || TYPE_EMOJI[item.type] || '📦'}</span>
                 </div>
-                <div className="asset-card-head">
-                  <span className="asset-name">{t(`assetNames.${item.slug}`, item.name)}</span>
-                  {item.rarity && <span className="asset-rarity" style={{ color: rc }}>{t(`realestate.rarities.${item.rarity}`, item.rarity)}</span>}
-                  {item.category && <span className="asset-rarity">{t(`business.categories.${item.category}`, item.category)}</span>}
-                </div>
+                <span className="market-card-name">{t(`assetNames.${item.slug}`, item.name)}</span>
+                {(item.rarity || item.category) && (
+                  <div className="market-card-meta">
+                    <span className="market-card-rarity" style={{ color: rc }}>
+                      {item.rarity ? t(`realestate.rarities.${item.rarity}`, item.rarity) : ''}
+                    </span>
+                    {item.category && <span className="market-card-cat">{t(`business.categories.${item.category}`, item.category)}</span>}
+                  </div>
+                )}
                 <div className="asset-stats">
                   {item.rooms != null && <div className="asset-stat"><span>{t('realestate.rooms')}</span><b>{item.rooms}</b></div>}
                   {item.employees > 0 && <div className="asset-stat"><span>{t('market.employees')}</span><b>{item.employees}</b></div>}
@@ -162,8 +166,8 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                   )}
                   {item.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{item.meta.prestige}</b></div>}
                 </div>
-                <div className="asset-price">
-                  <Coins size={14} /> ${formatMoney(item.price)}
+                <div className="market-card-price">
+                  <span className="mcp-value"><Coins size={16} /> ${formatMoney(item.price)}</span>
                   {item.trend != null && item.trend !== 0 && (
                     <span className={`asset-trend ${item.trend >= 0 ? 'up' : 'down'}`}>
                       {item.trend >= 0 ? '▲' : '▼'} {Math.abs(item.trend).toFixed(1)}%

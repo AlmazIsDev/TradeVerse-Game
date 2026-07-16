@@ -149,17 +149,21 @@ async def get_my_transactions(
     sort: str = Query("date_desc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    companyId: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """История операций текущего пользователя (JWT-scoped).
 
     Поддерживает фильтр (direction/category), поиск, сортировку, пагинацию.
+    ``companyId`` сужает историю до операций конкретной компании (meta.companyId) —
+    иначе после роспуска и пересоздания компании всплывали бы логи прошлой.
     """
     return await query_transactions(
         db, str(current_user["_id"]),
         direction=direction, category=category, search=search,
         sort=sort, skip=skip, limit=limit,
+        meta_filter={"companyId": companyId} if companyId else None,
     )
 
 

@@ -274,18 +274,64 @@ async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
         })
 
 
+CATALOG_ANCHOR_PULL = 0.1   # доля сближения цены акции компании с фундаменталом за тик
+
+
+async def _revalue_company_stocks(db: AsyncIOMotorDatabase):
+    """Акции компаний (companyId != None) дрейфуют к «справедливой» цене =
+    капитал компании / выпуск. Это «как в жизни»: котировка следует за
+    фундаменталом, но между тиками свободно колеблется от сделок игроков/ботов.
+
+    За тик цена сдвигается на CATALOG_ANCHOR_PULL доли расстояния до якоря —
+    плавно, без телепортов. Компании без активной записи пропускаются."""
+    try:
+        from company import _company_capital
+    except Exception:
+        return
+    async for s in db.stocks.find({"companyId": {"$ne": None}}):
+        cid = s.get("companyId")
+        if not cid or not ObjectId.is_valid(cid):
+            continue
+        company = await db.companies.find_one({"_id": ObjectId(cid)})
+        if not company:
+            continue
+        cfg = _resolve_config(s)
+        total_shares = cfg["total_shares"]
+        if total_shares <= 0:
+            continue
+        capital = await _company_capital(db, company)
+        fair = max(0.01, round(capital / total_shares, 2))
+        price = float(s.get("price", 0.0))
+        if price <= 0:
+            continue
+        new_price = round(price + (fair - price) * CATALOG_ANCHOR_PULL, 2)
+        new_price = max(0.01, new_price)
+        if new_price == price:
+            continue
+        await db.stocks.update_one(
+            {"_id": s["_id"]},
+            {"$set": {
+                "price": new_price,
+                "change": round(new_price - price, 2),
+                "changePercent": round((new_price - price) / price * 100, 2) if price else 0.0,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+
+
 async def maintain_stock_market(db: AsyncIOMotorDatabase):
     """Фоновое обслуживание рынка акций (вызывается Scheduler'ом).
 
     Системные акции НЕ привязаны к реальным котировкам — цена двигается только
-    объёмом сделок (игроки + боты), как и у пользовательских эмиссий. Здесь же
-    делаем одноразовый бэкфилл истории и пишем периодические снимки — всё, что
-    раньше выполнялось на каждом запросе списка.
+    объёмом сделок (игроки + боты), как и у пользовательских эмиссий. Акции
+    компаний дополнительно дрейфуют к капиталу (см. _revalue_company_stocks).
+    Здесь же делаем одноразовый бэкфилл истории и пишем периодические снимки.
     """
     stocks = await find_all_stocks(db)
     if not stocks:
         return
     await _run_bots(db, stocks)
+    await _revalue_company_stocks(db)
     updates = []
     for s in await find_all_stocks(db):
         old_price = float(s.get("price", 0))

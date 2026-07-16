@@ -663,6 +663,67 @@
 .asset-buy-btn:hover { opacity: 0.9; }
 .asset-buy-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* ── Единая карточка товара «Рынка» (см. MarketTab) ── */
+.market-card { gap: 10px; }
+.market-card-name {
+  font-weight: 700; font-size: 17px; line-height: 1.2;
+  color: var(--color-text-primary);
+  /* Фиксируем высоту названия под 2 строки: короткие («Студия») и длинные
+     («Двухкомнатная квартира») названия занимают одинаковую вертикаль, поэтому
+     характеристики/цена/кнопка во всех карточках выровнены по одной линии.
+     Длиннее 2 строк — многоточие. */
+  min-height: 2.4em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.market-card-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-sm);
+  margin-top: -4px;
+}
+.market-card-rarity {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.market-card-cat {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--color-text-tertiary);
+}
+.market-card-price {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: auto;
+}
+.market-card-price .mcp-value {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 20px; font-weight: 800; color: var(--color-text-primary);
+}
+.market-card-price .asset-trend { margin-left: 0; }
+
+/* ── Разоблачение в СМИ (модалка из «Взаимодействие» на активе «Медиахолдинг») ── */
+.media-modal { max-width: 560px; width: min(560px, 96vw); }
+.media-chance {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--color-accent);
+  margin: 6px 0 0;
+}
+.media-warn { font-size: 12px; color: var(--color-text-tertiary); margin: 6px 0 0; }
+.media-feed-list { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+.media-feed-item {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--hairline); border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+.media-feed-item.success { border-left: 3px solid var(--color-danger); }
+.media-feed-item.fail { border-left: 3px solid var(--color-success); }
+.media-feed-icon { display: inline-flex; }
+.media-feed-item.success .media-feed-icon { color: var(--color-danger); }
+.media-feed-item.fail .media-feed-icon { color: var(--color-success); }
+.media-feed-text { display: flex; flex-direction: column; gap: 2px; }
+.media-feed-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.media-feed-date { font-size: 11px; color: var(--color-text-tertiary); }
+
 .asset-summary { display: flex; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-lg); }
 .asset-summary-card {
   flex: 1; min-width: 150px;
@@ -699,6 +760,9 @@
 
 /* ── Меню «Взаимодействие» (заменяет ряд отдельных кнопок на карточке) ──── */
 .asset-interact { position: relative; }
+/* Карточка с открытым меню поднимается над соседями по гриду, чтобы
+   выпадающее меню «Взаимодействие» не перекрывалось следующей карточкой. */
+.asset-card.menu-open { position: relative; z-index: 30; }
 .asset-interact-btn {
   width: 100%;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -811,8 +875,10 @@
 /* Карта «Крыши города» — фото города 4×3 с интерактивными плитками поверх. */
 .cityroof-map {
   position: relative;
+  max-width: 1612px;      /* ограничиваем масштаб фото ~как в прежней сетке */
+  margin: 0 auto;        /* центрируем карту */
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow: hidden;      /* скругляет все 4 угла, включая боковые */
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-md);
   line-height: 0;
@@ -1050,7 +1116,7 @@
 .company-assets-card .cac-meta { font-size: 13px; color: var(--color-success, #34c759); }
 .company-assets-card .cac-chevron { color: var(--color-text-secondary); flex: 0 0 auto; }
 
-.company-assets-modal { max-width: 860px; width: min(860px, 94vw); max-height: 88vh; overflow-y: auto; }
+.company-assets-modal { max-width: 120px; width: min(1100px, 96vw); max-height: 90vh; overflow-y: auto; }
 .company-assets-modal h3 { display: flex; align-items: center; gap: 8px; }
 
 .user-property-modal { max-width: 860px; width: min(860px, 94vw); max-height: 88vh; overflow-y: auto; }
@@ -1775,6 +1841,7 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .mslot-desc { display: block; font-size: 10.5px; line-height: 1.35; color: var(--color-text-muted, #86868b); margin: 3px 0 6px; }
 .mmc-desc { font-size: 11px; color: var(--color-text-muted, #86868b); margin-top: 2px; }
 .mslot-count { font-size: 11px; color: var(--color-success); }
+.mslot-item-qty { color: var(--color-success); font-weight: 700; }
 .mslot-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--color-text-primary); margin-top: 5px; }
 .mslot-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; padding: 0; }
 .mslot-pick { width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12px; background: var(--color-bg-secondary); border: 1px solid var(--hairline); border-radius: 6px; color: var(--color-text-primary); cursor: pointer; }

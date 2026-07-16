@@ -111,7 +111,7 @@ function NotificationCenter() {
               {isInvite && p.data && (
                 <div className="tv-popup-meta">
                   {p.data.role && <span>{t(`company.roles.${p.data.role}`, p.data.role)}</span>}
-                  {p.data.salary != null && <span>${Number(p.data.salary).toLocaleString('ru-RU')}/ч</span>}
+                  {p.data.salary != null && <span>${Number(p.data.salary).toLocaleString('ru-RU')}{t('units.perHour')}</span>}
                 </div>
               )}
               {!isEvent && (

@@ -303,6 +303,19 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
     if state.get("week") == current:
         return
 
+    season_no = state.get("season", 1)
+    # Атомарно «захватываем» переход недели: продвигаем week/season условным
+    # апдейтом по прочитанному week. Параллельные вызовы /map при смене недели
+    # прочитают один week, но апдейт сработает лишь у одного — остальные выйдут.
+    # Иначе победитель получал бы награду (WINNER_REWARD_WC) несколько раз, а
+    # карта сбрасывалась бы дублями (гонка).
+    claim = await db.cityroof_state.update_one(
+        {"key": "current", "week": state.get("week")},
+        {"$set": {"week": current, "season": season_no + 1}},
+    )
+    if claim.modified_count == 0:
+        return  # переход уже выполнен параллельным запросом
+
     # Определяем победителя прошлого сезона — у кого больше всего бизнесов.
     counts: dict[str, dict] = {}
     async for b in db.cityroof_businesses.find({"ownerId": {"$ne": None}}):
@@ -312,7 +325,6 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
     standings = sorted(counts.values(), key=lambda x: x["count"], reverse=True)
     winner = standings[0] if standings else None
 
-    season_no = state.get("season", 1)
     await db.cityroof_seasons.insert_one({
         "season": season_no,
         "week": state.get("week"),
@@ -340,10 +352,6 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
             }},
         )
     await db.cityroof_sessions.delete_many({})
-    await db.cityroof_state.update_one(
-        {"key": "current"},
-        {"$set": {"week": current, "season": season_no + 1}},
-    )
 
 
 def _event_active() -> bool:

@@ -33,6 +33,11 @@ PRICE_REFRESH_SECONDS = 30
 # Комиссия сети за перевод криптовалюты (доля от суммы, «сгорает»)
 CRYPTO_FEE_RATE = 0.01
 
+# Торговая комиссия (спред) на сделки покупки/продажи. Небольшая, но делает
+# бессмысленным «дребезг» buy→sell ради микродвижений цены и придаёт глубину
+# экономике — быстрый оборот теперь стоит денег. Комиссия «сгорает».
+CRYPTO_TRADE_FEE_RATE = 0.005
+
 # ── Собственная экономика TradeVerse поверх реальных курсов ───────────────────
 # Реальная цена (CoinGecko/симуляция) — БАЗА. Действия игроков двигают монету
 # через множитель спроса `demand`: массовая покупка поднимает цену, продажа —
@@ -254,16 +259,37 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
         await broadcast({"type": "market_update", "market": "crypto", "updates": updates})
 
 
-async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float):
+def _project_fill(coin: dict, side: str, total_usd: float) -> tuple[float, float]:
+    """Считает (fill_price, new_demand) БЕЗ записи в БД.
+
+    Используется, чтобы сделка исполнялась по цене, уже включающей собственный
+    price-impact (покупатель — по повышенной, продавец — по пониженной), но при
+    этом сдвиг цены фиксировался в БД только после успешного расчёта по балансу.
+    """
+    market_price = float(coin.get("market_price") or coin.get("price") or 1)
+    vol = float(coin.get("volume24h") or 0) or (market_price * float(coin.get("supply", 0) or 1) * 0.04) or 1.0
+    frac = min(IMPACT_CAP, IMPACT_K * (float(total_usd) / max(vol, 1.0)))
+    demand = float(coin.get("demand", 1.0))
+    demand *= (1 + frac) if side == "buy" else (1 - frac)
+    demand = max(DEMAND_MIN, min(DEMAND_MAX, demand))
+    return round(market_price * demand, 6), demand
+
+
+async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float) -> Optional[float]:
     """Сдвигает спрос (а значит и цену) монеты от сделки игрока.
 
     Покупка поднимает цену, продажа опускает — тем сильнее, чем крупнее сделка
     относительно суточного объёма. Реальная (market_price) цена не трогается —
     она остаётся базой; двигается только множитель спроса.
+
+    Возвращает новую отображаемую цену (после сдвига), чтобы сделка исполнялась
+    ПО ней: покупатель платит уже повышенную цену, продавец получает уже
+    пониженную. Иначе появлялся бы безрисковый арбитраж (buy по старой цене →
+    цена растёт → sell по новой), печатающий деньги циклом.
     """
     coin = await db.crypto_assets.find_one({"symbol": symbol})
     if not coin:
-        return
+        return None
     market_price = float(coin.get("market_price") or coin.get("price") or 1)
     vol = float(coin.get("volume24h") or 0) or (market_price * float(coin.get("supply", 0) or 1) * 0.04) or 1.0
     frac = min(IMPACT_CAP, IMPACT_K * (float(total_usd) / max(vol, 1.0)))
@@ -288,6 +314,7 @@ async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, 
             "price": display,
             "change24h": round(coin.get("change24h", 0.0) * 0.7 + change, 2),
         })
+    return display
 
 
 async def _price_of(db: AsyncIOMotorDatabase, symbol: str) -> Optional[float]:
@@ -392,15 +419,31 @@ async def trade_crypto(
     symbol = payload.symbol.upper()
     qty = payload.quantity
 
-    price = await _price_of(db, symbol)
-    if price is None:
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if coin is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Монета не найдена")
 
+    # Размер сделки для расчёта impact считаем по текущей цене, но исполняем по
+    # цене, уже сдвинутой этим impact'ом (иначе появляется безрисковый арбитраж
+    # buy→sell на собственном движении цены). См. _project_fill / _apply_trade_impact.
+    ref_price = float(coin.get("price") or 0)
+    fill_price, _ = _project_fill(coin, payload.action, qty * ref_price)
+    price = fill_price
     total = round(qty * price, 2)
+    # Минимальный номинал: сделки, округляющиеся до 0.00, недопустимы — иначе
+    # покупка «бесплатных» монет крошечными порциями (qty*price < 0.005) минтит
+    # актив с нулевой стоимостью, который затем продаётся за реальный кэш.
+    if total <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Слишком маленький объём сделки",
+        )
     holding = await db.crypto_holdings.find_one({"userId": user_id, "symbol": symbol})
+    fee = round(total * CRYPTO_TRADE_FEE_RATE, 2)
 
     if payload.action == "buy":
-        new_balance = await adjust_balance(db, user_id, -total)
+        # Покупатель платит стоимость + комиссию.
+        new_balance = await adjust_balance(db, user_id, -round(total + fee, 2))
         if new_balance is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно средств")
         old_qty = holding.get("quantity", 0.0) if holding else 0.0
@@ -413,13 +456,13 @@ async def trade_crypto(
             upsert=True,
         )
         await record_transaction(
-            db, user_id, EXPENSE, total, CAT_CRYPTO,
+            db, user_id, EXPENSE, round(total + fee, 2), CAT_CRYPTO,
             f"Покупка {qty:g} {symbol}", symbol=symbol, price=price,
-            balance_after=new_balance, meta={"quantity": qty, "action": "buy"},
+            balance_after=new_balance, meta={"quantity": qty, "action": "buy", "fee": fee},
         )
-        await _apply_trade_impact(db, symbol, "buy", total)
+        await _apply_trade_impact(db, symbol, "buy", qty * ref_price)
         return {"message": "Покупка выполнена", "symbol": symbol, "quantity": qty,
-                "price": price, "total": total, "balance": new_balance}
+                "price": price, "total": total, "fee": fee, "balance": new_balance}
 
     # sell
     if not holding or holding.get("quantity", 0.0) < qty:
@@ -432,15 +475,17 @@ async def trade_crypto(
             {"userId": user_id, "symbol": symbol},
             {"$set": {"quantity": remaining}},
         )
-    new_balance = await adjust_balance(db, user_id, total)
+    # Продавец получает стоимость за вычетом комиссии.
+    proceeds = round(total - fee, 2)
+    new_balance = await adjust_balance(db, user_id, proceeds)
     await record_transaction(
-        db, user_id, INCOME, total, CAT_CRYPTO,
+        db, user_id, INCOME, proceeds, CAT_CRYPTO,
         f"Продажа {qty:g} {symbol}", symbol=symbol, price=price,
-        balance_after=new_balance, meta={"quantity": qty, "action": "sell"},
+        balance_after=new_balance, meta={"quantity": qty, "action": "sell", "fee": fee},
     )
-    await _apply_trade_impact(db, symbol, "sell", total)
+    await _apply_trade_impact(db, symbol, "sell", qty * ref_price)
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
-            "price": price, "total": total, "balance": new_balance}
+            "price": price, "total": total, "fee": fee, "balance": new_balance}
 
 
 # ── Wallet-to-wallet transfers ───────────────────────────────────────────────
@@ -494,17 +539,28 @@ async def transfer_crypto(
     if debited.get("quantity", 0) <= 1e-9:
         await db.crypto_holdings.delete_one({"_id": debited["_id"]})
 
-    # Зачисление получателю (пересчёт средней цены).
-    rec_h = await db.crypto_holdings.find_one({"userId": rec_id, "symbol": symbol})
-    old_qty = rec_h.get("quantity", 0.0) if rec_h else 0.0
-    old_avg = rec_h.get("avg_price", 0.0) if rec_h else 0.0
-    new_qty = round(old_qty + amount, 8)
-    new_avg = round((old_qty * old_avg + amount * price) / new_qty, 6) if new_qty else price
-    await db.crypto_holdings.update_one(
-        {"userId": rec_id, "symbol": symbol},
-        {"$set": {"quantity": new_qty, "avg_price": new_avg}},
-        upsert=True,
-    )
+    # Зачисление получателю (пересчёт средней цены). При любом сбое возвращаем
+    # монеты отправителю — иначе они «сгорают» (списаны, но не зачислены).
+    try:
+        rec_h = await db.crypto_holdings.find_one({"userId": rec_id, "symbol": symbol})
+        old_qty = rec_h.get("quantity", 0.0) if rec_h else 0.0
+        old_avg = rec_h.get("avg_price", 0.0) if rec_h else 0.0
+        new_qty = round(old_qty + amount, 8)
+        new_avg = round((old_qty * old_avg + amount * price) / new_qty, 6) if new_qty else price
+        await db.crypto_holdings.update_one(
+            {"userId": rec_id, "symbol": symbol},
+            {"$set": {"quantity": new_qty, "avg_price": new_avg}},
+            upsert=True,
+        )
+    except Exception:
+        # Компенсация отправителю (зеркально денежному переводу в economy.py).
+        await db.crypto_holdings.update_one(
+            {"userId": sender_id, "symbol": symbol},
+            {"$inc": {"quantity": total_debit},
+             "$setOnInsert": {"userId": sender_id, "symbol": symbol}},
+            upsert=True,
+        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Не удалось выполнить перевод")
 
     value = round(amount * price, 2)
     now = datetime.utcnow()

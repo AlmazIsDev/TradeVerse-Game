@@ -12,34 +12,6 @@ import {
 import AssetDetail from './AssetDetail'
 import ConfirmDialog from './ConfirmDialog'
 
-// Состояния для анимации обновления цен
-const priceAnimationTimers = new Map()
-function usePriceAnimation() {
-  const [animatingSymbols, setAnimatingSymbols] = useState(new Set())
-  
-  const triggerAnimation = useCallback((symbol, up) => {
-    // Очищаем предыдущий таймер для этого символа
-    if (priceAnimationTimers.has(symbol)) {
-      clearTimeout(priceAnimationTimers.get(symbol))
-    }
-    
-    setAnimatingSymbols(prev => new Set(prev).add(symbol))
-    
-    const timer = setTimeout(() => {
-      setAnimatingSymbols(prev => {
-        const next = new Set(prev)
-        next.delete(symbol)
-        return next
-      })
-      priceAnimationTimers.delete(symbol)
-    }, 500)
-    
-    priceAnimationTimers.set(symbol, timer)
-  }, [])
-  
-  return { animatingSymbols, triggerAnimation }
-}
-
 function formatCoin(n) {
   return Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 6 })
 }
@@ -76,8 +48,8 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('cap')   // cap | gainers | losers
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const acc = await fetchCryptoAccount()
       setAccount(acc)
@@ -87,9 +59,11 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
         setTransfers(trs)
       }
     } catch {
-      setAccount({ opened: false, holdings: [] })
+      // Не сбрасываем в онбординг при фоновом обновлении: сетевой сбой не должен
+      // выглядеть как «счёт исчез». Показываем create-экран только на первой загрузке.
+      setAccount(prev => prev ?? { opened: false, holdings: [] })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
@@ -155,7 +129,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
       onBalanceChange?.(res.balance)
       setFeedback({ type: 'success', text: t('crypto.tradeSuccess') })
       setRefreshKey(k => k + 1)
-      await load()
+      await load(true)
       setTimeout(() => setTrade(null), 700)
     } catch (err) {
       const msg = err.message || ''
@@ -183,7 +157,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
       const res = await transferCrypto(confirmTransfer.recipient, confirmTransfer.symbol, confirmTransfer.amount)
       setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: confirmTransfer.amount, symbol: res.symbol, recipient: res.recipient }) })
       setTransfer({ recipient: '', symbol: '', amount: '' })
-      setRefreshKey(k => k + 1); await load()
+      setRefreshKey(k => k + 1); await load(true)
     } catch (err) { setTransferMsg({ type: 'error', text: err.message }) }
     finally { setTransferBusy(false); setConfirmTransfer(null) }
   }
@@ -209,8 +183,8 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
   if (detailSymbol) {
     return (
       <AssetDetail market="crypto" symbol={detailSymbol}
-        onBack={() => { setDetailSymbol(null); load() }}
-        balance={balance} onBalanceChange={onBalanceChange} onTraded={load} />
+        onBack={() => { setDetailSymbol(null); load(true) }}
+        balance={balance} onBalanceChange={onBalanceChange} onTraded={() => load(true)} />
     )
   }
 
@@ -232,7 +206,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
 
   const coinLogo = (c) => c?.image
     ? <img className="crypto-coin-img" src={c.image} alt={c.symbol} />
-    : <span className="crypto-coin-badge" style={{ background: c?.color || '#6366f1' }}>{(c?.symbol || '?').slice(0, 2)}</span>
+    : <span className="crypto-coin-badge" style={{ background: c?.color || '#0071e3' }}>{(c?.symbol || '?').slice(0, 2)}</span>
 
   const forecastCoins = (account.holdings?.length ? account.holdings.map(h => marketMap[h.symbol]).filter(Boolean) : marketView).slice(0, 4)
 
@@ -397,6 +371,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
               <input type="number" min="0" step="any" value={qty} autoFocus onChange={e => setQty(e.target.value)} placeholder="0.00" />
             </label>
             <div className="crypto-modal-total">{t('common.total')}: <strong>{formatMoney((parseFloat(qty) || 0) * trade.price)} $</strong></div>
+            <div className="crypto-modal-fee">{t('trade.fee', { pct: 0.5 })}: {formatMoney((parseFloat(qty) || 0) * trade.price * 0.005)} $</div>
             {feedback && (
               <div className={`transfer-feedback ${feedback.type}`}>
                 {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>

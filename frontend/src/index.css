@@ -1,26 +1,66 @@
+/* ============================================================
+   TradeVerse — Design System Tokens
+   Apple-inspired light system (SF Pro, system blues, soft depth)
+   ============================================================ */
+
 :root {
-  /* Font */
-  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* ---- Typography ---- */
+  --font-primary: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-  /* Colors - Background */
-  --color-bg-primary: #0f1117;
-  --color-bg-secondary: #1a1d26;
-  --color-bg-tertiary: #242836;
+  /* ---- Surfaces (light) ---- */
+  --color-bg-primary: #f5f5f7;      /* app canvas — Apple light gray */
+  --color-bg-secondary: #ffffff;    /* cards / panels */
+  --color-bg-tertiary: #f0f0f3;     /* subtle fills, inputs */
+  --color-bg-elevated: #ffffff;     /* popovers / raised */
 
-  /* Colors - Text */
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
+  /* Translucent surfaces for glass navigation */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(0, 0, 0, 0.08);
 
-  /* Colors - Accent */
-  --color-accent: #6366f1;
-  --color-accent-hover: #818cf8;
+  /* ---- Text ---- */
+  --color-text-primary: #1d1d1f;    /* near-black label */
+  --color-text-secondary: #6e6e73;  /* secondary label */
+  --color-text-tertiary: #86868b;   /* tertiary label */
+  --color-text-muted: #a1a1a6;      /* quaternary / hints */
 
-  /* Colors - Semantic */
-  --color-success: #22c55e;
-  --color-danger: #ef4444;
-  --color-warning: #f59e0b;
+  /* ---- Hairlines & borders ---- */
+  --color-border: rgba(0, 0, 0, 0.10);
+  --color-border-strong: rgba(0, 0, 0, 0.16);
 
-  /* Spacing */
+  /* Theme-aware separators & subtle fills (flip in dark mode). Used in place
+     of the many hand-written rgba(0,0,0,α) hairlines so surfaces stay legible
+     when the canvas inverts. */
+  --hairline: rgba(0, 0, 0, 0.08);
+  --hairline-strong: rgba(0, 0, 0, 0.12);
+  --fill-subtle: rgba(0, 0, 0, 0.03);
+  --fill-soft: rgba(0, 0, 0, 0.05);
+
+  /* ---- Accent (Apple system blue) ---- */
+  --color-accent: #0071e3;
+  --color-accent-hover: #0077ed;
+  --color-accent-active: #006edb;
+  --accent-soft: rgba(0, 113, 227, 0.10);
+  --accent-soft-hover: rgba(0, 113, 227, 0.16);
+  /* Text/icon color that sits ON a solid accent fill. Flips to dark for very
+     light custom accents (set inline by theme.js). Default: white. */
+  --on-accent: #ffffff;
+
+  /* ---- Semantic (Apple system colors) ---- */
+  --color-success: #34c759;
+  --color-success-strong: #248a3d;
+  --color-danger: #ff3b30;
+  --color-danger-strong: #d70015;
+  --color-warning: #ff9500;
+
+  /* Card decorative token — set inline per-card by ShopCard; the
+     .shop-card rules carry light fallbacks so no global default is needed. */
+
+  /* legacy aliases used in a few places */
+  --danger: var(--color-danger);
+  --text-secondary: var(--color-text-secondary);
+
+  /* ---- Spacing scale ---- */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
@@ -28,15 +68,132 @@
   --spacing-xl: 32px;
   --spacing-2xl: 48px;
 
-  /* Border Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  /* ---- Radii (generous, Apple-like) ---- */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --radius-pill: 980px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  /* ---- Soft, layered shadows ---- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.10), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.14), 0 8px 20px rgba(0, 0, 0, 0.08);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 0.18s;
+  --dur-med: 0.28s;
+}
+
+/* ============================================================
+   Dark appearance — opt-in via <html data-theme="dark">.
+   Overrides only the token layer, so every token-driven surface
+   flips automatically; hardcoded text-on-color buttons stay valid.
+   Palette follows macOS/iOS dark: near-black elevated grays, Apple
+   system blue lifted for contrast, hairlines become light-on-dark.
+   ============================================================ */
+:root[data-theme="dark"] {
+  /* Surfaces */
+  --color-bg-primary: #000000;      /* app canvas — true black like iOS */
+  --color-bg-secondary: #1c1c1e;    /* cards / panels */
+  --color-bg-tertiary: #2c2c2e;     /* subtle fills, inputs */
+  --color-bg-elevated: #2c2c2e;     /* popovers / raised */
+
+  /* Translucent glass navigation */
+  --glass-bg: rgba(30, 30, 32, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.10);
+
+  /* Text */
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #aeaeb2;
+  --color-text-tertiary: #8e8e93;
+  --color-text-muted: #6e6e73;
+
+  /* Borders & hairlines */
+  --color-border: rgba(255, 255, 255, 0.14);
+  --color-border-strong: rgba(255, 255, 255, 0.22);
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --fill-subtle: rgba(255, 255, 255, 0.05);
+  --fill-soft: rgba(255, 255, 255, 0.08);
+
+  /* iOS dark off-state track */
+  --switch-off: rgba(120, 120, 128, 0.36);
+
+  /* Accent — brighter blue reads better on black */
+  --color-accent: #0a84ff;
+  --color-accent-hover: #409cff;
+  --color-accent-active: #0071e3;
+  --accent-soft: rgba(10, 132, 255, 0.18);
+  --accent-soft-hover: rgba(10, 132, 255, 0.26);
+
+  /* Semantic — Apple dark system colors */
+  --color-success: #30d158;
+  --color-success-strong: #30d158;
+  --color-danger: #ff453a;
+  --color-danger-strong: #ff453a;
+  --color-warning: #ff9f0a;
+
+  /* Shadows — deeper, since soft light shadows vanish on black */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.48), 0 2px 6px rgba(0, 0, 0, 0.36);
+  --shadow-lg: 0 14px 36px rgba(0, 0, 0, 0.58), 0 4px 12px rgba(0, 0, 0, 0.40);
+  --shadow-xl: 0 26px 64px rgba(0, 0, 0, 0.66), 0 8px 20px rgba(0, 0, 0, 0.48);
+}
+
+/* ============================================================
+   «Прошлая тема TradeVerse» — оригинальная тёмная indigo-палитра
+   до Apple-редизайна. Тоже опт-ин через data-theme, тот же слой токенов.
+   ============================================================ */
+:root[data-theme="tradeverse"] {
+  --color-bg-primary: #0f1117;
+  --color-bg-secondary: #1a1d26;
+  --color-bg-tertiary: #242836;
+  --color-bg-elevated: #1a1d26;
+
+  --glass-bg: rgba(26, 29, 38, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary: #64748b;
+  --color-text-muted: #475569;
+
+  --color-border: rgba(255, 255, 255, 0.10);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --fill-subtle: rgba(255, 255, 255, 0.04);
+  --fill-soft: rgba(255, 255, 255, 0.07);
+  --switch-off: rgba(148, 163, 184, 0.30);
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-active: #4f46e5;
+  --accent-soft: rgba(99, 102, 241, 0.16);
+  --accent-soft-hover: rgba(99, 102, 241, 0.24);
+
+  --color-success: #22c55e;
+  --color-success-strong: #16a34a;
+  --color-danger: #ef4444;
+  --color-danger-strong: #dc2626;
+  --color-warning: #f59e0b;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.46), 0 2px 6px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 14px 36px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.38);
+  --shadow-xl: 0 26px 64px rgba(0, 0, 0, 0.62), 0 8px 20px rgba(0, 0, 0, 0.46);
+}
+
+/* Smooth the switch so flipping the toggle feels like Apple, not a flash. */
+:root[data-theme] body,
+:root[data-theme] .sidebar,
+:root[data-theme] .header {
+  transition: background-color var(--dur-med) var(--ease-out),
+    color var(--dur-med) var(--ease-out);
 }
 
 * {
@@ -46,15 +203,46 @@
   font-family: var(--font-primary);
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: var(--font-primary);
   background: var(--color-bg-primary);
   min-height: 100vh;
   color: var(--color-text-primary);
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Refined scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
+  background-clip: content-box;
+}
+
+::selection {
+  background: var(--accent-soft-hover);
+  color: var(--color-accent-active);
 }

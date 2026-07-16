@@ -6,7 +6,43 @@
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f1117" />
+    <meta name="theme-color" content="#f5f5f7" />
+
+    <!-- Apply saved appearance before first paint to avoid a light-theme flash. -->
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          var bg = { light: '#f5f5f7', dark: '#000000', tradeverse: '#0f1117' };
+          var t = localStorage.getItem('tradeverse_theme');
+          if (t === 'dark' || t === 'tradeverse') {
+            root.setAttribute('data-theme', t);
+            if (meta) meta.setAttribute('content', bg[t]);
+          }
+          var a = localStorage.getItem('tradeverse_accent');
+          if (a && a !== 'default' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(a)) {
+            var h = a.replace('#', '');
+            if (h.length === 3) h = h.replace(/(.)/g, '$1$1');
+            var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+            var hx = function (x) { return ('0' + Math.max(0, Math.min(255, Math.round(x))).toString(16)).slice(-2); };
+            var mix = function (ratio) { var to = ratio < 0 ? 0 : 255, p = Math.abs(ratio);
+              return '#' + hx(r + (to - r) * p) + hx(g + (to - g) * p) + hx(b + (to - b) * p); };
+            var s = root.style;
+            s.setProperty('--color-accent', '#' + hx(r) + hx(g) + hx(b));
+            s.setProperty('--color-accent-hover', mix(0.12));
+            s.setProperty('--color-accent-active', mix(-0.08));
+            s.setProperty('--accent-soft', 'rgba(' + r + ',' + g + ',' + b + ',0.14)');
+            s.setProperty('--accent-soft-hover', 'rgba(' + r + ',' + g + ',' + b + ',0.22)');
+            var lum = (function () {
+              var f = function (c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+              return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+            })();
+            s.setProperty('--on-accent', lum > 0.55 ? '#1d1d1f' : '#ffffff');
+          }
+        } catch (e) {}
+      })();
+    </script>
 
     <!-- Primary SEO -->
     <title>TradeVerse — Браузерная экономическая игра</title>

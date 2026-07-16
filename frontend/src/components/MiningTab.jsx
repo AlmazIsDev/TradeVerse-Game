@@ -32,6 +32,28 @@ function partSpec(cat, s = {}) {
   return ''
 }
 
+// Ползунок разгона: во время перетаскивания меняет только локальное значение
+// (без сети), а коммитит на сервер один раз — при отпускании. Иначе каждый шаг
+// перетаскивания слал бы POST + полный reload вкладки (шторм запросов, гонки).
+function OverclockSlider({ value, disabled, label, onCommit }) {
+  const [local, setLocal] = useState(value)
+  // Синхронизируемся с внешним значением, когда пользователь не тянет ползунок.
+  useEffect(() => { setLocal(value) }, [value])
+  const commit = () => { if (local !== value) onCommit(local) }
+  return (
+    <label className="mpc-field">
+      <span>{label}: {local}x</span>
+      <input
+        type="range" min="0.8" max="1.5" step="0.05" value={local} disabled={disabled}
+        onChange={e => setLocal(Number(e.target.value))}
+        onMouseUp={commit}
+        onTouchEnd={commit}
+        onKeyUp={commit}
+      />
+    </label>
+  )
+}
+
 function MiningTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [farms, setFarms] = useState([])
@@ -230,11 +252,12 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             </select>
             {market.best && <small className="mining-best">{t('mining.aiBest')}: <b>{market.best}</b></small>}
           </label>
-          <label className="mpc-field">
-            <span>{t('mining.overclock')}: {farm.overclock}x</span>
-            <input type="range" min="0.8" max="1.5" step="0.05" value={farm.overclock}
-              onChange={e => run(() => setOverclock(farm.id, Number(e.target.value)))} />
-          </label>
+          <OverclockSlider
+            value={farm.overclock}
+            disabled={busy}
+            label={t('mining.overclock')}
+            onCommit={(v) => run(() => setOverclock(farm.id, v))}
+          />
           {farm.condition < 100 && (
             <button className="asset-act" disabled={busy} onClick={() => run(() => repairFarm(farm.id), 'mining.repaired')}>
               <Wrench size={14} /> {t('mining.repair')} (${formatMoney(farm.repairCost)})

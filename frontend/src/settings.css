@@ -29,7 +29,7 @@
 .settings-card {
   background: var(--color-bg-secondary);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   padding: var(--spacing-lg);
   display: flex;
@@ -40,7 +40,7 @@
 }
 
 .settings-card:hover {
-  border-color: rgba(99, 102, 241, 0.25);
+  border-color: rgba(0, 113, 227, 0.25);
   box-shadow: var(--shadow-md);
 }
 
@@ -69,7 +69,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(99, 102, 241, 0.08));
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.25), rgba(0, 113, 227, 0.08));
   color: var(--color-accent-hover);
   flex-shrink: 0;
 }
@@ -81,7 +81,7 @@
   font-size: 13px;
   color: var(--color-text-secondary);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--fill-subtle);
   border-radius: var(--radius-md);
 }
 
@@ -112,11 +112,11 @@
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
-  color: #fff;
+  color: #ffffff;
   font-size: 30px;
   font-weight: 700;
   overflow: hidden;
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 6px 20px rgba(0, 113, 227, 0.3);
 }
 
 .settings-avatar-preview img {
@@ -134,14 +134,21 @@
 
 .settings-hint {
   font-size: 12px;
-  color: var(--color-text-tertiary, #9ca3af);
+  color: var(--color-text-tertiary, #86868b);
   margin: 0;
 }
 
 .settings-toggle-block {
   margin-top: var(--spacing-sm);
   padding-top: var(--spacing-md);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--hairline);
+}
+
+/* Тумблер оформления — единственный элемент карточки, разделитель не нужен. */
+.settings-appearance-block {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .settings-toggle-row {
@@ -180,27 +187,27 @@
 }
 
 .settings-switch-track {
-  width: 40px;
-  height: 22px;
+  width: 44px;
+  height: 26px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  transition: background 0.2s ease;
+  background: var(--switch-off, rgba(0, 0, 0, 0.14));
+  transition: background var(--dur-med) var(--ease-out);
   display: inline-flex;
   align-items: center;
   padding: 2px;
 }
 
 .settings-switch-thumb {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  transition: transform 0.2s ease;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.08);
+  transition: transform var(--dur-med) var(--ease-spring);
 }
 
 .settings-switch input:checked + .settings-switch-track {
-  background: var(--color-accent);
+  background: var(--color-success);
 }
 
 .settings-switch input:checked + .settings-switch-track .settings-switch-thumb {
@@ -226,8 +233,8 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--hairline);
+  background: var(--fill-subtle);
   color: var(--color-text-secondary);
   font-family: var(--font-primary);
   font-size: 14px;
@@ -237,13 +244,13 @@
 }
 
 .settings-lang-card:hover {
-  border-color: rgba(99, 102, 241, 0.35);
+  border-color: rgba(0, 113, 227, 0.35);
   color: var(--color-text-primary);
   transform: translateY(-1px);
 }
 
 .settings-lang-card.active {
-  background: rgba(99, 102, 241, 0.15);
+  background: rgba(0, 113, 227, 0.15);
   border-color: var(--color-accent);
   color: var(--color-text-primary);
 }
@@ -254,3 +261,87 @@
   margin-left: auto;
   color: var(--color-accent-hover);
 }
+
+/* ── Акцентный цвет (пресеты + свой) ──────────────────────────────────────── */
+
+.settings-accent-block {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--hairline);
+}
+
+.settings-subhead {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+.settings-subhead svg { color: var(--color-accent); }
+
+.settings-accent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.settings-accent-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 10px var(--spacing-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  background: var(--fill-subtle);
+  color: var(--color-text-secondary);
+  font-family: var(--font-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+.settings-accent-chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+  transform: translateY(-1px);
+}
+.settings-accent-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.settings-accent-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+
+.settings-accent-name { line-height: 1.2; }
+
+.settings-accent-check {
+  margin-left: auto;
+  color: var(--color-accent);
+}
+
+/* «Свой цвет» — нативный color-input покрывает всю плитку, но невидим. */
+.settings-accent-custom { overflow: hidden; }
+.settings-accent-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+

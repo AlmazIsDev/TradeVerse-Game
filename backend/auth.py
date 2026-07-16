@@ -34,6 +34,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 
 if JWT_SECRET == _JWT_DEFAULT_SECRET:
+    # В production небезопасный дефолтный секрет недопустим: с ним можно подделать
+    # JWT (в т.ч. sub существующего админа) и получить полный доступ. Разрешаем
+    # его ТОЛЬКО в явном dev-окружении, иначе приложение не должно стартовать.
+    _env = os.getenv("TRADEVERSE_ENV", os.getenv("ENV", "development")).lower()
+    if _env in ("production", "prod"):
+        raise RuntimeError(
+            "JWT_SECRET не задан в production. Установите переменную окружения "
+            "JWT_SECRET перед запуском (иначе возможна подделка токенов)."
+        )
     logger.warning(
         "JWT_SECRET не задан — используется небезопасное значение по умолчанию. "
         "Установите переменную окружения JWT_SECRET перед деплоем в production."

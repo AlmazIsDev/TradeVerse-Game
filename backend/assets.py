@@ -750,6 +750,12 @@ async def collect_income(
     """Собрать накопленный доход (за вычетом расходов на содержание)."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
+    # Актив, переданный в компанию, приносит доход в бюджет компании (отдельный
+    # last_tick). Личный сбор по нему запрещён — иначе один актив платит дважды
+    # (владельцу лично И в бюджет компании).
+    if asset.get("companyId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Актив принадлежит компании — доход идёт в бюджет компании")
     econ = await get_econ(db)
     event_income = await _event_income_shift(db)
     city_bonus = await _city_asset_bonus(db, user_id)
@@ -786,13 +792,24 @@ async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
                                 event_income: float, city_bonus: float) -> float:
     """Считает и применяет (обнуляет КД) доход одного актива, возвращает сумму.
     Множители (econ/событие/город) передаются готовыми, чтобы при массовом
-    сборе не пересчитывать их на каждый актив."""
+    сборе не пересчитывать их на каждый актив.
+
+    Присвоение накопления атомарно: last_collected сбрасывается условным
+    апдейтом по ТОМУ ЖЕ значению, что было прочитано. Если два параллельных
+    запроса читают один last_collected, апдейт сработает лишь у одного —
+    второй получит 0 (иначе доход дублировался бы, TOCTOU)."""
+    seen = asset.get("last_collected")
+    matched = await db.user_assets.update_one(
+        {"_id": asset["_id"], "last_collected": seen},
+        {"$set": {"last_collected": _now()}},
+    )
+    if matched.modified_count == 0:
+        return 0.0  # накопление уже присвоено параллельным запросом
     amount = _accrued(asset)
     amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
     amount = round(amount * event_income, 2)
     if city_bonus:
         amount = round(amount * (1 + city_bonus), 2)
-    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"last_collected": _now()}})
     return amount
 
 
@@ -906,7 +923,15 @@ async def sell_asset(
     """Продать актив обратно (70% текущей стоимости) + невыбранный доход."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    payout = round(_current_value(asset) * SELL_RATE + _accrued(asset), 2)
+    # Стоимость продажи учитывает тот же рыночный множитель, что и покупка —
+    # иначе при mult<0.7 возникает арбитраж (купил за 0.5×base, продал за
+    # 0.7×base). Множитель применяется к базовой стоимости экземпляра; тюнинг
+    # (tuning_value) и накопленный доход к рынку не привязаны.
+    await _ensure_asset_market(db)
+    mult = await _asset_mult(db, asset.get("slug"))
+    base_value = round(_current_value(asset) - asset.get("tuning_value", 0.0), 2)
+    market_value = round(base_value * mult + asset.get("tuning_value", 0.0), 2)
+    payout = round(market_value * SELL_RATE + _accrued(asset), 2)
     await db.user_assets.delete_one({"_id": asset["_id"]})
     new_balance = await adjust_balance(db, user_id, payout)
     cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE

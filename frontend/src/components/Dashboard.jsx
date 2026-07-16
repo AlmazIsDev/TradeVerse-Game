@@ -21,6 +21,14 @@ import { Shield } from 'lucide-react'
 
 const STORAGE_KEY = 'tradeverse_user'
 
+// Типы WS-сообщений, которые рассылаются ВСЕМ игрокам (не привязаны к текущему
+// пользователю). Их не нужно превращать в fetchCurrentUser — иначе каждая
+// сделка/тик любого игрока вызывала бы рефетч у всех. Вкладки, которым эти
+// данные нужны, слушают tv:realtime и обновляются точечно.
+const GLOBAL_BROADCAST_TYPES = new Set([
+  'market_update', 'price_tick', 'leaderboard_update', 'economy_stats',
+])
+
 function Dashboard({ user, onLogout, onUserUpdate }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('account')
@@ -70,7 +78,11 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
           // панель обновляется сразу при любом изменении баланса.
           if (data?.type === 'balance' && data.balance != null) {
             handleBalanceChange(data.balance)
-          } else {
+          } else if (data && !GLOBAL_BROADCAST_TYPES.has(data.type)) {
+            // Глобальные бродкасты (рынок/лидерборд/тики цен) шлются ВСЕМ игрокам
+            // на каждую сделку/тик — они не меняют баланс текущего игрока, поэтому
+            // не должны вызывать fetchCurrentUser (иначе N-кратный fan-out на всех).
+            // Соответствующие вкладки обновляют свои данные сами через tv:realtime.
             scheduleSync()
           }
           // Ретрансляция события другим вкладкам (напр. MiningTab слушает 'tv:realtime').

@@ -155,7 +155,7 @@ function ShopTab({ balance = 0, onBalanceChange }) {
       {!loading && !error && view.length > 0 && (
         <div className="gpu-grid">
           {view.map(item => {
-            const color = CAT_COLOR[item.category] || item.color || '#6366f1'
+            const color = CAT_COLOR[item.category] || item.color || '#0071e3'
             const affordable = balance >= item.price
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
             return (

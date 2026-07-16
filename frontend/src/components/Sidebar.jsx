@@ -1,6 +1,4 @@
 import { useTranslation } from 'react-i18next'
-import { fetchConfig } from '../services/api'
-import { useApiOnMount } from '../hooks/useApi'
 import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Briefcase, Store, Trophy, Cpu, Settings } from 'lucide-react'
 
 const ICON_MAP = {
@@ -21,7 +19,6 @@ const ICON_MAP = {
 
 function Sidebar({ activeTab, onTabChange }) {
   const { t } = useTranslation()
-  const { data: menuConfig, loading } = useApiOnMount(() => fetchConfig('sidebar_menu'))
 
   const menuItems = [
     { id: 'account', label: t('nav.account'), icon: 'account' },
@@ -33,6 +30,7 @@ function Sidebar({ activeTab, onTabChange }) {
     { id: 'mining', label: t('nav.mining'), icon: 'mining' },
     { id: 'realestate', label: t('nav.realestate'), icon: 'realestate' },
     { id: 'myhomes', label: t('nav.myhomes'), icon: 'myhomes' },
+    { id: 'mybusiness', label: t('nav.mybusiness'), icon: 'mybusiness' },
     { id: 'mycompany', label: t('nav.mycompany'), icon: 'mycompany' },
     { id: 'leaderboard', label: t('nav.leaderboard'), icon: 'leaderboard' },
   ]

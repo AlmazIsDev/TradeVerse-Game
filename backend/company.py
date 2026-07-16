@@ -704,6 +704,20 @@ async def collect_profit(
     company = await _require_company(db, user_id)
     cid = str(company["_id"])
 
+    # Атомарно «присваиваем» интервал начисления: сбрасываем last_tick на now
+    # условным апдейтом по прочитанному значению. Два параллельных запроса
+    # прочитают один last_tick, но апдейт сработает лишь у одного — второй
+    # получит modified_count=0 и выйдет. Иначе оба выплатили бы зарплату всем
+    # сотрудникам (TOCTOU-дублирование выплат).
+    seen_tick = company.get("last_tick")
+    claim = await db.companies.update_one(
+        {"_id": company["_id"], "last_tick": seen_tick},
+        {"$set": {"last_tick": _now()}},
+    )
+    if claim.modified_count == 0:
+        updated = await db.companies.find_one({"_id": company["_id"]})
+        return {"collected": 0.0, "payrollPaid": 0.0, "company": await _serialize(db, updated, user_id)}
+
     hours = _hours_since(company)
     revenue_per_h = await company_income_per_hour(db, cid)
     econ = await get_econ(db)
@@ -721,9 +735,12 @@ async def collect_profit(
     payroll_per_h = sum(m.get("salary", 0) for m in members)
     payroll_due = round(payroll_per_h * hours, 2)
 
-    budget = round(company.get("budget", 0.0) + gross, 2)
+    # Бюджет после дохода — для проверки, хватает ли на зарплаты. Обновляем его
+    # атомарными $inc-дельтами (доход, потом вычет ФОТ), а не $set из stale-чтения,
+    # чтобы параллельный deposit/withdraw ($inc) не терялся.
+    budget_after_gross = round(company.get("budget", 0.0) + gross, 2)
     paid = 0.0
-    if payroll_due > 0 and budget >= payroll_due:
+    if payroll_due > 0 and budget_after_gross >= payroll_due:
         for m in members:
             amt = round(m.get("salary", 0) * hours, 2)
             if amt <= 0:
@@ -738,13 +755,14 @@ async def collect_profit(
                 db, m["userId"], "salary", "Зарплата начислена",
                 f"«{company['name']}» выплатила ${amt:.2f}.", data={"companyId": cid},
             )
-        budget = round(budget - payroll_due, 2)
         paid = payroll_due
 
-    await db.companies.update_one(
-        {"_id": company["_id"]},
-        {"$set": {"budget": budget, "last_tick": _now()}},
-    )
+    budget_delta = round(gross - paid, 2)
+    if budget_delta:
+        await db.companies.update_one(
+            {"_id": company["_id"]},
+            {"$inc": {"budget": budget_delta}},
+        )
     updated = await db.companies.find_one({"_id": company["_id"]})
     return {"collected": gross, "payrollPaid": paid, "company": await _serialize(db, updated, user_id)}
 

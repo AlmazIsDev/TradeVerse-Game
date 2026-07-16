@@ -41,6 +41,7 @@ DEFAULT_STOCK_CONFIG = {
 
 LISTING_FEE = 5000.0        # стоимость размещения пользовательской акции
 FOUNDER_SHARE_PCT = 0.2     # доля основателя при эмиссии
+TRADE_FEE_RATE = 0.005      # торговая комиссия (спред) на сделки — «сгорает»
 
 # ── Боты-покупатели ──────────────────────────────────────────────────────────
 # Заменяют реальный рыночный фид: на каждом тике планировщика с вероятностью
@@ -427,7 +428,6 @@ async def trade_stock(
     cfg = _resolve_config(stock)
     total_shares = cfg["total_shares"]
     price = float(stock["price"])
-    cost = round(price * quantity, 2)
     user_id = str(current_user["_id"])
 
     if "free_shares" not in stock:
@@ -444,13 +444,23 @@ async def trade_stock(
         )
 
     delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
+    # Сделка исполняется по цене, уже сдвинутой собственным impact'ом: покупатель
+    # платит price+delta, продавец получает price-delta. Иначе — безрисковый
+    # арбитраж buy→sell на своём же движении цены (печать денег циклом).
+    if action == "buy":
+        fill_price = round(price + delta, 2)
+    else:
+        fill_price = round(max(0.01, price - delta), 2)
+    cost = round(fill_price * quantity, 2)
+    fee = round(cost * TRADE_FEE_RATE, 2)   # спред «сгорает»; делает churning невыгодным
 
     if action == "buy":
-        new_balance = await adjust_balance(db, user_id, -cost)
+        charge = round(cost + fee, 2)
+        new_balance = await adjust_balance(db, user_id, -charge)
         if new_balance is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
 
-        new_price = round(price + delta, 2)
+        new_price = fill_price
         updated_stock = await db.stocks.find_one_and_update(
             {"symbol": symbol, "free_shares": {"$gte": quantity}},
             {
@@ -465,7 +475,7 @@ async def trade_stock(
             return_document=True,
         )
         if not updated_stock:
-            await adjust_balance(db, user_id, cost)  # компенсация
+            await adjust_balance(db, user_id, charge)  # компенсация (включая комиссию)
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно свободных акций")
 
         await db.stock_holdings.update_one(
@@ -475,9 +485,9 @@ async def trade_stock(
             upsert=True,
         )
         await record_transaction(
-            db, user_id, EXPENSE, cost, CAT_TRADE,
-            f"Покупка {quantity} {symbol}", symbol=symbol, price=price,
-            balance_after=new_balance, meta={"quantity": quantity, "action": "buy"},
+            db, user_id, EXPENSE, charge, CAT_TRADE,
+            f"Покупка {quantity} {symbol}", symbol=symbol, price=fill_price,
+            balance_after=new_balance, meta={"quantity": quantity, "action": "buy", "fee": fee},
         )
     else:  # sell
         updated_holding = await db.stock_holdings.find_one_and_update(
@@ -488,8 +498,9 @@ async def trade_stock(
         if not updated_holding:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно акций для продажи")
 
-        new_balance = await adjust_balance(db, user_id, cost)
-        new_price = round(max(0.01, price - delta), 2)
+        proceeds = round(cost - fee, 2)
+        new_balance = await adjust_balance(db, user_id, proceeds)
+        new_price = fill_price
         await db.stocks.update_one(
             {"symbol": symbol},
             {
@@ -503,9 +514,9 @@ async def trade_stock(
             },
         )
         await record_transaction(
-            db, user_id, INCOME, cost, CAT_TRADE,
-            f"Продажа {quantity} {symbol}", symbol=symbol, price=price,
-            balance_after=new_balance, meta={"quantity": quantity, "action": "sell"},
+            db, user_id, INCOME, proceeds, CAT_TRADE,
+            f"Продажа {quantity} {symbol}", symbol=symbol, price=fill_price,
+            balance_after=new_balance, meta={"quantity": quantity, "action": "sell", "fee": fee},
         )
 
     await db.stock_events.insert_one({
@@ -533,8 +544,9 @@ async def trade_stock(
         "symbol": symbol,
         "action": action,
         "quantity": quantity,
-        "price": price,
+        "price": fill_price,
         "total": cost,
+        "fee": fee,
         "newPrice": new_price,
         "balance": new_balance,
     }
@@ -585,12 +597,22 @@ async def issue_stock(
         raise HTTPException(status.HTTP_409_CONFLICT, f"Тикер '{symbol}' уже занят")
 
     user_id = str(current_user["_id"])
-    new_balance = await adjust_balance(db, user_id, -LISTING_FEE)
-    if new_balance is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для листинга")
 
     founder_shares = int(payload.totalShares * FOUNDER_SHARE_PCT)
     free_shares = payload.totalShares - founder_shares
+    # Основатель ОПЛАЧИВАЕТ свои акции по цене размещения (не получает бесплатно).
+    # Иначе: бесплатные founder-акции → продажа за напечатанный кэш = money printer
+    # (продажа акций кредитует продавца без контрагента). Оплата делает каждую
+    # акцию обеспеченной реальными деньгами и естественно ограничивает абьюз
+    # гигантских эмиссий (2 млрд бесплатных акций стоили бы недостижимую сумму).
+    founder_cost = round(founder_shares * payload.price, 2)
+    total_charge = round(LISTING_FEE + founder_cost, 2)
+    new_balance = await adjust_balance(db, user_id, -total_charge)
+    if new_balance is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Недостаточно средств: листинг ${LISTING_FEE:,.0f} + доля основателя ${founder_cost:,.0f}",
+        )
 
     doc = {
         "symbol": symbol,
@@ -618,9 +640,10 @@ async def issue_stock(
         )
 
     await record_transaction(
-        db, user_id, EXPENSE, LISTING_FEE, CAT_TRADE,
+        db, user_id, EXPENSE, total_charge, CAT_TRADE,
         f"Листинг акции {symbol}", symbol=symbol, balance_after=new_balance,
-        meta={"action": "issue", "totalShares": payload.totalShares},
+        meta={"action": "issue", "totalShares": payload.totalShares,
+              "listingFee": LISTING_FEE, "founderCost": founder_cost},
     )
     return {"stock": _format_stock_v2(doc), "balance": new_balance, "founderShares": founder_shares}
 

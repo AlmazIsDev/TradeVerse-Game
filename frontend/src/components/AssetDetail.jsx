@@ -76,7 +76,10 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
       const data = event.detail
       const marketType = market === 'stock' ? 'stock' : 'crypto'
       if (data.type === 'price_tick' && data.market === marketType && data.symbol === symbol) {
-        setAsset(prev => prev ? { ...prev, price: data.price, changePercent: data.changePercent } : prev)
+        // Акции шлют changePercent, крипта — change24h. Берём то, что пришло,
+        // иначе бейдж изменения мигал бы «—» на каждой сделке по монете.
+        const pct = data.changePercent ?? data.change24h
+        setAsset(prev => prev ? { ...prev, price: data.price, changePercent: pct } : prev)
       }
     }
     
@@ -210,7 +213,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
                 candles={history.candles}
                 line={history.line}
                 type={chartType}
-                color={asset.color || '#6366f1'}
+                color={asset.color || '#0071e3'}
                 height={340}
               />
             </div>

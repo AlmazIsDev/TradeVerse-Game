@@ -14,7 +14,8 @@ import { X, Swords, ShieldPlus, Clock, AlertTriangle } from 'lucide-react'
 function ItStudioOrderModal({ mode, map, initialBusinessId, studios = [], onSubmit, onClose, busy }) {
   const { t } = useTranslation()
   const cfg = map?.itstudio
-  const targets = (map?.businesses || []).filter(b => (mode === 'attack' ? (!b.isMine && b.ownerId) : b.isMine))
+  // Атака снижает уровень защиты — цели без защиты исключаем (снижать нечего).
+  const targets = (map?.businesses || []).filter(b => (mode === 'attack' ? (!b.isMine && b.ownerId && (b.protectionLevel || 0) > 0) : b.isMine))
 
   const [businessId, setBusinessId] = useState(initialBusinessId || targets[0]?.id || '')
   const [assetId, setAssetId] = useState(studios[0]?.assetId || '')

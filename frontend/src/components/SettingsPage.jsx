@@ -247,16 +247,23 @@ function SettingsPage({ user, onUserUpdate }) {
             <Save size={15} /> {savingProfile ? t('bank.processing') : t('settings.saveProfile')}
           </button>
 
-          <label className="settings-toggle-row">
-            <input
-              type="checkbox"
-              checked={hideFromLeaderboard}
-              disabled={savingLbVisibility}
-              onChange={toggleLbVisibility}
-            />
-            <span>{t('settings.hideFromLeaderboard')}</span>
-          </label>
-          <p className="settings-hint">{t('settings.hideFromLeaderboardHint')}</p>
+          <div className="settings-toggle-block">
+            <label className={`settings-toggle-row ${user?.leaderboardLock ? 'disabled' : ''}`}>
+              <span className="settings-toggle-text">{t('settings.hideFromLeaderboard')}</span>
+              <span className="settings-switch">
+                <input
+                  type="checkbox"
+                  checked={hideFromLeaderboard}
+                  disabled={savingLbVisibility || !!user?.leaderboardLock}
+                  onChange={toggleLbVisibility}
+                />
+                <span className="settings-switch-track"><span className="settings-switch-thumb" /></span>
+              </span>
+            </label>
+            <p className="settings-hint">
+              {user?.leaderboardLock ? t('settings.leaderboardLocked') : t('settings.hideFromLeaderboardHint')}
+            </p>
+          </div>
         </div>
 
         {/* Пароль */}

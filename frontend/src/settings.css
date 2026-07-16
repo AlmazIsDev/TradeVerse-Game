@@ -138,20 +138,77 @@
   margin: 0;
 }
 
+.settings-toggle-block {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 .settings-toggle-row {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  justify-content: space-between;
+  gap: var(--spacing-md);
   font-size: 13px;
   color: var(--color-text-primary);
   cursor: pointer;
 }
 
-.settings-toggle-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--color-accent);
-  cursor: pointer;
+.settings-toggle-row.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.settings-toggle-text { line-height: 1.35; }
+
+/* Аккуратный переключатель (switch) вместо стандартного чекбокса. */
+.settings-switch {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.settings-switch-track {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+}
+
+.settings-switch-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease;
+}
+
+.settings-switch input:checked + .settings-switch-track {
+  background: var(--color-accent);
+}
+
+.settings-switch input:checked + .settings-switch-track .settings-switch-thumb {
+  transform: translateX(18px);
+}
+
+.settings-switch input:disabled + .settings-switch-track {
+  opacity: 0.5;
 }
 
 /* ── Локализация ───────────────────────────────────────────────────────── */

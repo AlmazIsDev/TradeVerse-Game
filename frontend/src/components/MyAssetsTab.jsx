@@ -5,6 +5,7 @@ import {
   transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
+  collectAllAssets,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
@@ -66,12 +67,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [materialsInfo, setMaterialsInfo] = useState(null)     // { unitPrice, boostPerUnit, boostCap }
   const [materialsQty, setMaterialsQty] = useState('10')
   const [studios, setStudios] = useState([])                   // IT-студии игрока (см. cityroof.py mystudios)
-  const [studioMaterialsModal, setStudioMaterialsModal] = useState(null)   // studio entry
-  const [studioMaterialsQty, setStudioMaterialsQty] = useState('10')
+  // IT-студия: единая закупка комплектующих (материалы дохода + расходники студии).
+  const [suppliesModal, setSuppliesModal] = useState(null)     // { asset, studio }
+  const [suppliesBizQty, setSuppliesBizQty] = useState('10')   // материалы буста дохода
+  const [suppliesStudioQty, setSuppliesStudioQty] = useState('10') // расходники студии
   const [orderModal, setOrderModal] = useState(null)            // { mode, businessId }
   const [cityMap, setCityMap] = useState(null)
   const [orderBusy, setOrderBusy] = useState(false)
   const [menuOpenId, setMenuOpenId] = useState(null)             // id актива с открытым меню «Взаимодействие»
+  const [collectingAll, setCollectingAll] = useState(false)
   const menuRef = useRef(null)
 
   // Закрытие меню «Взаимодействие» по клику вне него.
@@ -155,6 +159,22 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const askAct = (id, fn, okKey, conf) =>
     setConfirm({ ...conf, onConfirm: () => act(id, fn, okKey) })
 
+  const collectAll = async () => {
+    setCollectingAll(true)
+    try {
+      const res = await collectAllAssets()
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      flash(res?.count > 0
+        ? t('myassets.collectedAll', { amount: formatMoney(res.collected), count: res.count })
+        : t('myassets.nothingToCollect'))
+      await load(true)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setCollectingAll(false)
+    }
+  }
+
   const submitRent = async () => {
     if (!rentModal) return
     const minHours = Math.floor(Number(rentForm.minHours))
@@ -196,22 +216,46 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
   }
 
-  const openStudioMaterials = (studio) => {
-    setStudioMaterialsModal(studio)
-    setStudioMaterialsQty('10')
+  // IT-студия: единая закупка комплектующих. Открывает модалку с обоими
+  // видами закупки (материалы дохода бизнеса + расходники студии) — источник
+  // цен: fetchMaterialsPrice (доход) и studio.material (студия).
+  const openSupplies = async (asset) => {
+    const studio = studios.find(x => x.assetId === asset.id) || null
+    setSuppliesModal({ asset, studio })
+    setSuppliesBizQty('10')
+    setSuppliesStudioQty('10')
+    try { setMaterialsInfo(await fetchMaterialsPrice()) } catch { setMaterialsInfo(null) }
   }
 
-  const submitStudioMaterials = async () => {
-    if (!studioMaterialsModal) return
-    const qty = Math.floor(Number(studioMaterialsQty))
+  const submitSuppliesBiz = async () => {
+    if (!suppliesModal) return
+    const qty = Math.floor(Number(suppliesBizQty))
     if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
-    setBusyId(studioMaterialsModal.assetId)
+    setBusyId(suppliesModal.asset.id)
     try {
-      const res = await buyStudioMaterials(studioMaterialsModal.assetId, qty)
+      const res = await buyMaterials(suppliesModal.asset.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
       flash(t('materials.bought'))
-      setStudioMaterialsModal(null)
+      await load()
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const submitSuppliesStudio = async () => {
+    if (!suppliesModal) return
+    const qty = Math.floor(Number(suppliesStudioQty))
+    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    setBusyId(suppliesModal.asset.id)
+    try {
+      const res = await buyStudioMaterials(suppliesModal.asset.id, qty)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      flash(t('materials.bought'))
       await loadStudios()
+      // Обновляем состав студии в открытой модалке (кол-во расходников).
+      setSuppliesModal(m => m && { ...m, studio: res.studio ? { ...m.studio, ...res.studio } : m.studio })
     } catch (err) {
       flash(err.message, 'error')
     } finally {
@@ -306,7 +350,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => setTuneModal(a),
       })
     }
-    if (a.type === 'business') {
+    if (a.type === 'business' && !a.slug?.startsWith('itstudio_')) {
       actions.push({
         key: 'materials', disabled: busy, icon: <Package size={15} />,
         label: t('materials.buy') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
@@ -318,7 +362,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       if (s?.pendingJob) {
         actions.push({ key: 'itstudio-pending', disabled: true, info: true, icon: <Package size={13} />, label: t('itstudio.pending') })
       } else {
-        actions.push({ key: 'itstudio-materials', disabled: busy, icon: <Package size={15} />, label: t('itstudio.buyMaterials'), onClick: () => openStudioMaterials(s || { assetId: a.id, name: a.name }) })
+        // IT-студия: единая закупка комплектующих объединяет материалы для
+        // буста дохода бизнеса и расходники для атак/защиты студии — оба
+        // эффекта сохраняются (см. openSupplies / suppliesModal).
+        actions.push({
+          key: 'itstudio-supplies', disabled: busy, icon: <Package size={15} />,
+          label: t('itstudio.buySupplies') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
+          onClick: () => openSupplies(a),
+        })
         actions.push({ key: 'itstudio-attack', disabled: busy, icon: <Swords size={15} />, label: t('itstudio.attack'), onClick: () => openOrder('attack') })
         actions.push({ key: 'itstudio-defense', disabled: busy, icon: <ShieldPlus size={15} />, label: t('itstudio.defense'), onClick: () => openOrder('defense') })
       }
@@ -530,21 +581,39 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         </div>
       )}
 
-      {studioMaterialsModal && (
-        <div className="modal-overlay" onClick={() => setStudioMaterialsModal(null)}>
+      {suppliesModal && (
+        <div className="modal-overlay" onClick={() => setSuppliesModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setStudioMaterialsModal(null)}><X size={18} /></button>
-            <h3><Package size={17} /> {t('itstudio.buyMaterials')}: {studioMaterialsModal.name}</h3>
-            {studioMaterialsModal.material && (
-              <p className="modal-price">{studioMaterialsModal.material.name}: <strong>${formatMoney(studioMaterialsModal.material.unitCost)}</strong> / {t('common.quantity').toLowerCase()}</p>
+            <button className="crypto-modal-close" onClick={() => setSuppliesModal(null)}><X size={18} /></button>
+            <h3><Package size={17} /> {t('itstudio.buySupplies')}: {t(`assetNames.${suppliesModal.asset.slug}`, suppliesModal.asset.name)}</h3>
+
+            {/* Материалы для буста дохода бизнеса (см. assets.buy_materials). */}
+            <div className="supplies-section">
+              <h4 className="supplies-section-title">{t('materials.incomeSection')}</h4>
+              <p className="modal-price">{t('materials.desc', { boost: Math.round((materialsInfo?.boostPerUnit || 0) * 100), cap: Math.round((materialsInfo?.boostCap || 0) * 100), hours: materialsInfo?.durationHours || 0 })}</p>
+              <p className="modal-price">{t('materials.unitPrice')}: <strong>${formatMoney(materialsInfo?.unitPrice)}</strong></p>
+              <div className="modal-quantity"><label>{t('common.quantity')}:</label>
+                <input type="number" min="1" max="500" value={suppliesBizQty}
+                  onChange={e => setSuppliesBizQty(e.target.value)} /></div>
+              <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Math.floor(Number(suppliesBizQty)) || 0) * (materialsInfo?.unitPrice || 0))}</strong></p>
+              <button className="stock-btn buy-btn" onClick={submitSuppliesBiz} disabled={busyId === suppliesModal.asset.id || !materialsInfo}>{t('materials.buy')}</button>
+            </div>
+
+            {/* Расходники студии для атак/защиты (см. cityroof.buy_studio_materials). */}
+            {suppliesModal.studio?.material && (
+              <div className="supplies-section">
+                <h4 className="supplies-section-title">{t('itstudio.studioSection')}</h4>
+                <p className="modal-price">{suppliesModal.studio.material.name}: <strong>${formatMoney(suppliesModal.studio.material.unitCost)}</strong> / {t('common.quantity').toLowerCase()} · {t('itstudio.inStock')}: <b>{suppliesModal.studio.material.qty}</b></p>
+                <div className="modal-quantity"><label>{t('common.quantity')}:</label>
+                  <input type="number" min="1" max="500" value={suppliesStudioQty}
+                    onChange={e => setSuppliesStudioQty(e.target.value)} /></div>
+                <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Math.floor(Number(suppliesStudioQty)) || 0) * (suppliesModal.studio.material.unitCost || 0))}</strong></p>
+                <button className="stock-btn buy-btn" onClick={submitSuppliesStudio} disabled={busyId === suppliesModal.asset.id}>{t('itstudio.buySupplies')}</button>
+              </div>
             )}
-            <div className="modal-quantity"><label>{t('common.quantity')}:</label>
-              <input type="number" min="1" max="500" value={studioMaterialsQty} autoFocus
-                onChange={e => setStudioMaterialsQty(e.target.value)} /></div>
-            <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Math.floor(Number(studioMaterialsQty)) || 0) * (studioMaterialsModal.material?.unitCost || 0))}</strong></p>
+
             <div className="modal-buttons">
-              <button className="stock-btn buy-btn" onClick={submitStudioMaterials} disabled={busyId === studioMaterialsModal.assetId}>{t('itstudio.buyMaterials')}</button>
-              <button className="stock-btn cancel-btn" onClick={() => setStudioMaterialsModal(null)}>{t('common.cancel')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setSuppliesModal(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         </div>
@@ -606,6 +675,17 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
         onCancel={() => setConfirm(null)}
       />
+
+      {/* Плавающая кнопка «Собрать всю прибыль» — фиксирована по экрану. */}
+      <button
+        className="collect-all-fab"
+        disabled={collectingAll || assets.every(a => (a.accrued || 0) <= 0)}
+        onClick={collectAll}
+        title={t('myassets.collectAll')}
+      >
+        <HandCoins size={18} />
+        <span>{collectingAll ? t('bank.processing') : t('myassets.collectAll')}</span>
+      </button>
     </div>
   )
 }

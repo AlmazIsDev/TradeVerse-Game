@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Самодостаточный canvas-график (без внешних зависимостей).
@@ -9,11 +10,15 @@ import { useRef, useEffect, useCallback } from 'react'
  *        color, height, up, down
  */
 function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3', height = 340, up = '#34c759', down = '#ff3b30' }) {
+  const { t: translate } = useTranslation()
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
   const view = useRef({ start: 0, count: 0 })
   const hover = useRef(-1)
   const drag = useRef(null)
+  // Подпись «нет данных» читаем из ref внутри canvas-draw, чтобы не тянуть t в его зависимости.
+  const noDataLabel = useRef('')
+  noDataLabel.current = translate('chart.noData')
 
   const data = type === 'candle' ? candles : line
   const len = data.length
@@ -64,7 +69,7 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
       ctx.fillStyle = C.axis
       ctx.font = '13px -apple-system, Inter, sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('Недостаточно данных', W / 2, H / 2)
+      ctx.fillText(noDataLabel.current, W / 2, H / 2)
       return
     }
 

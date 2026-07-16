@@ -35,6 +35,9 @@ router = APIRouter(prefix="/api/mining", tags=["mining"])
 # Обязательные компоненты для запуска добычи.
 REQUIRED_ROLES = ["motherboard", "cpu", "psu", "ram", "ssd", "cooling"]  # + хотя бы 1 gpu
 
+# Ёмкость по вентиляторам, когда корпус/стойка не установлены (открытый стенд).
+FAN_BASE_CAP = 6
+
 HASH_YIELD = 0.001          # доход за единицу хешрейта × профитность монеты
 ELEC_SCALE = 0.15           # масштаб счёта за электричество
 BASE_POWER_W = 120          # накладное энергопотребление (без CPU/MB)
@@ -201,6 +204,7 @@ def _serialize(farm: dict, stats: dict) -> dict:
             "gpus": comp.get("gpus", []), "fans": comp.get("fans", []),
         },
         "repairCost": _repair_cost(farm),
+        "capacity": _capacity(farm),
         "stats": stats,
     }
 
@@ -211,6 +215,42 @@ def _missing_required(farm: dict) -> list[str]:
     if not comp.get("gpus"):
         missing.append("gpu")
     return missing
+
+
+def _enclosure_slots(comp: dict) -> Optional[int]:
+    """Число посадочных мест корпуса/стойки (None = размещение не выбрано —
+    открытый стенд без жёсткого ограничения корпусом)."""
+    for role in ("case", "rack"):
+        node = comp.get(role)
+        if node:
+            slots = node.get("specs", {}).get("slots")
+            if slots:
+                return int(slots)
+    return None
+
+
+def _capacity(farm: dict) -> dict:
+    """Максимум и остаток слотов для multi-компонентов (GPU, вентиляторы).
+
+    Корпус/стойка задают общий лимит посадочных мест; для GPU он ещё и
+    ограничен числом слотов материнской платы. Вентиляторы без корпуса
+    ограничены открытым стендом (FAN_BASE_CAP)."""
+    comp = farm.get("components", {})
+    enclosure = _enclosure_slots(comp)
+    mb_slots = (comp.get("motherboard") or {}).get("specs", {}).get("gpuSlots", 0)
+
+    gpu_max = mb_slots if mb_slots else 0
+    if enclosure is not None:
+        gpu_max = min(gpu_max, enclosure) if gpu_max else enclosure
+    fan_max = enclosure if enclosure is not None else FAN_BASE_CAP
+
+    gpu_used = len(comp.get("gpus", []))
+    fan_used = len(comp.get("fans", []))
+    return {
+        "gpu": max(0, gpu_max - gpu_used),
+        "fan": max(0, fan_max - fan_used),
+        "gpuMax": gpu_max, "fanMax": fan_max,
+    }
 
 
 # ── Помощники доступа ────────────────────────────────────────────────────────
@@ -392,11 +432,19 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
     comp = farm.get("components", {})
     if multi:
         role_key = "gpus" if role == "gpu" else "fans"
+        cap = _capacity(farm)
         if role == "gpu":
             mb = comp.get("motherboard")
-            slots = mb.get("specs", {}).get("gpuSlots", 0) if mb else 0
-            if slots and len(comp.get("gpus", [])) >= slots:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных слотов на материнской плате")
+            if not mb:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сначала установите материнскую плату")
+            if cap["gpu"] <= 0:
+                # Различаем причину: не хватает слотов платы или мест в корпусе/стойке.
+                if _enclosure_slots(comp) is not None and cap["gpuMax"] >= mb.get("specs", {}).get("gpuSlots", 0):
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных слотов на материнской плате")
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных мест в корпусе/стойке")
+        else:  # fan
+            if cap["fan"] <= 0:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных мест для вентиляторов (установите корпус/стойку большего размера)")
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": payload.category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$push": {f"components.{role_key}": entry}})
     else:

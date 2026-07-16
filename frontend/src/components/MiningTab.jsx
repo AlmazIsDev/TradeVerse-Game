@@ -22,13 +22,13 @@ const CATS = [
 ]
 
 // Краткая характеристика детали для выпадающего списка.
-function partSpec(cat, s = {}) {
+function partSpec(cat, s = {}, t) {
   if (cat === 'gpu') return s.hashrate ? ` · ${formatCompact(s.hashrate)} H/s` : ''
   if (cat === 'psu') return s.power ? ` · ${s.power}W` : ''
   if (cat === 'cooling' || cat === 'fan') return s.cooling ? ` · ${s.cooling}` : ''
-  if (cat === 'cpu') return s.cores ? ` · ${s.cores} ядер` : ''
+  if (cat === 'cpu') return s.cores ? ` · ${s.cores} ${t('units.cores')}` : ''
   if (cat === 'motherboard') return s.gpuSlots ? ` · ${s.gpuSlots} GPU` : ''
-  if (cat === 'ram' || cat === 'ssd') return s.gb ? ` · ${s.gb} ГБ` : ''
+  if (cat === 'ram' || cat === 'ssd') return s.gb ? ` · ${s.gb} ${t('units.gb')}` : ''
   return ''
 }
 
@@ -272,7 +272,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             <>
               <div className="mmc-info">
                 <b>{t('mining.aiManager')}</b>
-                <span>{t('mining.level')} {farm.manager.level} · ${formatMoney(farm.manager.salary)}/ч</span>
+                <span>{t('mining.level')} {farm.manager.level} · ${formatMoney(farm.manager.salary)}{t('units.perHour')}</span>
                 <small className="mmc-desc">{t('mining.managerDesc')}</small>
               </div>
               <div className="mmc-actions">
@@ -307,28 +307,46 @@ function MiningTab({ balance = 0, onBalanceChange }) {
               // backend/mining.py install_component): пока стоит один, другой недоступен.
               const altPlacement = cat === 'case' ? 'rack' : cat === 'rack' ? 'case' : null
               const blockedByAlt = altPlacement && farm.components?.[altPlacement]
-              const canAdd = (multi || installed.length === 0) && !blockedByAlt
+              // Ёмкость размещения: сколько ещё компонентов этой роли влезет
+              // (сервер валидирует повторно — см. install_component).
+              const capLeft = multi ? (farm.capacity?.[cat === 'gpu' ? 'gpu' : 'fan'] ?? null) : null
+              const capFull = capLeft != null && capLeft <= 0
+              const canAdd = (multi || installed.length === 0) && !blockedByAlt && !capFull
+              // Группируем одинаковые детали (по имени+специфике), чтобы не плодить
+              // 13 строк «Промышленные вентиляторы» — показываем «… ×13».
+              const groups = []
+              for (const it of installed) {
+                const key = hwName(it, t) + partSpec(cat, it.specs, t)
+                const g = groups.find(x => x.key === key)
+                if (g) g.items.push(it); else groups.push({ key, label: hwName(it, t), items: [it] })
+              }
               return (
                 <div key={cat} className={`mining-slot ${req ? 'req' : ''} ${installed.length ? 'filled' : ''}`}>
                   <div className="mslot-head">
                     <span className="mslot-name">{t(`mining.comp.${cat}`, cat)}{req && <em> *</em>}</span>
-                    {multi && installed.length > 0 && <span className="mslot-count">×{installed.length}</span>}
+                    {multi && installed.length > 0 && (
+                      <span className="mslot-count">×{installed.length}{capLeft != null ? `/${installed.length + capLeft}` : ''}</span>
+                    )}
                   </div>
                   <span className="mslot-desc">{t(`mining.desc.${cat}`, '')}</span>
-                  {installed.map(it => (
-                    <div key={it.hwId} className="mslot-item">
-                      <span>{hwName(it, t)}</span>
-                      <button className="mslot-rm" disabled={busy} onClick={() => run(() => uninstallComponent(farm.id, it.hwId))}><X size={12} /></button>
+                  {groups.map(g => (
+                    <div key={g.key} className="mslot-item">
+                      <span>{g.label}{g.items.length > 1 && <b className="mslot-item-qty"> ×{g.items.length}</b>}</span>
+                      <button className="mslot-rm" disabled={busy}
+                        title={g.items.length > 1 ? t('mining.removeOne') : ''}
+                        onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
                     </div>
                   ))}
                   {blockedByAlt ? (
                     <span className="mslot-empty">{t('mining.placementTaken', { other: t(`mining.comp.${altPlacement}`, altPlacement) })}</span>
+                  ) : capFull ? (
+                    <span className="mslot-empty">{t('mining.capacityFull')}</span>
                   ) : canAdd && (
                     avail.length > 0 ? (
                       <select className="mslot-pick" disabled={busy} value=""
                         onChange={e => { if (e.target.value) run(() => installComponent(farm.id, cat, e.target.value)) }}>
                         <option value="">{t('mining.pickPart')}</option>
-                        {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs)}</option>)}
+                        {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>)}
                       </select>
                     ) : (
                       <span className="mslot-empty">{t('mining.noParts')}</span>

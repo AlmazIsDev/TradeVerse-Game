@@ -298,13 +298,14 @@ export async function fetchStock(symbol) {
  */
 export async function fetchTransactions(opts = {}) {
   const params = new URLSearchParams()
-  const { direction, category, search, sort, skip, limit } = opts
+  const { direction, category, search, sort, skip, limit, companyId } = opts
   if (direction) params.set('direction', direction)
   if (category) params.set('category', category)
   if (search) params.set('search', search)
   if (sort) params.set('sort', sort)
   if (skip != null) params.set('skip', skip)
   if (limit != null) params.set('limit', limit)
+  if (companyId) params.set('companyId', companyId)
   const query = params.toString()
   return request(`/api/account/transactions${query ? `?${query}` : ''}`)
 }
@@ -626,6 +627,12 @@ export async function transferAssetToCompany(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/transfer-to-company`, { method: 'POST' })
 }
 
+export async function transferAssetToPlayer(id, toUsername) {
+  return request(`/api/assets/${encodeURIComponent(id)}/transfer-to-player`, {
+    method: 'POST', body: JSON.stringify({ toUsername }),
+  })
+}
+
 export async function tuneCar(id, part) {
   return request(`/api/assets/${encodeURIComponent(id)}/tune`, { method: 'POST', body: JSON.stringify({ part }) })
 }
@@ -712,6 +719,12 @@ export async function updateMemberSalary(memberUserId, salary) {
   })
 }
 
+export async function updateOwnerSalary(salary) {
+  return request('/api/company/owner-salary', {
+    method: 'PATCH', body: JSON.stringify({ salary }),
+  })
+}
+
 export async function fireMember(memberUserId) {
   return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, { method: 'DELETE' })
 }
@@ -763,6 +776,38 @@ export async function companyDeposit(amount) {
 
 export async function companyWithdraw(amount) {
   return request('/api/company/withdraw', { method: 'POST', body: JSON.stringify({ amount }) })
+}
+
+export async function companyIpo({ symbol, totalShares }) {
+  return request('/api/company/ipo', {
+    method: 'POST', body: JSON.stringify({ symbol, totalShares }),
+  })
+}
+
+export async function companyDividend(perShare) {
+  return request('/api/company/dividend', {
+    method: 'POST', body: JSON.stringify({ perShare }),
+  })
+}
+
+// ── Media / СМИ (разоблачения) ─────────────────────────────────────────────────
+
+export async function fetchMediaStatus() {
+  return request('/api/media/status')
+}
+
+export async function fetchMediaTargets() {
+  return request('/api/media/targets')
+}
+
+export async function fetchMediaFeed() {
+  return request('/api/media/feed')
+}
+
+export async function orderExpose({ targetCompanyId, budget }) {
+  return request('/api/media/expose', {
+    method: 'POST', body: JSON.stringify({ targetCompanyId, budget }),
+  })
 }
 
 // ── City Roof (minigame + WarCoin) ─────────────────────────────────────────────

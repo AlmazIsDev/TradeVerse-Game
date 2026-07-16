@@ -13,11 +13,11 @@ import {
 
 const INTERVALS = ['1h', '24h', '7d', '1m', '3m', '6m', '1y', 'all']
 
-function fmtNum(n, digits = 2) {
+function fmtNum(n, digits = 2, t) {
   if (n == null) return '—'
-  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + ' млрд'
-  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + ' млн'
-  return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: digits })
+  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + ' ' + (t ? t('units.billion') : 'B')
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + ' ' + (t ? t('units.million') : 'M')
+  return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits })
 }
 
 function Change({ value }) {
@@ -181,14 +181,14 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <div className="ad-stat"><span>{t('asset.change7d')}</span><Change value={changes['7d']} /></div>
             <div className="ad-stat"><span>{t('asset.change1m')}</span><Change value={changes['1m']} /></div>
             <div className="ad-stat"><span>{t('asset.change1y')}</span><Change value={changes['1y']} /></div>
-            <div className="ad-stat"><span>{t('asset.marketCap')}</span><b>${fmtNum(asset.marketCap)}</b></div>
-            <div className="ad-stat"><span>{t('asset.volume')}</span><b>${fmtNum(asset.volume24h)}</b></div>
-            {market === 'stock' && <div className="ad-stat"><span>{t('asset.shares')}</span><b>{fmtNum(asset.totalShares, 0)}</b></div>}
-            {market === 'stock' && <div className="ad-stat"><span>{t('common.freeShares')}</span><b>{fmtNum(asset.freeShares, 0)}</b></div>}
-            {market === 'crypto' && <div className="ad-stat"><span>{t('asset.supply')}</span><b>{fmtNum(asset.supply, 0)}</b></div>}
+            <div className="ad-stat"><span>{t('asset.marketCap')}</span><b>${fmtNum(asset.marketCap, 2, t)}</b></div>
+            <div className="ad-stat"><span>{t('asset.volume')}</span><b>${fmtNum(asset.volume24h, 2, t)}</b></div>
+            {market === 'stock' && <div className="ad-stat"><span>{t('asset.shares')}</span><b>{fmtNum(asset.totalShares, 0, t)}</b></div>}
+            {market === 'stock' && <div className="ad-stat"><span>{t('common.freeShares')}</span><b>{fmtNum(asset.freeShares, 0, t)}</b></div>}
+            {market === 'crypto' && <div className="ad-stat"><span>{t('asset.supply')}</span><b>{fmtNum(asset.supply, 0, t)}</b></div>}
             {market === 'crypto' && <div className="ad-stat"><span>{t('asset.ath')}</span><b>${formatMoney(asset.ath)}</b></div>}
             {market === 'crypto' && <div className="ad-stat"><span>{t('asset.atl')}</span><b>${formatMoney(asset.atl)}</b></div>}
-            {held > 0 && <div className="ad-stat"><span>{t('stocks.owned')}</span><b className="up">{fmtNum(held, digits)}</b></div>}
+            {held > 0 && <div className="ad-stat"><span>{t('stocks.owned')}</span><b className="up">{fmtNum(held, digits, t)}</b></div>}
           </div>
 
           {asset.description && <p className="ad-description">{asset.description}</p>}
@@ -266,7 +266,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <span className="ad-info-title"><Wallet size={15} /> {t('asset.myPosition')}</span>
             {held > 0 ? (
               <>
-                <div className="ad-metric-row"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits)}</b></div>
+                <div className="ad-metric-row"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits, t)}</b></div>
                 <div className="ad-metric-row"><span>{t('asset.positionValue')}</span><b className="accent">${formatMoney(positionValue)}</b></div>
                 <div className="ad-metric-row"><span>{t('asset.estProfit')}</span><b className={estProfit >= 0 ? 'up' : 'down'}>{estProfit >= 0 ? '+' : '−'}${formatMoney(Math.abs(estProfit))}</b></div>
               </>
@@ -277,7 +277,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
           {market === 'stock' && (
             <div className="ad-info-card">
               <span className="ad-info-title"><Gift size={15} /> {t('asset.dividendForecast')}</span>
-              <div className="ad-metric-row"><span>{t('stocks.perShare')}</span><b>{a.dividendYield}% / год</b></div>
+              <div className="ad-metric-row"><span>{t('stocks.perShare')}</span><b>{a.dividendYield}%{t('units.perYear')}</b></div>
               <div className="ad-metric-row"><span>{t('asset.estAnnualDividend')}</span><b className="up">${formatMoney(estDividend)}</b></div>
             </div>
           )}

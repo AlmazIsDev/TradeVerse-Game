@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchMyAssets, collectAsset, upgradeAsset, sellAsset, fetchCompany,
-  transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
+  transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
   collectAllAssets,
@@ -10,10 +10,11 @@ import {
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
+import MediaExposeModal from './MediaExposeModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
-  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown,
+  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -76,6 +77,9 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [orderBusy, setOrderBusy] = useState(false)
   const [menuOpenId, setMenuOpenId] = useState(null)             // id актива с открытым меню «Взаимодействие»
   const [collectingAll, setCollectingAll] = useState(false)
+  const [giftModal, setGiftModal] = useState(null)               // актив, передаваемый игроку
+  const [giftName, setGiftName] = useState('')
+  const [mediaModal, setMediaModal] = useState(false)            // разоблачение в СМИ (актив «Медиахолдинг»)
   const menuRef = useRef(null)
 
   // Закрытие меню «Взаимодействие» по клику вне него.
@@ -184,6 +188,23 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       await listPropertyForRent(rentModal.id, minHours)
       flash(t('rent.listed'))
       setRentModal(null)
+      await load()
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const submitGift = async () => {
+    if (!giftModal) return
+    const name = giftName.trim()
+    if (name.length < 2) { flash(t('gift.invalid'), 'error'); return }
+    setBusyId(giftModal.id)
+    try {
+      const res = await transferAssetToPlayer(giftModal.id, name)
+      flash(t('gift.sent', { name: res.toUsername || name }))
+      setGiftModal(null)
       await load()
     } catch (err) {
       flash(err.message, 'error')
@@ -376,10 +397,25 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         actions.push({ key: 'itstudio-defense', disabled: busy, icon: <ShieldPlus size={15} />, label: t('itstudio.defense'), onClick: () => openOrder('defense') })
       }
     }
+    // Медиахолдинг: заказ разоблачения в СМИ против компании-конкурента.
+    if (a.slug === 'media_holding') {
+      actions.push({
+        key: 'media-expose', disabled: busy, icon: <Newspaper size={15} />,
+        label: t('media.order'),
+        onClick: () => { setMediaModal(true); setMenuOpenId(null) },
+      })
+    }
     if (isCompanyOwner) {
       actions.push({
         key: 'toCompany', disabled: busy, icon: <Building2 size={15} />, label: t('myassets.toCompany'),
         onClick: () => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) }),
+      })
+    }
+    // Передать актив другому игроку (только личный, не сдаётся).
+    if (!a.companyId && !a.rental) {
+      actions.push({
+        key: 'toPlayer', disabled: busy, icon: <Send size={15} />, label: t('gift.toPlayer'),
+        onClick: () => { setGiftModal(a); setGiftName('') },
       })
     }
     if (a.type === 'realestate' || a.type === 'car' || a.type === 'business') {
@@ -482,7 +518,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             const busy = busyId === a.id
             const isCar = a.type === 'car'
             return (
-              <div key={a.id} className={`asset-card owned ${isCar ? 'car-card' : ''}`}>
+              <div key={a.id} className={`asset-card owned ${isCar ? 'car-card' : ''} ${menuOpenId === a.id ? 'menu-open' : ''}`}>
                 <div className="asset-banner" style={{ background: RARITY_GRAD[a.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
                   <span className="asset-banner-emoji">{emojiFor(a)}</span>
                   <span className="asset-level">{t('myassets.level')} {a.level}</span>
@@ -499,11 +535,11 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   {a.type === 'business' && (
                     <>
                       <div className="asset-stat"><span><Users size={12} /> {t('market.employees')}</span><b>{a.employees}</b></div>
-                      <div className="asset-stat"><span>{t('myassets.upkeep')}</span><b className="down">${formatMoney(a.upkeepPerHour)}/ч</b></div>
+                      <div className="asset-stat"><span>{t('myassets.upkeep')}</span><b className="down">${formatMoney(a.upkeepPerHour)}{t('units.perHour')}</b></div>
                     </>
                   )}
                   {a.rooms != null && <div className="asset-stat"><span>{t('realestate.rooms')}</span><b>{a.rooms}</b></div>}
-                  {a.meta?.tax != null && <div className="asset-stat"><span>{t('myassets.tax')}</span><b className="down">${a.meta.tax}/ч</b></div>}
+                  {a.meta?.tax != null && <div className="asset-stat"><span>{t('myassets.tax')}</span><b className="down">${a.meta.tax}{t('units.perHour')}</b></div>}
                   {a.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{a.meta.prestige}</b></div>}
                   {isCar && <div className="asset-stat"><span><Gauge size={12} /> {t('car.condition')}</span><b className="up">{t(`car.cond_${Math.min(a.level, 3)}`, t('car.cond_1'))}</b></div>}
                 </div>
@@ -559,6 +595,25 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             <div className="modal-buttons">
               <button className="stock-btn buy-btn" onClick={submitRent} disabled={busyId === rentModal.id}>{t('rent.publish')}</button>
               <button className="stock-btn cancel-btn" onClick={() => setRentModal(null)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {giftModal && (
+        <div className="modal-overlay" onClick={() => setGiftModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setGiftModal(null)}><X size={18} /></button>
+            <h3><Send size={17} /> {t('gift.toPlayer')}: {t(`assetNames.${giftModal.slug}`, giftModal.name)}</h3>
+            <p className="modal-price">{t('gift.desc')}</p>
+            <div className="modal-quantity"><label>{t('gift.playerLabel')}:</label>
+              <input type="text" value={giftName} autoFocus maxLength={40}
+                placeholder={t('gift.playerPlaceholder')}
+                onChange={e => setGiftName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitGift() }} /></div>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={submitGift} disabled={busyId === giftModal.id || giftName.trim().length < 2}>{t('gift.send')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setGiftModal(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         </div>
@@ -629,6 +684,13 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
           busy={orderBusy}
           onSubmit={submitOrder}
           onClose={() => setOrderModal(null)}
+        />
+      )}
+
+      {mediaModal && (
+        <MediaExposeModal
+          onClose={() => setMediaModal(false)}
+          onBalanceChange={onBalanceChange}
         />
       )}
 

@@ -135,8 +135,13 @@ async def query_transactions(
     sort: str = "date_desc",
     skip: int = 0,
     limit: int = 20,
+    meta_filter: Optional[dict] = None,
 ) -> dict:
     """Фильтрация / поиск / сортировка / пагинация истории операций.
+
+    ``meta_filter`` — доп. точечные условия по вложенным полям meta (например
+    ``{"companyId": cid}`` → ключ ``meta.companyId``), чтобы историю можно было
+    сузить до конкретной сущности, а не только по категории.
 
     Возвращает {items, total, skip, limit}.
     """
@@ -145,6 +150,9 @@ async def query_transactions(
         query["direction"] = direction
     if category:
         query["category"] = category
+    if meta_filter:
+        for k, v in meta_filter.items():
+            query[f"meta.{k}"] = v
     if search:
         rx = {"$regex": search, "$options": "i"}
         query["$or"] = [

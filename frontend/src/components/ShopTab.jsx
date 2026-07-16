@@ -33,20 +33,20 @@ const CAT_COLOR = {
   rack: '#64748b', fan: '#38bdf8', ups: '#f59e0b', network: '#818cf8',
 }
 
-function specLine(cat, s = {}) {
+function specLine(cat, s = {}, t) {
   switch (cat) {
     case 'gpu': return `${s.hashrate >= 1000 ? (s.hashrate / 1000).toFixed(1) + 'k' : s.hashrate} H/s · ${s.power}W`
-    case 'cpu': return `${s.cores} ядер · ${s.power}W`
-    case 'motherboard': return `${s.gpuSlots} слотов GPU`
-    case 'ram': return `${s.gb} ГБ`
-    case 'ssd': return `${s.gb} ГБ`
+    case 'cpu': return `${s.cores} ${t('units.cores')} · ${s.power}W`
+    case 'motherboard': return `${s.gpuSlots} ${t('units.gpuSlots')}`
+    case 'ram': return `${s.gb} ${t('units.gb')}`
+    case 'ssd': return `${s.gb} ${t('units.gb')}`
     case 'psu': return `${s.power} W`
-    case 'cooling': return `${s.cooling} охл.`
-    case 'fan': return `${s.cooling} охл. · ${s.power}W`
-    case 'case': return `${s.slots} слотов`
-    case 'rack': return `${s.slots} GPU${s.industrial ? ' · пром.' : ''}`
+    case 'cooling': return `${s.cooling} ${t('units.cooling')}`
+    case 'fan': return `${s.cooling} ${t('units.cooling')} · ${s.power}W`
+    case 'case': return `${s.slots} ${t('units.slots')}`
+    case 'rack': return `${s.slots} ${t('units.gpuCap')}${s.industrial ? ' · ' + t('units.industrial') : ''}`
     case 'ups': return `${s.backup} VA`
-    case 'network': return `${s.speed >= 1000 ? (s.speed / 1000) + ' Гбит' : s.speed + ' Мбит'}`
+    case 'network': return `${s.speed >= 1000 ? (s.speed / 1000) + ' ' + t('units.gbit') : s.speed + ' ' + t('units.mbit')}`
     default: return ''
   }
 }
@@ -163,7 +163,7 @@ function ShopTab({ balance = 0, onBalanceChange }) {
                 <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={20} /></span>
                 <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
                 <span className="gpu-card-name">{hwName(item, t)}</span>
-                <div className="gpu-card-specs"><span>{specLine(item.category, item.specs)}</span></div>
+                <div className="gpu-card-specs"><span>{specLine(item.category, item.specs, t)}</span></div>
                 <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
                 <button
                   className="gpu-card-buy"

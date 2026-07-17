@@ -186,7 +186,7 @@ def _ai_should_repair(ai: bool, ai_level: int, condition: float,
     return revenue - electricity - salary - repair_cost >= 0
 
 
-def _serialize(farm: dict, stats: dict) -> dict:
+def _serialize(farm: dict, stats: dict, capacity: Optional[dict] = None) -> dict:
     comp = farm.get("components", {})
     return {
         "id": str(farm["_id"]),
@@ -211,7 +211,7 @@ def _serialize(farm: dict, stats: dict) -> dict:
             "gpus": comp.get("gpus", []), "fans": comp.get("fans", []),
         },
         "repairCost": _repair_cost(farm),
-        "capacity": _capacity(farm),
+        "capacity": capacity if capacity is not None else _capacity(farm),
         "stats": stats,
     }
 
@@ -236,14 +236,22 @@ def _enclosure_slots(comp: dict) -> Optional[int]:
     return None
 
 
-def _capacity(farm: dict) -> dict:
+def _capacity(farm: dict, rack_used_elsewhere: int = 0) -> dict:
     """Максимум и остаток слотов для multi-компонентов (GPU, вентиляторы).
 
     Корпус/стойка задают общий лимит посадочных мест; для GPU он ещё и
     ограничен числом слотов материнской платы. Вентиляторы без корпуса
-    ограничены открытым стендом (FAN_BASE_CAP)."""
+    ограничены открытым стендом (FAN_BASE_CAP).
+
+    Стойка — ОБЩИЙ пул слотов на несколько ферм: доступное этой ферме место
+    уменьшается на GPU, уже установленные на других фермах этой же стойки
+    (rack_used_elsewhere). Корпус остаётся эксклюзивным (одна ферма)."""
     comp = farm.get("components", {})
     enclosure = _enclosure_slots(comp)
+    # Если посадочные места даёт стойка (а не корпус) — вычитаем занятое на
+    # других фермах: одна физическая стойка на N GPU делится между фермами.
+    if enclosure is not None and comp.get("rack") and not comp.get("case"):
+        enclosure = max(0, enclosure - rack_used_elsewhere)
     mb_slots = (comp.get("motherboard") or {}).get("specs", {}).get("gpuSlots", 0)
 
     gpu_max = mb_slots if mb_slots else 0
@@ -260,22 +268,48 @@ def _capacity(farm: dict) -> dict:
     }
 
 
+def _shared_rack_id(farm: dict) -> Optional[str]:
+    """hwId стойки фермы (стойка — общий пул слотов на несколько ферм)."""
+    rack = (farm.get("components") or {}).get("rack")
+    return rack.get("hwId") if rack else None
+
+
+async def _rack_gpus_elsewhere(db, user_id: str, rack_hw_id: str, exclude_farm_id) -> int:
+    """Сколько GPU этой стойки заняты на ДРУГИХ фермах игрока (общий пул слотов)."""
+    if not rack_hw_id:
+        return 0
+    total = 0
+    async for f in db.mining_farms.find(
+        {"userId": user_id, "components.rack.hwId": rack_hw_id, "_id": {"$ne": exclude_farm_id}}
+    ):
+        total += len((f.get("components") or {}).get("gpus", []))
+    return total
+
+
+async def _capacity_for(db, farm: dict) -> dict:
+    """_capacity с учётом GPU той же стойки на других фермах (общий пул)."""
+    rack_id = _shared_rack_id(farm)
+    used = await _rack_gpus_elsewhere(db, farm["userId"], rack_id, farm["_id"]) if rack_id else 0
+    return _capacity(farm, used)
+
+
 # ── Помощники доступа ────────────────────────────────────────────────────────
 
 
 async def _serialize_with_stats(db, farm: dict, user_id: str) -> dict:
     """Сериализует ферму с ПОЛНЫМ пересчётом характеристик (для мгновенного отклика UI)."""
+    cap = await _capacity_for(db, farm)
     missing = _missing_required(farm)
     if missing:
         # Ферма не собрана — не считаем показатели.
-        item = _serialize(farm, {})
+        item = _serialize(farm, {}, cap)
         item["missing"] = missing
         return item
     market = await _coin_market(db)
     econ = await get_econ(db)
     city = await _city_bonus(db, user_id)
     stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city)
-    item = _serialize(farm, stats)
+    item = _serialize(farm, stats, cap)
     item["missing"] = missing
     return item
 
@@ -380,7 +414,7 @@ async def get_farms(current_user: dict = Depends(get_current_user), db: AsyncIOM
         missing = _missing_required(farm)
         # Пока ферма не собрана — показатели не рассчитываются (пустые).
         stats = {} if missing else _compute(farm, market, ec, em, city)
-        item = _serialize(farm, stats)
+        item = _serialize(farm, stats, await _capacity_for(db, farm))
         item["missing"] = missing
         out.append(item)
     return out
@@ -439,7 +473,7 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
     comp = farm.get("components", {})
     if multi:
         role_key = "gpus" if role == "gpu" else "fans"
-        cap = _capacity(farm)
+        cap = await _capacity_for(db, farm)
         if role == "gpu":
             mb = comp.get("motherboard")
             if not mb:
@@ -460,16 +494,23 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
         PLACEMENT_ALT = {"case": "rack", "rack": "case"}
         alt = PLACEMENT_ALT.get(role)
         if alt and comp.get(alt) and comp[alt].get("hwId"):
-            await db.user_hardware.update_one({"_id": ObjectId(comp[alt]["hwId"])}, {"$set": {"farmId": None}})
+            # Корпус эксклюзивен — освобождаем; стойку освобождать не нужно
+            # (её farmId всегда None, это общий пул на несколько ферм).
+            if alt == "case":
+                await db.user_hardware.update_one({"_id": ObjectId(comp[alt]["hwId"])}, {"$set": {"farmId": None}})
             await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{alt}": None}})
-        # Освобождаем ранее установленный компонент этой роли.
+        # Освобождаем ранее установленный компонент этой роли (кроме стойки —
+        # общий пул, farmId не занимаем).
         old = comp.get(role)
-        if old and old.get("hwId"):
+        if old and old.get("hwId") and role != "rack":
             await db.user_hardware.update_one({"_id": ObjectId(old["hwId"])}, {"$set": {"farmId": None}})
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": payload.category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": entry}})
 
-    await db.user_hardware.update_one({"_id": hw["_id"]}, {"$set": {"farmId": str(farm["_id"])}})
+    # Стойка — общий пул слотов на несколько ферм: НЕ привязываем её к ферме
+    # (farmId остаётся None), чтобы она оставалась доступна другим фермам.
+    if role != "rack":
+        await db.user_hardware.update_one({"_id": hw["_id"]}, {"$set": {"farmId": str(farm["_id"])}})
     updated = await db.mining_farms.find_one({"_id": farm["_id"]})
     return await _serialize_with_stats(db, updated, user_id)
 
@@ -816,4 +857,16 @@ if __name__ == "__main__":
     # Выручка идёт в монеты, а costs (эл-во+зарплата+ремонт) — отдельный кэш-расход.
     _rev, _price, _costs = 60.0, 30.0, 12.0
     assert _mined_qty(_rev, _price) == 2.0 and round(_costs, 2) == 12.0
+
+    # Стойка — общий пул слотов на несколько ферм: место, занятое GPU на других
+    # фермах той же стойки, уменьшает доступное этой ферме.
+    _mb8 = {"specs": {"gpuSlots": 8}}
+    _rack48 = {"specs": {"slots": 48}, "hwId": "r1"}
+    _farm = {"components": {"motherboard": _mb8, "rack": _rack48, "gpus": [{}] * 3}}
+    # Никто больше не занимает — упираемся в 8 слотов платы, стоит 3 → свободно 5.
+    assert _capacity(_farm, 0)["gpu"] == 5
+    # На других фермах занято 44 из 48 → стойка даёт лишь 4; стоит 3 → свободно 1.
+    assert _capacity(_farm, 44)["gpu"] == 1
+    # Стойка занята полностью на других фермах → 0 доступных мест.
+    assert _capacity(_farm, 48)["gpu"] == 0
     print("mining self-check OK")

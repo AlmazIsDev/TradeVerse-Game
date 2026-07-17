@@ -13,7 +13,11 @@
     "myhomes": "My Property",
     "mybusiness": "My Businesses",
     "mycompany": "My Company",
-    "leaderboard": "Leaderboard"
+    "leaderboard": "Leaderboard",
+    "groupFinance": "Finance",
+    "groupMarkets": "Markets",
+    "groupAssets": "Assets & Business",
+    "groupCommunity": "Community"
   },
   "common": {
     "loading": "Loading...",
@@ -72,6 +76,11 @@
   },
   "stocks": {
     "title": "Stocks",
+    "newPrice": "New price",
+    "tradeError": "Trade error",
+    "marketCap": "Market cap",
+    "volatility": "Volatility",
+    "freeSharesLabel": "Free shares",
     "price": "Price",
     "change": "Change",
     "volume": "Volume",
@@ -119,6 +128,13 @@
     "expense": "Expenses",
     "investments": "Investments",
     "weeklyAnalytics": "Weekly Analytics",
+    "period": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "week": "Week",
+      "month": "Month",
+      "all": "All time"
+    },
     "incomeLabel": "Income",
     "expenseLabel": "Expense",
     "earned": "Earned",
@@ -369,7 +385,9 @@
     "condition": "Condition",
     "cond_1": "New",
     "cond_2": "Excellent",
-    "cond_3": "Good"
+    "cond_3": "Good",
+    "rentalOnly": "Rental income only",
+    "rentalOnlyHint": "Cars don't generate hourly or passive income. Earn by listing them for rent."
   },
   "company": {
     "createTitle": "Create your company",
@@ -396,6 +414,16 @@
     "fired": "Employee fired",
     "editSalary": "Salary",
     "salaryUpdated": "Salary updated",
+    "memberSettings": "Employee settings",
+    "memberUpdated": "Employee updated",
+    "roleTitle": "Role name",
+    "roleTitlePlaceholder": "e.g. Lead Engineer",
+    "permissions": "Permissions",
+    "perms": {
+      "manage_finance": "Manage finances",
+      "manage_employees": "Manage employees",
+      "manage_assets": "Manage assets"
+    },
     "invite": "Invite",
     "invited": "Invitation sent",
     "invitePlayer": "Player nickname",
@@ -484,6 +512,7 @@
     "season": "Season",
     "eventActive": "event active",
     "eventClosed": "event closed",
+    "seasonClosed": "The season was force-closed by an admin. The map has been reset.",
     "hint": "Conquer rivals' businesses! An attempt costs {{cost}} WC — crack the secret combination.",
     "yours": "Yours",
     "free": "Free",
@@ -715,7 +744,29 @@
     "appearanceTitle": "Appearance",
     "darkMode": "Dark mode",
     "darkModeHint": "Dark interface theme. The setting is saved on this device.",
-    "avatarInvalid": "Invalid image format"
+    "avatarInvalid": "Invalid image format",
+    "bio": "About me",
+    "bioPlaceholder": "Tell others about yourself…",
+    "bioSaved": "Description updated",
+    "saveBio": "Save description",
+    "statsTitle": "Statistics",
+    "achievementsTitle": "Achievements",
+    "stat": {
+      "netWorth": "Net worth",
+      "cash": "Cash",
+      "stocks": "Stocks",
+      "crypto": "Crypto",
+      "assets": "Assets",
+      "company": "Company",
+      "warcoin": "WarCoin",
+      "profit": "Profit"
+    },
+    "achievement": {
+      "networth_1m": "Millionaire — net worth over $1M",
+      "in_profit": "In the black — positive profit",
+      "diversified": "Diversified — 3+ asset classes",
+      "company_owner": "Entrepreneur — owns a company"
+    }
   },
   "auth": {
     "login": "Login",
@@ -755,6 +806,20 @@
   "admin": {
     "title": "Admin Panel",
     "stocks": "Stocks",
+    "stockConfig": "Stock config",
+    "stockConfigHint": "Tune volatility and behavior for each stock",
+    "editStockConfig": "Stock configuration",
+    "volatilityK": "Volatility (K)",
+    "totalShares": "Total shares",
+    "priceDropThreshold": "Drop threshold (%)",
+    "priceRiseThreshold": "Rise threshold (%)",
+    "maxOrderSize": "Max order (%)",
+    "configSaved": "Configuration saved",
+    "volatilityKHelp": "Higher values make the price move more on trades. 0.1 — stable, 0.5 — volatile",
+    "totalSharesHelp": "Total shares of the company. Affects the price formula: ΔP = Price × K × (ΔVolume / TotalShares)",
+    "priceDropThresholdHelp": "When the price drops by this %, retail starts buying aggressively (catching the bottom). E.g.: -0.05 = -5%",
+    "priceRiseThresholdHelp": "When the price rises by this %, whales start taking profit. E.g.: 0.10 = +10%",
+    "maxOrderSizeHelp": "Maximum single order size as % of free shares. Protects against manipulation",
     "price": "Price",
     "users": "Users",
     "transactions": "Transactions",
@@ -946,6 +1011,7 @@
     "aiManager": "AI manager",
     "level": "lvl",
     "upgrade": "Upgrade",
+    "maxLevel": "Max level",
     "fire": "Fire",
     "playerManaged": "Player-managed",
     "hireAi": "Hire AI",
@@ -1119,10 +1185,13 @@
   "units": {
     "perHour": "/h",
     "perYear": "/yr",
-    "cores": "cores",
+    "cores_one": "{{count}} core",
+    "cores_other": "{{count}} cores",
     "gb": "GB",
-    "gpuSlots": "GPU slots",
-    "slots": "slots",
+    "gpuSlots_one": "{{count}} GPU slot",
+    "gpuSlots_other": "{{count}} GPU slots",
+    "slots_one": "{{count}} slot",
+    "slots_other": "{{count}} slots",
     "gpuCap": "GPU",
     "cooling": "cool.",
     "industrial": "ind.",

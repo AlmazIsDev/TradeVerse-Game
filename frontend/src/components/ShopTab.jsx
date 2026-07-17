@@ -4,9 +4,10 @@ import { fetchShopCatalog, buyHardware } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import {
   Monitor, Cpu, HardDrive, Zap, Fan, Box, Server, Battery, Network,
-  Search, DollarSign, ArrowUpDown, AlertTriangle, Check, ShoppingCart,
+  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
 } from 'lucide-react'
 
 // Магазин оборудования NEXUS — единый каталог всех комплектующих.
@@ -36,14 +37,14 @@ const CAT_COLOR = {
 function specLine(cat, s = {}, t) {
   switch (cat) {
     case 'gpu': return `${s.hashrate >= 1000 ? (s.hashrate / 1000).toFixed(1) + 'k' : s.hashrate} H/s · ${s.power}W`
-    case 'cpu': return `${s.cores} ${t('units.cores')} · ${s.power}W`
-    case 'motherboard': return `${s.gpuSlots} ${t('units.gpuSlots')}`
+    case 'cpu': return `${t('units.cores', { count: s.cores })} · ${s.power}W`
+    case 'motherboard': return `${t('units.gpuSlots', { count: s.gpuSlots })}`
     case 'ram': return `${s.gb} ${t('units.gb')}`
     case 'ssd': return `${s.gb} ${t('units.gb')}`
     case 'psu': return `${s.power} W`
     case 'cooling': return `${s.cooling} ${t('units.cooling')}`
     case 'fan': return `${s.cooling} ${t('units.cooling')} · ${s.power}W`
-    case 'case': return `${s.slots} ${t('units.slots')}`
+    case 'case': return `${t('units.slots', { count: s.slots })}`
     case 'rack': return `${s.slots} ${t('units.gpuCap')}${s.industrial ? ' · ' + t('units.industrial') : ''}`
     case 'ups': return `${s.backup} VA`
     case 'network': return `${s.speed >= 1000 ? (s.speed / 1000) + ' ' + t('units.gbit') : s.speed + ' ' + t('units.mbit')}`
@@ -61,7 +62,6 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState('asc')
   const [busyId, setBusyId] = useState(null)
-  const [msg, setMsg] = useState(null)
   const [confirm, setConfirm] = useState(null)   // item awaiting purchase confirmation
 
   useEffect(() => {
@@ -83,17 +83,15 @@ function ShopTab({ balance = 0, onBalanceChange }) {
 
   useEffect(() => { load() }, [load])
 
-  const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2200) }
-
   const buy = async (item) => {
     setBusyId(item.id)
     try {
       const res = await buyHardware(item.id, 1)
       onBalanceChange?.(res.balance)
-      flash(t('market.bought'))
+      toast(t('market.bought'))
       await load()   // цены могли сдвинуться
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -112,12 +110,6 @@ function ShopTab({ balance = 0, onBalanceChange }) {
         <h2 className="tab-title">NEXUS · {t('nav.shop')}</h2>
       </div>
       <p className="shop-subtitle">{t('shop.nexusDesc')}</p>
-
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-        </div>
-      )}
 
       <div className="market-toolbar">
         <div className="market-cats">

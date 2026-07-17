@@ -342,6 +342,23 @@ body {
   padding: 0 var(--spacing-md);
 }
 
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-group + .sidebar-group {
+  margin-top: var(--spacing-md);
+}
+.sidebar-group-title {
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+}
+
 .sidebar-item {
   display: flex;
   align-items: center;
@@ -644,6 +661,13 @@ body {
 }
 
 /* ===================== ACCOUNT TAB ===================== */
+
+.account-period {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-lg);
+}
 
 .account-stats {
   display: grid;
@@ -1106,6 +1130,7 @@ body {
   max-width: 420px;
   box-shadow: var(--shadow-xl);
   animation: tv-modal-in var(--dur-med) var(--ease-out);
+  position: relative;
 }
 
 @keyframes tv-overlay-in {
@@ -1170,16 +1195,51 @@ body {
 .modal-total {
   font-size: 16px;
   color: var(--color-text-primary);
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: var(--spacing-xs);
 }
 
 .modal-total strong {
   color: var(--color-accent-hover);
 }
 
+/* Баланс игрока + количество имеющихся акций в модалке сделки */
+.modal-account-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.modal-account-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--fill-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.modal-account-item span {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.modal-account-item b {
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
 .modal-buttons {
   display: flex;
   gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+}
+
+.modal-content .crypto-modal-fee {
+  margin-bottom: var(--spacing-md);
 }
 
 /* ===================== BANK TAB ===================== */
@@ -1719,6 +1779,14 @@ body {
     font-size: 20px;
   }
 
+  /* Свёрнутый сайдбар (64px): заголовки групп и подписи не помещаются. */
+  .sidebar-group-title {
+    display: none;
+  }
+  .sidebar-group + .sidebar-group {
+    margin-top: var(--spacing-sm);
+  }
+
   .dashboard-main {
     margin-left: 64px;
   }
@@ -1785,6 +1853,14 @@ body {
   .profile-card-number {
     font-size: 11px;
     letter-spacing: 0.5px;
+  }
+
+  .modal-content {
+    padding: var(--spacing-lg);
+  }
+
+  .world-event-icon {
+    font-size: 22px;
   }
 }
 
@@ -3265,6 +3341,7 @@ body {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  min-height: 210px;
 }
 
 .gpu-card:hover {
@@ -3296,11 +3373,26 @@ body {
   font-weight: 600;
   color: var(--color-text-primary);
   line-height: 1.3;
-  flex: 1;
+  /* Двухстрочное имя с многоточием — карточки не расползаются по высоте,
+     длинное название не ломает сетку. Резервируем 2 строки для выравнивания. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-height: 2.6em;
+  word-break: break-word;
 }
+
+.gpu-card-cat {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Цена «прилипает» к низу, кнопка — под ней: одинаковая высота у всех карточек. */
+.gpu-card .gpu-card-price { margin-top: auto; }
 
 .gpu-card-specs {
   display: flex;

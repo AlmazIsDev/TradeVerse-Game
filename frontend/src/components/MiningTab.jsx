@@ -26,7 +26,7 @@ function partSpec(cat, s = {}, t) {
   if (cat === 'gpu') return s.hashrate ? ` · ${formatCompact(s.hashrate)} H/s` : ''
   if (cat === 'psu') return s.power ? ` · ${s.power}W` : ''
   if (cat === 'cooling' || cat === 'fan') return s.cooling ? ` · ${s.cooling}` : ''
-  if (cat === 'cpu') return s.cores ? ` · ${s.cores} ${t('units.cores')}` : ''
+  if (cat === 'cpu') return s.cores ? ` · ${t('units.cores', { count: s.cores })}` : ''
   if (cat === 'motherboard') return s.gpuSlots ? ` · ${s.gpuSlots} GPU` : ''
   if (cat === 'ram' || cat === 'ssd') return s.gb ? ` · ${s.gb} ${t('units.gb')}` : ''
   return ''
@@ -276,7 +276,11 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                 <small className="mmc-desc">{t('mining.managerDesc')}</small>
               </div>
               <div className="mmc-actions">
-                <button className="asset-act upgrade" disabled={busy} onClick={() => run(() => farmManager(farm.id, 'upgrade'), 'mining.mgrUpgraded')}>{t('mining.upgrade')}</button>
+                {farm.manager.level >= 5 ? (
+                  <button className="asset-act upgrade" disabled>{t('mining.maxLevel')}</button>
+                ) : (
+                  <button className="asset-act upgrade" disabled={busy} onClick={() => run(() => farmManager(farm.id, 'upgrade'), 'mining.mgrUpgraded')}>{t('mining.upgrade')}</button>
+                )}
                 <button className="asset-act" disabled={busy} onClick={() => run(() => farmManager(farm.id, 'fire'))}>{t('mining.fire')}</button>
               </div>
             </>
@@ -325,7 +329,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                   <div className="mslot-head">
                     <span className="mslot-name">{t(`mining.comp.${cat}`, cat)}{req && <em> *</em>}</span>
                     {multi && installed.length > 0 && (
-                      <span className="mslot-count">×{installed.length}{capLeft != null ? `/${installed.length + capLeft}` : ''}</span>
+                      <span className="mslot-count">{capLeft != null ? `${installed.length}/${installed.length + capLeft}` : installed.length}</span>
                     )}
                   </div>
                   <span className="mslot-desc">{t(`mining.desc.${cat}`, '')}</span>

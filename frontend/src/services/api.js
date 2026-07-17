@@ -334,6 +334,11 @@ export async function fetchLeaderboard(limit = 20, sort = 'networth') {
   return request(`/api/leaderboard?${params.toString()}`)
 }
 
+/** Рейтинг компаний по собственной стоимости (бюджет + активы компании). */
+export async function fetchCompanyLeaderboard(limit = 20) {
+  return request(`/api/leaderboard/companies?limit=${limit}`)
+}
+
 export async function toggleCardVisibility() {
   return request('/api/user/card-visibility', { method: 'PATCH' })
 }
@@ -891,6 +896,11 @@ export async function fetchShopCatalog(category) {
 
 export async function buyHardware(itemId, quantity = 1) {
   return request('/api/shop/buy', { method: 'POST', body: JSON.stringify({ itemId, quantity }) })
+}
+
+/** Продать (списать) купленные компоненты с возвратом части стоимости. */
+export async function sellHardware(itemId, quantity = 1) {
+  return request('/api/shop/sell', { method: 'POST', body: JSON.stringify({ itemId, quantity }) })
 }
 
 export async function fetchInventory() {

@@ -71,7 +71,7 @@ async def _tick():
         await cityroof.sweep_itstudio_jobs(db)
     except Exception as exc:
         logger.warning("cityroof itstudio sweep failed: %s", exc, exc_info=True)
-    # 5c) СМИ: выход «созревших» разоблачений (готовились 30 мин–2 ч).
+    # 5c) СМИ: выход «созревших» разоблачений (готовились 15 мин–2 ч).
     try:
         await media.sweep_pending_exposes(db)
     except Exception as exc:

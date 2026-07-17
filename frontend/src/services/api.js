@@ -571,13 +571,6 @@ export async function fetchBotOrders(limit = 100) {
   return request(`/api/v2/stocks/bot-orders?${params.toString()}`)
 }
 
-export async function issueStock({ name, symbol, description, totalShares, price }) {
-  return request('/api/v2/stocks/issue', {
-    method: 'POST',
-    body: JSON.stringify({ name, symbol, description, totalShares, price }),
-  })
-}
-
 export async function payDividend(symbol, perShare) {
   return request(`/api/v2/stocks/${encodeURIComponent(symbol)}/dividend`, {
     method: 'POST',

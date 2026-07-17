@@ -2,14 +2,14 @@
 
 Владелец актива «Медиахолдинг» заказывает разоблачение против компании-конкурента
 ИЛИ конкретного игрока. Взнос списывается сразу и «сгорает». Новость не выходит
-мгновенно — она ГОТОВИТСЯ от PREP_MIN до PREP_MAX (30 мин – 2 ч), после чего
+мгновенно — она ГОТОВИТСЯ от PREP_MIN до PREP_MAX (15 мин – 2 ч), после чего
 планировщик (``sweep_pending_exposes``) разыгрывает исход:
 
 - Успех  → доход всех бизнесов ВЛАДЕЛЬЦА-цели падает на hitPct (15–80%, растёт со
-           взносом) на EXPOSE_HOURS часов; если у цели есть биржевая акция — её
-           цена единоразово проседает на STOCK_HIT.
+           взносом) на EXPOSE_HOURS_MIN–EXPOSE_HOURS_MAX часов; если у цели есть
+           биржевая акция — её цена единоразово проседает на STOCK_HIT.
 - Провал → доход бизнесов цели, наоборот, временно РАСТЁТ (эффект Стрейзанда):
-           +EXPOSE_BACKFIRE на EXPOSE_HOURS часов.
+           +EXPOSE_BACKFIRE на EXPOSE_HOURS_MIN–EXPOSE_HOURS_MAX часов.
 
 Дебафф/бафф хранится в коллекции ``company_debuffs`` как множитель ``factor`` с
 ``expires_at`` (создаётся только при разыгрывании исхода — до этого эффекта нет).
@@ -40,7 +40,8 @@ MEDIA_SLUG = "media_holding"
 # Экономика разоблачения
 EXPOSE_MIN_BUDGET = 5000.0        # минимальный взнос
 EXPOSE_COOLDOWN_H = 24            # КД на пару заказчик→цель
-EXPOSE_HOURS = 12                 # длительность эффекта после выхода новости
+EXPOSE_HOURS_MIN = 12             # длительность эффекта: случайна в диапазоне
+EXPOSE_HOURS_MAX = 36             # 12–36 ч (выбирается при выходе новости)
 EXPOSE_BACKFIRE = 0.15            # провал: +15% доходу цели (эффект Стрейзанда)
 STOCK_HIT = 0.15                  # успех: −15% к цене акции компании-цели
 
@@ -49,8 +50,8 @@ EXPOSE_HIT_MIN = 0.15
 EXPOSE_HIT_MAX = 0.80
 EXPOSE_HIT_SCALE = 3_000_000.0    # взнос, при котором удар приближается к максимуму
 
-# Подготовка новости: от 30 минут до 2 часов до выхода.
-PREP_MIN_MINUTES = 30
+# Подготовка новости: от 15 минут до 2 часов до выхода.
+PREP_MIN_MINUTES = 15
 PREP_MAX_MINUTES = 120
 
 # Шанс успеха растёт со взносом: base при минимуме → cap при SCALE и выше.
@@ -149,7 +150,8 @@ async def media_status(
         "hasMedia": await has_media_holding(db, str(current_user["_id"])),
         "minBudget": EXPOSE_MIN_BUDGET,
         "cooldownHours": EXPOSE_COOLDOWN_H,
-        "effectHours": EXPOSE_HOURS,
+        "effectHoursMin": EXPOSE_HOURS_MIN,
+        "effectHoursMax": EXPOSE_HOURS_MAX,
         "hitMinPct": EXPOSE_HIT_MIN,
         "hitMaxPct": EXPOSE_HIT_MAX,
         "hitScale": EXPOSE_HIT_SCALE,
@@ -228,7 +230,7 @@ async def expose_company(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Заказать разоблачение против компании или игрока (новость готовится 30 мин–2 ч)."""
+    """Заказать разоблачение против компании или игрока (новость готовится 15 мин–2 ч)."""
     uid = str(current_user["_id"])
 
     if not await has_media_holding(db, uid):
@@ -314,7 +316,8 @@ async def expose_company(
         "chance": chance,
         "hitPct": hit_pct,
         "prepMinutes": prep_minutes,
-        "effectHours": EXPOSE_HOURS,
+        "effectHoursMin": EXPOSE_HOURS_MIN,
+        "effectHoursMax": EXPOSE_HOURS_MAX,
         "balance": new_balance,
     }
 
@@ -328,7 +331,8 @@ async def _resolve_expose(db: AsyncIOMotorDatabase, ev: dict):
     chance = float(ev.get("chance", CHANCE_BASE))
 
     success = random.random() < chance
-    expires = _now() + timedelta(hours=EXPOSE_HOURS)
+    effect_hours = random.randint(EXPOSE_HOURS_MIN, EXPOSE_HOURS_MAX)
+    expires = _now() + timedelta(hours=effect_hours)
 
     if success:
         factor = round(1.0 - hit_pct, 4)
@@ -358,14 +362,14 @@ async def _resolve_expose(db: AsyncIOMotorDatabase, ev: dict):
         await push_notification(
             db, target_owner_id, "media", "Репутационный кризис",
             f"СМИ выпустили разоблачение о «{target_name}». Доход ваших бизнесов "
-            f"снижен на {int(hit_pct * 100)}% на {EXPOSE_HOURS} ч.",
+            f"снижен на {int(hit_pct * 100)}% на {effect_hours} ч.",
             data={"targetName": target_name},
         )
     else:
         await push_notification(
             db, target_owner_id, "media", "Провальное разоблачение",
             f"Разоблачение о «{target_name}» провалилось — интерес вырос: "
-            f"доход бизнесов +{int(EXPOSE_BACKFIRE * 100)}% на {EXPOSE_HOURS} ч.",
+            f"доход бизнесов +{int(EXPOSE_BACKFIRE * 100)}% на {effect_hours} ч.",
             data={"targetName": target_name},
         )
     # Уведомляем заказчика об исходе.
@@ -435,3 +439,16 @@ async def _hit_company_stock(db: AsyncIOMotorDatabase, company_id: str) -> Optio
     except Exception:
         pass
     return {"symbol": stock["symbol"], "priceBefore": price, "priceAfter": new_price}
+
+
+if __name__ == "__main__":
+    # Санити-чек силы удара: успех при большом взносе даёт множитель ≈0.2 (−80%),
+    # при минимуме — ≈0.85 (−15%); провал всегда >1.0 (эффект Стрейзанда).
+    assert _hit_pct(0.0) == EXPOSE_HIT_MIN
+    assert _hit_pct(EXPOSE_HIT_SCALE) == EXPOSE_HIT_MAX
+    assert EXPOSE_HIT_MIN <= _hit_pct(EXPOSE_MIN_BUDGET) < 0.20
+    assert round(1.0 - _hit_pct(EXPOSE_HIT_SCALE), 4) == 0.20   # успех бьёт доход до 20%
+    assert round(1.0 + EXPOSE_BACKFIRE, 4) > 1.0                # провал — рост дохода
+    # Диапазон подготовки новости: 15 мин – 2 ч (требование «не мгновенно»).
+    assert PREP_MIN_MINUTES == 15 and PREP_MAX_MINUTES == 120
+    print("media self-check OK")

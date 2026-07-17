@@ -783,6 +783,20 @@ export async function companyDividend(perShare) {
   })
 }
 
+export async function companyRecallStock() {
+  return request('/api/company/stock/recall', { method: 'POST' })
+}
+
+export async function companyIssueCrypto({ symbol, supply, name }) {
+  return request('/api/company/crypto', {
+    method: 'POST', body: JSON.stringify({ symbol, supply, name }),
+  })
+}
+
+export async function companyRecallCrypto() {
+  return request('/api/company/crypto/recall', { method: 'POST' })
+}
+
 // ── Media / СМИ (разоблачения) ─────────────────────────────────────────────────
 
 export async function fetchMediaStatus() {

@@ -456,8 +456,28 @@
       "perShare": "Dividend per share",
       "dividendPaid": "Paid ${{total}} · holders: {{holders}}",
       "dividendInvalid": "Enter a positive dividend",
-      "none": "Company is not listed on the exchange yet"
-    }
+      "none": "Company is not listed on the exchange yet",
+      "recall": "Recall shares",
+      "recalled": "Shares recalled, holders bought out",
+      "recallConfirm": "The company will buy back all shares from holders at the current price using its budget. Continue?"
+    },
+    "crypto": {
+      "title": "Company coin",
+      "desc": "Issue your own coin. Market purchases fund the company budget.",
+      "supply": "Supply",
+      "recall": "Recall coin",
+      "recalled": "Coin recalled, holders bought out",
+      "recallConfirm": "The company will buy back all coins from holders at the current price using its budget. Continue?",
+      "issue": "Issue coin",
+      "none": "No coin issued yet",
+      "invalid": "Invalid coin parameters",
+      "issued": "Coin {{symbol}} issued at ${{price}}",
+      "priceNote": "The coin price is driven by market demand.",
+      "nameLabel": "Name (optional)",
+      "namePlaceholder": "e.g. MyCoin",
+      "confirm": "Issue"
+    },
+    "logoUpload": "Upload logo"
   },
   "cityroof": {
     "buyWc": "Buy WC",
@@ -694,7 +714,8 @@
     "leaderboardLocked": "Changing this setting has been disabled by an administrator.",
     "appearanceTitle": "Appearance",
     "darkMode": "Dark mode",
-    "darkModeHint": "Dark interface theme. The setting is saved on this device."
+    "darkModeHint": "Dark interface theme. The setting is saved on this device.",
+    "avatarInvalid": "Invalid image format"
   },
   "auth": {
     "login": "Login",

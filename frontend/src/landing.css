@@ -88,12 +88,11 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: var(--radius-md);
-  font-weight: 800;
-  font-size: 20px;
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--lp-accent), var(--lp-accent-2));
-  box-shadow: 0 6px 18px rgba(0, 113, 227, 0.4);
+}
+.lp-brand-logo .logo-glyph {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .lp-brand-name {
   font-size: 18px;

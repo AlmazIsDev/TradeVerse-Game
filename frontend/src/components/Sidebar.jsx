@@ -36,7 +36,7 @@ function Sidebar({ activeTab, onTabChange }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">T</div>
+        <div className="sidebar-logo-icon"><img src="/favicon.svg" alt="TradeVerse" className="logo-glyph" /></div>
         <span className="sidebar-logo-text">TradeVerse</span>
       </div>
       <nav className="sidebar-nav">

@@ -78,7 +78,7 @@ function AuthPage({ onLogin }) {
   return (
     <div className="auth-container">
       <div className="auth-left">
-        <div className="brand-logo">T</div>
+        <div className="brand-logo"><img src="/favicon.svg" alt="TradeVerse" className="logo-glyph" /></div>
         <h2>TradeVerse</h2>
         <p className="brand-tagline">{t('auth.tagline')}</p>
 

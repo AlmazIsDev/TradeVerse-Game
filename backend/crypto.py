@@ -327,6 +327,24 @@ def _wallet_address(user_id: str) -> str:
     return "TVX-" + user_id[-12:].upper()
 
 
+async def _credit_company_budget(db: AsyncIOMotorDatabase, coin: dict, amount: float):
+    """Перечисляет выручку/списывает выкуп по монете компании в бюджет эмитента.
+
+    Монеты с привязкой к компании (`companyId`) — инструмент привлечения капитала:
+    покупка на бирже пополняет бюджет, продажа выкупает у рынка из бюджета
+    (не уводя его в минус). Зеркалит stocks._credit_company_budget."""
+    cid = coin.get("companyId")
+    if not cid or not ObjectId.is_valid(cid):
+        return
+    if amount >= 0:
+        await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
+    else:
+        await db.companies.update_one(
+            {"_id": ObjectId(cid), "budget": {"$gte": round(-amount, 2)}},
+            {"$inc": {"budget": round(amount, 2)}},
+        )
+
+
 # ── Account ──────────────────────────────────────────────────────────────────
 
 
@@ -461,6 +479,9 @@ async def trade_crypto(
             balance_after=new_balance, meta={"quantity": qty, "action": "buy", "fee": fee},
         )
         await _apply_trade_impact(db, symbol, "buy", qty * ref_price)
+        # Монета компании: выручка от покупки на бирже пополняет бюджет эмитента
+        # (привлечение капитала). См. stocks._credit_company_budget — та же логика.
+        await _credit_company_budget(db, coin, total)
         return {"message": "Покупка выполнена", "symbol": symbol, "quantity": qty,
                 "price": price, "total": total, "fee": fee, "balance": new_balance}
 
@@ -484,6 +505,8 @@ async def trade_crypto(
         balance_after=new_balance, meta={"quantity": qty, "action": "sell", "fee": fee},
     )
     await _apply_trade_impact(db, symbol, "sell", qty * ref_price)
+    # Монета компании: рынок продаёт обратно эмитенту — выкуп из бюджета.
+    await _credit_company_budget(db, coin, -total)
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
             "price": price, "total": total, "fee": fee, "balance": new_balance}
 

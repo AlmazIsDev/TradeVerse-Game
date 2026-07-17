@@ -71,7 +71,7 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
 
   const submit = async () => {
     const budget = Number(form.budget)
-    if (!form.targetId) { flash(t('media.pickTarget'), 'error'); return }
+    if (!form.targetId) { flash(t(form.targetType === 'company' ? 'media.pickCompany' : 'media.pickPlayer'), 'error'); return }
     if (!(budget >= (status?.minBudget || 0))) { flash(t('media.budgetTooLow', { min: formatMoney(status?.minBudget || 0) }), 'error'); return }
     setBusy(true)
     try {
@@ -134,13 +134,17 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
               </button>
             </div>
 
-            <label className="settings-label">{t('media.targetLabel')}</label>
+            <label className="settings-label">
+              {t(form.targetType === 'company' ? 'media.targetLabelCompany' : 'media.targetLabelPlayer')}
+            </label>
             <select
               className="company-name-input"
               value={form.targetId}
               onChange={e => setForm({ ...form, targetId: e.target.value })}
             >
-              <option value="">{t('media.pickTarget')}</option>
+              <option value="">
+                {t(form.targetType === 'company' ? 'media.pickCompany' : 'media.pickPlayer')}
+              </option>
               {currentList.map(c => (
                 <option key={c.id} value={c.id}>
                   {form.targetType === 'company' ? `${c.name} · ${c.ownerName}` : c.name}
@@ -180,7 +184,9 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
             </div>
 
             {currentList.length === 0 && (
-              <p className="empty-state">{t('media.noTargets')}</p>
+              <p className="empty-state">
+                {t(form.targetType === 'company' ? 'media.noTargetsCompany' : 'media.noTargetsPlayer')}
+              </p>
             )}
 
             <div className="company-section" style={{ marginTop: 'var(--spacing-md)' }}>

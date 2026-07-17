@@ -7,9 +7,10 @@ import {
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
+import MediaExposeModal from './MediaExposeModal'
 import {
   LayoutGrid, Home, Car, Briefcase, KeyRound, X, Check, AlertTriangle, TrendingUp, Users,
-  ArrowUpCircle, Package, Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown,
+  ArrowUpCircle, Package, Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Newspaper,
 } from 'lucide-react'
 
 const TABS = [
@@ -67,6 +68,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
   const [orderModal, setOrderModal] = useState(null)            // { mode }
   const [cityMap, setCityMap] = useState(null)
   const [orderBusy, setOrderBusy] = useState(false)
+  const [mediaModal, setMediaModal] = useState(false)           // разоблачение в СМИ (актив «Медиахолдинг»)
   const menuRef = useRef(null)
 
   const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2400) }
@@ -229,6 +231,14 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
       } else if (a.rental?.status !== 'rented') {
         actions.push({ key: 'rent-list', disabled: busy, icon: <KeyRound size={15} />, label: t('rent.list'), onClick: () => { setRentModal(a); setRentForm({ minHours: '6' }) } })
       }
+    }
+    // Медиахолдинг: заказ разоблачения в СМИ против компании-конкурента.
+    if (a.slug === 'media_holding') {
+      actions.push({
+        key: 'media-expose', disabled: busy, icon: <Newspaper size={15} />,
+        label: t('media.order'),
+        onClick: () => { setMediaModal(true); setMenuOpenId(null) },
+      })
     }
     return actions
   }
@@ -430,6 +440,13 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
             busy={orderBusy}
             onSubmit={submitOrder}
             onClose={() => setOrderModal(null)}
+          />
+        )}
+
+        {mediaModal && (
+          <MediaExposeModal
+            onClose={() => setMediaModal(false)}
+            onBalanceChange={onBalanceChange}
           />
         )}
 

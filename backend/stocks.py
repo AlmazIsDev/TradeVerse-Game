@@ -456,6 +456,25 @@ async def get_events(
 # ── Trade ────────────────────────────────────────────────────────────────────
 
 
+async def _credit_company_budget(db, stock: dict, amount: float):
+    """Перечисляет выручку/списывает выкуп по бирже в бюджет компании-эмитента.
+
+    Акции с привязкой к компании (`companyId`) — инструмент привлечения капитала:
+    покупка на бирже пополняет бюджет (amount>0), продажа выкупает у рынка из
+    бюджета (amount<0, но не уводит бюджет в минус)."""
+    cid = stock.get("companyId")
+    if not cid or not ObjectId.is_valid(cid):
+        return
+    if amount >= 0:
+        await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
+    else:
+        # Выкуп у продавца: не даём бюджету уйти в минус (условный $inc).
+        await db.companies.update_one(
+            {"_id": ObjectId(cid), "budget": {"$gte": round(-amount, 2)}},
+            {"$inc": {"budget": round(amount, 2)}},
+        )
+
+
 @router.post("/trade")
 async def trade_stock(
     trade: StockTradeRequest,
@@ -535,6 +554,9 @@ async def trade_stock(
             f"Покупка {quantity} {symbol}", symbol=symbol, price=fill_price,
             balance_after=new_balance, meta={"quantity": quantity, "action": "buy", "fee": fee},
         )
+        # Акция компании: выручка от покупки на бирже идёт в БЮДЖЕТ компании
+        # (привлечение капитала). Деньги не «сгорают», а перетекают эмитенту.
+        await _credit_company_budget(db, stock, cost)
     else:  # sell
         updated_holding = await db.stock_holdings.find_one_and_update(
             {"userId": user_id, "symbol": symbol, "quantity": {"$gte": quantity}},
@@ -564,6 +586,8 @@ async def trade_stock(
             f"Продажа {quantity} {symbol}", symbol=symbol, price=fill_price,
             balance_after=new_balance, meta={"quantity": quantity, "action": "sell", "fee": fee},
         )
+        # Акция компании: рынок продаёт обратно эмитенту — выкуп из бюджета.
+        await _credit_company_budget(db, stock, -cost)
 
     await db.stock_events.insert_one({
         "symbol": symbol,

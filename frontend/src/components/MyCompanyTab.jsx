@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCompany, createCompany, inviteEmployee, updateMemberSalary,
   fireMember, collectCompanyProfit, companyDeposit, companyWithdraw,
   fetchCompanies, applyToCompany, updateCompanySettings, disbandCompany, leaveCompany,
   updateOwnerSalary, companyIpo, companyDividend,
+  companyRecallStock, companyIssueCrypto, companyRecallCrypto,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import CompanyAssetsPanel from './CompanyAssetsPanel'
@@ -12,10 +13,40 @@ import ConfirmDialog from './ConfirmDialog'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
   ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
-  Search, LogIn, ChevronRight, Settings, Eye, EyeOff, Unlock, Lock, LineChart, Coins,
+  Search, LogIn, ChevronRight, Settings, Eye, EyeOff, Unlock, Lock, LineChart, Coins, Upload,
 } from 'lucide-react'
 
 const LOGO_EMOJI = ['🏢', '🏦', '🏭', '🚀', '💎', '⚙️', '🛰️', '🏗️', '💼', '🌐', '⚡', '🔧']
+
+// Сжимает выбранный логотип до квадрата LOGO_SIZE×LOGO_SIZE (cover-crop) и
+// отдаёт data URL — так же, как аватар профиля (см. SettingsPage). Хранится
+// прямо в поле companies.logo, без файлового хранилища.
+const LOGO_SIZE = 256
+const LOGO_QUALITY = 0.85
+
+function readAndResizeImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('read-failed'))
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('decode-failed'))
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = LOGO_SIZE
+        canvas.height = LOGO_SIZE
+        const ctx = canvas.getContext('2d')
+        const scale = Math.max(LOGO_SIZE / img.width, LOGO_SIZE / img.height)
+        const w = img.width * scale
+        const h = img.height * scale
+        ctx.drawImage(img, (LOGO_SIZE - w) / 2, (LOGO_SIZE - h) / 2, w, h)
+        resolve(canvas.toDataURL('image/jpeg', LOGO_QUALITY))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
 
 function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
@@ -40,6 +71,9 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [ipoModal, setIpoModal] = useState(null)   // { symbol, totalShares }
   const [dividendModal, setDividendModal] = useState(null) // { perShare }
+  const [cryptoModal, setCryptoModal] = useState(null)     // { symbol, supply, name }
+  const [confirmRecall, setConfirmRecall] = useState(null) // 'stock' | 'crypto'
+  const logoFileRef = useRef(null)
 
   const load = useCallback(async () => {
     try {
@@ -122,6 +156,19 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     isOpen: data.isOpen !== false,
     visibleInSearch: data.visibleInSearch !== false,
   })
+
+  const onLogoFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''   // позволяем выбрать тот же файл повторно
+    if (!file) return
+    if (!file.type.startsWith('image/')) { flash(t('settings.avatarInvalid'), 'error'); return }
+    try {
+      const dataUrl = await readAndResizeImage(file)
+      setSettingsModal(m => m && { ...m, logo: dataUrl })
+    } catch {
+      flash(t('settings.avatarInvalid'), 'error')
+    }
+  }
 
   const saveSettings = async () => {
     setBusy(true)
@@ -208,6 +255,44 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }
 
+  const doIssueCrypto = async () => {
+    const supply = Math.floor(Number(cryptoModal.supply))
+    if (!cryptoModal.symbol.trim() || !(supply >= 10000)) {
+      flash(t('company.crypto.invalid'), 'error'); return
+    }
+    setBusy(true)
+    try {
+      const res = await companyIssueCrypto({
+        symbol: cryptoModal.symbol.trim().toUpperCase(), supply,
+        name: cryptoModal.name.trim() || undefined,
+      })
+      if (res?.company) setData(res.company)
+      flash(t('company.crypto.issued', { symbol: res.symbol, price: formatMoney(res.price) }))
+      setCryptoModal(null)
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doRecall = async () => {
+    const kind = confirmRecall
+    setBusy(true)
+    try {
+      const res = kind === 'crypto' ? await companyRecallCrypto() : await companyRecallStock()
+      if (res?.company) setData(res.company)
+      flash(t(kind === 'crypto' ? 'company.crypto.recalled' : 'company.ipo.recalled'))
+      setConfirmRecall(null)
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="company-tab">
@@ -281,7 +366,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       <div className="leaderboard-title-row company-title-row">
         <span className="company-logo-badge">
           {data.logo
-            ? (/^https?:\/\//.test(data.logo)
+            ? (/^(https?:\/\/|data:image\/)/.test(data.logo)
                 ? <img src={data.logo} alt="" className="company-logo-img" />
                 : <span className="company-logo-emoji">{data.logo}</span>)
             : <Store size={22} className="icon" />}
@@ -385,10 +470,16 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
               <span>{t('company.ipo.freeShares')}: {formatCompact(data.stock.freeShares)}</span>
             </div>
             {data.isOwner && (
-              <button className="asset-act upgrade" disabled={busy}
-                onClick={() => setDividendModal({ perShare: '' })}>
-                <Coins size={14} /> {t('company.ipo.payDividend')}
-              </button>
+              <div className="csc-actions">
+                <button className="asset-act upgrade" disabled={busy}
+                  onClick={() => setDividendModal({ perShare: '' })}>
+                  <Coins size={14} /> {t('company.ipo.payDividend')}
+                </button>
+                <button className="asset-act danger" disabled={busy}
+                  onClick={() => setConfirmRecall('stock')}>
+                  <Trash2 size={14} /> {t('company.ipo.recall')}
+                </button>
+              </div>
             )}
           </div>
         ) : data.isOwner ? (
@@ -401,6 +492,44 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
           </div>
         ) : (
           <p className="empty-state">{t('company.ipo.none')}</p>
+        )}
+      </div>
+
+      {/* Криптовалюта компании — эмиссия и отзыв (только владелец управляет) */}
+      <div className="company-section">
+        <h3><Coins size={16} /> {t('company.crypto.title')}</h3>
+        {data.crypto ? (
+          <div className="company-stock-card">
+            <div className="csc-row">
+              <span className="csc-symbol">{data.crypto.symbol}</span>
+              <span className={`csc-price ${data.crypto.change24h >= 0 ? 'up' : 'down'}`}>
+                ${formatMoney(data.crypto.price)}
+                {data.crypto.change24h != null && ` (${data.crypto.change24h >= 0 ? '+' : ''}${data.crypto.change24h}%)`}
+              </span>
+            </div>
+            <div className="csc-meta">
+              <span>{t('company.ipo.marketCap')}: ${formatCompact(data.crypto.marketCap)}</span>
+              <span>{t('company.crypto.supply')}: {formatCompact(data.crypto.supply)}</span>
+            </div>
+            {data.isOwner && (
+              <div className="csc-actions">
+                <button className="asset-act danger" disabled={busy}
+                  onClick={() => setConfirmRecall('crypto')}>
+                  <Trash2 size={14} /> {t('company.crypto.recall')}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : data.isOwner ? (
+          <div className="company-stock-empty">
+            <p className="company-note">{t('company.crypto.desc')}</p>
+            <button className="asset-act upgrade" disabled={busy}
+              onClick={() => setCryptoModal({ symbol: '', supply: '10000000', name: '' })}>
+              <Coins size={14} /> {t('company.crypto.issue')}
+            </button>
+          </div>
+        ) : (
+          <p className="empty-state">{t('company.crypto.none')}</p>
         )}
       </div>
 
@@ -579,6 +708,36 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         </div>
       )}
 
+      {cryptoModal && (
+        <div className="modal-overlay" onClick={() => !busy && setCryptoModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setCryptoModal(null)} disabled={busy}><X size={18} /></button>
+            <h3><Coins size={18} /> {t('company.crypto.issue')}</h3>
+            <p className="modal-price">{t('company.crypto.priceNote')}</p>
+            <label className="settings-label">{t('company.ipo.ticker')}</label>
+            <input className="company-name-input" maxLength={6} value={cryptoModal.symbol}
+              placeholder="COIN"
+              onChange={e => setCryptoModal({ ...cryptoModal, symbol: e.target.value.toUpperCase() })} />
+            <label className="settings-label">{t('company.crypto.nameLabel')}</label>
+            <input className="company-name-input" maxLength={40} value={cryptoModal.name}
+              placeholder={t('company.crypto.namePlaceholder')}
+              onChange={e => setCryptoModal({ ...cryptoModal, name: e.target.value })} />
+            <label className="settings-label">{t('company.crypto.supply')}</label>
+            <input className="company-name-input" type="number" min="10000" step="10000" value={cryptoModal.supply}
+              onChange={e => setCryptoModal({ ...cryptoModal, supply: e.target.value })} />
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" disabled={busy || !cryptoModal.symbol.trim() || !(Number(cryptoModal.supply) >= 10000)}
+                onClick={doIssueCrypto}>
+                {busy ? t('bank.processing') : t('company.crypto.confirm')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setCryptoModal(null)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {settingsModal && (
         <div className="modal-overlay" onClick={() => !busy && setSettingsModal(null)}>
           <div className="modal-content company-settings-modal" onClick={e => e.stopPropagation()}>
@@ -602,9 +761,22 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                   onClick={() => setSettingsModal({ ...settingsModal, logo: em })}>{em}</button>
               ))}
             </div>
-            <input className="company-name-input" maxLength={300} value={settingsModal.logo}
-              placeholder={t('company.logoPlaceholder')}
-              onChange={e => setSettingsModal({ ...settingsModal, logo: e.target.value })} />
+            <div className="company-logo-upload">
+              {/^data:image\//.test(settingsModal.logo) && (
+                <img src={settingsModal.logo} alt="" className="company-logo-preview" />
+              )}
+              <input ref={logoFileRef} type="file" accept="image/*" hidden onChange={onLogoFile} />
+              <button type="button" className="stock-btn" disabled={busy}
+                onClick={() => logoFileRef.current?.click()}>
+                <Upload size={15} /> {t('company.logoUpload')}
+              </button>
+              {/^data:image\//.test(settingsModal.logo) && (
+                <button type="button" className="stock-btn cancel-btn" disabled={busy}
+                  onClick={() => setSettingsModal({ ...settingsModal, logo: '' })}>
+                  <Trash2 size={15} /> {t('common.delete')}
+                </button>
+              )}
+            </div>
 
             <div className="settings-toggles">
               <button type="button" className={`settings-toggle ${settingsModal.isOpen ? 'on' : ''}`}
@@ -657,6 +829,18 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         cancelLabel={t('common.no')}
         onConfirm={doLeave}
         onCancel={() => setConfirmLeave(false)}
+      />
+
+      <ConfirmDialog
+        open={!!confirmRecall}
+        danger
+        busy={busy}
+        title={t(confirmRecall === 'crypto' ? 'company.crypto.recall' : 'company.ipo.recall')}
+        message={t(confirmRecall === 'crypto' ? 'company.crypto.recallConfirm' : 'company.ipo.recallConfirm')}
+        confirmLabel={t('common.yes')}
+        cancelLabel={t('common.no')}
+        onConfirm={doRecall}
+        onCancel={() => setConfirmRecall(null)}
       />
     </div>
   )

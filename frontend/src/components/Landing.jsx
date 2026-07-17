@@ -47,7 +47,7 @@ function Landing() {
       <header className="lp-nav">
         <div className="lp-nav-inner">
           <Link to="/" className="lp-brand" aria-label="TradeVerse">
-            <span className="lp-brand-logo">T</span>
+            <span className="lp-brand-logo"><img src="/favicon.svg" alt="TradeVerse" className="logo-glyph" /></span>
             <span className="lp-brand-name">TradeVerse</span>
           </Link>
           <div className="lp-nav-actions">
@@ -145,7 +145,7 @@ function Landing() {
       <footer className="lp-footer">
         <div className="lp-footer-inner">
           <div className="lp-footer-brand">
-            <span className="lp-brand-logo">T</span>
+            <span className="lp-brand-logo"><img src="/favicon.svg" alt="TradeVerse" className="logo-glyph" /></span>
             <div>
               <div className="lp-brand-name">TradeVerse</div>
               <p className="lp-footer-tagline">{t('landing.footer.tagline')}</p>

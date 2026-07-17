@@ -197,7 +197,7 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
     <header className="header">
       <div className="header-left">
         <div className="header-logo">
-          <span className="header-logo-icon">T</span>
+          <span className="header-logo-icon"><img src="/favicon.svg" alt="TradeVerse" className="logo-glyph" /></span>
           <span className="header-logo-text">{headerTitle}</span>
         </div>
       </div>

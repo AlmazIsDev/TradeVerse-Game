@@ -20,12 +20,13 @@ from pydantic import BaseModel, field_validator
 from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
-    INCOME, EXPENSE, CAT_COMPANY, CAT_DIVIDEND, CAT_TRADE,
+    INCOME, EXPENSE, CAT_COMPANY, CAT_DIVIDEND, CAT_TRADE, CAT_CRYPTO,
     adjust_balance, record_transaction, query_transactions,
 )
 from assets import company_income_per_hour, list_company_assets
 from notifications import push_notification
 from econ import get_econ
+from market_data import MarketDataService
 
 router = APIRouter(prefix="/api/company", tags=["company"])
 
@@ -87,6 +88,13 @@ class CompanySettings(BaseModel):
         if v is None:
             return v
         v = v.strip()
+        # Логотип — эмодзи, короткая ссылка ИЛИ загруженное изображение (data URL,
+        # сжатое клиентом до ~256px, как аватар профиля). Data URL длиннее лимита
+        # ссылки, поэтому для него отдельная, более щедрая граница.
+        if v.startswith("data:image/"):
+            if len(v) > 700_000:
+                raise ValueError("Слишком большое изображение логотипа")
+            return v
         if len(v) > 300:
             raise ValueError("Слишком длинная ссылка на логотип")
         return v
@@ -199,6 +207,36 @@ class CompanyDividend(BaseModel):
         return round(float(v), 4)
 
 
+class CompanyCrypto(BaseModel):
+    """Эмиссия монеты компании (аналог IPO). Цена внутренняя = капитал / эмиссия."""
+    symbol: str
+    supply: int
+    name: Optional[str] = None
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_ok(cls, v):
+        v = (v or "").strip().upper()
+        if not (2 <= len(v) <= 6) or not v.isalnum():
+            raise ValueError("Тикер: 2–6 латинских букв/цифр")
+        return v
+
+    @field_validator("supply")
+    @classmethod
+    def supply_ok(cls, v):
+        if v < 10_000 or v > 100_000_000_000:
+            raise ValueError("Эмиссия: 10 000 – 100 млрд монет")
+        return int(v)
+
+    @field_validator("name")
+    @classmethod
+    def name_ok(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        return v[:40] if v else None
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -257,6 +295,23 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
                 "marketCap": round(price * cfg_total, 2),
             }
 
+    # Монета компании (если выпущена) — для секции «Криптовалюта компании».
+    crypto_info = None
+    csym = company.get("cryptoSymbol")
+    if csym:
+        cn = await db.crypto_assets.find_one({"symbol": csym})
+        if cn:
+            cprice = float(cn.get("price", 0.0))
+            supply = cn.get("supply", 0)
+            crypto_info = {
+                "symbol": csym,
+                "name": cn.get("name", csym),
+                "price": round(cprice, 6),
+                "change24h": round(cn.get("change24h", 0.0), 2),
+                "supply": supply,
+                "marketCap": round(cprice * supply, 2),
+            }
+
     # Живой username/avatar по userId — не полагаемся на снапшот-поле "username"
     # в company_members (оно устаревает после смены никнейма в Настройках), а
     # avatar там и вовсе никогда не хранился.
@@ -299,6 +354,7 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         "ownerId": owner_id,
         "ownerName": owner_user.get("username") if owner_user else None,
         "stock": stock_info,
+        "crypto": crypto_info,
         "isOwner": is_owner,
         "viewerRole": viewer_role,
         "members": display_members,
@@ -405,28 +461,10 @@ async def _disband(db: AsyncIOMotorDatabase, company: dict):
 
     await db.user_assets.update_many({"companyId": cid}, {"$set": {"companyId": None}})
 
-    # Делистинг акции компании: замораживаем и удаляем тикер с биржи. Держателям
-    # выкупаем позиции по последней цене из бюджета (если хватает) — иначе просто
-    # снимаем акцию (позиции обесцениваются вместе с исчезнувшей компанией).
-    symbol = company.get("stockSymbol")
-    if symbol:
-        st = await db.stocks.find_one({"symbol": symbol})
-        if st:
-            price = float(st.get("price", 0.0))
-            budget = company.get("budget", 0.0)
-            async for h in db.stock_holdings.find({"symbol": symbol, "quantity": {"$gt": 0}}):
-                qty = h.get("quantity", 0)
-                payout = round(price * qty, 2)
-                if payout > 0 and budget >= payout and h["userId"] != company["ownerId"]:
-                    budget -= payout
-                    hb = await adjust_balance(db, h["userId"], payout)
-                    await record_transaction(
-                        db, h["userId"], INCOME, payout, CAT_DIVIDEND,
-                        f"Делистинг {symbol}", symbol=symbol, balance_after=hb,
-                        meta={"companyId": cid, "kind": "delisting"},
-                    )
-            await db.stock_holdings.delete_many({"symbol": symbol})
-            await db.stocks.delete_one({"symbol": symbol})
+    # Делистинг акции и монеты компании: выкупаем позиции держателей по последней
+    # цене из бюджета (если хватает) и снимаем инструменты с бирж.
+    await _delist_company_stock(db, company, refund=True)
+    await _delist_company_crypto(db, company, refund=True)
 
     await db.company_debuffs.delete_many({"companyId": cid})
 
@@ -434,6 +472,77 @@ async def _disband(db: AsyncIOMotorDatabase, company: dict):
     await db.company_invites.delete_many({"companyId": cid})
     await db.company_applications.delete_many({"companyId": cid})
     await db.companies.delete_one({"_id": company["_id"]})
+
+
+async def _delist_company_stock(db: AsyncIOMotorDatabase, company: dict, refund: bool = True) -> bool:
+    """Снять акцию компании с биржи, выкупив позиции держателей из бюджета.
+
+    Владельцу деньги не возвращаем (его founder-доля оплачена бюджетом). При
+    refund=True выкупаем по последней цене, атомарно списывая из бюджета; если
+    средств не хватает на всех — оставшиеся позиции просто обесцениваются.
+    Сбрасывает companies.stockSymbol. Возвращает True, если акция была."""
+    symbol = company.get("stockSymbol")
+    if not symbol:
+        return False
+    st = await db.stocks.find_one({"symbol": symbol})
+    if st and refund:
+        price = float(st.get("price", 0.0))
+        cid = str(company["_id"])
+        async for h in db.stock_holdings.find({"symbol": symbol, "quantity": {"$gt": 0}}):
+            qty = h.get("quantity", 0)
+            payout = round(price * qty, 2)
+            if payout <= 0 or h["userId"] == company["ownerId"]:
+                continue
+            paid = await db.companies.find_one_and_update(
+                {"_id": company["_id"], "budget": {"$gte": payout}},
+                {"$inc": {"budget": -payout}},
+            )
+            if not paid:
+                break   # бюджет исчерпан — остальные позиции обесцениваются
+            hb = await adjust_balance(db, h["userId"], payout)
+            await record_transaction(
+                db, h["userId"], INCOME, payout, CAT_DIVIDEND,
+                f"Выкуп акций {symbol}", symbol=symbol, balance_after=hb,
+                meta={"companyId": cid, "kind": "delisting"},
+            )
+    await db.stock_holdings.delete_many({"symbol": symbol})
+    await db.stocks.delete_one({"symbol": symbol})
+    await db.companies.update_one({"_id": company["_id"]}, {"$set": {"stockSymbol": None}})
+    return True
+
+
+async def _delist_company_crypto(db: AsyncIOMotorDatabase, company: dict, refund: bool = True) -> bool:
+    """Снять монету компании с биржи, выкупив холдинги держателей из бюджета.
+
+    Зеркалит _delist_company_stock. Сбрасывает companies.cryptoSymbol."""
+    symbol = company.get("cryptoSymbol")
+    if not symbol:
+        return False
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if coin and refund:
+        price = float(coin.get("price", 0.0))
+        cid = str(company["_id"])
+        async for h in db.crypto_holdings.find({"symbol": symbol, "quantity": {"$gt": 0}}):
+            qty = h.get("quantity", 0.0)
+            payout = round(price * qty, 2)
+            if payout <= 0 or h["userId"] == company["ownerId"]:
+                continue
+            paid = await db.companies.find_one_and_update(
+                {"_id": company["_id"], "budget": {"$gte": payout}},
+                {"$inc": {"budget": -payout}},
+            )
+            if not paid:
+                break
+            hb = await adjust_balance(db, h["userId"], payout)
+            await record_transaction(
+                db, h["userId"], INCOME, payout, CAT_CRYPTO,
+                f"Выкуп монет {symbol}", symbol=symbol, balance_after=hb,
+                meta={"companyId": cid, "kind": "delisting"},
+            )
+    await db.crypto_holdings.delete_many({"symbol": symbol})
+    await db.crypto_assets.delete_one({"symbol": symbol})
+    await db.companies.update_one({"_id": company["_id"]}, {"$set": {"cryptoSymbol": None}})
+    return True
 
 
 @router.delete("")
@@ -1093,6 +1202,112 @@ async def company_pay_dividend(
     )
     return {"paid": total, "holders": len(holders),
             "company": await _serialize(db, paid_company, user_id)}
+
+
+@router.post("/stock/recall")
+async def company_recall_stock(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Отозвать акцию компании с биржи: выкуп держателей из бюджета, делистинг."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    if not company.get("stockSymbol"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У компании нет размещённой акции")
+    await _delist_company_stock(db, company, refund=True)
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    return {"ok": True, "company": await _serialize(db, updated, user_id)}
+
+
+CRYPTO_LISTING_FEE = 3000.0     # сбор за эмиссию монеты (из бюджета компании)
+
+
+@router.post("/crypto", status_code=status.HTTP_201_CREATED)
+async def company_issue_crypto(
+    payload: CompanyCrypto,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Выпустить монету компании на биржу (аналог IPO).
+
+    Цена внутренняя = капитал / эмиссия (фундаментал), далее двигается спросом
+    игроков (crypto.maintain оставляет монеты без coingeckoId на симуляции).
+    Сбор за эмиссию оплачивается из бюджета. Выручка от покупок на бирже идёт
+    в бюджет (см. crypto._credit_company_budget)."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    cid = str(company["_id"])
+
+    if company.get("cryptoSymbol"):
+        raise HTTPException(status.HTTP_409_CONFLICT, "У компании уже выпущена монета")
+    symbol = payload.symbol
+    if await db.crypto_assets.find_one({"symbol": symbol}) or await db.stocks.find_one({"symbol": symbol}):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Тикер «{symbol}» уже занят")
+
+    capital = await _company_capital(db, company)
+    if capital <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Нулевой капитал: пополните бюджет или передайте активы компании")
+    price = round(max(0.000001, capital / payload.supply), 6)
+
+    # Сбор за эмиссию — атомарно из бюджета, с одновременной привязкой тикера.
+    paid = await db.companies.find_one_and_update(
+        {"_id": company["_id"], "budget": {"$gte": CRYPTO_LISTING_FEE}, "cryptoSymbol": None},
+        {"$inc": {"budget": -CRYPTO_LISTING_FEE}, "$set": {"cryptoSymbol": symbol}},
+        return_document=True,
+    )
+    if not paid:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Недостаточно в бюджете: сбор за эмиссию ${CRYPTO_LISTING_FEE:,.0f}",
+        )
+
+    coin = {
+        "symbol": symbol,
+        "name": payload.name or f"{company['name']} Coin",
+        "description": (company.get("description", "") or "Монета компании")[:280],
+        "price": price,
+        "base_price": price,
+        "market_price": price,
+        "demand": 1.0,
+        "change24h": 0.0,
+        "volatility": 0.06,
+        "color": "#863bff",
+        "supply": payload.supply,
+        "ath": price,
+        "atl": price,
+        "volume24h": round(price * payload.supply * 0.04, 2),
+        "issuer": user_id,
+        "issuer_name": current_user.get("username"),
+        "companyId": cid,
+        "source": "company",
+        "updated_at": _now(),
+    }
+    await db.crypto_assets.insert_one(coin)
+    await MarketDataService.ensure_backfill(db, "crypto", symbol, price, 0.06)
+    await record_transaction(
+        db, user_id, EXPENSE, CRYPTO_LISTING_FEE, CAT_COMPANY,
+        f"Эмиссия монеты «{company['name']}» ({symbol})", balance_after=None,
+        meta={"companyId": cid, "kind": "crypto_issue", "symbol": symbol},
+    )
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    return {"symbol": symbol, "price": price, "supply": payload.supply,
+            "company": await _serialize(db, updated, user_id)}
+
+
+@router.post("/crypto/recall")
+async def company_recall_crypto(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Отозвать монету компании с биржи: выкуп держателей из бюджета, делистинг."""
+    user_id = str(current_user["_id"])
+    company = await _require_company(db, user_id)
+    if not company.get("cryptoSymbol"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У компании нет выпущенной монеты")
+    await _delist_company_crypto(db, company, refund=True)
+    updated = await db.companies.find_one({"_id": company["_id"]})
+    return {"ok": True, "company": await _serialize(db, updated, user_id)}
 
 
 @router.get("/history")

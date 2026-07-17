@@ -65,6 +65,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const [msg, setMsg] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
+  const [installQty, setInstallQty] = useState({}) // cat -> сколько ставить оптом (gpu/fan)
 
   const load = useCallback(async () => {
     try {
@@ -108,6 +109,20 @@ function MiningTab({ balance = 0, onBalanceChange }) {
       flash(err.message, 'error')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Массовая установка одинаковых деталей (GPU/вентиляторы): ставим по одной,
+  // но не больше свободной ёмкости и наличия. Сервер валидирует каждую.
+  const installMany = async (cat, hwIds) => {
+    setBusy(true)
+    try {
+      for (const hwId of hwIds) await installComponent(farm.id, cat, hwId)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+      await load()
     }
   }
 
@@ -201,7 +216,8 @@ function MiningTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-      {/* Панель управления фермой */}
+      {/* Панель управления фермой + правая статистика успехов */}
+      <div className="mining-body">
       <div className={`mining-panel ${farm.status}`}>
         <div className="mining-panel-head">
           <div className="mph-title">
@@ -347,11 +363,33 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                     <span className="mslot-empty">{t('mining.capacityFull')}</span>
                   ) : canAdd && (
                     avail.length > 0 ? (
-                      <select className="mslot-pick" disabled={busy} value=""
-                        onChange={e => { if (e.target.value) run(() => installComponent(farm.id, cat, e.target.value)) }}>
-                        <option value="">{t('mining.pickPart')}</option>
-                        {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>)}
-                      </select>
+                      <div className="mslot-pick-row">
+                        <select className="mslot-pick" disabled={busy} value=""
+                          onChange={e => {
+                            if (!e.target.value) return
+                            const picked = avail.find(p => p.hwId === e.target.value)
+                            if (multi) {
+                              // Оптом: ставим N одинаковых деталей (тот же товар),
+                              // ограничивая свободной ёмкостью и наличием.
+                              const want = Math.max(1, Math.min(installQty[cat] || 1, capLeft ?? Infinity))
+                              const key = hwName(picked, t) + partSpec(cat, picked.specs, t)
+                              const ids = avail.filter(p => hwName(p, t) + partSpec(cat, p.specs, t) === key).slice(0, want).map(p => p.hwId)
+                              installMany(cat, ids.length ? ids : [picked.hwId])
+                            } else {
+                              run(() => installComponent(farm.id, cat, e.target.value))
+                            }
+                          }}>
+                          <option value="">{t('mining.pickPart')}</option>
+                          {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>)}
+                        </select>
+                        {multi && (
+                          <span className="mslot-qty">
+                            <input type="number" min="1" max={capLeft ?? 999} disabled={busy}
+                              value={installQty[cat] || 1}
+                              onChange={e => setInstallQty(q => ({ ...q, [cat]: Math.max(1, Math.min(capLeft ?? 999, parseInt(e.target.value, 10) || 1)) }))} />
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className="mslot-empty">{t('mining.noParts')}</span>
                     )
@@ -361,6 +399,17 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             })}
           </div>
           <p className="mining-hint">{t('mining.buyHint')}</p>
+        </div>
+      </div>
+
+        {/* Правая панель — успехи добычи (lifetime + live). */}
+        <div className="mining-success">
+          <h4><TrendingUp size={16} /> {t('mining.successTitle')}</h4>
+          <div className="mining-success-row"><span>{t('mining.totalMinedCoins')}</span><b>{formatCompact(farm.totalMinedCoins || 0)}{farm.coin ? ` ${farm.coin}` : ''}</b></div>
+          <div className="mining-success-row"><span>{t('mining.totalMinedUsd')}</span><b>${formatCompact(farm.totalMinedUsd || 0)}</b></div>
+          <div className="mining-success-row"><span>{t('mining.earned')}</span><b className="up">${formatCompact(farm.totalEarned || 0)}</b></div>
+          <div className="mining-success-row"><span>{t('mining.hashrate')}</span><b>{formatCompact(s.hashrate || 0)} H/s</b></div>
+          <div className="mining-success-row"><span>{t('mining.profitHr')}</span><b className={(s.profitPerHour || 0) >= 0 ? 'up' : 'down'}>${formatMoney(s.profitPerHour || 0)}</b></div>
         </div>
       </div>
 

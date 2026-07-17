@@ -807,6 +807,14 @@
   border-radius: var(--radius-md);
   color: var(--color-text-primary);
   font-size: 15px;
+  /* Нативное выпадающее меню <select><option> берёт цвета из color-scheme —
+     без него в тёмной теме опции рендерятся белым-по-белому и «пропадают». */
+  color-scheme: light dark;
+}
+/* Явные цвета опций на случай, если браузер игнорирует color-scheme (Win/Chrome). */
+select.company-name-input option {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
 }
 .company-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); margin-bottom: var(--spacing-xl); }
 .company-actions .asset-act { flex: 0 1 auto; min-width: 150px; }
@@ -815,6 +823,40 @@
   display: flex; align-items: center; gap: var(--spacing-xs);
   font-size: 16px; font-weight: 600; margin-bottom: var(--spacing-md);
 }
+
+/* Акции компании (IPO / дивиденды) в «Моя Компания» */
+.company-stock-card {
+  display: flex; flex-direction: column; gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--hairline); border-radius: var(--radius-lg);
+}
+.company-stock-card .csc-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--spacing-md);
+}
+.company-stock-card .csc-symbol {
+  font-size: 20px; font-weight: 700; letter-spacing: 0.5px;
+  color: var(--color-text-primary);
+}
+.company-stock-card .csc-price {
+  font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.company-stock-card .csc-price.up { color: var(--color-success); }
+.company-stock-card .csc-price.down { color: var(--color-danger); }
+.company-stock-card .csc-meta {
+  display: flex; flex-wrap: wrap; gap: var(--spacing-xs) var(--spacing-lg);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--hairline);
+  font-size: 13px; color: var(--color-text-secondary);
+}
+.company-stock-card .asset-act { align-self: flex-start; }
+.company-stock-empty {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border: 1px dashed var(--hairline); border-radius: var(--radius-lg);
+}
+.company-stock-empty .company-note { margin: 0; }
 .company-hire {
   display: flex; flex-wrap: wrap; gap: var(--spacing-sm); margin-bottom: var(--spacing-md);
 }

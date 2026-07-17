@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchStocksV2, tradeStock, fetchPortfolio, issueStock, payDividend } from '../services/api'
+import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import AssetDetail from './AssetDetail'
 import {
-  TrendingUp, TrendingDown, Briefcase, AlertTriangle, Check, X, PlusCircle, Gift,
+  TrendingUp, TrendingDown, Briefcase, AlertTriangle, Check, X, Gift,
   Search, Activity, ArrowDownLeft, ArrowUpRight,
 } from 'lucide-react'
 
@@ -29,8 +29,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [feedback, setFeedback] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [issueModal, setIssueModal] = useState(false)
-  const [issueForm, setIssueForm] = useState({ name: '', symbol: '', price: '', totalShares: '1000000' })
   const [dividend, setDividend] = useState(null)   // stock being paid dividends
   const [perShare, setPerShare] = useState('')
   const [search, setSearch] = useState('')
@@ -85,34 +83,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
       setTimeout(() => setTrade(null), 700)
     } catch (err) {
       setFeedback({ type: 'error', text: err.message || t('common.error') })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const doIssue = async () => {
-    const totalShares = Math.floor(Number(issueForm.totalShares))
-    const price = Number(issueForm.price)
-    if (!issueForm.name.trim() || !issueForm.symbol.trim() || !(price > 0) || !(totalShares >= 1000)) {
-      setFeedback({ type: 'error', text: t('stocks.issueInvalid') })
-      return
-    }
-    setBusy(true)
-    try {
-      const res = await issueStock({
-        name: issueForm.name.trim(),
-        symbol: issueForm.symbol.trim().toUpperCase(),
-        description: '',
-        totalShares,
-        price,
-      })
-      onBalanceChange?.(res.balance)
-      setIssueModal(false)
-      setIssueForm({ name: '', symbol: '', price: '', totalShares: '1000000' })
-      setRefreshKey(k => k + 1)
-      await load()
-    } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
     } finally {
       setBusy(false)
     }
@@ -199,12 +169,9 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     <div className="stocks-tab crypto-tab">
       <div className="stocks-titlebar">
         <div className="leaderboard-title-row"><Briefcase size={22} className="icon" /><h2 className="tab-title">{t('stocks.title')}</h2></div>
-        <button className="stocks-issue-btn" onClick={() => { setIssueModal(true); setFeedback(null) }}>
-          <PlusCircle size={16} /> {t('stocks.issue')}
-        </button>
       </div>
 
-      {feedback && !trade && !issueModal && !dividend && (
+      {feedback && !trade && !dividend && (
         <div className={`transfer-feedback ${feedback.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
           {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
         </div>
@@ -375,40 +342,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                 {busy ? t('bank.processing') : t('common.confirm')}
               </button>
               <button className="stock-btn cancel-btn" onClick={() => setTrade(null)} disabled={busy}>
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модалка эмиссии акции */}
-      {issueModal && (
-        <div className="modal-overlay" onClick={() => !busy && setIssueModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setIssueModal(false)}><X size={18} /></button>
-            <h3>{t('stocks.issueTitle')}</h3>
-            <p className="modal-price">{t('stocks.issueFee')}</p>
-            <div className="issue-form">
-              <input placeholder={t('stocks.issueName')} value={issueForm.name} maxLength={60}
-                onChange={e => setIssueForm({ ...issueForm, name: e.target.value })} />
-              <input placeholder={t('stocks.issueTicker')} value={issueForm.symbol} maxLength={6}
-                onChange={e => setIssueForm({ ...issueForm, symbol: e.target.value.toUpperCase() })} />
-              <input type="number" min="0.01" step="0.01" placeholder={t('stocks.issuePrice')} value={issueForm.price}
-                onChange={e => setIssueForm({ ...issueForm, price: e.target.value })} />
-              <input type="number" min="1000" step="1000" placeholder={t('stocks.issueShares')} value={issueForm.totalShares}
-                onChange={e => setIssueForm({ ...issueForm, totalShares: e.target.value })} />
-            </div>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
-              </div>
-            )}
-            <div className="modal-buttons">
-              <button className="stock-btn buy-btn" onClick={doIssue} disabled={busy}>
-                {busy ? t('bank.processing') : t('stocks.issueConfirm')}
-              </button>
-              <button className="stock-btn cancel-btn" onClick={() => setIssueModal(false)} disabled={busy}>
                 {t('common.cancel')}
               </button>
             </div>

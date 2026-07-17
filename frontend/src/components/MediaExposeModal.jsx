@@ -12,7 +12,7 @@ import {
 /**
  * Модалка «Разоблачение в СМИ» — открывается из меню «Взаимодействие» на активе
  * «Медиахолдинг» (см. MyAssetsTab). Владелец Медиахолдинга заказывает разоблачение
- * против компании ИЛИ игрока. Новость готовится 30 мин–2 ч, затем планировщик
+ * против компании ИЛИ игрока. Новость готовится 15 мин–2 ч, затем планировщик
  * разыгрывает исход: успех снижает доход бизнесов цели (15–80% от взноса) и роняет
  * цену её акции; провал сжигает взнос и временно повышает доход цели.
  */
@@ -103,7 +103,8 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
             <p className="company-note">{t('media.intro', {
               hitMin: Math.round((status?.hitMinPct || 0) * 100),
               hitMax: Math.round((status?.hitMaxPct || 0) * 100),
-              hours: status?.effectHours,
+              hoursMin: status?.effectHoursMin,
+              hoursMax: status?.effectHoursMax,
               stock: Math.round((status?.stockHitPct || 0) * 100),
               prepMin: status?.prepMinMinutes,
               prepMax: status?.prepMaxMinutes,

@@ -988,8 +988,11 @@ async def company_ipo(
     total_charge = round(LISTING_FEE + founder_cost, 2)
 
     # Оплата из бюджета — атомарно, с проверкой достаточности (не $set из stale-чтения).
+    # Фильтр `stockSymbol: None` ловит и отсутствие поля, и явный null — иначе компания
+    # с полем stockSymbol=None прошла бы верхний falsy-guard, но $exists:False её отсёк бы,
+    # и IPO молча падало бы с «Недостаточно в бюджете».
     paid = await db.companies.find_one_and_update(
-        {"_id": company["_id"], "budget": {"$gte": total_charge}, "stockSymbol": {"$exists": False}},
+        {"_id": company["_id"], "budget": {"$gte": total_charge}, "stockSymbol": None},
         {"$inc": {"budget": -total_charge}, "$set": {"stockSymbol": symbol}},
         return_document=True,
     )
@@ -1046,9 +1049,9 @@ async def company_pay_dividend(
 ):
     """Выплатить дивиденды держателям акции компании ИЗ БЮДЖЕТА компании.
 
-    Держатель-владелец исключается (он и так владеет компанией). Списание из
-    бюджета атомарно (проверка достаточности) — дивиденды обеспечены реальными
-    деньгами, не печатаются."""
+    Платит ВСЕМ держателям, включая владельца (у него founder-доля, и как в
+    реальной жизни платит компания, а не он лично). Списание из бюджета атомарно
+    (проверка достаточности) — дивиденды обеспечены реальными деньгами."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
     symbol = company.get("stockSymbol")
@@ -1058,7 +1061,7 @@ async def company_pay_dividend(
     per = payload.perShare
     holders = [
         h async for h in db.stock_holdings.find(
-            {"symbol": symbol, "quantity": {"$gt": 0}, "userId": {"$ne": user_id}}
+            {"symbol": symbol, "quantity": {"$gt": 0}}
         )
     ]
     total = round(sum(per * h.get("quantity", 0) for h in holders), 2)

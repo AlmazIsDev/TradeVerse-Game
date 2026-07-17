@@ -52,6 +52,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [data, setData] = useState(null)
   const [roles, setRoles] = useState([])
+  const [permOptions, setPermOptions] = useState([])
   const [foundingFee, setFoundingFee] = useState(10000)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -62,7 +63,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [companies, setCompanies] = useState([])
   const [companySearch, setCompanySearch] = useState('')
   const [invite, setInvite] = useState({ username: '', role: 'worker', salary: '' })
-  const [editing, setEditing] = useState(null)      // { userId, salary }
+  const [editing, setEditing] = useState(null)      // owner-salary inline edit { userId, salary }
+  const [memberSettings, setMemberSettings] = useState(null) // { userId, username, salary, roleTitle, permissions }
   const [moneyModal, setMoneyModal] = useState(null) // 'deposit' | 'withdraw'
   const [moneyAmount, setMoneyAmount] = useState('')
   const [showAssets, setShowAssets] = useState(false)
@@ -80,6 +82,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       const res = await fetchCompany()
       setData(res.company)
       setRoles(res.roles || [])
+      setPermOptions(res.permissions || [])
       if (res.foundingFee != null) setFoundingFee(res.foundingFee)
     } catch {
       setData(null)
@@ -571,7 +574,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                   )}
                   <div className="company-emp-text">
                     <span className="company-emp-name">{m.username}</span>
-                    <span className="company-emp-role">{t(`company.roles.${m.role}`, m.role)}</span>
+                    <span className="company-emp-role">{m.roleTitle || t(`company.roles.${m.role}`, m.role)}</span>
                   </div>
                 </div>
                 {m.role === 'owner' ? (
@@ -595,20 +598,17 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                   )
                 ) : !data.isOwner ? (
                   <span className="company-emp-salary">${formatMoney(m.salary)}{t('units.perHour')}</span>
-                ) : editing?.userId === m.userId ? (
-                  <div className="company-emp-edit">
-                    <input type="number" min="1" value={editing.salary}
-                      onChange={ev => setEditing({ ...editing, salary: ev.target.value })} />
-                    <button className="asset-act collect" disabled={busy}
-                      onClick={() => run(() => updateMemberSalary(m.userId, Number(editing.salary)), 'company.salaryUpdated', () => setEditing(null))}>
-                      <Check size={14} />
-                    </button>
-                    <button className="asset-act" onClick={() => setEditing(null)}><X size={14} /></button>
-                  </div>
                 ) : (
                   <div className="company-emp-actions">
                     <span className="company-emp-salary">${formatMoney(m.salary)}{t('units.perHour')}</span>
-                    <button className="asset-act" onClick={() => setEditing({ userId: m.userId, salary: String(m.salary) })}>{t('company.editSalary')}</button>
+                    <button className="asset-act" title={t('company.memberSettings')}
+                      onClick={() => setMemberSettings({
+                        userId: m.userId, username: m.username,
+                        salary: String(m.salary), roleTitle: m.roleTitle || '',
+                        permissions: Array.isArray(m.permissions) ? m.permissions : [],
+                      })}>
+                      <Settings size={14} />
+                    </button>
                     <button className="asset-act sell" disabled={busy}
                       onClick={() => run(() => fireMember(m.userId), 'company.fired')}>
                       <Trash2 size={14} />
@@ -651,6 +651,60 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                 {busy ? t('bank.processing') : t('common.confirm')}
               </button>
               <button className="stock-btn cancel-btn" onClick={() => setMoneyModal(null)} disabled={busy}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {memberSettings && (
+        <div className="modal-overlay" onClick={() => !busy && setMemberSettings(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setMemberSettings(null)} disabled={busy}><X size={18} /></button>
+            <h3><Settings size={18} /> {t('company.memberSettings')}</h3>
+            <p className="modal-company">{memberSettings.username}</p>
+            <div className="modal-quantity">
+              <label>{t('company.salary')}:</label>
+              <input type="number" min="1" step="any" value={memberSettings.salary} autoFocus
+                onChange={e => setMemberSettings({ ...memberSettings, salary: e.target.value })} />
+            </div>
+            <div className="modal-quantity">
+              <label>{t('company.roleTitle')}:</label>
+              <input type="text" maxLength={32} placeholder={t('company.roleTitlePlaceholder')}
+                value={memberSettings.roleTitle}
+                onChange={e => setMemberSettings({ ...memberSettings, roleTitle: e.target.value })} />
+            </div>
+            <div className="member-perms">
+              <span className="member-perms-label">{t('company.permissions')}</span>
+              {permOptions.map(p => (
+                <label key={p} className="member-perm">
+                  <input type="checkbox"
+                    checked={memberSettings.permissions.includes(p)}
+                    onChange={e => setMemberSettings({
+                      ...memberSettings,
+                      permissions: e.target.checked
+                        ? [...memberSettings.permissions, p]
+                        : memberSettings.permissions.filter(x => x !== p),
+                    })} />
+                  <span>{t(`company.perms.${p}`, p)}</span>
+                </label>
+              ))}
+            </div>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" disabled={busy || !(Number(memberSettings.salary) > 0)}
+                onClick={() => run(
+                  () => updateMemberSalary(memberSettings.userId, {
+                    salary: Number(memberSettings.salary),
+                    role_title: memberSettings.roleTitle.trim(),
+                    permissions: memberSettings.permissions,
+                  }),
+                  'company.memberUpdated',
+                  () => setMemberSettings(null),
+                )}>
+                {busy ? t('bank.processing') : t('common.confirm')}
+              </button>
+              <button className="stock-btn cancel-btn" onClick={() => setMemberSettings(null)} disabled={busy}>
                 {t('common.cancel')}
               </button>
             </div>

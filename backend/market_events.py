@@ -23,14 +23,14 @@ router = APIRouter(prefix="/api/admin/economy", tags=["economy-events"])
 #          множители (materials — стоимость закупки материалов для бизнеса,
 #          см. assets._materials_unit_price).
 EVENT_TYPES = {
-    "crisis":            {"name": "Экономический кризис",     "icon": "📉", "effects": {"all": -0.15}, "income": -0.20, "materials": -0.10, "duration_h": 12},
-    "construction_boom": {"name": "Строительный бум",         "icon": "🏗️", "effects": {"realestate": 0.20}, "materials": 0.20, "duration_h": 10},
-    "tourist_season":    {"name": "Туристический сезон",       "icon": "🏖️", "effects": {"realestate": 0.10, "hotel": 0.25}, "rental": 0.20, "duration_h": 24},
-    "fuel_prices":       {"name": "Рост цен на топливо",       "icon": "⛽", "effects": {"car": -0.12, "business": -0.05}, "materials": 0.08, "duration_h": 10},
-    "banking_reform":    {"name": "Банковская реформа",        "icon": "🏦", "effects": {}, "income": 0.10, "duration_h": 14},
-    "industrial_growth": {"name": "Промышленный рост",         "icon": "🏭", "effects": {"business": 0.15}, "income": 0.08, "materials": 0.05, "duration_h": 12},
-    "tech_breakthrough": {"name": "Технологический прорыв",    "icon": "🚀", "effects": {"business": 0.10}, "crypto": 0.06, "materials": -0.05, "duration_h": 12},
-    "material_shortage": {"name": "Дефицит материалов",        "icon": "📦", "effects": {"realestate": 0.15, "car": 0.10}, "materials": 0.45, "duration_h": 8},
+    "crisis":            {"name": "Экономический кризис",     "icon": "📉", "desc": "Падение всех рынков и снижение доходов. Цены активов и пассивный доход временно проседают.", "effects": {"all": -0.15}, "income": -0.20, "materials": -0.10, "duration_h": 12},
+    "construction_boom": {"name": "Строительный бум",         "icon": "🏗️", "desc": "Рост цен на недвижимость, но материалы для бизнеса дорожают.", "effects": {"realestate": 0.20}, "materials": 0.20, "duration_h": 10},
+    "tourist_season":    {"name": "Туристический сезон",       "icon": "🏖️", "desc": "Спрос на жильё и отели растёт, аренда приносит больше дохода.", "effects": {"realestate": 0.10, "hotel": 0.25}, "rental": 0.20, "duration_h": 24},
+    "fuel_prices":       {"name": "Рост цен на топливо",       "icon": "⛽", "desc": "Дорогое топливо бьёт по автомобилям и бизнесу, материалы дорожают.", "effects": {"car": -0.12, "business": -0.05}, "materials": 0.08, "duration_h": 10},
+    "banking_reform":    {"name": "Банковская реформа",        "icon": "🏦", "desc": "Реформа повышает доходность: пассивный доход временно вырастает.", "effects": {}, "income": 0.10, "duration_h": 14},
+    "industrial_growth": {"name": "Промышленный рост",         "icon": "🏭", "desc": "Бизнес на подъёме — растут цены предприятий и доходы.", "effects": {"business": 0.15}, "income": 0.08, "materials": 0.05, "duration_h": 12},
+    "tech_breakthrough": {"name": "Технологический прорыв",    "icon": "🚀", "desc": "Технологии двигают бизнес и крипту вверх, материалы дешевеют.", "effects": {"business": 0.10}, "crypto": 0.06, "materials": -0.05, "duration_h": 12},
+    "material_shortage": {"name": "Дефицит материалов",        "icon": "📦", "desc": "Нехватка материалов взвинчивает цены на недвижимость и авто.", "effects": {"realestate": 0.15, "car": 0.10}, "materials": 0.45, "duration_h": 8},
 }
 
 
@@ -49,6 +49,7 @@ async def start_event(db: AsyncIOMotorDatabase, etype: str, source: str = "admin
     now = _now()
     doc = {
         "type": etype, "name": spec["name"], "icon": spec.get("icon", "🌐"),
+        "desc": spec.get("desc", ""),
         "effects": spec.get("effects", {}),
         "income": spec.get("income", 0.0), "rental": spec.get("rental", 0.0), "crypto": spec.get("crypto", 0.0),
         "materials": spec.get("materials", 0.0),
@@ -109,6 +110,7 @@ def _serialize(e: dict) -> dict:
     return {
         "id": str(e["_id"]),
         "type": e.get("type"), "name": e.get("name"), "icon": e.get("icon"),
+        "desc": e.get("desc", ""),
         "effects": e.get("effects", {}),
         "income": e.get("income", 0.0), "rental": e.get("rental", 0.0), "crypto": e.get("crypto", 0.0),
         "materials": e.get("materials", 0.0),
@@ -132,7 +134,7 @@ async def list_events(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = 
     await get_active_events(db)  # авто-завершение просроченных
     active = [_serialize(e) async for e in db.market_events.find({"active": True}).sort("started_at", -1)]
     history = [_serialize(e) async for e in db.market_events.find({"active": False}).sort("ends_at", -1).limit(20)]
-    types = [{"type": k, "name": v["name"], "icon": v.get("icon"), "durationH": v.get("duration_h", 12)}
+    types = [{"type": k, "name": v["name"], "icon": v.get("icon"), "desc": v.get("desc", ""), "durationH": v.get("duration_h", 12)}
              for k, v in EVENT_TYPES.items()]
     return {"active": active, "history": history, "types": types}
 

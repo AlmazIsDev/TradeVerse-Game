@@ -17,7 +17,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from auth import get_current_user, hash_password, verify_password
 from database import get_db
-from schemas import ProfileUpdate, PasswordChangeRequest, AvatarUpdate
+from schemas import ProfileUpdate, PasswordChangeRequest, AvatarUpdate, BioUpdate
 
 logger = logging.getLogger("tradeverse.profile")
 
@@ -43,6 +43,17 @@ async def update_profile(
     await db.users.update_one({"_id": user_id}, {"$set": {"username": new_username}})
     logger.info("User %s renamed to '%s'", str(user_id), new_username)
     return {"username": new_username}
+
+
+@router.patch("/bio")
+async def update_bio(
+    payload: BioUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Обновить описание профиля («о себе») — уже провалидировано схемой."""
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"bio": payload.bio}})
+    return {"bio": payload.bio}
 
 
 @router.post("/password")

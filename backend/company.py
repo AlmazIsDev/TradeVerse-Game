@@ -33,6 +33,10 @@ router = APIRouter(prefix="/api/company", tags=["company"])
 FOUNDING_FEE = 10000.0
 MAX_ACCRUAL_HOURS = 24
 ROLES = ["intern", "worker", "manager", "engineer", "director"]
+# Права сотрудника — хранятся и отображаются в редакторе роли. Пока носят
+# информационный характер (делегирование в UI); серверного enforcement нет.
+# ponytail: без enforcement, добавить проверки в эндпоинты когда понадобится
+PERMISSIONS = ["manage_finance", "manage_employees", "manage_assets"]
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -137,6 +141,37 @@ class SalaryUpdate(BaseModel):
         if v is None or v <= 0:
             raise ValueError("Зарплата должна быть положительной")
         return round(float(v), 2)
+
+
+class MemberSettingsUpdate(BaseModel):
+    """Настройки сотрудника: зарплата, кастомное название роли, права."""
+    salary: float
+    role_title: Optional[str] = None
+    permissions: Optional[list[str]] = None
+
+    @field_validator("salary")
+    @classmethod
+    def salary_ok(cls, v):
+        if v is None or v <= 0:
+            raise ValueError("Зарплата должна быть положительной")
+        if v > 1_000_000:
+            raise ValueError("Слишком большая зарплата")
+        return round(float(v), 2)
+
+    @field_validator("role_title")
+    @classmethod
+    def title_ok(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        return v[:32] if v else None
+
+    @field_validator("permissions")
+    @classmethod
+    def perms_ok(cls, v):
+        if not v:
+            return []
+        return [p for p in v if p in PERMISSIONS]
 
 
 class OwnerSalaryUpdate(BaseModel):
@@ -330,7 +365,8 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
             {"id": str(m["_id"]), "userId": m["userId"],
              "username": users_by_id.get(m["userId"], {}).get("username", m.get("username")),
              "avatar": users_by_id.get(m["userId"], {}).get("avatar"),
-             "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2)}
+             "role": m.get("role", "worker"), "salary": round(m.get("salary", 0.0), 2),
+             "roleTitle": m.get("role_title") or "", "permissions": m.get("permissions", [])}
             for m in members
         ],
     ]
@@ -396,8 +432,8 @@ async def get_my_company(
     user_id = str(current_user["_id"])
     company = await _my_company_or_membership(db, user_id)
     if not company:
-        return {"company": None, "foundingFee": FOUNDING_FEE, "roles": ROLES}
-    return {"company": await _serialize(db, company, user_id), "roles": ROLES}
+        return {"company": None, "foundingFee": FOUNDING_FEE, "roles": ROLES, "permissions": PERMISSIONS}
+    return {"company": await _serialize(db, company, user_id), "roles": ROLES, "permissions": PERMISSIONS}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -693,16 +729,21 @@ async def my_jobs(
 @router.patch("/members/{member_user_id}")
 async def update_salary(
     member_user_id: str,
-    payload: SalaryUpdate,
+    payload: MemberSettingsUpdate,
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Изменить зарплату сотрудника (владелец)."""
+    """Изменить настройки сотрудника: зарплата, название роли, права (владелец)."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
+    updates = {"salary": payload.salary}
+    if payload.role_title is not None:
+        updates["role_title"] = payload.role_title
+    if payload.permissions is not None:
+        updates["permissions"] = payload.permissions
     res = await db.company_members.update_one(
         {"companyId": str(company["_id"]), "userId": member_user_id},
-        {"$set": {"salary": payload.salary}},
+        {"$set": updates},
     )
     if res.matched_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")

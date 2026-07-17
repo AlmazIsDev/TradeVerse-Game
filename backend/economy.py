@@ -169,10 +169,24 @@ async def get_my_transactions(
 
 @router.get("/account/analytics/weekly")
 async def get_weekly_analytics(
+    period: str = "week",
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Аналитика за неделю: доход, расход, изменение капитала, операции, график."""
-    data = await weekly_analytics(db, str(current_user["_id"]))
+    """Аналитика за период: доход, расход, изменение капитала, операции, график."""
+    if period not in ("today", "yesterday", "week", "month", "all"):
+        period = "week"
+    data = await weekly_analytics(db, str(current_user["_id"]), period)
     data["balance"] = current_user.get("balance", 0.0)
     return data
+
+
+@router.get("/events/active")
+async def get_active_world_events(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Активные мировые события для показа игрокам (без прав админа)."""
+    from market_events import get_active_events, _serialize
+    events = await get_active_events(db)
+    return {"active": [_serialize(e) for e in events]}

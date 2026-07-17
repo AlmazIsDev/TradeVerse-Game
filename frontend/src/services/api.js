@@ -804,9 +804,9 @@ export async function fetchMediaFeed() {
   return request('/api/media/feed')
 }
 
-export async function orderExpose({ targetCompanyId, budget }) {
+export async function orderExpose({ targetType, targetId, budget }) {
   return request('/api/media/expose', {
-    method: 'POST', body: JSON.stringify({ targetCompanyId, budget }),
+    method: 'POST', body: JSON.stringify({ targetType, targetId, budget }),
   })
 }
 

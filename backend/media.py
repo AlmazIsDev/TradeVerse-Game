@@ -1,18 +1,21 @@
-"""СМИ: разоблачения компаний.
+"""СМИ: разоблачения компаний и игроков.
 
-Владелец актива «Медиахолдинг» может заказать разоблачение против компании
-конкурента. За взнос (сгорает) с шансом, растущим от суммы взноса:
+Владелец актива «Медиахолдинг» заказывает разоблачение против компании-конкурента
+ИЛИ конкретного игрока. Взнос списывается сразу и «сгорает». Новость не выходит
+мгновенно — она ГОТОВИТСЯ от PREP_MIN до PREP_MAX (30 мин – 2 ч), после чего
+планировщик (``sweep_pending_exposes``) разыгрывает исход:
 
-- Успех  → доход всех бизнесов ВЛАДЕЛЬЦА компании-цели падает на EXPOSE_HIT
-           на EXPOSE_HOURS часов; если у компании есть биржевая акция — её цена
-           единоразово проседает на STOCK_HIT.
-- Провал → взнос сгорел, а доход бизнесов цели, наоборот, временно РАСТЁТ
-           (эффект Стрейзанда): +EXPOSE_BACKFIRE на EXPOSE_HOURS часов.
+- Успех  → доход всех бизнесов ВЛАДЕЛЬЦА-цели падает на hitPct (15–80%, растёт со
+           взносом) на EXPOSE_HOURS часов; если у цели есть биржевая акция — её
+           цена единоразово проседает на STOCK_HIT.
+- Провал → доход бизнесов цели, наоборот, временно РАСТЁТ (эффект Стрейзанда):
+           +EXPOSE_BACKFIRE на EXPOSE_HOURS часов.
 
 Дебафф/бафф хранится в коллекции ``company_debuffs`` как множитель ``factor`` с
-``expires_at``. Активные множители читаются лениво (как materials_boost у активов),
-без фоновой очистки. Взнос НЕ переходит цели — он списывается и «сгорает», поэтому
-механику нельзя использовать как скрытый перевод денег.
+``expires_at`` (создаётся только при разыгрывании исхода — до этого эффекта нет).
+Активные множители читаются лениво (как materials_boost у активов). Взнос НЕ
+переходит цели — он «сгорает», поэтому механику нельзя использовать как скрытый
+перевод денег.
 """
 from __future__ import annotations
 
@@ -37,10 +40,18 @@ MEDIA_SLUG = "media_holding"
 # Экономика разоблачения
 EXPOSE_MIN_BUDGET = 5000.0        # минимальный взнос
 EXPOSE_COOLDOWN_H = 24            # КД на пару заказчик→цель
-EXPOSE_HOURS = 12                 # длительность эффекта
-EXPOSE_HIT = 0.30                 # успех: −30% к доходу бизнесов владельца цели
+EXPOSE_HOURS = 12                 # длительность эффекта после выхода новости
 EXPOSE_BACKFIRE = 0.15            # провал: +15% доходу цели (эффект Стрейзанда)
 STOCK_HIT = 0.15                  # успех: −15% к цене акции компании-цели
+
+# Сила удара (снижение дохода при успехе) растёт со взносом: 15% → 80%.
+EXPOSE_HIT_MIN = 0.15
+EXPOSE_HIT_MAX = 0.80
+EXPOSE_HIT_SCALE = 3_000_000.0    # взнос, при котором удар приближается к максимуму
+
+# Подготовка новости: от 30 минут до 2 часов до выхода.
+PREP_MIN_MINUTES = 30
+PREP_MAX_MINUTES = 120
 
 # Шанс успеха растёт со взносом: base при минимуме → cap при SCALE и выше.
 CHANCE_BASE = 0.40
@@ -56,6 +67,12 @@ def _success_chance(budget: float) -> float:
     """Линейный рост шанса от взноса, ограниченный [CHANCE_BASE, CHANCE_MAX]."""
     extra = (CHANCE_MAX - CHANCE_BASE) * min(1.0, budget / CHANCE_SCALE)
     return round(min(CHANCE_MAX, CHANCE_BASE + extra), 4)
+
+
+def _hit_pct(budget: float) -> float:
+    """Сила удара по доходу (15–80%), линейно растёт со взносом."""
+    extra = (EXPOSE_HIT_MAX - EXPOSE_HIT_MIN) * min(1.0, budget / EXPOSE_HIT_SCALE)
+    return round(min(EXPOSE_HIT_MAX, EXPOSE_HIT_MIN + extra), 4)
 
 
 # ── Активные множители дохода (дебафф/бафф от СМИ) ────────────────────────────
@@ -89,15 +106,24 @@ async def has_media_holding(db: AsyncIOMotorDatabase, user_id: str) -> bool:
 
 
 class ExposeBody(BaseModel):
-    targetCompanyId: str
+    targetType: str = "company"       # 'company' | 'player'
+    targetId: str
     budget: float
 
-    @field_validator("targetCompanyId")
+    @field_validator("targetType")
+    @classmethod
+    def type_ok(cls, v):
+        v = (v or "company").strip().lower()
+        if v not in ("company", "player"):
+            raise ValueError("Некорректный тип цели")
+        return v
+
+    @field_validator("targetId")
     @classmethod
     def target_ok(cls, v):
         v = (v or "").strip()
         if not v:
-            raise ValueError("Не указана компания-цель")
+            raise ValueError("Не указана цель разоблачения")
         return v
 
     @field_validator("budget")
@@ -124,9 +150,13 @@ async def media_status(
         "minBudget": EXPOSE_MIN_BUDGET,
         "cooldownHours": EXPOSE_COOLDOWN_H,
         "effectHours": EXPOSE_HOURS,
-        "hitPct": EXPOSE_HIT,
+        "hitMinPct": EXPOSE_HIT_MIN,
+        "hitMaxPct": EXPOSE_HIT_MAX,
+        "hitScale": EXPOSE_HIT_SCALE,
         "backfirePct": EXPOSE_BACKFIRE,
         "stockHitPct": STOCK_HIT,
+        "prepMinMinutes": PREP_MIN_MINUTES,
+        "prepMaxMinutes": PREP_MAX_MINUTES,
         "chanceBase": CHANCE_BASE,
         "chanceMax": CHANCE_MAX,
         "chanceScale": CHANCE_SCALE,
@@ -138,20 +168,39 @@ async def expose_targets(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Компании, доступные как цель (все, кроме собственной игрока)."""
+    """Цели разоблачения: компании и игроки (кроме себя).
+
+    Игроки-цели ограничены теми, у кого есть хотя бы один бизнес (иначе бить
+    нечем — разоблачение снижает доход именно бизнесов)."""
     uid = str(current_user["_id"])
-    out = []
+
+    companies = []
     async for c in db.companies.find({"ownerId": {"$ne": uid}}).limit(100):
         owner = await db.users.find_one({"_id": ObjectId(c["ownerId"])}, {"username": 1}) \
             if ObjectId.is_valid(c["ownerId"]) else None
-        out.append({
+        companies.append({
             "id": str(c["_id"]),
             "name": c["name"],
             "ownerName": owner.get("username") if owner else "—",
             "logo": c.get("logo", ""),
         })
-    out.sort(key=lambda x: x["name"].lower())
-    return out
+    companies.sort(key=lambda x: x["name"].lower())
+
+    # Игроки, владеющие бизнесами (личными) — потенциальные цели.
+    biz_owner_ids = await db.user_assets.distinct("userId", {"type": "business"})
+    player_ids = [oid for oid in biz_owner_ids if oid and oid != uid]
+    players = []
+    if player_ids:
+        obj_ids = [ObjectId(p) for p in player_ids if ObjectId.is_valid(p)]
+        async for u in db.users.find({"_id": {"$in": obj_ids}}, {"username": 1, "avatar": 1}):
+            players.append({
+                "id": str(u["_id"]),
+                "name": u.get("username", "—"),
+                "avatar": u.get("avatar"),
+            })
+        players.sort(key=lambda x: (x["name"] or "").lower())
+
+    return {"companies": companies, "players": players}
 
 
 @router.get("/feed")
@@ -159,13 +208,15 @@ async def media_feed(
     _user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Публичная лента разоблачений (успех/провал)."""
+    """Публичная лента разоблачений (готовится / успех / провал)."""
     out = []
     async for e in db.media_events.find({}).sort("created_at", -1).limit(30):
         out.append({
             "id": str(e["_id"]),
-            "targetCompanyName": e.get("targetCompanyName"),
+            "targetName": e.get("targetName") or e.get("targetCompanyName"),
+            "targetType": e.get("targetType", "company"),
             "outcome": e.get("outcome"),
+            "resolveAt": e["resolve_at"].isoformat() if isinstance(e.get("resolve_at"), datetime) else None,
             "createdAt": e["created_at"].isoformat() if isinstance(e.get("created_at"), datetime) else None,
         })
     return out
@@ -177,31 +228,50 @@ async def expose_company(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Заказать разоблачение против компании-цели."""
+    """Заказать разоблачение против компании или игрока (новость готовится 30 мин–2 ч)."""
     uid = str(current_user["_id"])
 
     if not await has_media_holding(db, uid):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             "Нужен актив «Медиахолдинг», чтобы заказывать разоблачения")
 
-    if not ObjectId.is_valid(payload.targetCompanyId):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID компании")
-    company = await db.companies.find_one({"_id": ObjectId(payload.targetCompanyId)})
-    if not company:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Компания не найдена")
-    target_owner_id = company["ownerId"]
-    if target_owner_id == uid:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя разоблачать собственную компанию")
+    # Разрешаем цель в единый вид: владелец (по нему бьётся дебафф), необязательная
+    # компания (для удара по акции), отображаемое имя.
+    target_company_id: Optional[str] = None
+    if payload.targetType == "company":
+        if not ObjectId.is_valid(payload.targetId):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID компании")
+        company = await db.companies.find_one({"_id": ObjectId(payload.targetId)})
+        if not company:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Компания не найдена")
+        target_owner_id = company["ownerId"]
+        target_company_id = str(company["_id"])
+        target_name = company["name"]
+    else:  # player
+        if not ObjectId.is_valid(payload.targetId):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID игрока")
+        target_user = await db.users.find_one({"_id": ObjectId(payload.targetId)}, {"username": 1})
+        if not target_user:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+        target_owner_id = str(target_user["_id"])
+        target_name = target_user.get("username", "—")
+        # Если у игрока есть компания с акцией — по ней тоже можно ударить.
+        own_company = await db.companies.find_one({"ownerId": target_owner_id})
+        if own_company:
+            target_company_id = str(own_company["_id"])
 
-    # Кулдаун на пару заказчик→цель
+    if target_owner_id == uid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя разоблачать самого себя")
+
+    # Кулдаун на пару заказчик→владелец-цели (покрывает и компанию, и игрока).
     since = _now() - timedelta(hours=EXPOSE_COOLDOWN_H)
     recent = await db.media_events.find_one({
-        "orderedBy": uid, "targetCompanyId": payload.targetCompanyId,
+        "orderedBy": uid, "targetOwnerId": target_owner_id,
         "created_at": {"$gte": since},
     })
     if recent:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
-                            "Разоблачение против этой компании уже заказано недавно")
+                            "Разоблачение против этой цели уже заказано недавно")
 
     # Взнос списывается и «сгорает» (не переходит цели)
     new_balance = await adjust_balance(db, uid, -payload.budget)
@@ -209,23 +279,66 @@ async def expose_company(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для взноса")
     await record_transaction(
         db, uid, EXPENSE, payload.budget, CAT_BUSINESS,
-        f"Разоблачение: «{company['name']}»", balance_after=new_balance,
-        meta={"targetCompanyId": payload.targetCompanyId, "kind": "media_expose"},
+        f"Разоблачение: «{target_name}»", balance_after=new_balance,
+        meta={"targetType": payload.targetType, "targetId": payload.targetId, "kind": "media_expose"},
     )
 
     chance = _success_chance(payload.budget)
+    hit_pct = _hit_pct(payload.budget)
+    prep_minutes = random.randint(PREP_MIN_MINUTES, PREP_MAX_MINUTES)
+    resolve_at = _now() + timedelta(minutes=prep_minutes)
+
+    await db.media_events.insert_one({
+        "orderedBy": uid,
+        "targetType": payload.targetType,
+        "targetOwnerId": target_owner_id,
+        "targetCompanyId": target_company_id,
+        "targetName": target_name,
+        "budget": payload.budget,
+        "chance": chance,
+        "hitPct": hit_pct,
+        "outcome": "pending",
+        "created_at": _now(),
+        "resolve_at": resolve_at,
+    })
+
+    # Уведомляем заказчика: новость готовится.
+    await push_notification(
+        db, uid, "media", "Разоблачение заказано",
+        f"Материал о «{target_name}» готовится и выйдет примерно через {prep_minutes} мин.",
+        data={"targetName": target_name},
+    )
+
+    return {
+        "status": "pending",
+        "chance": chance,
+        "hitPct": hit_pct,
+        "prepMinutes": prep_minutes,
+        "effectHours": EXPOSE_HOURS,
+        "balance": new_balance,
+    }
+
+
+async def _resolve_expose(db: AsyncIOMotorDatabase, ev: dict):
+    """Разыгрывает исход одного готового разоблачения (успех/провал) и применяет эффект."""
+    target_owner_id = ev.get("targetOwnerId")
+    target_company_id = ev.get("targetCompanyId")
+    target_name = ev.get("targetName", "—")
+    hit_pct = float(ev.get("hitPct", EXPOSE_HIT_MIN))
+    chance = float(ev.get("chance", CHANCE_BASE))
+
     success = random.random() < chance
     expires = _now() + timedelta(hours=EXPOSE_HOURS)
 
     if success:
-        factor = round(1.0 - EXPOSE_HIT, 4)
+        factor = round(1.0 - hit_pct, 4)
         outcome = "success"
     else:
         factor = round(1.0 + EXPOSE_BACKFIRE, 4)
         outcome = "fail"
 
     await db.company_debuffs.insert_one({
-        "companyId": payload.targetCompanyId,
+        "companyId": target_company_id,
         "ownerId": target_owner_id,
         "factor": factor,
         "outcome": outcome,
@@ -233,43 +346,60 @@ async def expose_company(
         "expires_at": expires,
     })
 
-    stock_hit = None
-    if success:
-        stock_hit = await _hit_company_stock(db, payload.targetCompanyId)
+    if success and target_company_id:
+        await _hit_company_stock(db, target_company_id)
 
-    await db.media_events.insert_one({
-        "orderedBy": uid,
-        "targetCompanyId": payload.targetCompanyId,
-        "targetCompanyName": company["name"],
-        "budget": payload.budget,
-        "chance": chance,
-        "outcome": outcome,
-        "created_at": _now(),
-    })
+    await db.media_events.update_one(
+        {"_id": ev["_id"]},
+        {"$set": {"outcome": outcome, "resolved_at": _now()}},
+    )
 
-    # Уведомляем владельца цели
     if outcome == "success":
         await push_notification(
             db, target_owner_id, "media", "Репутационный кризис",
-            f"СМИ выпустили разоблачение о «{company['name']}». Доход ваших бизнесов "
-            f"снижен на {int(EXPOSE_HIT * 100)}% на {EXPOSE_HOURS} ч.",
-            data={"companyId": payload.targetCompanyId},
+            f"СМИ выпустили разоблачение о «{target_name}». Доход ваших бизнесов "
+            f"снижен на {int(hit_pct * 100)}% на {EXPOSE_HOURS} ч.",
+            data={"targetName": target_name},
         )
     else:
         await push_notification(
             db, target_owner_id, "media", "Провальное разоблачение",
-            f"Разоблачение о «{company['name']}» провалилось — интерес к вам вырос: "
+            f"Разоблачение о «{target_name}» провалилось — интерес вырос: "
             f"доход бизнесов +{int(EXPOSE_BACKFIRE * 100)}% на {EXPOSE_HOURS} ч.",
-            data={"companyId": payload.targetCompanyId},
+            data={"targetName": target_name},
         )
+    # Уведомляем заказчика об исходе.
+    ordered_by = ev.get("orderedBy")
+    if ordered_by:
+        if outcome == "success":
+            await push_notification(
+                db, ordered_by, "media", "Разоблачение вышло",
+                f"Материал о «{target_name}» удался: доход цели снижен на {int(hit_pct * 100)}%.",
+                data={"targetName": target_name},
+            )
+        else:
+            await push_notification(
+                db, ordered_by, "media", "Разоблачение провалилось",
+                f"Материал о «{target_name}» не сработал — взнос потрачен впустую.",
+                data={"targetName": target_name},
+            )
 
-    return {
-        "outcome": outcome,
-        "chance": chance,
-        "balance": new_balance,
-        "effectHours": EXPOSE_HOURS,
-        "stockHit": stock_hit,
-    }
+
+async def sweep_pending_exposes(db: AsyncIOMotorDatabase):
+    """Планировщик: разыгрывает исход у всех «созревших» разоблачений (resolve_at ≤ now)."""
+    now = _now()
+    async for ev in db.media_events.find({"outcome": "pending", "resolve_at": {"$lte": now}}):
+        try:
+            await _resolve_expose(db, ev)
+        except Exception:
+            # Не блокируем остальные — помечаем как провал, чтобы не зависало в pending.
+            try:
+                await db.media_events.update_one(
+                    {"_id": ev["_id"]},
+                    {"$set": {"outcome": "fail", "resolved_at": now}},
+                )
+            except Exception:
+                pass
 
 
 async def _hit_company_stock(db: AsyncIOMotorDatabase, company_id: str) -> Optional[dict]:

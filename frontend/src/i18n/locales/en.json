@@ -1116,7 +1116,7 @@
   "media": {
     "onboardTitle": "Media Holding required",
     "onboardDesc": "Buy the \"Media Holding\" business in the shop to order exposes against rival companies.",
-    "intro": "Order exposes against companies. Success cuts the owner business income by {{hit}}% for {{hours}}h and drops the share price by {{stock}}%.",
+    "intro": "Order exposes against companies and players. The story takes {{prepMin}}-{{prepMax}} min to prepare. Success cuts the target business income by {{hitMin}}-{{hitMax}}% (depends on budget) for {{hours}}h and drops the share price by {{stock}}%.",
     "orderTitle": "Order an expose",
     "targetLabel": "Target company",
     "pickTarget": "Choose a company",
@@ -1132,6 +1132,11 @@
     "feedEmpty": "No exposes yet",
     "feedSuccess": "Successful expose about \"{{company}}\"",
     "feedFail": "Failed expose about \"{{company}}\"",
-    "noTargets": "No companies available to expose"
+    "noTargets": "No companies available to expose",
+    "typeCompany": "Company",
+    "typePlayer": "Player",
+    "hit": "Hit: -{{pct}}% income",
+    "resultPending": "Expose ordered - the story will run in ~{{minutes}} min.",
+    "feedPending": "Preparing a story about \"{{name}}\""
   }
 }

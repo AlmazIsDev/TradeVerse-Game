@@ -24,6 +24,7 @@ import crypto
 import stocks
 import cityroof
 import econ
+import media
 from ws import broadcast, push_to_admins
 
 logger = logging.getLogger("tradeverse.scheduler")
@@ -70,6 +71,11 @@ async def _tick():
         await cityroof.sweep_itstudio_jobs(db)
     except Exception as exc:
         logger.warning("cityroof itstudio sweep failed: %s", exc, exc_info=True)
+    # 5c) СМИ: выход «созревших» разоблачений (готовились 30 мин–2 ч).
+    try:
+        await media.sweep_pending_exposes(db)
+    except Exception as exc:
+        logger.warning("media expose sweep failed: %s", exc, exc_info=True)
     # 6) Аналитика экономики — только админам (не всем игрокам), для живого
     #    обновления вкладки EconomyAdmin без ручного релоада.
     try:

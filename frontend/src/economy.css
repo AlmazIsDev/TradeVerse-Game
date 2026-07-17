@@ -702,6 +702,7 @@
 
 /* ── Разоблачение в СМИ (модалка из «Взаимодействие» на активе «Медиахолдинг») ── */
 .media-modal { max-width: 560px; width: min(560px, 96vw); }
+.media-type-toggle { display: flex; gap: var(--spacing-xs); margin-bottom: var(--spacing-sm); }
 .media-chance {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; font-weight: 700; color: var(--color-accent);
@@ -717,9 +718,11 @@
 }
 .media-feed-item.success { border-left: 3px solid var(--color-danger); }
 .media-feed-item.fail { border-left: 3px solid var(--color-success); }
+.media-feed-item.pending { border-left: 3px solid var(--color-text-tertiary); opacity: 0.85; }
 .media-feed-icon { display: inline-flex; }
 .media-feed-item.success .media-feed-icon { color: var(--color-danger); }
 .media-feed-item.fail .media-feed-icon { color: var(--color-success); }
+.media-feed-item.pending .media-feed-icon { color: var(--color-text-tertiary); }
 .media-feed-text { display: flex; flex-direction: column; gap: 2px; }
 .media-feed-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 .media-feed-date { font-size: 11px; color: var(--color-text-tertiary); }

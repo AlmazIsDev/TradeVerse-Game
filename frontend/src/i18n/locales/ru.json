@@ -13,7 +13,11 @@
     "myhomes": "Моё имущество",
     "mybusiness": "Мои бизнесы",
     "mycompany": "Моя Компания",
-    "leaderboard": "Таблица лидеров"
+    "leaderboard": "Таблица лидеров",
+    "groupFinance": "Финансы",
+    "groupMarkets": "Рынки",
+    "groupAssets": "Активы и бизнес",
+    "groupCommunity": "Сообщество"
   },
   "common": {
     "loading": "Загрузка...",
@@ -124,6 +128,13 @@
     "expense": "Расходы",
     "investments": "Инвестиции",
     "weeklyAnalytics": "Аналитика за неделю",
+    "period": {
+      "today": "Сегодня",
+      "yesterday": "Вчера",
+      "week": "Неделя",
+      "month": "Месяц",
+      "all": "Всё время"
+    },
     "incomeLabel": "Доход",
     "expenseLabel": "Расход",
     "earned": "Заработано",
@@ -360,7 +371,9 @@
     "condition": "Состояние",
     "cond_1": "Новое",
     "cond_2": "Отличное",
-    "cond_3": "Хорошее"
+    "cond_3": "Хорошее",
+    "rentalOnly": "Доход только с аренды",
+    "rentalOnlyHint": "Автомобили не приносят почасовой или пассивный доход. Зарабатывайте, сдавая их в аренду."
   },
   "tune": {
     "title": "Тюнинг",
@@ -401,6 +414,16 @@
     "fired": "Сотрудник уволен",
     "editSalary": "Зарплата",
     "salaryUpdated": "Зарплата обновлена",
+    "memberSettings": "Настройки сотрудника",
+    "memberUpdated": "Сотрудник обновлён",
+    "roleTitle": "Название роли",
+    "roleTitlePlaceholder": "напр. Ведущий инженер",
+    "permissions": "Права",
+    "perms": {
+      "manage_finance": "Управление финансами",
+      "manage_employees": "Управление сотрудниками",
+      "manage_assets": "Управление активами"
+    },
     "invite": "Пригласить",
     "invited": "Приглашение отправлено",
     "invitePlayer": "Ник игрока",
@@ -721,7 +744,29 @@
     "appearanceTitle": "Оформление",
     "darkMode": "Тёмная тема",
     "darkModeHint": "Тёмное оформление интерфейса. Настройка сохраняется на этом устройстве.",
-    "avatarInvalid": "Неверный формат изображения"
+    "avatarInvalid": "Неверный формат изображения",
+    "bio": "О себе",
+    "bioPlaceholder": "Расскажите о себе…",
+    "bioSaved": "Описание обновлено",
+    "saveBio": "Сохранить описание",
+    "statsTitle": "Статистика",
+    "achievementsTitle": "Достижения",
+    "stat": {
+      "netWorth": "Капитал",
+      "cash": "Наличные",
+      "stocks": "Акции",
+      "crypto": "Крипта",
+      "assets": "Активы",
+      "company": "Компания",
+      "warcoin": "WarCoin",
+      "profit": "Прибыль"
+    },
+    "achievement": {
+      "networth_1m": "Миллионер — капитал свыше $1M",
+      "in_profit": "В плюсе — положительная прибыль",
+      "diversified": "Диверсификация — 3+ класса активов",
+      "company_owner": "Предприниматель — владеет компанией"
+    }
   },
   "auth": {
     "login": "Вход",
@@ -966,6 +1011,7 @@
     "aiManager": "ИИ-управляющий",
     "level": "ур.",
     "upgrade": "Улучшить",
+    "maxLevel": "Макс. уровень",
     "fire": "Уволить",
     "playerManaged": "Управление игроком",
     "hireAi": "Нанять ИИ",
@@ -1139,10 +1185,16 @@
   "units": {
     "perHour": "/ч",
     "perYear": "/год",
-    "cores": "ядер",
+    "cores_one": "{{count}} ядро",
+    "cores_few": "{{count}} ядра",
+    "cores_many": "{{count}} ядер",
     "gb": "ГБ",
-    "gpuSlots": "слотов GPU",
-    "slots": "слотов",
+    "gpuSlots_one": "{{count}} слот GPU",
+    "gpuSlots_few": "{{count}} слота GPU",
+    "gpuSlots_many": "{{count}} слотов GPU",
+    "slots_one": "{{count}} слот",
+    "slots_few": "{{count}} слота",
+    "slots_many": "{{count}} слотов",
     "gpuCap": "GPU",
     "cooling": "охл.",
     "industrial": "пром.",

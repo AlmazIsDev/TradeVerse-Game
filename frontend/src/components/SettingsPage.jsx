@@ -1,11 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { updateProfile, changePassword, uploadAvatar, deleteAvatar, toggleLeaderboardVisibility } from '../services/api'
+import { updateProfile, changePassword, uploadAvatar, deleteAvatar, toggleLeaderboardVisibility, updateBio, fetchMyStats } from '../services/api'
 import { getTheme, applyTheme } from '../utils/theme'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Settings as SettingsIcon, User, Lock, Globe,
-  Save, Trash2, Check, AlertTriangle, Upload, Moon,
+  Save, Trash2, Check, AlertTriangle, Upload, Moon, Award, BarChart3,
 } from 'lucide-react'
 
 // Итоговый размер аватара — сжимается на клиенте через canvas (cover-crop до
@@ -77,6 +77,32 @@ function SettingsPage({ user, onUserUpdate }) {
       setSavingProfile(false)
     }
   }
+
+  // ── Описание («о себе») ──────────────────────────────────────────────────────
+  const [bio, setBio] = useState(user?.bio || '')
+  const [savingBio, setSavingBio] = useState(false)
+  const bioChanged = (bio || '').trim() !== (user?.bio || '')
+
+  const saveBio = async () => {
+    setSavingBio(true)
+    try {
+      const res = await updateBio(bio.trim())
+      onUserUpdate?.({ bio: res.bio })
+      flash(t('settings.bioSaved'))
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setSavingBio(false)
+    }
+  }
+
+  // ── Статистика + ачивки (профиль) ────────────────────────────────────────────
+  const [profile, setProfile] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetchMyStats().then(res => { if (alive) setProfile(res) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   // ── Видимость в таблице лидеров ──────────────────────────────────────────────
   const [hideFromLeaderboard, setHideFromLeaderboard] = useState(!!user?.hideFromLeaderboard)
@@ -254,6 +280,26 @@ function SettingsPage({ user, onUserUpdate }) {
             <Save size={15} /> {savingProfile ? t('bank.processing') : t('settings.saveProfile')}
           </button>
 
+          <div className="form-group">
+            <label>{t('settings.bio')}</label>
+            <textarea
+              className="settings-bio-input"
+              value={bio}
+              onChange={e => setBio(e.target.value)}
+              placeholder={t('settings.bioPlaceholder')}
+              maxLength={280}
+              rows={3}
+            />
+            <span className="settings-bio-count">{(bio || '').length}/280</span>
+          </div>
+          <button
+            className="submit-btn settings-save-btn"
+            disabled={savingBio || !bioChanged}
+            onClick={saveBio}
+          >
+            <Save size={15} /> {savingBio ? t('bank.processing') : t('settings.saveBio')}
+          </button>
+
           <div className="settings-toggle-block">
             <label className={`settings-toggle-row ${user?.leaderboardLock ? 'disabled' : ''}`}>
               <span className="settings-toggle-text">{t('settings.hideFromLeaderboard')}</span>
@@ -341,6 +387,50 @@ function SettingsPage({ user, onUserUpdate }) {
               </span>
             </label>
             <p className="settings-hint">{t('settings.darkModeHint')}</p>
+          </div>
+        </div>
+
+        {/* Статистика игрока */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><BarChart3 size={18} /></span>
+            <h3>{t('settings.statsTitle')}</h3>
+          </div>
+          <div className="settings-stats-grid">
+            {[
+              ['netWorth', profile?.stats?.netWorth],
+              ['cash', profile?.stats?.cash],
+              ['stocks', profile?.stats?.stocks],
+              ['crypto', profile?.stats?.crypto],
+              ['assets', profile?.stats?.assets],
+              ['company', profile?.stats?.company],
+              ['warcoin', profile?.stats?.warcoin],
+              ['profit', profile?.stats?.profit],
+            ].map(([key, val]) => (
+              <div className="settings-stat" key={key}>
+                <span className="settings-stat-label">{t(`settings.stat.${key}`)}</span>
+                <span className={`settings-stat-value ${key === 'profit' && (val || 0) < 0 ? 'neg' : ''}`}>
+                  ${Number(val || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Достижения */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><Award size={18} /></span>
+            <h3>{t('settings.achievementsTitle')}</h3>
+          </div>
+          <div className="settings-achievements">
+            {(profile?.achievements || []).map(a => (
+              <div className={`settings-achievement ${a.reached ? 'reached' : ''}`} key={a.id}>
+                <Award size={16} />
+                <span>{t(`settings.achievement.${a.id}`)}</span>
+                {a.reached && <Check size={14} className="settings-achievement-check" />}
+              </div>
+            ))}
           </div>
         </div>
       </div>

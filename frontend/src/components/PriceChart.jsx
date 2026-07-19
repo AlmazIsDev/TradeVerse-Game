@@ -91,6 +91,9 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     const range = max - min || 1
 
     const xAt = (i) => padL + (count === 1 ? plotW / 2 : (i / (count - 1)) * plotW)
+    // Свечи центрируем в равных слотах, иначе крайние свечи наполовину срезаются
+    // паддингом (правая уходит под подписи оси цены).
+    const xCandle = (i) => padL + (i + 0.5) * (plotW / count)
     const yAt = (p) => padT + (1 - (p - min) / range) * plotH
 
     // Сетка + ось цены
@@ -108,18 +111,19 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     }
     // Ось времени
     ctx.textAlign = 'center'
+    const xTick = type === 'candle' ? xCandle : xAt
     const ticks = Math.min(5, count)
     for (let g = 0; g < ticks; g++) {
       const i = Math.round((g / Math.max(1, ticks - 1)) * (count - 1))
-      const x = xAt(i)
+      const x = xTick(i)
       ctx.fillText(fmtTime(vis[i].t), Math.min(Math.max(x, 28), padL + plotW - 28), H - 7)
     }
 
     if (type === 'candle') {
-      const cw = Math.max(1, (plotW / count) * 0.6)
+      const cw = Math.max(1, (plotW / count) * 0.7)
       for (let i = 0; i < count; i++) {
         const d = vis[i]
-        const x = xAt(i)
+        const x = xCandle(i)
         const bull = d.c >= d.o
         ctx.strokeStyle = bull ? up : down
         ctx.fillStyle = bull ? up : down
@@ -155,7 +159,7 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     const h = hover.current
     if (h >= 0 && h < count) {
       const d = vis[h]
-      const x = xAt(h)
+      const x = type === 'candle' ? xCandle(h) : xAt(h)
       const py = type === 'candle' ? yAt(d.c) : yAt(d.p)
       ctx.strokeStyle = C.crosshair
       ctx.setLineDash([4, 4])
@@ -215,7 +219,8 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     const plotW = W - padL - padR
     const { count } = view.current
     const rel = (e.clientX - rect.left - padL) / plotW
-    return Math.max(0, Math.min(count - 1, Math.round(rel * (count - 1))))
+    const raw = type === 'candle' ? rel * count - 0.5 : rel * (count - 1)
+    return Math.max(0, Math.min(count - 1, Math.round(raw)))
   }
 
   const onMove = (e) => {

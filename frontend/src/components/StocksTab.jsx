@@ -80,7 +80,14 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
       setFeedback({ type: 'success', text: t('stocks.tradeSuccess') })
       setRefreshKey(k => k + 1)
       await load()
-      setTimeout(() => setTrade(null), 700)
+      // Окно НЕ закрываем автоматически — игрок видит обновлённый баланс и
+      // количество акций и может совершить ещё одну сделку. Обновляем снимок
+      // сделки свежими данными рынка (цена могла сдвинуться после сделки).
+      setTrade(prev => {
+        if (!prev) return prev
+        const fresh = res.stock || stocks.find(s => s.symbol === prev.symbol)
+        return fresh ? { ...fresh, action: prev.action } : prev
+      })
     } catch (err) {
       setFeedback({ type: 'error', text: err.message || t('common.error') })
     } finally {
@@ -312,6 +319,17 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
             </h3>
             <p className="modal-company">{trade.name}</p>
             <p className="modal-price">{t('stocks.pricePerShare')}: ${formatMoney(trade.price)}</p>
+
+            <div className="modal-account-row">
+              <div className="modal-account-item">
+                <span>{t('crypto.cashBalance')}</span>
+                <b>${formatMoney(balance)}</b>
+              </div>
+              <div className="modal-account-item">
+                <span>{t('stocks.owned')}</span>
+                <b>{heldFor(trade.symbol)?.quantity || 0} {t('common.shares')}</b>
+              </div>
+            </div>
 
             <div className="modal-quantity">
               <label>{t('common.quantity')}:</label>

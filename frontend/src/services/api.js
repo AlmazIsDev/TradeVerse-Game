@@ -311,8 +311,8 @@ export async function fetchTransactions(opts = {}) {
 }
 
 /** Аналитика за неделю: доход/расход/изменение капитала/операции/график. */
-export async function fetchWeeklyAnalytics() {
-  return request('/api/account/analytics/weekly')
+export async function fetchWeeklyAnalytics(period = 'week') {
+  return request(`/api/account/analytics/weekly?period=${encodeURIComponent(period)}`)
 }
 
 /** Перевод денег другому игроку по username или номеру карты. */
@@ -350,6 +350,16 @@ export async function updateProfile(data) {
 /** Сменить пароль (требует текущий пароль). */
 export async function changePassword(data) {
   return request('/api/user/password', { method: 'POST', body: JSON.stringify(data) })
+}
+
+/** Обновить описание профиля («о себе»). Возвращает { bio }. */
+export async function updateBio(bio) {
+  return request('/api/user/bio', { method: 'PATCH', body: JSON.stringify({ bio }) })
+}
+
+/** Личная статистика + ачивки для профиля. Возвращает { stats, achievements }. */
+export async function fetchMyStats() {
+  return request('/api/user/stats')
 }
 
 /**
@@ -490,6 +500,10 @@ export async function startEconomyEvent(type) {
 
 export async function stopEconomyEvent(eventId) {
   return request(`/api/admin/economy/events/${encodeURIComponent(eventId)}/stop`, { method: 'POST' })
+}
+
+export async function fetchActiveWorldEvents() {
+  return request('/api/events/active')
 }
 
 // ── Crypto API ────────────────────────────────────────────────────────────────
@@ -706,9 +720,10 @@ export async function leaveCompany() {
   return request('/api/company/leave', { method: 'POST' })
 }
 
-export async function updateMemberSalary(memberUserId, salary) {
+export async function updateMemberSalary(memberUserId, settings) {
+  const body = typeof settings === 'number' ? { salary: settings } : settings
   return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, {
-    method: 'PATCH', body: JSON.stringify({ salary }),
+    method: 'PATCH', body: JSON.stringify(body),
   })
 }
 

@@ -152,7 +152,7 @@ function EconomyAdmin() {
               {events.active.map(ev => (
                 <div key={ev.id} className="econ-event active">
                   <span className="econ-event-icon">{ev.icon}</span>
-                  <div className="econ-event-info"><b>{ev.name}</b><span>{t('econ.eventActive')}</span></div>
+                  <div className="econ-event-info"><b>{ev.name}</b>{ev.desc && <small>{ev.desc}</small>}<span>{t('econ.eventActive')}</span></div>
                   <button className="asset-act sell" onClick={() => runEvent(() => stopEconomyEvent(ev.id))}>
                     <Square size={13} /> {t('econ.stop')}
                   </button>
@@ -162,7 +162,7 @@ function EconomyAdmin() {
           )}
           <div className="econ-event-types">
             {events.types.map(ty => (
-              <button key={ty.type} className="econ-event-type" onClick={() => runEvent(() => startEconomyEvent(ty.type))}>
+              <button key={ty.type} className="econ-event-type" title={ty.desc || ''} onClick={() => runEvent(() => startEconomyEvent(ty.type))}>
                 <span>{ty.icon}</span> {ty.name}
               </button>
             ))}

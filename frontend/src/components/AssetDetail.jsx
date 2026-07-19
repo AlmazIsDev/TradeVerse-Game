@@ -106,7 +106,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
       setFeedback({ type: 'success', text: t('stocks.tradeSuccess') })
       await Promise.all([loadAsset(), loadHistory(timeframe)])
       onTraded?.()
-      setTimeout(() => setTrade(null), 700)
     } catch (err) {
       setFeedback({ type: 'error', text: err.message })
     } finally {
@@ -315,6 +314,10 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
                 onChange={e => setQty(e.target.value)} />
             </div>
             <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Number(qty) || 0) * asset.price)}</strong></p>
+            <div className="modal-account-row">
+              <div className="modal-account-item"><span>{t('crypto.cashBalance')}</span><b>${formatMoney(balance)}</b></div>
+              <div className="modal-account-item"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits, t)}</b></div>
+            </div>
             {feedback && (
               <div className={`transfer-feedback ${feedback.type}`}>
                 {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>

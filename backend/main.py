@@ -336,6 +336,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "card_visible": current_user.get("card_visible", True),
         "crypto_account_opened": bool(current_user.get("crypto_account_opened", False)),
         "avatar": current_user.get("avatar"),
+        "bio": current_user.get("bio", ""),
         "hideFromLeaderboard": bool(current_user.get("hidden_from_leaderboard", False)),
         "leaderboardLock": bool(current_user.get("leaderboard_lock", False)),
         "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
@@ -454,8 +455,12 @@ _LB_CACHE: dict = {"ts": None, "entries": None}
 _LB_CACHE_TTL_S = 12
 
 
-async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
-    """Полный обсчёт капитала всех игроков (наличные + акции + крипта + активы + компания + WC)."""
+async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: dict | None = None) -> list[dict]:
+    """Полный обсчёт капитала всех игроков (наличные + акции + крипта + активы + компания + WC).
+
+    user_query переопределяет фильтр по users — например {"_id": oid} для одного
+    игрока (в т.ч. скрытого из таблицы лидеров, для его собственной статистики).
+    """
     # Карты текущих цен.
     stock_prices: dict[str, float] = {}
     async for s in db.stocks.find({}, {"symbol": 1, "price": 1}):
@@ -496,7 +501,7 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
             company_val[oid] = company_val.get(oid, 0.0) + _asset_value(a)
 
     entries = []
-    async for u in db.users.find({"hidden_from_leaderboard": {"$ne": True}}):
+    async for u in db.users.find(user_query if user_query is not None else {"hidden_from_leaderboard": {"$ne": True}}):
         uid = str(u["_id"])
         cash = float(u.get("balance", STARTING_BALANCE))
         stocks_value = round(stock_val.get(uid, 0.0), 2)
@@ -550,6 +555,31 @@ async def get_leaderboard(
     for rank, entry in enumerate(ranked, start=1):
         out.append({**entry, "rank": rank})
     return out
+
+
+@app.get("/api/user/stats")
+async def get_my_stats(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Личная статистика игрока для профиля (тот же обсчёт, что и в таблице лидеров).
+
+    Работает и для скрытых из таблицы лидеров — фильтр по своему _id, а не по
+    флагу видимости. Ачивки выводятся из уже посчитанных цифр, без новых механик.
+    """
+    entries = await _compute_leaderboard_entries(db, {"_id": current_user["_id"]})
+    stats = entries[0] if entries else {
+        "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
+        "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
+    }
+    # ponytail: ачивки — производные пороги от текущих цифр, не отдельная система прогресса.
+    achievements = [
+        {"id": "networth_1m", "reached": stats["netWorth"] >= 1_000_000},
+        {"id": "in_profit", "reached": stats["profit"] > 0},
+        {"id": "diversified", "reached": sum(1 for k in ("stocks", "crypto", "assets", "company") if stats.get(k, 0) > 0) >= 3},
+        {"id": "company_owner", "reached": stats.get("company", 0) > 0},
+    ]
+    return {"stats": stats, "achievements": achievements}
 
 
 # ── Admin Endpoints ──────────────────────────────────────────────────────────

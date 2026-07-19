@@ -365,7 +365,19 @@ async def sell_hardware(
     # Свободные (неустановленные) экземпляры этого товара — по одному документу на штуку.
     free = await db.user_hardware.find(
         {"userId": user_id, "itemId": payload.itemId, "farmId": None}
-    ).to_list(length=qty)
+    ).to_list(length=None)
+    # Стойка — общий пул слотов: её farmId всегда None, но она может быть
+    # задействована в фермах (components.rack.hwId). Такие экземпляры НЕ продаём.
+    in_use_racks = set()
+    async for f in db.mining_farms.find(
+        {"userId": user_id, "components.rack.hwId": {"$ne": None}},
+        {"components.rack.hwId": 1},
+    ):
+        rack = (f.get("components") or {}).get("rack") or {}
+        if rack.get("hwId"):
+            in_use_racks.add(rack["hwId"])
+    if in_use_racks:
+        free = [h for h in free if str(h["_id"]) not in in_use_racks]
     if len(free) < qty:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,

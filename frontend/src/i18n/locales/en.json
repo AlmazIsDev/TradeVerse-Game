@@ -1067,7 +1067,7 @@
       "cooling": "Lowers hardware temperature.",
       "fan": "Boosts cooling efficiency.",
       "case": "Home farm — a basic chassis.",
-      "rack": "Professional farm — a multi-GPU rack.",
+      "rack": "Professional farm — a multi-GPU rack. Its slots are a shared pool across all your farms.",
       "ups": "Protects against power outages.",
       "network": "Keeps a stable connection to the pool."
     },

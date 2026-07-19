@@ -90,6 +90,19 @@ class ProfileUpdate(BaseModel):
         return v
 
 
+class BioUpdate(BaseModel):
+    """Описание профиля («о себе») — необязательный текст до 280 символов."""
+    bio: str
+
+    @field_validator("bio")
+    @classmethod
+    def bio_valid(cls, v):
+        v = (v or "").strip()
+        if len(v) > 280:
+            raise ValueError("Описание должно содержать максимум 280 символов")
+        return v
+
+
 class PasswordChangeRequest(BaseModel):
     """Смена пароля — требует подтверждения текущего пароля."""
     current_password: str

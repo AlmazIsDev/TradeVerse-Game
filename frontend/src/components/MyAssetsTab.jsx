@@ -14,7 +14,7 @@ import MediaExposeModal from './MediaExposeModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
-  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper,
+  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -546,6 +546,9 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
                 {!isCar && a.profitPerHour > 0 && (
                   <div className="asset-accrued"><Wallet size={14} /> {t('myassets.accrued')}: <b>${formatMoney(a.accrued)}</b></div>
+                )}
+                {isCar && (
+                  <div className="asset-hint" title={t('car.rentalOnlyHint')}><Info size={13} /> {t('car.rentalOnly')}</div>
                 )}
                 {renderRentalStatus(a)}
                 {renderStudio(a)}

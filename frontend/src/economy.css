@@ -746,6 +746,12 @@
   border-radius: var(--radius-sm);
 }
 .asset-accrued b { color: var(--color-success); }
+.asset-hint {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--color-text-secondary);
+  padding: 6px 10px; background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm); cursor: help;
+}
 .asset-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); }
 .asset-act {
   flex: 1; min-width: 110px;
@@ -895,6 +901,12 @@ select.company-name-input option {
 }
 .company-emp-actions .asset-act, .company-emp-edit .asset-act { min-width: auto; padding: 7px 10px; }
 
+/* Настройки сотрудника: права-чекбоксы в модалке */
+.member-perms { display: flex; flex-direction: column; gap: var(--spacing-xs); margin: var(--spacing-md) 0; }
+.member-perms-label { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--color-text-tertiary, var(--color-text-secondary)); }
+.member-perm { display: flex; align-items: center; gap: var(--spacing-sm); font-size: 14px; color: var(--color-text-primary); cursor: pointer; }
+.member-perm input { width: 16px; height: 16px; accent-color: var(--color-accent); cursor: pointer; }
+
 /* ===================== CITY ROOF ===================== */
 .cityroof-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-sm); }
 .wc-chip {
@@ -913,6 +925,7 @@ select.company-name-input option {
 .cityroof-status {
   padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
   background: var(--fill-soft); color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 .cityroof-status.active { background: rgba(52, 199, 89, 0.12); color: var(--color-success); }
 .cityroof-hint { font-size: 13px; color: var(--color-text-secondary); margin-bottom: var(--spacing-lg); }
@@ -1519,6 +1532,7 @@ select.company-name-input option {
 .econ-event-icon { font-size: 24px; }
 .econ-event-info { flex: 1; display: flex; flex-direction: column; }
 .econ-event-info b { color: var(--color-text-primary); }
+.econ-event-info small { font-size: 12px; color: var(--color-text-secondary); text-transform: none; margin: 2px 0; }
 .econ-event-info span { font-size: 11px; color: var(--color-success); text-transform: uppercase; }
 .econ-event-types { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); margin-bottom: var(--spacing-md); }
 .econ-event-type {
@@ -1532,6 +1546,19 @@ select.company-name-input option {
 .econ-hist-title { font-size: 12px; color: var(--color-text-secondary); text-transform: uppercase; margin-bottom: 4px; }
 .econ-hist-row { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 10px; background: var(--color-bg-secondary); border-radius: var(--radius-sm); }
 .econ-hist-src { color: var(--color-text-secondary); font-size: 11px; }
+
+/* ===================== WORLD EVENTS (player) ===================== */
+.world-events { display: flex; flex-direction: column; gap: var(--spacing-xs); margin-bottom: var(--spacing-lg); }
+.world-event {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  padding: 12px 14px; border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.12), transparent);
+  border: 1px solid rgba(0, 113, 227, 0.28);
+}
+.world-event-icon { font-size: 26px; line-height: 1; }
+.world-event-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.world-event-info b { color: var(--color-text-primary); font-size: 14px; }
+.world-event-info span { font-size: 12px; color: var(--color-text-secondary); }
 
 /* ===================== MINING FARMS ===================== */
 .mining-create { display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); flex-wrap: wrap; }
@@ -1919,10 +1946,13 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .tv-popup-card {
   position: relative; display: flex; gap: 12px;
   padding: 16px 18px 16px 16px;
-  background: linear-gradient(150deg, var(--color-bg-tertiary), var(--color-bg-secondary));
-  border: 1px solid rgba(0, 113, 227, 0.4);
+  /* Liquid Glass: полупрозрачный фон + backdrop-blur (эффект «жидкого стекла») */
+  background: color-mix(in srgb, var(--color-bg-tertiary) 72%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   animation: tvSlideInRight 0.32s cubic-bezier(.22,1,.36,1) both;
 }
 .tv-popup-close {
@@ -2041,3 +2071,43 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .crypto-buy:active:not(:disabled), .crypto-sell:active:not(:disabled), .stock-btn:active:not(:disabled) { transform: scale(0.96); }
 .asset-card, .gpu-card { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
 .asset-card:hover, .gpu-card:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); }
+
+/* ===================== TOAST (Liquid Glass) ===================== */
+.tv-toast-stack {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 10px; align-items: center;
+  z-index: 500; pointer-events: none; width: max-content; max-width: min(92vw, 440px);
+}
+.tv-toast {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; min-width: 240px; max-width: 100%;
+  background: color-mix(in srgb, var(--color-bg-tertiary) 70%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  backdrop-filter: blur(22px) saturate(1.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: tvToastIn 0.3s cubic-bezier(.22,1,.36,1) both;
+}
+.tv-toast-icon {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.tv-toast-success .tv-toast-icon { background: linear-gradient(135deg, #34c759, #248a3d); }
+.tv-toast-error .tv-toast-icon { background: linear-gradient(135deg, #ff3b30, #b3000c); }
+.tv-toast-info .tv-toast-icon { background: linear-gradient(135deg, #0071e3, #005bbf); }
+.tv-toast-text { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--color-text-primary); line-height: 1.35; }
+.tv-toast-close {
+  flex-shrink: 0; border: none; background: transparent; color: var(--color-text-secondary);
+  cursor: pointer; padding: 2px; border-radius: 6px; transition: all .15s ease;
+}
+.tv-toast-close:hover { color: var(--color-text-primary); background: rgba(0, 0, 0, 0.08); }
+@keyframes tvToastIn {
+  from { opacity: 0; transform: translateY(-14px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 600px) {
+  .tv-toast-stack { top: 12px; max-width: 94vw; }
+  .tv-toast { min-width: 0; width: 94vw; }
+}

@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchShopCatalog, buyHardware } from '../services/api'
+import { fetchShopCatalog, buyHardware, sellHardware, fetchInventory } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
 import { toast } from './Toast'
 import {
   Monitor, Cpu, HardDrive, Zap, Fan, Box, Server, Battery, Network,
-  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
+  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart, Minus, Plus,
 } from 'lucide-react'
 
 // Магазин оборудования NEXUS — единый каталог всех комплектующих.
@@ -62,12 +62,25 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState('asc')
   const [busyId, setBusyId] = useState(null)
-  const [confirm, setConfirm] = useState(null)   // item awaiting purchase confirmation
+  const [confirm, setConfirm] = useState(null)   // { item, qty } awaiting purchase confirmation
+  const [sellConfirm, setSellConfirm] = useState(null) // { item, qty } awaiting sale
+  const [qty, setQty] = useState({})              // itemId -> quantity to buy
+  const [owned, setOwned] = useState({})          // itemId -> count in inventory
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 250)
     return () => clearTimeout(id)
   }, [searchInput])
+
+  const qtyOf = (id) => Math.max(1, Math.min(1000, qty[id] || 1))
+  const setItemQty = (id, v) => setQty(q => ({ ...q, [id]: Math.max(1, Math.min(1000, v || 1)) }))
+
+  const loadInventory = useCallback(async () => {
+    try {
+      const inv = await fetchInventory()
+      setOwned(Object.fromEntries((inv || []).map(i => [i.itemId, i.count])))
+    } catch { /* инвентарь необязателен для магазина */ }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -82,14 +95,29 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   }, [category])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadInventory() }, [loadInventory])
 
-  const buy = async (item) => {
+  const buy = async (item, n) => {
     setBusyId(item.id)
     try {
-      const res = await buyHardware(item.id, 1)
+      const res = await buyHardware(item.id, n)
       onBalanceChange?.(res.balance)
       toast(t('market.bought'))
-      await load()   // цены могли сдвинуться
+      await Promise.all([load(), loadInventory()])   // цены могли сдвинуться
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const sell = async (item, n) => {
+    setBusyId(item.id)
+    try {
+      const res = await sellHardware(item.id, n)
+      onBalanceChange?.(res.balance)
+      toast(t('shop.sold', { qty: res.quantity, refund: formatMoney(res.refund) }))
+      await Promise.all([load(), loadInventory()])
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -147,24 +175,47 @@ function ShopTab({ balance = 0, onBalanceChange }) {
       {!loading && !error && view.length > 0 && (
         <div className="gpu-grid">
           {view.map(item => {
-            const color = CAT_COLOR[item.category] || item.color || '#0071e3'
-            const affordable = balance >= item.price
+            // Цвет по мощности/тиру приходит из каталога (item.color); категорийный — запасной.
+            const color = item.color || CAT_COLOR[item.category] || '#0071e3'
+            const n = qtyOf(item.id)
+            const affordable = balance >= item.price * n
+            const have = owned[item.id] || 0
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
+            const busy = busyId === item.id
             return (
               <div key={item.id} className="gpu-card" style={{ borderColor: `${color}55` }}>
                 <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={20} /></span>
                 <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
                 <span className="gpu-card-name">{hwName(item, t)}</span>
                 <div className="gpu-card-specs"><span>{specLine(item.category, item.specs, t)}</span></div>
+                {item.specs?.power > 0 && (
+                  <div className="gpu-card-spec-row"><Zap size={11} style={{ color }} /> {t('shop.powerRow', { w: item.specs.power })}</div>
+                )}
+                {item.specs?.cooling > 0 && (
+                  <div className="gpu-card-spec-row"><Fan size={11} style={{ color }} /> {item.coolingLabel || t('shop.coolingRow', { w: item.specs.cooling })}</div>
+                )}
+                {have > 0 && <div className="gpu-card-owned">{t('shop.owned', { count: have })}</div>}
                 <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
+                <div className="gpu-card-qty">
+                  <button type="button" className="gpu-qty-btn" disabled={busy || n <= 1} onClick={() => setItemQty(item.id, n - 1)}><Minus size={12} /></button>
+                  <input type="number" min="1" max="1000" value={n} disabled={busy}
+                    onChange={e => setItemQty(item.id, parseInt(e.target.value, 10))} />
+                  <button type="button" className="gpu-qty-btn" disabled={busy || n >= 1000} onClick={() => setItemQty(item.id, n + 1)}><Plus size={12} /></button>
+                </div>
                 <button
                   className="gpu-card-buy"
                   style={{ background: affordable ? color : undefined }}
-                  disabled={!affordable || busyId === item.id}
-                  onClick={() => setConfirm(item)}
+                  disabled={!affordable || busy}
+                  onClick={() => setConfirm({ item, qty: n })}
                 >
-                  {busyId === item.id ? t('bank.processing') : affordable ? t('common.buy') : t('stocks.insufficientFunds')}
+                  {busy ? t('bank.processing') : affordable ? `${t('common.buy')}${n > 1 ? ` ×${n}` : ''}` : t('stocks.insufficientFunds')}
                 </button>
+                {have > 0 && (
+                  <button className="gpu-card-sell" disabled={busy}
+                    onClick={() => setSellConfirm({ item, qty: Math.min(n, have) })}>
+                    {t('shop.sell')}
+                  </button>
+                )}
               </div>
             )
           })}
@@ -173,12 +224,23 @@ function ShopTab({ balance = 0, onBalanceChange }) {
 
       <ConfirmDialog
         open={!!confirm}
-        busy={busyId === confirm?.id}
+        busy={busyId === confirm?.item?.id}
         title={t('common.buy')}
-        message={confirm ? t('confirm.buyHardware', { name: hwName(confirm, t), price: formatMoney(confirm.price) }) : ''}
+        message={confirm ? t('confirm.buyHardware', { name: hwName(confirm.item, t), price: formatMoney(confirm.item.price * confirm.qty) }) : ''}
         confirmLabel={t('common.buy')}
-        onConfirm={async () => { const it = confirm; setConfirm(null); await buy(it) }}
+        onConfirm={async () => { const c = confirm; setConfirm(null); await buy(c.item, c.qty) }}
         onCancel={() => setConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={!!sellConfirm}
+        danger
+        busy={busyId === sellConfirm?.item?.id}
+        title={t('shop.sell')}
+        message={sellConfirm ? t('shop.confirmSell', { qty: sellConfirm.qty, name: hwName(sellConfirm.item, t) }) : ''}
+        confirmLabel={t('shop.sell')}
+        onConfirm={async () => { const c = sellConfirm; setSellConfirm(null); await sell(c.item, c.qty) }}
+        onCancel={() => setSellConfirm(null)}
       />
     </div>
   )

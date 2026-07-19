@@ -120,17 +120,20 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     }
 
     if (type === 'candle') {
-      const cw = Math.max(1, (plotW / count) * 0.7)
+      const cw = Math.max(1, Math.round((plotW / count) * 0.7))
       for (let i = 0; i < count; i++) {
         const d = vis[i]
-        const x = xCandle(i)
+        // Пиксельное выравнивание: дробные координаты на canvas дают размытый
+        // фитиль и «исчезающее» тело у доджи (o==c). Округляем к device-px.
+        const x = Math.round(xCandle(i)) + 0.5
         const bull = d.c >= d.o
         ctx.strokeStyle = bull ? up : down
         ctx.fillStyle = bull ? up : down
-        ctx.beginPath(); ctx.moveTo(x, yAt(d.h)); ctx.lineTo(x, yAt(d.l)); ctx.stroke()
-        const yo = yAt(d.o), yc = yAt(d.c)
+        ctx.beginPath(); ctx.moveTo(x, Math.round(yAt(d.h))); ctx.lineTo(x, Math.round(yAt(d.l))); ctx.stroke()
+        const yo = Math.round(yAt(d.o)), yc = Math.round(yAt(d.c))
         const top = Math.min(yo, yc)
-        ctx.fillRect(x - cw / 2, top, cw, Math.max(1, Math.abs(yc - yo)))
+        const bx = Math.round(x - cw / 2)
+        ctx.fillRect(bx, top, cw, Math.max(1, Math.abs(yc - yo)))
       }
     } else {
       // Заливка-градиент под линией
@@ -240,7 +243,7 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
   const onLeave = () => { hover.current = -1; drag.current = null; draw() }
   const onDown = (e) => { drag.current = { x: e.clientX, start: view.current.start } }
   const onUp = () => { drag.current = null }
-  const onWheel = (e) => {
+  const onWheel = useCallback((e) => {
     e.preventDefault()
     const { start, count } = view.current
     const center = hover.current >= 0 ? start + hover.current : start + count / 2
@@ -251,7 +254,16 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     newStart = Math.max(0, Math.min(len - newCount, newStart))
     view.current = { start: newStart, count: newCount }
     draw()
-  }
+  }, [len, draw])
+
+  // React onWheel — пассивный слушатель, поэтому preventDefault() не работает и
+  // страница прокручивается при зуме. Вешаем вручную с { passive: false }.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', onWheel)
+  }, [onWheel])
 
   return (
     <div className="price-chart-wrap" ref={wrapRef}>
@@ -262,7 +274,6 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
         onMouseLeave={onLeave}
         onMouseDown={onDown}
         onMouseUp={onUp}
-        onWheel={onWheel}
       />
     </div>
   )

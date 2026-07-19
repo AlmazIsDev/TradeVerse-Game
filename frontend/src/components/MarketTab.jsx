@@ -4,7 +4,7 @@ import { fetchAssetMarket, buyAsset } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import {
   Home, Briefcase, Car, Search, AlertTriangle, Check, X,
-  TrendingUp, Coins, LayoutGrid,
+  TrendingUp, Coins, LayoutGrid, KeyRound,
 } from 'lucide-react'
 
 const CATEGORIES = [
@@ -120,6 +120,13 @@ function MarketTab({ balance = 0, onBalanceChange }) {
           />
         </div>
       </div>
+
+      {(category === 'all' || category === 'business') && (
+        <div className="market-rental-note">
+          <KeyRound size={16} />
+          <span>{t('market.rentalNote')}</span>
+        </div>
+      )}
 
       {loading && (
         <div className="asset-grid">

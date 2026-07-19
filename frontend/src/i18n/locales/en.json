@@ -295,7 +295,23 @@
     "sort_profit": "By profit",
     "sort_cash": "By cash",
     "sort_stocks": "By stocks",
-    "sort_crypto": "By crypto"
+    "sort_crypto": "By crypto",
+    "modePlayers": "Players",
+    "modeCompanies": "Companies",
+    "sort_assets": "Assets",
+    "sort_company": "Company",
+    "profit7d": "Profit (7d)",
+    "profitLifetime": "lifetime",
+    "col_cash": "Cash",
+    "col_stocks": "Stocks",
+    "col_crypto": "Crypto",
+    "col_assets": "Assets",
+    "col_company": "Company",
+    "company": "Company",
+    "value": "Value",
+    "budget": "Budget",
+    "assets": "Assets",
+    "noCompanies": "No companies ranked yet"
   },
   "market": {
     "cat_realestate": "Real estate",
@@ -306,7 +322,8 @@
     "bought": "Asset purchased!",
     "employees": "Employees",
     "profitPerHour": "Profit/h",
-    "prestige": "Prestige"
+    "prestige": "Prestige",
+    "rentalNote": "Rental: buy an IT-Studio or Media Holding (or property/cars), then list it for rent in «My Assets» — players or bots become tenants and pay you."
   },
   "myassets": {
     "empty": "You don't own any assets yet. Check out the Market.",
@@ -629,7 +646,13 @@
       "router": "1Gbit Router",
       "switch": "10Gbit Switch",
       "rack": "Network Rack"
-    }
+    },
+    "powerRow": "Power: {{w}} W",
+    "coolingRow": "Cooling: {{w}} W",
+    "owned": "Owned: {{count}}",
+    "sell": "Sell",
+    "confirmSell": "Sell {{qty}}× \"{{name}}\"? You get part of the cost back.",
+    "sold": "Sold {{qty}}× · +${{refund}}"
   },
   "assetNames": {
     "studio": "Studio",
@@ -1049,7 +1072,11 @@
       "network": "Keeps a stable connection to the pool."
     },
     "removeOne": "Remove one part",
-    "capacityFull": "No free slots — install a larger case/rack"
+    "capacityFull": "No free slots — install a larger case/rack",
+    "successTitle": "Mining stats",
+    "totalMinedCoins": "Coins mined",
+    "totalMinedUsd": "Mined ($)",
+    "installQty": "Install {{qty}}"
   },
   "notifications": {
     "title": "Notifications",

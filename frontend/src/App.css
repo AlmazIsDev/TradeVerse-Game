@@ -1859,6 +1859,12 @@ body {
     padding: var(--spacing-lg);
   }
 
+  /* Dropdown уведомлений: фикс 340px переполнял узкие экраны — прижимаем к вьюпорту. */
+  .notification-dropdown {
+    width: min(340px, calc(100vw - 24px));
+    right: -8px;
+  }
+
   .world-event-icon {
     font-size: 22px;
   }

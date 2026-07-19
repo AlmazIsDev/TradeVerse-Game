@@ -2,7 +2,7 @@ import logging
 import random
 from bson import ObjectId
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from typing import Optional
 
@@ -500,6 +500,20 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: dic
         if oid:
             company_val[oid] = company_val.get(oid, 0.0) + _asset_value(a)
 
+    # Прибыль за период: реализованный чистый доход (income − expense) за 7 дней
+    # из реестра операций. Раньше profit = net_worth − STARTING_BALANCE считался
+    # «с момента регистрации» и был бессмысленным для давних игроков.
+    # ponytail: скользящее окно 7д по ledger'у; для «за день/месяц» — параметризовать окно.
+    period_net: dict[str, float] = {}
+    since = datetime.utcnow() - timedelta(days=7)
+    async for row in db.transactions.aggregate([
+        {"$match": {"timestamp": {"$gte": since}}},
+        {"$group": {"_id": {"u": "$userId", "d": "$direction"}, "sum": {"$sum": "$amount"}}},
+    ]):
+        uid = row["_id"]["u"]
+        signed = row["sum"] if row["_id"]["d"] == "income" else -row["sum"]
+        period_net[uid] = period_net.get(uid, 0.0) + signed
+
     entries = []
     async for u in db.users.find(user_query if user_query is not None else {"hidden_from_leaderboard": {"$ne": True}}):
         uid = str(u["_id"])
@@ -521,7 +535,10 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: dic
             "company": company_value,
             "warcoin": warcoin_value,
             "netWorth": net_worth,
-            "profit": round(net_worth - STARTING_BALANCE, 2),
+            # profit = реализованная прибыль за 7 дней (см. period_net выше).
+            # profitAllTime сохранён для профиля/ачивок как «рост с регистрации».
+            "profit": round(period_net.get(uid, 0.0), 2),
+            "profitAllTime": round(net_worth - STARTING_BALANCE, 2),
         })
     return entries
 
@@ -536,6 +553,7 @@ async def get_leaderboard(
 
     net worth = наличные + акции + крипта + активы + компания + WarCoin.
     Сортировки: networth | profit | cash | stocks | crypto | assets | company.
+    profit — реализованная прибыль за 7 дней (не «с регистрации»).
     Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
     """
     sort_field = _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
@@ -555,6 +573,43 @@ async def get_leaderboard(
     for rank, entry in enumerate(ranked, start=1):
         out.append({**entry, "rank": rank})
     return out
+
+
+@app.get("/api/leaderboard/companies")
+async def get_company_leaderboard(
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Рейтинг компаний по собственной стоимости (бюджет + активы компании).
+
+    Отдельный от игрового рейтинг: ценит саму компанию, а не капитал владельца.
+    ponytail: два скана коллекций без кэша — вызывается редко; кэш добавить, если станет горячим.
+    """
+    def _asset_value(a: dict) -> float:
+        return a.get("price", 0) * (1 + 0.35 * (a.get("level", 1) - 1))
+
+    comps: dict[str, dict] = {}
+    async for c in db.companies.find({}):
+        cid = str(c["_id"])
+        comps[cid] = {
+            "companyId": cid,
+            "name": c.get("name", "—"),
+            "logo": c.get("logo", ""),
+            "ownerId": c.get("ownerId"),
+            "budget": round(float(c.get("budget", 0.0)), 2),
+            "assets": 0.0,
+        }
+    async for a in db.user_assets.find({"companyId": {"$ne": None}}):
+        c = comps.get(a.get("companyId"))
+        if c:
+            c["assets"] += _asset_value(a)
+
+    for c in comps.values():
+        c["assets"] = round(c["assets"], 2)
+        c["value"] = round(c["budget"] + c["assets"], 2)
+
+    ranked = sorted(comps.values(), key=lambda c: c["value"], reverse=True)[:limit]
+    return [{**c, "rank": i} for i, c in enumerate(ranked, start=1)]
 
 
 @app.get("/api/user/stats")
@@ -836,6 +891,26 @@ def _serialize_datetime(dt: Optional[datetime]) -> str:
 
 
 if __name__ == "__main__":
+    import sys
+
+    if "--selfcheck" in sys.argv:
+        # Профит = чистый доход (income − expense) за окно, а не «с регистрации».
+        def _period_net(rows: list[dict]) -> float:
+            net = 0.0
+            for r in rows:
+                net += r["amount"] if r["direction"] == "income" else -r["amount"]
+            return round(net, 2)
+
+        assert _period_net([
+            {"direction": "income", "amount": 500.0},
+            {"direction": "expense", "amount": 200.0},
+            {"direction": "income", "amount": 50.0},
+        ]) == 350.0
+        assert _period_net([]) == 0.0
+        assert _period_net([{"direction": "expense", "amount": 100.0}]) == -100.0
+        print("leaderboard profit self-check OK")
+        sys.exit(0)
+
     import uvicorn
 
     uvicorn.run("main:app", host="0.0.0.0", port=20301, reload=True)

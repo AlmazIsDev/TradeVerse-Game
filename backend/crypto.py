@@ -136,7 +136,12 @@ def _walk_price(coin: dict) -> dict:
     base = coin.get("base_price", coin["price"])
     vol = coin.get("volatility", 0.05)
     old = coin["price"]
-    new = old * (1 + random.gauss(0, vol))
+    # ponytail: добавляем случайный дрейф вместо чисто нулевого среднего —
+    # gauss(0, vol) симметричен и цена в среднем стоит на месте. Небольшой bias
+    # (доля vol) задаёт направление на этот тик, поэтому появляются тренды.
+    # Эвристика: дрейф ≤ половины волатильности, коридор [0.3x,3x] не даёт взрыва.
+    drift = random.uniform(-0.5, 0.5) * vol
+    new = old * (1 + drift + random.gauss(0, vol))
     new = max(base * 0.3, min(base * 3, new))
     change = ((new - old) / old * 100) if old else 0.0
     coin["price"] = round(new, 6)

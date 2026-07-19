@@ -418,7 +418,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => { setGiftModal(a); setGiftName('') },
       })
     }
-    if (a.type === 'realestate' || a.type === 'car' || a.type === 'business') {
+    // Аренда: недвижимость и авто всегда, из бизнесов — только Айти-Студия и
+    // Медиахолдинг (остальные бэкенд отклоняет, см. assets.py rent/list).
+    const rentableBusiness = a.slug?.startsWith('itstudio_') || a.slug === 'media_holding'
+    if (a.type === 'realestate' || a.type === 'car' || (a.type === 'business' && rentableBusiness)) {
       if (a.rental?.status === 'listed') {
         actions.push({
           key: 'rent-cancel', disabled: busy, icon: <KeyRound size={15} />, label: t('common.cancel'),

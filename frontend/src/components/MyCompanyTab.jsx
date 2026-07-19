@@ -574,7 +574,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                   )}
                   <div className="company-emp-text">
                     <span className="company-emp-name">{m.username}</span>
-                    <span className="company-emp-role">{m.roleTitle || t(`company.roles.${m.role}`, m.role)}</span>
+                    {m.roleTitle && <span className="company-emp-role">{m.roleTitle}</span>}
                   </div>
                 </div>
                 {m.role === 'owner' ? (

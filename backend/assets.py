@@ -57,6 +57,23 @@ RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
 RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
 RENT_MAX_HOURS = 720     # максимальный срок аренды (30 суток)
 RENTABLE_TYPES = {"realestate", "car", "business"}
+# Среди бизнесов в аренду сдаются только те, у кого есть полезная для арендатора
+# механика: IT-студия (заказы «Крыши города», cityroof.py) и Медиахолдинг
+# (разоблачения в СМИ, media.py). Остальные бизнесы (шаурмечная, кофейня, завод…)
+# сдавать нельзя — арендовать в них нечего, кроме голого дохода.
+RENTABLE_BUSINESS_SLUGS = {"media_holding"}   # + любые itstudio_* (по префиксу slug)
+
+
+def _is_rentable(asset: dict) -> bool:
+    """Можно ли выставить актив в аренду. Недвижимость и авто — всегда; бизнесы —
+    только IT-студия и Медиахолдинг (см. RENTABLE_BUSINESS_SLUGS)."""
+    atype = asset.get("type")
+    if atype not in RENTABLE_TYPES:
+        return False
+    if atype == TYPE_BUSINESS:
+        slug = asset.get("slug") or ""
+        return slug.startswith("itstudio_") or slug in RENTABLE_BUSINESS_SLUGS
+    return True
 
 # ── Экономика аренды ─────────────────────────────────────────────────────────
 # У каждого актива — своя суточная ставка аренды: она НЕ одинакова для всего
@@ -357,6 +374,10 @@ def _materials_boost(asset: dict) -> float:
 
 
 def _income_per_hour(asset: dict) -> float:
+    # Авто не приносят почасового пассивного дохода — только аренда (см. _is_rentable).
+    # Их «уровень» не качается через upgrade, прогресс идёт через тюнинг/престиж.
+    if asset.get("type") == TYPE_CAR:
+        return 0.0
     base = asset.get("income_per_hour", 0)
     level = asset.get("level", 1)
     value = base * (1 + 0.25 * (level - 1))
@@ -383,7 +404,7 @@ def _rent_daily_rate(asset: dict) -> float:
     реже и роскошнее объект, тем выше именно % доходности, а не только сумма.
     RARITY_RENT_FLOOR — лишь подстраховка от вырожденно низких значений, а не
     основной регулятор (как было раньше с плоским полом в $2000 для всех)."""
-    if asset.get("type") not in RENTABLE_TYPES:
+    if not _is_rentable(asset):
         return 0.0
     rarity = _rent_rarity(asset)
     pct = RARITY_RENT_PCT[rarity]
@@ -400,7 +421,7 @@ def _rent_rate_per_hour(asset: dict) -> float:
 def _rent_total(asset: dict, hours: int) -> float:
     """Итоговая стоимость аренды за срок — линейно от часов, единая формула для
     клиента (превью) и сервера (авторитетный пересчёт при выставлении объявления)."""
-    if asset.get("type") not in RENTABLE_TYPES:
+    if not _is_rentable(asset):
         return 0.0
     return round(_rent_daily_rate(asset) * hours / 24, 2)
 
@@ -899,6 +920,11 @@ async def upgrade_asset(
     """Улучшить актив: повышает стоимость и доход."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
+    # Авто не улучшаются через уровень — у них нет почасового дохода, а стоимость
+    # растят тюнингом деталей (см. /tune). Поэтому уровень авто всегда 1.
+    if asset.get("type") == TYPE_CAR:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
     cost = _upgrade_cost(asset)
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
@@ -1064,8 +1090,9 @@ async def rent_list(
     """
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    if asset.get("type") not in RENTABLE_TYPES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость, авто и бизнесы")
+    if not _is_rentable(asset):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Сдавать можно недвижимость, авто, а из бизнесов — только IT-студию и Медиахолдинг")
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
     # Итоговая цена всегда пересчитывается сервером из срока — клиентской цене не доверяем.
@@ -1285,13 +1312,28 @@ if __name__ == "__main__":
 
     # Бизнесы и авто тоже сдаются в аренду — у каждого своя ставка через rarity,
     # добавленную в каталог (не одинаковый коэффициент для всего имущества).
-    business_asset = {"type": "business", "price": 60000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
-    assert _rent_daily_rate(business_asset) > 0
-    car_asset = {"type": "car", "price": 150000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
+    # НО из бизнесов сдаются только IT-студия и Медиахолдинг (у остальных нет
+    # полезной арендатору механики), поэтому у бизнеса важен slug.
+    studio_biz = CATALOG_BY_SLUG["itstudio_basic"] | {"level": 1, "tuning_value": 0.0}
+    media_biz = CATALOG_BY_SLUG["media_holding"] | {"level": 1, "tuning_value": 0.0}
+    plain_biz = CATALOG_BY_SLUG["coffee"] | {"level": 1, "tuning_value": 0.0}
+    assert _is_rentable(studio_biz) and _rent_daily_rate(studio_biz) > 0
+    assert _is_rentable(media_biz) and _rent_daily_rate(media_biz) > 0
+    # Обычный бизнес (кофейня) сдавать нельзя — ставка 0.
+    assert not _is_rentable(plain_biz)
+    assert _rent_daily_rate(plain_biz) == 0.0
+    car_asset = CATALOG_BY_SLUG["super"] | {"level": 1, "tuning_value": 0.0}
+    assert _is_rentable(car_asset)
     assert _rent_daily_rate(car_asset) > 0
+    # Авто НЕ приносят почасового дохода — только аренда (даже если в данные
+    # просочилась ненулевая ставка income_per_hour).
+    assert _income_per_hour(CATALOG_BY_SLUG["super"] | {"income_per_hour": 999}) == 0.0
+    # Недвижимость по-прежнему сдаётся без всяких slug-ограничений.
+    assert _is_rentable({"type": "realestate", "slug": "studio"})
 
     non_rentable = {"type": "crypto", "price": 40000, "rarity": "rare", "level": 1}
     assert _rent_rate_per_hour(non_rentable) == 0.0
+    assert not _is_rentable(non_rentable)
 
     print("assets.py rent formula: OK")
     print(f"  studio(common,$5k)   = ${studio_rate}/сутки")

@@ -1055,10 +1055,6 @@ select.company-name-input option {
 .attempt-fb .exact { color: var(--color-success); }
 .attempt-fb .present { color: #ff9f0a; }
 
-@media (max-width: 720px) {
-  .cityroof-map { grid-template-columns: repeat(2, 1fr); }
-}
-
 /* ===================== CUSTOM STOCKS (issue / dividends) ===================== */
 .stocks-titlebar { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; }
 .stocks-issue-btn {
@@ -2110,4 +2106,145 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 @media (max-width: 600px) {
   .tv-toast-stack { top: 12px; max-width: 94vw; }
   .tv-toast { min-width: 0; width: 94vw; }
+  /* Стек realtime-попапов: фикс 360px + отступы 20px переполнял узкие экраны. */
+  .tv-popup-stack { right: 10px; left: 10px; bottom: 12px; max-width: none; }
+  .tv-popup-card { padding: 14px 14px 14px 12px; }
+  /* Карточка сотрудника: имя+зарплата+кнопки в одну строку тесно — даём инфо занять строку. */
+  .company-emp-info { flex: 1 1 100%; min-width: 0; }
+  .company-emp-name, .company-emp-role { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .company-emp-actions, .company-emp-edit { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+}
+
+
+/* ===== FE2: ShopTab + MiningTab additions ===== */
+/* ── ShopTab: spec rows, owned badge, qty stepper, sell ── */
+.gpu-card-spec-row {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--color-text-tertiary);
+}
+.gpu-card-owned {
+  font-size: 11px; font-weight: 600; color: var(--color-text-secondary);
+}
+.gpu-card-qty {
+  display: flex; align-items: center; gap: 6px; margin-top: auto;
+}
+.gpu-card-qty input {
+  width: 100%; min-width: 0; text-align: center; padding: 5px 6px;
+  background: var(--color-bg-tertiary); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm); color: var(--color-text-primary);
+  font-size: 12px; font-family: var(--font-primary);
+}
+/* когда есть степпер, цена больше не «прилипает» к низу — это делает степпер */
+.gpu-card-qty ~ .gpu-card-buy { margin-top: 6px; }
+.gpu-card .gpu-card-qty { margin-top: auto; }
+.gpu-qty-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; flex: 0 0 26px; cursor: pointer;
+  background: var(--fill-soft); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm); color: var(--color-text-primary);
+}
+.gpu-qty-btn:disabled { opacity: .4; cursor: default; }
+.gpu-card-sell {
+  margin-top: 6px; padding: 7px 10px; width: 100%;
+  background: transparent; border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm); color: var(--color-danger);
+  font-size: 11px; font-weight: 600; font-family: var(--font-primary); cursor: pointer;
+}
+.gpu-card-sell:disabled { opacity: .5; cursor: default; }
+
+/* ── MiningTab: right-side success stats + bulk install qty ── */
+.mining-body { display: grid; grid-template-columns: 1fr; gap: var(--spacing-md); }
+@media (min-width: 960px) { .mining-body { grid-template-columns: 1fr 260px; align-items: start; } }
+.mining-success {
+  background: var(--color-bg-secondary); border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg); padding: var(--spacing-lg);
+}
+.mining-success h4 { display: flex; align-items: center; gap: 7px; margin: 0 0 var(--spacing-md); font-size: 14px; }
+.mining-success-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-sm);
+  padding: 9px 0; border-bottom: 1px solid var(--hairline);
+}
+.mining-success-row:last-child { border-bottom: none; }
+.mining-success-row span { font-size: 12px; color: var(--color-text-secondary); }
+.mining-success-row b { font-size: 14px; color: var(--color-text-primary); }
+.mslot-qty { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.mslot-qty input {
+  width: 52px; text-align: center; padding: 3px 4px;
+  background: var(--color-bg-tertiary); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm); color: var(--color-text-primary); font-size: 12px;
+}
+.mslot-pick-row { display: flex; align-items: center; gap: 6px; }
+.mslot-pick-row .mslot-pick { flex: 1 1 auto; }
+
+
+/* ===== FE3: Leaderboard + Market rental additions ===== */
+/* fe3: Leaderboard breakdown + players/companies toggle + market rental note.
+   Appended scratch styles (merge into economy.css later). Reuses existing
+   .leaderboard-* / .lb-* classes; only adds what's new. */
+
+/* Players/Companies mode toggle — same look as .tx-pill row, own spacing. */
+.leaderboard-modes {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+/* Simplify the row to rank | player(+breakdown) | networth | profit and let
+   the breakdown chips live under the name so it stays readable on mobile. */
+.lb-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  margin-top: 4px;
+}
+.lb-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+.lb-chip b { font-weight: 600; color: var(--color-text-secondary); }
+.lb-chip.active {
+  color: var(--color-accent);
+  background: var(--fill-soft);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 6px);
+}
+.lb-chip.active b { color: var(--color-accent); }
+
+/* Profit column: stack the 7d figure over a faint lifetime line. */
+.lb-profit-sub {
+  display: block;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Company logo in the leaderboard reuses the avatar footprint. */
+.lb-avatar.lb-logo { background: var(--fill-soft); }
+
+/* Market "Rental" info note — small hairline banner under the toolbar. */
+.market-rental-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.market-rental-note svg { color: var(--color-accent); flex-shrink: 0; margin-top: 1px; }
+
+@media (max-width: 640px) {
+  /* Keep networth visible on mobile now that it carries the breakdown context. */
+  .leaderboard-row { grid-template-columns: 44px 1fr auto; }
+  .leaderboard-row .lb-networth { display: block; }
+  .lb-profit-sub { display: none; }
 }

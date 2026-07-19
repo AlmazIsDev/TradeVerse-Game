@@ -163,6 +163,11 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     }
 
 
+def _mined_qty(revenue_usd: float, coin_price: float) -> float:
+    """USD-выручка → количество добытых монет по текущему курсу (0 при price<=0)."""
+    return round(revenue_usd / coin_price, 8) if (revenue_usd > 0.01 and coin_price > 0) else 0.0
+
+
 def _repair_cost(farm: dict) -> float:
     gpus = len(farm.get("components", {}).get("gpus", []))
     missing = max(0.0, 100.0 - farm.get("condition", 100.0))
@@ -194,6 +199,8 @@ def _serialize(farm: dict, stats: dict) -> dict:
         "electricityOwed": round(farm.get("electricity_owed", 0.0), 2),
         "totalEarned": round(farm.get("total_earned", 0.0), 2),
         "totalSpent": round(farm.get("total_spent", 0.0), 2),
+        "totalMinedUsd": round(farm.get("total_mined_usd", 0.0), 2),
+        "totalMinedCoins": round(farm.get("total_mined_coins", 0.0), 8),
         "components": {
             "motherboard": comp.get("motherboard"),
             "cpu": comp.get("cpu"), "psu": comp.get("psu"),
@@ -655,35 +662,50 @@ async def tick_all(db: AsyncIOMotorDatabase):
                 repair_cost = candidate_cost
                 new_condition = 100.0
 
+        # Майнинг добывает МОНЕТУ, а не деньги: выручка (USD-эквивалент) конвертируется
+        # в количество монет по текущему курсу и зачисляется в crypto_holdings.
+        # Электричество/зарплата/ремонт — реальные РАСХОДЫ, списываются с баланса.
+        coin_sym = farm.get("coin")
+        coin_price = float((market.get(coin_sym) or {}).get("price", 0.0))
+        coin_qty = _mined_qty(revenue, coin_price)
+        costs = round(electricity + salary + repair_cost, 2)
+
         set_fields = {
             "condition": round(new_condition, 2),
             "last_tick": now,
-            "coin": farm.get("coin"),
+            "coin": coin_sym,
             "total_earned": round(farm.get("total_earned", 0.0) + revenue, 2),
-            "total_spent": round(farm.get("total_spent", 0.0) + electricity + salary + repair_cost, 2),
+            "total_spent": round(farm.get("total_spent", 0.0) + costs, 2),
+            "total_mined_usd": round(farm.get("total_mined_usd", 0.0) + (revenue if coin_qty > 0 else 0.0), 2),
+            "total_mined_coins": round(farm.get("total_mined_coins", 0.0) + coin_qty, 8),
         }
 
-        net = round(revenue - electricity - salary - repair_cost, 2)
-        if net >= 0:
-            nb = await adjust_balance(db, user_id, net)
-            if revenue > 0.01:
-                await record_transaction(db, user_id, INCOME, revenue, CAT_MINING,
-                                         f"Добыча {farm.get('coin')}", symbol=farm.get("coin"), balance_after=nb)
-            if (electricity + salary + repair_cost) > 0.01:
-                await record_transaction(db, user_id, EXPENSE, round(electricity + salary + repair_cost, 2),
-                                         CAT_MINING, f"Расходы фермы «{farm.get('name')}»")
-        else:
-            nb = await adjust_balance(db, user_id, net)
+        # 1) Списываем денежные расходы (если ферма их не тянет — отключаем).
+        if costs > 0.01:
+            nb = await adjust_balance(db, user_id, -costs)
             if nb is None:
-                # Нечем платить за электричество — ферма отключается.
                 set_fields["status"] = "off"
-                set_fields["electricity_owed"] = round(farm.get("electricity_owed", 0.0) + abs(net), 2)
+                set_fields["electricity_owed"] = round(farm.get("electricity_owed", 0.0) + costs, 2)
                 await push_notification(db, user_id, "mining", "Ферма отключена",
                                         f"«{farm.get('name')}»: недостаточно денег на электричество.",
                                         data={"farmId": str(farm["_id"])})
-            else:
-                await record_transaction(db, user_id, EXPENSE, abs(net), CAT_MINING,
-                                         f"Расходы фермы «{farm.get('name')}»", balance_after=nb)
+                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": set_fields})
+                continue
+            await record_transaction(db, user_id, EXPENSE, costs, CAT_MINING,
+                                     f"Расходы фермы «{farm.get('name')}»", balance_after=nb)
+
+        # 2) Зачисляем добытые монеты в холдинги (upsert по userId+symbol, как в crypto.py).
+        if coin_qty > 0 and coin_sym:
+            await db.crypto_holdings.update_one(
+                {"userId": user_id, "symbol": coin_sym},
+                {"$inc": {"quantity": coin_qty},
+                 "$setOnInsert": {"userId": user_id, "symbol": coin_sym, "avg_price": round(coin_price, 6)}},
+                upsert=True,
+            )
+            # В реестр пишем USD-эквивалент добытого (для аналитики), symbol = монета.
+            await record_transaction(db, user_id, INCOME, revenue, CAT_MINING,
+                                     f"Добыча {coin_qty:g} {coin_sym}", symbol=coin_sym,
+                                     price=coin_price, meta={"quantity": coin_qty})
 
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": set_fields})
 
@@ -786,4 +808,12 @@ if __name__ == "__main__":
     assert _ai_should_repair(True, 5, 90.0, 1000, 1, 1, 10) is False
     # Порог растёт с уровнем: level 5 → 80%, износ 70% уже требует ремонта.
     assert _ai_should_repair(True, 5, 70.0, 1000, 1, 1, 10) is True
+
+    # Майнинг добывает МОНЕТУ: qty = revenue_usd / price; расходы остаются в кэше.
+    assert _mined_qty(100.0, 50.0) == 2.0           # 100$ по курсу 50 → 2 монеты
+    assert _mined_qty(100.0, 0.0) == 0.0            # нет курса → ничего не добыто
+    assert _mined_qty(0.0, 50.0) == 0.0             # нет выручки → 0 монет
+    # Выручка идёт в монеты, а costs (эл-во+зарплата+ремонт) — отдельный кэш-расход.
+    _rev, _price, _costs = 60.0, 30.0, 12.0
+    assert _mined_qty(_rev, _price) == 2.0 and round(_costs, 2) == 12.0
     print("mining self-check OK")

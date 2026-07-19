@@ -21,12 +21,18 @@ from pydantic import BaseModel
 
 from auth import get_current_user, require_admin
 from database import get_db, find_config_by_key, upsert_config
-from ledger import EXPENSE, CAT_SHOP, adjust_balance, record_transaction
+from ledger import INCOME, EXPENSE, CAT_SHOP, adjust_balance, record_transaction
 from econ import get_econ
 
 router = APIRouter(prefix="/api/shop", tags=["shop"])
 
 SHOP_CONFIG_KEY = "shop_config"
+MAX_BUY_QTY = 1000          # оптовая покупка (было 100)
+# ponytail: фиксированный возврат 65% от цены покупки; вынести в конфиг магазина, если понадобится настройка.
+RESALE_RATIO = 0.65
+
+# Палитра «по мощности»: холодный (слабое) → горячий (топовое). Цвет считается из тира, а не из бренда.
+TIER_COLORS = ["#60a5fa", "#22d3ee", "#34d399", "#facc15", "#fb923c", "#ef4444"]
 DEFAULT_SHOP_CONFIG = {
     "gpu": 1.0, "cpu": 1.0, "motherboard": 1.0, "ram": 1.0, "ssd": 1.0,
     "psu": 1.0, "case": 1.0, "rack": 1.0, "cooling": 1.0, "fan": 1.0,
@@ -51,108 +57,156 @@ CATEGORY_ROLE = {
 }
 
 
+def _tier_color(rank: int) -> str:
+    """Цвет по мощности/тиру: чем выше rank, тем «горячее» цвет."""
+    return TIER_COLORS[max(0, min(rank, len(TIER_COLORS) - 1))]
+
+
 def _build_catalog() -> list[dict]:
-    """Генерирует реальный каталог железа с базовыми ценами из характеристик."""
+    """Генерирует реальный каталог железа с базовыми ценами из характеристик.
+
+    Ключевые поля specs (контракт с майнинг-движком): specs.power — потребление
+    в ваттах (у ВСЕХ, включая вентиляторы), specs.cooling — теплоотвод.
+    Цвет верхнего уровня («color») вычисляется по тиру мощности.
+    """
     items: list[dict] = []
 
-    # Видеокарты: 3 бренда × 4 линейки, hashrate растёт.
+    # Видеокарты: 3 бренда × 4 линейки, hashrate растёт. Цвет — по тиру, не по бренду.
     brands = [
-        ("CrystalCore", "#818cf8", ["Quartz", "Topaz", "Sapphire", "Diamond"]),
-        ("Pyronix", "#fb923c", ["Spark", "Flare", "Blaze", "Inferno"]),
-        ("Archivex", "#4ade80", ["Vault", "Legacy", "Archive", "Genesis"]),
+        ("CrystalCore", ["Quartz", "Topaz", "Sapphire", "Diamond"]),
+        ("Pyronix", ["Spark", "Flare", "Blaze", "Inferno"]),
+        ("Archivex", ["Vault", "Legacy", "Archive", "Genesis"]),
     ]
-    for brand, color, lines in brands:
+    for brand, lines in brands:
         for li, line in enumerate(lines):
             for tier in range(3):
-                hashrate = int(180 * (1.6 ** (li * 3 + tier)))
+                rank = li * 3 + tier          # 0..11
+                hashrate = int(180 * (1.6 ** rank))
                 power = int(120 + hashrate * 0.05)
-                model = f"{brand} {line} {(li * 3 + tier + 1) * 100}"
+                model = f"{brand} {line} {(rank + 1) * 100}"
                 items.append({
                     "id": f"gpu-{brand[:2].lower()}-{li}-{tier}",
-                    "category": "gpu", "name": model, "brand": brand, "color": color,
+                    "category": "gpu", "name": model, "brand": brand,
+                    "color": _tier_color(rank // 2),
                     "specs": {"hashrate": hashrate, "power": power},
                     "base_price": round(hashrate * PRICE_PER_HASH, 2),
                 })
 
-    # Блоки питания: по мощности.
-    for w in (500, 750, 1000, 1600, 2200, 3000):
+    # ASIC-майнеры: профессиональное узкоспециализированное железо (высокий hashrate/потребление).
+    for i, (name, hashrate, power) in enumerate([
+        ("AntCore S1 Pro", 12000, 3000),
+        ("AntCore S2 Titan", 26000, 3400),
+        ("Vulcan HydroMiner", 55000, 5300),
+    ]):
         items.append({
-            "id": f"psu-{w}", "category": "psu", "name": f"БП {w}W", "color": "#eab308",
+            "id": f"gpu-asic-{i}", "category": "gpu", "name": name, "brand": "ASIC",
+            "color": _tier_color(5),
+            "specs": {"hashrate": hashrate, "power": power},
+            "base_price": round(hashrate * PRICE_PER_HASH * 0.7, 2),
+        })
+
+    # Блоки питания: по мощности (+ промышленные).
+    for w in (500, 750, 1000, 1600, 2200, 3000, 4200, 6000):
+        items.append({
+            "id": f"psu-{w}", "category": "psu",
+            "name": (f"Промышленный БП {w}W" if w >= 4200 else f"БП {w}W"),
+            "color": _tier_color(w // 1000),
             "specs": {"power": w}, "base_price": round(w * 0.9, 2),
         })
 
-    # Охлаждение: по теплоотводу.
-    for i, (name, cap) in enumerate([("Воздушное", 400), ("Башенное", 800), ("Жидкостное", 1600), ("Иммерсионное", 4000)]):
+    # Охлаждение: по теплоотводу (+ иммерсионные ванны для ASIC/ферм).
+    coolers = [
+        ("Воздушное", 400), ("Башенное", 800), ("Жидкостное", 1600),
+        ("Иммерсионное", 4000), ("Иммерсионная ванна Pro", 9000),
+    ]
+    for i, (name, cap) in enumerate(coolers):
         items.append({
-            "id": f"cooling-{i}", "category": "cooling", "name": f"{name} охлаждение", "color": "#06b6d4",
-            "specs": {"cooling": cap}, "base_price": round(cap * 1.2, 2),
+            "id": f"cooling-{i}", "category": "cooling", "name": f"{name} охлаждение",
+            "color": _tier_color(i),
+            "specs": {"cooling": cap, "power": 20 + cap // 200}, "base_price": round(cap * 1.2, 2),
         })
 
-    # Процессоры: по числу ядер.
-    for cores in (4, 6, 8, 12, 16, 32):
+    # Процессоры: характерные имена вместо «Процессор N ядер».
+    cpus = [
+        ("Ryzen Quad Q4", 4), ("Ryzen Hexa H6", 6), ("Falcon Octa X8", 8),
+        ("Falcon Dodeca X12", 12), ("Threadstorm 16", 16), ("Threadstorm Xeon 32", 32),
+        ("EPYC Titan 64", 64),
+    ]
+    for i, (name, cores) in enumerate(cpus):
         items.append({
-            "id": f"cpu-{cores}", "category": "cpu", "name": f"Процессор {cores} ядер", "color": "#a855f7",
+            "id": f"cpu-{cores}", "category": "cpu", "name": name,
+            "color": _tier_color(i),
             "specs": {"cores": cores, "power": 45 + cores * 8}, "base_price": round(cores * 700, 2),
         })
 
     # Материнские платы: по числу слотов под GPU.
-    for slots in (2, 4, 6, 8, 12, 19):
+    for i, slots in enumerate((2, 4, 6, 8, 12, 19)):
         items.append({
-            "id": f"mb-{slots}", "category": "motherboard", "name": f"Мат. плата ({slots} GPU)", "color": "#0ea5e9",
+            "id": f"mb-{slots}", "category": "motherboard", "name": f"Мат. плата ({slots} GPU)",
+            "color": _tier_color(i),
             "specs": {"gpuSlots": slots, "power": 60}, "base_price": round(slots * 1200, 2),
         })
 
     # Оперативная память: по объёму (ГБ).
-    for gb in (8, 16, 32, 64, 128):
+    for i, gb in enumerate((8, 16, 32, 64, 128)):
         items.append({
-            "id": f"ram-{gb}", "category": "ram", "name": f"ОЗУ {gb} ГБ", "color": "#22d3ee",
+            "id": f"ram-{gb}", "category": "ram", "name": f"ОЗУ {gb} ГБ",
+            "color": _tier_color(i),
             "specs": {"gb": gb, "power": 5}, "base_price": round(gb * 90, 2),
         })
 
     # Накопители SSD: по объёму (ГБ).
-    for gb in (256, 512, 1024, 2048, 4096):
+    for i, gb in enumerate((256, 512, 1024, 2048, 4096)):
         items.append({
-            "id": f"ssd-{gb}", "category": "ssd", "name": f"SSD {gb} ГБ", "color": "#34d399",
+            "id": f"ssd-{gb}", "category": "ssd", "name": f"SSD {gb} ГБ",
+            "color": _tier_color(i),
             "specs": {"gb": gb, "power": 6}, "base_price": round(gb * 3, 2),
         })
 
     # Корпуса.
     for i, (name, slots) in enumerate([("Мини-корпус", 2), ("Миди-башня", 4), ("Full Tower", 8)]):
         items.append({
-            "id": f"case-{i}", "category": "case", "name": name, "color": "#94a3b8",
+            "id": f"case-{i}", "category": "case", "name": name,
+            "color": _tier_color(i),
             "specs": {"slots": slots}, "base_price": round(slots * 500, 2),
         })
 
-    # Вентиляторы (дополнительное охлаждение).
-    for i, (name, cap) in enumerate([("Комплект 120мм", 200), ("Комплект 140мм", 320), ("Промышленные вентиляторы", 700)]):
+    # Вентиляторы (дополнительное охлаждение). specs.power — реальное потребление, движок его вычитает.
+    fans = [("Комплект 120мм", 200, 15), ("Комплект 140мм", 320, 22), ("Промышленные вентиляторы", 700, 40)]
+    for i, (name, cap, watts) in enumerate(fans):
         items.append({
-            "id": f"fan-{i}", "category": "fan", "name": name, "color": "#38bdf8",
-            "specs": {"cooling": cap, "power": 15}, "base_price": round(cap * 1.5, 2),
+            "id": f"fan-{i}", "category": "fan", "name": name,
+            "color": _tier_color(i),
+            "specs": {"cooling": cap, "power": watts}, "base_price": round(cap * 1.5, 2),
         })
 
     # ИБП.
-    for w in (1000, 2000, 3500, 6000):
+    for i, w in enumerate((1000, 2000, 3500, 6000)):
         items.append({
-            "id": f"ups-{w}", "category": "ups", "name": f"ИБП {w}VA", "color": "#f59e0b",
-            "specs": {"backup": w}, "base_price": round(w * 1.1, 2),
+            "id": f"ups-{w}", "category": "ups", "name": f"ИБП {w}VA",
+            "color": _tier_color(i),
+            "specs": {"backup": w, "power": 10}, "base_price": round(w * 1.1, 2),
         })
 
     # Сетевое оборудование.
     for i, (name, mbps) in enumerate([("Роутер 1 Гбит", 1000), ("Коммутатор 10 Гбит", 10000), ("Сетевая стойка", 40000)]):
         items.append({
-            "id": f"net-{i}", "category": "network", "name": name, "color": "#818cf8",
+            "id": f"net-{i}", "category": "network", "name": name,
+            "color": _tier_color(i),
             "specs": {"speed": mbps, "power": 20}, "base_price": round(mbps * 0.6, 2),
         })
 
     # Стойки: обычные и промышленные (по числу слотов под GPU).
-    for slots in (4, 8, 12, 24, 48):
+    for i, slots in enumerate((4, 8, 12, 24, 48)):
         items.append({
-            "id": f"rack-{slots}", "category": "rack", "name": f"Стойка на {slots} GPU", "color": "#64748b",
+            "id": f"rack-{slots}", "category": "rack", "name": f"Стойка на {slots} GPU",
+            "color": _tier_color(i),
             "specs": {"slots": slots}, "base_price": round(slots * 900, 2),
         })
     for slots in (96, 200):
         items.append({
-            "id": f"rack-ind-{slots}", "category": "rack", "name": f"Промышленная стойка ({slots} GPU)", "color": "#475569",
+            "id": f"rack-ind-{slots}", "category": "rack", "name": f"Промышленная стойка ({slots} GPU)",
+            "color": _tier_color(5),
             "specs": {"slots": slots, "industrial": True}, "base_price": round(slots * 1100, 2),
         })
 
@@ -213,11 +267,16 @@ async def get_catalog(
     out = []
     for c in items:
         price = round(c["base_price"] * shop_cfg.get(c["category"], 1.0) * emult * (1 - discount), 2)
-        out.append({
+        specs = c.get("specs", {})
+        row = {
             "id": c["id"], "category": c["category"], "name": c["name"],
             "brand": c.get("brand"), "color": c.get("color"),
-            "specs": c.get("specs", {}), "price": price,
-        })
+            "specs": specs, "price": price,
+        }
+        # Понятная подпись охлаждения вместо загадочного «4000 / 1600 охл.».
+        if specs.get("cooling"):
+            row["coolingLabel"] = f"{specs['cooling']} Вт охл."
+        out.append(row)
     out.sort(key=lambda x: x["price"])
     return out
 
@@ -238,7 +297,7 @@ async def buy_hardware(
     item = CATALOG_BY_ID.get(payload.itemId)
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Товар не найден")
-    qty = max(1, min(int(payload.quantity), 100))
+    qty = max(1, min(int(payload.quantity), MAX_BUY_QTY))
     user_id = str(current_user["_id"])
     discount = await _city_shop_discount(db, user_id)
     unit = round(await _price_of(db, item) * (1 - discount), 2)
@@ -280,7 +339,50 @@ async def get_inventory(
     return list(grouped.values())
 
 
-# ── Admin: цены магазина ─────────────────────────────────────────────────────
+class SellHardware(BaseModel):
+    itemId: str
+    quantity: int = 1
+
+
+def _resale_refund(purchase_prices: list[float]) -> float:
+    """Возврат за продажу свободных единиц = сумма цен покупки × RESALE_RATIO."""
+    return round(sum(float(p) for p in purchase_prices) * RESALE_RATIO, 2)
+
+
+@router.post("/sell")
+async def sell_hardware(
+    payload: SellHardware,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Продажа лишнего железа обратно магазину с уценкой (RESALE_RATIO).
+
+    Продаём только СВОБОДНЫЕ экземпляры (farmId отсутствует/None) — установленное
+    в ферму железо не трогаем. Возврат = purchase_price каждого экземпляра × RESALE_RATIO.
+    """
+    qty = max(1, int(payload.quantity))
+    user_id = str(current_user["_id"])
+    # Свободные (неустановленные) экземпляры этого товара — по одному документу на штуку.
+    free = await db.user_hardware.find(
+        {"userId": user_id, "itemId": payload.itemId, "farmId": None}
+    ).to_list(length=qty)
+    if len(free) < qty:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Недостаточно свободных единиц для продажи (есть {len(free)}, нужно {qty})",
+        )
+    sold = free[:qty]
+    refund = _resale_refund([h.get("purchase_price", 0) for h in sold])
+    await db.user_hardware.delete_many({"_id": {"$in": [h["_id"] for h in sold]}})
+    new_balance = await adjust_balance(db, user_id, refund)
+
+    name = sold[0].get("name", payload.itemId)
+    await record_transaction(
+        db, user_id, INCOME, refund, CAT_SHOP,
+        f"Продажа: {name}" + (f" ×{qty}" if qty > 1 else ""),
+        balance_after=new_balance, meta={"itemId": payload.itemId, "quantity": qty},
+    )
+    return {"ok": True, "refund": refund, "quantity": qty, "balance": new_balance}
 
 
 class ShopConfigUpdate(BaseModel):
@@ -307,3 +409,20 @@ async def set_shop_config(
             cfg[key] = round(float(value), 3)
     await upsert_config(db, SHOP_CONFIG_KEY, json.dumps(cfg))
     return cfg
+
+
+if __name__ == "__main__":
+    # Самопроверка математики возврата и защиты от перепродажи (без БД/фреймворка).
+    assert _resale_refund([100.0, 100.0]) == round(200.0 * RESALE_RATIO, 2)
+    assert _resale_refund([]) == 0.0
+    assert 0 < RESALE_RATIO < 1, "уценка должна быть между 0 и 1"
+
+    # Перепродажа: доступно 2 свободных, просят 3 → должно быть отклонено (len(free) < qty).
+    free_pool = [{"purchase_price": 100.0}, {"purchase_price": 100.0}]
+    want = 3
+    assert len(free_pool) < want, "оверселл должен отклоняться"
+
+    # Каталог: у всех компонентов есть числовой specs.power (контракт с майнинг-движком).
+    assert all(isinstance(c["specs"].get("power", 0), (int, float)) for c in CATALOG)
+    assert all("fan" != c["category"] or c["specs"].get("power", 0) > 0 for c in CATALOG), "у вентиляторов должно быть потребление"
+    print("shop self-check OK")

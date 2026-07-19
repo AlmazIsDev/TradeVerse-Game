@@ -1789,6 +1789,7 @@ body {
 
   .dashboard-main {
     margin-left: 64px;
+    min-width: 0;
   }
 
   .header {

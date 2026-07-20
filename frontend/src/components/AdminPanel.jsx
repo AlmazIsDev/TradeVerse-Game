@@ -747,14 +747,22 @@ function AdminPanel({ user, onClose }) {
                 </div>
                 {filtered.map(tx => {
                   const total = (Number(tx.qty) || 0) * (Number(tx.price) || 0)
+                  const fmtTs = (ts) => {
+                    if (!ts) return '—'
+                    const d = new Date(ts)
+                    if (isNaN(d.getTime())) return ts
+                    const p = n => String(n).padStart(2, '0')
+                    return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`
+                  }
+                  const hasPrice = Number(tx.price) > 0
                   return (
                     <div key={tx.key} className={`admin-tx-row ${tx.source === 'bot' ? 'bot' : ''}`}>
-                      <span><span className={`tx-type ${tx.type}`}>{tx.type.toUpperCase()}</span></span>
-                      <span><strong>{tx.symbol}</strong></span>
+                      <span><span className={`tx-type ${tx.type?.toLowerCase()}`}>{tx.type?.toUpperCase()}</span></span>
+                      <span><strong>{tx.symbol || '—'}</strong></span>
                       <span>{tx.qty}</span>
-                      <span>${(Number(tx.price) || 0).toFixed(2)}</span>
-                      <span className="tx-total">${total.toFixed(2)}</span>
-                      <span className="tx-time">{tx.timestamp}</span>
+                      <span>{hasPrice ? `$${Number(tx.price).toFixed(2)}` : '—'}</span>
+                      <span className="tx-total">{total > 0 ? `$${total.toFixed(2)}` : '—'}</span>
+                      <span className="tx-time">{fmtTs(tx.timestamp)}</span>
                       <span className="tx-act">
                         {tx.source === 'user'
                           ? <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteTransaction(tx.id)}><Trash2 size={14} /></button>

@@ -392,7 +392,7 @@ function AdminPanel({ user, onClose }) {
           ))}
         </aside>
 
-        <div className="admin-content">
+        <div className={`admin-content${editingUser && activeSection === 'users' ? ' has-panel' : ''}`}>
         {loading && activeSection !== 'economy' && <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>}
 
         {activeSection === 'economy' && <EconomyAdmin />}
@@ -584,131 +584,113 @@ function AdminPanel({ user, onClose }) {
         )}
 
         {!loading && activeSection === 'users' && (
-          <div className="admin-list">
-            <div className="admin-toolbar">
-              <div className="tx-search"><Search size={15} className="tx-search-icon" />
-                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder={t('admin.searchUsers')} /></div>
-              <span className="admin-count">{t('admin.totalUsers')}: {users.length}</span>
-            </div>
-            {users.filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase())).map(u => (
-              <div key={u.id} className="admin-user-item">
-                {editingUser === u.id ? (
-                  <div className="admin-user-edit-form">
-                    <div className="admin-user-edit-header">
-                      <strong>{t('admin.editUser')}: {u.username}</strong>
-                      <span className="user-id-label">ID: {u.id}</span>
+          <>
+            <div className="admin-list">
+              <div className="admin-toolbar">
+                <div className="tx-search"><Search size={15} className="tx-search-icon" />
+                  <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder={t('admin.searchUsers')} /></div>
+                <span className="admin-count">{t('admin.totalUsers')}: {users.length}</span>
+              </div>
+              {users.filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase())).map(u => (
+                <div key={u.id} className={`admin-user-item${editingUser === u.id ? ' editing' : ''}`}>
+                  <div className="admin-user-info">
+                    <div>
+                      <strong>{u.username}</strong>
+                      <span className={`user-role ${u.role || 'user'}`}>{u.role || 'user'}</span>
+                      {u.hidden_from_leaderboard && (
+                        <span className="user-role admin" title={t('admin.fieldHiddenFromLeaderboard')}>
+                          <EyeOff size={12} />
+                        </span>
+                      )}
                     </div>
-                    <div className="admin-user-edit-fields">
-                      <div className="admin-field-group">
-                        <label>{t('admin.fieldUsername')}</label>
-                        <input
-                          type="text"
-                          value={editForm.username}
-                          onChange={e => setEditForm({ ...editForm, username: e.target.value })}
-                          className={`admin-input${editErrors.username ? ' admin-input-error' : ''}`}
-                        />
-                        {editErrors.username && <span className="admin-field-error">{editErrors.username}</span>}
-                      </div>
-                      <div className="admin-field-group">
-                        <label>{t('admin.fieldBalance')}</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={editForm.balance}
-                          onChange={e => setEditForm({ ...editForm, balance: e.target.value })}
-                          className={`admin-input${editErrors.balance ? ' admin-input-error' : ''}`}
-                        />
-                        {editErrors.balance && <span className="admin-field-error">{editErrors.balance}</span>}
-                      </div>
-                      <div className="admin-field-group">
-                        <label>{t('admin.fieldRole')}</label>
-                        <select
-                          value={editForm.role}
-                          onChange={e => setEditForm({ ...editForm, role: e.target.value })}
-                          className={`admin-input${editErrors.role ? ' admin-input-error' : ''}`}
-                        >
-                          <option value="user">user</option>
-                          <option value="admin">admin</option>
-                        </select>
-                        {editErrors.role && <span className="admin-field-error">{editErrors.role}</span>}
-                      </div>
-                      <div className="admin-field-group">
-                        <label>{t('admin.fieldCardNumber')}</label>
-                        <input
-                          type="text"
-                          value={editForm.card_number}
-                          onChange={e => setEditForm({ ...editForm, card_number: e.target.value })}
-                          className={`admin-input${editErrors.card_number ? ' admin-input-error' : ''}`}
-                          placeholder="XXXX-XXXX-XXXX-XXXXX"
-                          maxLength={20}
-                        />
-                        {editErrors.card_number && <span className="admin-field-error">{editErrors.card_number}</span>}
-                      </div>
-                      <div className="admin-field-checkbox">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={editForm.hidden_from_leaderboard}
-                            onChange={e => setEditForm({ ...editForm, hidden_from_leaderboard: e.target.checked })}
-                          />
-                          {t('admin.fieldHiddenFromLeaderboard')}
-                        </label>
-                      </div>
-                      <div className="admin-field-checkbox">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={editForm.leaderboard_lock}
-                            onChange={e => setEditForm({ ...editForm, leaderboard_lock: e.target.checked })}
-                          />
-                          {t('admin.fieldLeaderboardLock')}
-                        </label>
-                      </div>
-                    </div>
-                    <div className="admin-user-edit-actions">
-                      <button className="admin-btn admin-btn-primary" onClick={handleSaveUser}>
-                        <Save size={14} /> {t('admin.save')}
-                      </button>
-                      <button className="admin-btn" onClick={handleCancelEditUser}>
-                        <X size={14} /> {t('admin.cancel')}
-                      </button>
+                    <div className="admin-user-meta">
+                      <span className="user-balance">${u.balance != null ? u.balance.toFixed(2) : '0.00'}</span>
+                      <span className="user-date">{u.created_at}</span>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="admin-user-info">
-                      <div>
-                        <strong>{u.username}</strong>
-                        <span className={`user-role ${u.role || 'user'}`}>{u.role || 'user'}</span>
-                        {u.hidden_from_leaderboard && (
-                          <span className="user-role admin" title={t('admin.fieldHiddenFromLeaderboard')}>
-                            <EyeOff size={12} />
-                          </span>
-                        )}
-                      </div>
-                      <div className="admin-user-meta">
-                        <span className="user-balance">${u.balance != null ? u.balance.toFixed(2) : '0.00'}</span>
-                        <span className="user-date">{u.created_at}</span>
-                      </div>
+                  <div className="user-actions">
+                    <button className="admin-btn" onClick={() => setPropertyUser(u)} title={t('admin.property.title')}>
+                      <Briefcase size={14} />
+                    </button>
+                    <button className="admin-btn" onClick={() => handleStartEditUser(u)}>
+                      <Edit3 size={14} />
+                    </button>
+                    <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteUser(u.id, u.username)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {users.length === 0 && <p className="empty-state">{t('admin.noUsers')}</p>}
+            </div>
+            {editingUser && (() => {
+              const u = users.find(x => x.id === editingUser)
+              return (
+                <aside className="user-edit-panel">
+                  <div className="user-edit-panel-header">
+                    <strong>{t('admin.editUser')}: {u?.username}</strong>
+                    <button className="admin-btn" onClick={handleCancelEditUser}><X size={16} /></button>
+                  </div>
+                  <div className="user-edit-panel-body">
+                    <div className="admin-field-group">
+                      <label>{t('admin.fieldUsername')}</label>
+                      <input type="text" value={editForm.username}
+                        onChange={e => setEditForm({ ...editForm, username: e.target.value })}
+                        className={`admin-input${editErrors.username ? ' admin-input-error' : ''}`} />
+                      {editErrors.username && <span className="admin-field-error">{editErrors.username}</span>}
                     </div>
-                    <div className="user-actions">
-                      <button className="admin-btn" onClick={() => setPropertyUser(u)} title={t('admin.property.title')}>
-                        <Briefcase size={14} />
-                      </button>
-                      <button className="admin-btn" onClick={() => handleStartEditUser(u)}>
-                        <Edit3 size={14} />
-                      </button>
-                      <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteUser(u.id, u.username)}>
-                        <Trash2 size={14} />
-                      </button>
+                    <div className="admin-field-group">
+                      <label>{t('admin.fieldBalance')}</label>
+                      <input type="number" step="0.01" min="0" value={editForm.balance}
+                        onChange={e => setEditForm({ ...editForm, balance: e.target.value })}
+                        className={`admin-input${editErrors.balance ? ' admin-input-error' : ''}`} />
+                      {editErrors.balance && <span className="admin-field-error">{editErrors.balance}</span>}
                     </div>
-                  </>
-                )}
-              </div>
-            ))}
-            {users.length === 0 && <p className="empty-state">{t('admin.noUsers')}</p>}
-          </div>
+                    <div className="admin-field-group">
+                      <label>{t('admin.fieldRole')}</label>
+                      <select value={editForm.role}
+                        onChange={e => setEditForm({ ...editForm, role: e.target.value })}
+                        className={`admin-input${editErrors.role ? ' admin-input-error' : ''}`}>
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                      </select>
+                      {editErrors.role && <span className="admin-field-error">{editErrors.role}</span>}
+                    </div>
+                    <div className="admin-field-group">
+                      <label>{t('admin.fieldCardNumber')}</label>
+                      <input type="text" value={editForm.card_number}
+                        onChange={e => setEditForm({ ...editForm, card_number: e.target.value })}
+                        className={`admin-input${editErrors.card_number ? ' admin-input-error' : ''}`}
+                        placeholder="XXXX-XXXX-XXXX-XXXXX" maxLength={20} />
+                      {editErrors.card_number && <span className="admin-field-error">{editErrors.card_number}</span>}
+                    </div>
+                    <div className="admin-field-checkbox">
+                      <label>
+                        <input type="checkbox" checked={editForm.hidden_from_leaderboard}
+                          onChange={e => setEditForm({ ...editForm, hidden_from_leaderboard: e.target.checked })} />
+                        {t('admin.fieldHiddenFromLeaderboard')}
+                      </label>
+                    </div>
+                    <div className="admin-field-checkbox">
+                      <label>
+                        <input type="checkbox" checked={editForm.leaderboard_lock}
+                          onChange={e => setEditForm({ ...editForm, leaderboard_lock: e.target.checked })} />
+                        {t('admin.fieldLeaderboardLock')}
+                      </label>
+                    </div>
+                  </div>
+                  <div className="user-edit-panel-actions">
+                    <button className="admin-btn admin-btn-primary" onClick={handleSaveUser}>
+                      <Save size={14} /> {t('admin.save')}
+                    </button>
+                    <button className="admin-btn" onClick={handleCancelEditUser}>
+                      <X size={14} /> {t('admin.cancel')}
+                    </button>
+                  </div>
+                </aside>
+              )
+            })()}
+          </>
         )}
 
         {!loading && activeSection === 'transactions' && (() => {

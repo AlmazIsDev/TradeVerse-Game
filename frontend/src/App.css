@@ -2599,6 +2599,34 @@ body {
   border-top: 1px solid var(--hairline);
 }
 
+/* ── Users: split list + side edit panel ───────────────────────────────── */
+.admin-content.has-panel { display: flex; flex-direction: row; gap: var(--spacing-md); align-items: flex-start; }
+.admin-content.has-panel .admin-list { flex: 1 1 auto; min-width: 220px; }
+.user-edit-panel {
+  flex: 0 0 320px; align-self: stretch;
+  display: flex; flex-direction: column; gap: var(--spacing-md);
+  padding: var(--spacing-md); background: var(--color-bg-secondary);
+  border: 1px solid var(--hairline); border-left: 2px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  animation: panel-slide-in 0.2s ease;
+}
+@keyframes panel-slide-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+.user-edit-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: var(--spacing-sm); border-bottom: 1px solid var(--hairline);
+}
+.user-edit-panel-header strong { font-size: 14px; color: var(--color-text-primary); }
+.user-edit-panel-body { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.user-edit-panel-actions {
+  display: flex; gap: var(--spacing-sm);
+  padding-top: var(--spacing-sm); border-top: 1px solid var(--hairline);
+}
+.admin-user-item.editing { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+@media (max-width: 720px) {
+  .admin-content.has-panel { flex-direction: column; }
+  .user-edit-panel { flex-basis: auto; width: 100%; }
+}
+
 .user-date,
 .tx-right {
   font-size: 12px;

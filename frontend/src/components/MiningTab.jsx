@@ -400,7 +400,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                             return availGroups.map(g => {
                               const qtyKey = `${cat}::${g.key}`
                               const maxQty = Math.min(g.items.length, capLeft ?? Infinity)
-                              const qty = cartQty[qtyKey] ?? maxQty
+                              const qty = cartQty[qtyKey] ?? 1
                               return (
                                 <div key={g.key} className="mslot-cart-row">
                                   <span className="mslot-cart-label">{g.label}{g.spec}</span>
@@ -413,7 +413,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                                     }} />
                                   <button className="mslot-cart-btn" disabled={busy}
                                     onClick={() => {
-                                      const want = Math.max(1, Math.min(cartQty[qtyKey] ?? maxQty, maxQty))
+                                      const want = Math.max(1, Math.min(cartQty[qtyKey] ?? 1, maxQty))
                                       installMany(cat, g.items.slice(0, want).map(p => p.hwId))
                                     }}>
                                     {t('mining.install', 'Поставить')}

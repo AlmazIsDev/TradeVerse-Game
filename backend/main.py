@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import random
 from bson import ObjectId
@@ -455,7 +457,7 @@ _LB_CACHE: dict = {"ts": None, "entries": None}
 _LB_CACHE_TTL_S = 12
 
 
-async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: dict | None = None) -> list[dict]:
+async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Optional[dict] = None) -> list[dict]:
     """Полный обсчёт капитала всех игроков (наличные + акции + крипта + активы + компания + WC).
 
     user_query переопределяет фильтр по users — например {"_id": oid} для одного

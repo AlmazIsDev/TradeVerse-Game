@@ -2447,6 +2447,8 @@ body {
   color: var(--color-accent-hover) !important;
   font-weight: 600;
 }
+.stock-price.up { color: var(--color-success) !important; }
+.stock-price.down { color: var(--color-danger) !important; }
 
 .stock-actions {
   display: flex;

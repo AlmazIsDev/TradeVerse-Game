@@ -67,6 +67,7 @@ function AdminPanel({ user, onClose }) {
     max_order_size_percent: '',
   })
   const [newStock, setNewStock] = useState({ symbol: '', name: '', price: '', change: '0', changePercent: '0' })
+  const [showAddForm, setShowAddForm] = useState(false)
   const [newConfig, setNewConfig] = useState({ key: '', value: '' })
   const [message, setMessage] = useState(null)
 
@@ -399,33 +400,39 @@ function AdminPanel({ user, onClose }) {
 
         {!loading && activeSection === 'stocks' && (
           <div>
-            <div className="admin-add-form">
-              <h3>{t('admin.addStock')}</h3>
-              <div className="form-row">
-                <input
-                  placeholder={t('admin.tickerPlaceholder')}
-                  value={newStock.symbol}
-                  onChange={e => setNewStock({ ...newStock, symbol: e.target.value })}
-                  className="admin-input"
-                />
-                <input
-                  placeholder={t('admin.namePlaceholder')}
-                  value={newStock.name}
-                  onChange={e => setNewStock({ ...newStock, name: e.target.value })}
-                  className="admin-input"
-                />
-                <input
-                  placeholder={t('admin.pricePlaceholder')}
-                  type="number"
-                  value={newStock.price}
-                  onChange={e => setNewStock({ ...newStock, price: e.target.value })}
-                  className="admin-input"
-                />
-                <button className="admin-btn admin-btn-primary" onClick={handleAddStock}>
-                  <Plus size={16} /> {t('admin.addButton')}
-                </button>
-              </div>
+            <div className="admin-toolbar">
+              <button className="admin-btn admin-btn-primary" onClick={() => setShowAddForm(v => !v)}>
+                <Plus size={16} /> {t('admin.addStock')}
+              </button>
             </div>
+            {showAddForm && (
+              <div className="admin-add-form">
+                <div className="form-row">
+                  <input
+                    placeholder={t('admin.tickerPlaceholder')}
+                    value={newStock.symbol}
+                    onChange={e => setNewStock({ ...newStock, symbol: e.target.value })}
+                    className="admin-input"
+                  />
+                  <input
+                    placeholder={t('admin.namePlaceholder')}
+                    value={newStock.name}
+                    onChange={e => setNewStock({ ...newStock, name: e.target.value })}
+                    className="admin-input"
+                  />
+                  <input
+                    placeholder={t('admin.pricePlaceholder')}
+                    type="number"
+                    value={newStock.price}
+                    onChange={e => setNewStock({ ...newStock, price: e.target.value })}
+                    className="admin-input"
+                  />
+                  <button className="admin-btn admin-btn-primary" onClick={handleAddStock}>
+                    <Plus size={16} /> {t('admin.addButton')}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Stock Config Section */}
             <div className="admin-section-divider">
@@ -466,7 +473,7 @@ function AdminPanel({ user, onClose }) {
                       <div className="stock-info">
                         <strong>{stock.symbol}</strong>
                         <span>{stock.name}</span>
-                        <span className="stock-price">${stock.price?.toFixed(2)}</span>
+                        <span className={`stock-price ${stock.changePercent > 0 ? 'up' : stock.changePercent < 0 ? 'down' : ''}`}>${stock.price?.toFixed(2)}</span>
                       </div>
                       <div className="stock-actions">
                         <button className="admin-btn" onClick={() => setEditingStock({ ...stock })}>

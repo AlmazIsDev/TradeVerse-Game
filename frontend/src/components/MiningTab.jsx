@@ -65,7 +65,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const [msg, setMsg] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
-  const [installQty, setInstallQty] = useState({}) // cat -> сколько ставить оптом (gpu/fan)
+  const [cartQty, setCartQty] = useState({}) // `${cat}::${modelKey}` -> сколько ставить оптом (gpu/fan)
 
   const load = useCallback(async () => {
     try {
@@ -118,6 +118,19 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     setBusy(true)
     try {
       for (const hwId of hwIds) await installComponent(farm.id, cat, hwId)
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+      await load()
+    }
+  }
+
+  // Массовое снятие одинаковых деталей: снимаем по одной (сервер валидирует каждую).
+  const removeMany = async (hwIds) => {
+    setBusy(true)
+    try {
+      for (const hwId of hwIds) await uninstallComponent(farm.id, hwId)
     } catch (err) {
       flash(err.message, 'error')
     } finally {
@@ -352,9 +365,18 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                   {groups.map(g => (
                     <div key={g.key} className="mslot-item">
                       <span>{g.label}{g.items.length > 1 && <b className="mslot-item-qty"> ×{g.items.length}</b>}</span>
-                      <button className="mslot-rm" disabled={busy}
-                        title={g.items.length > 1 ? t('mining.removeOne') : ''}
-                        onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
+                      <span className="mslot-item-actions">
+                        {multi && g.items.length > 1 && (
+                          <button className="mslot-rm mslot-rm-all" disabled={busy}
+                            title={t('mining.removeAll', 'Удалить все')}
+                            onClick={() => removeMany(g.items.map(it => it.hwId))}>
+                            <X size={12} />{g.items.length}
+                          </button>
+                        )}
+                        <button className="mslot-rm" disabled={busy}
+                          title={g.items.length > 1 ? t('mining.removeOne') : ''}
+                          onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
+                      </span>
                     </div>
                   ))}
                   {blockedByAlt ? (
@@ -363,33 +385,51 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                     <span className="mslot-empty">{t('mining.capacityFull')}</span>
                   ) : canAdd && (
                     avail.length > 0 ? (
-                      <div className="mslot-pick-row">
-                        <select className="mslot-pick" disabled={busy} value=""
-                          onChange={e => {
-                            if (!e.target.value) return
-                            const picked = avail.find(p => p.hwId === e.target.value)
-                            if (multi) {
-                              // Оптом: ставим N одинаковых деталей (тот же товар),
-                              // ограничивая свободной ёмкостью и наличием.
-                              const want = Math.max(1, Math.min(installQty[cat] || 1, capLeft ?? Infinity))
-                              const key = hwName(picked, t) + partSpec(cat, picked.specs, t)
-                              const ids = avail.filter(p => hwName(p, t) + partSpec(cat, p.specs, t) === key).slice(0, want).map(p => p.hwId)
-                              installMany(cat, ids.length ? ids : [picked.hwId])
-                            } else {
-                              run(() => installComponent(farm.id, cat, e.target.value))
+                      multi ? (
+                        <div className="mslot-cart">
+                          {(() => {
+                            // Группируем доступные детали по модели (имя+спека), чтобы
+                            // показать одну строку на модель с полем количества.
+                            const availGroups = []
+                            for (const p of avail) {
+                              const key = hwName(p, t) + partSpec(cat, p.specs, t)
+                              const g = availGroups.find(x => x.key === key)
+                              if (g) g.items.push(p)
+                              else availGroups.push({ key, label: hwName(p, t), spec: partSpec(cat, p.specs, t), items: [p] })
                             }
-                          }}>
+                            return availGroups.map(g => {
+                              const qtyKey = `${cat}::${g.key}`
+                              const maxQty = Math.min(g.items.length, capLeft ?? Infinity)
+                              const qty = cartQty[qtyKey] ?? maxQty
+                              return (
+                                <div key={g.key} className="mslot-cart-row">
+                                  <span className="mslot-cart-label">{g.label}{g.spec}</span>
+                                  <span className="mslot-cart-stock" title={t('mining.inStock', 'В наличии')}>{g.items.length}</span>
+                                  <input className="mslot-cart-qty" inputMode="numeric" disabled={busy}
+                                    value={qty}
+                                    onChange={e => {
+                                      const v = parseInt(e.target.value, 10)
+                                      setCartQty(q => ({ ...q, [qtyKey]: isNaN(v) ? 1 : Math.max(1, Math.min(maxQty, v)) }))
+                                    }} />
+                                  <button className="mslot-cart-btn" disabled={busy}
+                                    onClick={() => {
+                                      const want = Math.max(1, Math.min(cartQty[qtyKey] ?? maxQty, maxQty))
+                                      installMany(cat, g.items.slice(0, want).map(p => p.hwId))
+                                    }}>
+                                    {t('mining.install', 'Поставить')}
+                                  </button>
+                                </div>
+                              )
+                            })
+                          })()}
+                        </div>
+                      ) : (
+                        <select className="mslot-pick" disabled={busy} value=""
+                          onChange={e => { if (e.target.value) run(() => installComponent(farm.id, cat, e.target.value)) }}>
                           <option value="">{t('mining.pickPart')}</option>
                           {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>)}
                         </select>
-                        {multi && (
-                          <span className="mslot-qty">
-                            <input type="number" min="1" max={capLeft ?? 999} disabled={busy}
-                              value={installQty[cat] || 1}
-                              onChange={e => setInstallQty(q => ({ ...q, [cat]: Math.max(1, Math.min(capLeft ?? 999, parseInt(e.target.value, 10) || 1)) }))} />
-                          </span>
-                        )}
-                      </div>
+                      )
                     ) : (
                       <span className="mslot-empty">{t('mining.noParts')}</span>
                     )

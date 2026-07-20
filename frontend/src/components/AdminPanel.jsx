@@ -53,6 +53,8 @@ function AdminPanel({ user, onClose }) {
   const [users, setUsers] = useState([])
   const [transactions, setTransactions] = useState([])
   const [botOrders, setBotOrders] = useState([])
+  const [txFilter, setTxFilter] = useState('all') // 'all' | 'buy' | 'sell' | 'bot'
+  const [txSearch, setTxSearch] = useState('')
   const [configItems, setConfigItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingStock, setEditingStock] = useState(null)
@@ -709,57 +711,74 @@ function AdminPanel({ user, onClose }) {
           </div>
         )}
 
-        {!loading && activeSection === 'transactions' && (
-          <>
-            <div className="admin-toolbar">
-              <span className="admin-count">{t('admin.transactions')}: {transactions.length + botOrders.length}</span>
-              <button className="admin-btn" onClick={loadData} title={t('admin.refresh')}>
-                <RefreshCw size={14} /> {t('admin.refresh')}
-              </button>
-            </div>
-            <div className="admin-list">
-              {transactions.map(tx => (
-                <div key={tx.id} className="admin-tx-item">
-                  <div>
-                    <span className={`tx-type ${tx.type}`}>{tx.type}</span>
-                    <strong>{tx.symbol}</strong>
-                    <span>{tx.amount} × ${tx.price}</span>
-                  </div>
-                  <div className="tx-right">
-                    <span>{tx.timestamp}</span>
-                    <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteTransaction(tx.id)}>
-                      <Trash2 size={14} />
+        {!loading && activeSection === 'transactions' && (() => {
+          // Объединяем пользовательские сделки и ордера ботов в один поток.
+          const allTx = [
+            ...transactions.map(tx => ({
+              key: `u-${tx.id}`, id: tx.id, source: 'user', type: tx.type,
+              symbol: tx.symbol, qty: tx.amount, price: tx.price, timestamp: tx.timestamp,
+            })),
+            ...botOrders.map(tx => ({
+              key: `b-${tx.id}`, id: tx.id, source: 'bot', type: 'bot',
+              symbol: tx.symbol, qty: tx.quantity, price: tx.pricePerShare, timestamp: tx.timestamp,
+            })),
+          ]
+          const q = txSearch.trim().toLowerCase()
+          const filtered = allTx.filter(tx => {
+            if (txFilter !== 'all' && tx.type !== txFilter) return false
+            if (q && !(tx.symbol || '').toLowerCase().includes(q)) return false
+            return true
+          })
+          return (
+            <>
+              <div className="tx-filter-bar">
+                <div className="tx-search"><Search size={15} className="tx-search-icon" />
+                  <input value={txSearch} onChange={e => setTxSearch(e.target.value)} placeholder={t('admin.searchTx', 'Поиск по тикеру...')} /></div>
+                <div className="tx-chips">
+                  {['all', 'buy', 'sell', 'bot'].map(f => (
+                    <button key={f} className={`tx-chip ${txFilter === f ? 'active' : ''}`} onClick={() => setTxFilter(f)}>
+                      {f.toUpperCase()}
                     </button>
-                  </div>
-                </div>
-              ))}
-              {transactions.length === 0 && botOrders.length === 0 && <p className="empty-state">{t('admin.noTransactions')}</p>}
-            </div>
-            {botOrders.length > 0 && (
-              <>
-                <div className="admin-section-divider">
-                  <h3>Bot Orders</h3>
-                  <p className="admin-section-hint">Automatic trades from the bot trading system</p>
-                </div>
-                <div className="admin-list">
-                  {botOrders.map(tx => (
-                    <div key={tx.id} className="admin-tx-item bot-tx">
-                      <div>
-                        <span className={`tx-type ${tx.action}`}>{tx.action}</span>
-                        <strong>{tx.symbol}</strong>
-                        <span>{tx.quantity} × ${tx.pricePerShare?.toFixed(2) || '0.00'}</span>
-                        <span className="bot-label">BOT</span>
-                      </div>
-                      <div className="tx-right">
-                        <span>{tx.timestamp}</span>
-                      </div>
-                    </div>
                   ))}
                 </div>
-              </>
-            )}
-          </>
-        )}
+                <button className="admin-btn" onClick={loadData} title={t('admin.refresh')}>
+                  <RefreshCw size={14} />
+                </button>
+                <span className="admin-count">{filtered.length} / {allTx.length}</span>
+              </div>
+              <div className="admin-tx-table">
+                <div className="admin-tx-row admin-tx-head">
+                  <span>{t('admin.txType', 'Тип')}</span>
+                  <span>{t('admin.txSymbol', 'Тикер')}</span>
+                  <span>{t('admin.txQty', 'Кол-во')}</span>
+                  <span>{t('admin.txPrice', 'Цена')}</span>
+                  <span>{t('admin.txTotal', 'Итого')}</span>
+                  <span>{t('admin.txTime', 'Время')}</span>
+                  <span></span>
+                </div>
+                {filtered.map(tx => {
+                  const total = (Number(tx.qty) || 0) * (Number(tx.price) || 0)
+                  return (
+                    <div key={tx.key} className={`admin-tx-row ${tx.source === 'bot' ? 'bot' : ''}`}>
+                      <span><span className={`tx-type ${tx.type}`}>{tx.type.toUpperCase()}</span></span>
+                      <span><strong>{tx.symbol}</strong></span>
+                      <span>{tx.qty}</span>
+                      <span>${(Number(tx.price) || 0).toFixed(2)}</span>
+                      <span className="tx-total">${total.toFixed(2)}</span>
+                      <span className="tx-time">{tx.timestamp}</span>
+                      <span className="tx-act">
+                        {tx.source === 'user'
+                          ? <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteTransaction(tx.id)}><Trash2 size={14} /></button>
+                          : <span className="tx-dash">—</span>}
+                      </span>
+                    </div>
+                  )
+                })}
+                {filtered.length === 0 && <p className="empty-state">{t('admin.noTransactions')}</p>}
+              </div>
+            </>
+          )
+        })()}
 
         {!loading && activeSection === 'config' && (
           <div>

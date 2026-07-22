@@ -5,6 +5,7 @@ import secrets
 import bcrypt
 from database import get_db, get_stocks_collection, get_app_config_collection, delete_stock_by_symbol
 from ledger import adjust_balance
+from assets import CATALOG
 
 
 async def init():
@@ -14,6 +15,8 @@ async def init():
     await db.users.create_index("username", unique=True)
     await db.stocks.create_index("symbol", unique=True)
     await db.app_config.create_index("key", unique=True)
+    await db.asset_catalog_overrides.create_index("slug", unique=True)
+    await db.business_operations.create_index([("businessId", 1), ("createdAt", -1)])
 
     # Create default admin user
     existing_admin = await db.users.find_one({"username": "admin"})
@@ -84,6 +87,34 @@ async def init():
         },
         {"$set": {"studioXp": 0, "itstudioMaterials": {}}},
     )
+
+    # Каталог активов v2: старые позиции, которых больше нет на игровой витрине,
+    # переводим в ближайшие реальные типы. Игроки не теряют имущество, а в БД,
+    # интерфейсе и админке не остаётся мёртвых slug.
+    legacy_assets = {
+        "studio": "apartment", "flat2": "apartment", "townhouse": "house",
+        "villa": "cottage", "penthouse": "mansion", "castle": "mansion",
+        "shawarma": "cafe", "coffee": "cafe",
+    }
+    catalog_by_slug = {x["slug"]: x for x in CATALOG}
+    for old_slug, new_slug in legacy_assets.items():
+        target = catalog_by_slug[new_slug]
+        result = await db.user_assets.update_many(
+            {"slug": old_slug},
+            {"$set": {
+                "slug": new_slug, "type": target["type"], "name": target["name"],
+                "category": target.get("category"), "rarity": target.get("rarity"),
+                "price": target["price"], "income_per_hour": target.get("income_per_hour", 0),
+                "upkeep_per_hour": target.get("upkeep_per_hour", 0),
+                "employees": target.get("employees", 0), "rooms": target.get("rooms"),
+                "meta": target.get("meta", {}),
+            }},
+        )
+        if result.modified_count:
+            print(f"Migration: {result.modified_count} assets {old_slug} -> {new_slug}")
+
+    canonical_asset_slugs = [x["slug"] for x in CATALOG]
+    await db.asset_market.delete_many({"slug": {"$nin": canonical_asset_slugs}})
 
     # Seed default config
     default_config = [

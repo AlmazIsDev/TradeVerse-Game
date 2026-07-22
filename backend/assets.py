@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Optional
 
 import random
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -122,57 +123,165 @@ MATERIALS_DURATION_H = 6            # действует 6 часов с мом�
 # rarity — определяет и рыночный дрейф цены (RARITY_FLOOR), и ставку аренды
 # (RARITY_RENT_PCT/RARITY_RENT_FLOOR) — есть у всех типов, включая бизнесы.
 
+def _property(slug, name, price, income, upkeep, rarity, rooms=0, effect=None):
+    return {
+        "slug": slug, "type": TYPE_REALESTATE, "name": name, "rarity": rarity,
+        "price": price, "income_per_hour": income, "upkeep_per_hour": upkeep,
+        "rooms": rooms, "meta": {"tax": upkeep, "effect": effect or {}},
+    }
+
+
+def _business(slug, name, price, income, upkeep, employees, category, rarity,
+              mechanic, metric, effect=None):
+    return {
+        "slug": slug, "type": TYPE_BUSINESS, "name": name, "category": category,
+        "rarity": rarity, "price": price, "income_per_hour": income,
+        "upkeep_per_hour": upkeep, "employees": employees,
+        "meta": {
+            "mechanic": mechanic,
+            "metric": metric,
+            "effect": effect or {},
+            "baseSalaryPerHour": round(upkeep * 0.45 / max(1, employees), 2),
+        },
+    }
+
+
 CATALOG = [
-    # Недвижимость: аренда как доход, налог как расход
-    {"slug": "studio", "type": TYPE_REALESTATE, "name": "Студия", "rarity": "common",
-     "price": 5000, "income_per_hour": 12, "upkeep_per_hour": 3, "rooms": 1, "meta": {"tax": 3}},
-    {"slug": "flat2", "type": TYPE_REALESTATE, "name": "Двухкомнатная квартира", "rarity": "common",
-     "price": 14000, "income_per_hour": 32, "upkeep_per_hour": 7, "rooms": 2, "meta": {"tax": 7}},
-    {"slug": "townhouse", "type": TYPE_REALESTATE, "name": "Таунхаус", "rarity": "uncommon",
-     "price": 45000, "income_per_hour": 95, "upkeep_per_hour": 18, "rooms": 4, "meta": {"tax": 18}},
-    {"slug": "villa", "type": TYPE_REALESTATE, "name": "Вилла у моря", "rarity": "rare",
-     "price": 160000, "income_per_hour": 320, "upkeep_per_hour": 55, "rooms": 6, "meta": {"tax": 55}},
-    {"slug": "penthouse", "type": TYPE_REALESTATE, "name": "Пентхаус", "rarity": "epic",
-     "price": 480000, "income_per_hour": 950, "upkeep_per_hour": 140, "rooms": 8, "meta": {"tax": 140}},
-    {"slug": "castle", "type": TYPE_REALESTATE, "name": "Замок", "rarity": "legendary",
-     "price": 1500000, "income_per_hour": 3000, "upkeep_per_hour": 400, "rooms": 20, "meta": {"tax": 400}},
-    # Бизнесы: доход и расходы, есть сотрудники. rarity — экономический класс
-    # бизнеса (отдельно от category, которая отвечает только за тематику/иконку).
-    {"slug": "shawarma", "type": TYPE_BUSINESS, "name": "Шаурмечная", "category": "retail", "rarity": "common",
-     "price": 8000, "income_per_hour": 60, "upkeep_per_hour": 20, "employees": 2},
-    {"slug": "coffee", "type": TYPE_BUSINESS, "name": "Кофейня", "category": "retail", "rarity": "uncommon",
-     "price": 25000, "income_per_hour": 170, "upkeep_per_hour": 55, "employees": 4},
-    {"slug": "carwash", "type": TYPE_BUSINESS, "name": "Автомойка", "category": "service", "rarity": "rare",
-     "price": 60000, "income_per_hour": 380, "upkeep_per_hour": 110, "employees": 6},
-    # IT-студия — 4 тира (slug = "itstudio_" + ключ тира в game_config.ITSTUDIO_CONFIG).
-    # Владение экземпляром открывает заказ атаки/защиты «Крыши города»
-    # (см. cityroof.py) — материалы, шанс успеха и опыт зависят от тира.
-    {"slug": "itstudio_basic", "type": TYPE_BUSINESS, "name": "IT-студия: Базовая", "category": "tech", "rarity": "epic",
-     "price": 200000, "income_per_hour": 1300, "upkeep_per_hour": 420, "employees": 12},
-    {"slug": "itstudio_medium", "type": TYPE_BUSINESS, "name": "IT-студия: Средняя", "category": "tech", "rarity": "epic",
-     "price": 450000, "income_per_hour": 2600, "upkeep_per_hour": 850, "employees": 20},
-    {"slug": "itstudio_advanced", "type": TYPE_BUSINESS, "name": "IT-студия: Продвинутая", "category": "tech", "rarity": "legendary",
-     "price": 900000, "income_per_hour": 5000, "upkeep_per_hour": 1700, "employees": 32},
-    {"slug": "itstudio_premium", "type": TYPE_BUSINESS, "name": "IT-студия: Премиальная", "category": "tech", "rarity": "legendary",
-     "price": 1800000, "income_per_hour": 9200, "upkeep_per_hour": 3200, "employees": 50},
-    {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office", "rarity": "legendary",
-     "price": 750000, "income_per_hour": 4600, "upkeep_per_hour": 1500, "employees": 40},
-    # Медиахолдинг — открывает заказ разоблачений в СМИ (см. media.py): владелец
-    # может ударить по доходам бизнесов конкурента и цене его акции.
-    {"slug": "media_holding", "type": TYPE_BUSINESS, "name": "Медиахолдинг", "category": "media", "rarity": "legendary",
-     "price": 1200000, "income_per_hour": 6200, "upkeep_per_hour": 2100, "employees": 45},
-    # Автомобили: престиж (без дохода), учитываются в капитале, но сдаются в аренду
+    # Имущество. Эффекты суммируются и реально участвуют в механиках бизнеса.
+    _property("apartment", "Квартира", 18000, 34, 7, "common", 2, {"prestige": 2}),
+    _property("house", "Дом", 52000, 105, 20, "uncommon", 4, {"prestige": 6}),
+    _property("cottage", "Коттедж", 95000, 205, 36, "uncommon", 5, {"prestige": 12}),
+    _property("mansion", "Особняк", 420000, 920, 145, "epic", 10, {"prestige": 55, "businessIncomePct": 0.02}),
+    _property("garage", "Гараж", 16000, 24, 4, "common", 0, {"taxiSlots": 1}),
+    _property("parking_space", "Парковочное место", 6500, 10, 2, "common", 0, {"taxiSlots": 1}),
+    _property("warehouse", "Склад", 125000, 310, 70, "rare", 0, {"storage": 100, "businessIncomePct": 0.01}),
+    _property("hangar", "Ангар", 260000, 620, 125, "epic", 0, {"storage": 260, "taxiSlots": 3}),
+    _property("office", "Офис", 145000, 360, 75, "rare", 8, {"employeeSlots": 3, "upgradeDiscountPct": 0.02}),
+    _property("commercial_unit", "Коммерческое помещение", 230000, 610, 120, "epic", 6, {"businessIncomePct": 0.025}),
+    _property("land_plot", "Земельный участок", 80000, 135, 18, "uncommon", 0, {"upgradeDiscountPct": 0.04}),
+    _property("industrial_site", "Промышленный объект", 680000, 1750, 440, "legendary", 0, {"storage": 600, "businessIncomePct": 0.04}),
+
+    # Бизнесы. mechanic/metric задают специализированный блок единого меню.
+    _business("taxi_fleet", "Таксопарк", 90000, 0, 90, 4, "transport", "rare",
+              "fleet", "Активные автомобили", {"taxiBaseSlots": 3}),
+    _business("auto_service", "Автосервис", 110000, 720, 230, 8, "service", "rare",
+              "service_bays", "Загрузка постов", {"carRepairDiscountPct": 0.15}),
+    _business("car_dealership", "Автосалон", 240000, 1450, 480, 12, "transport", "epic",
+              "showroom", "Продажи автомобилей", {"carPurchaseDiscountPct": 0.05}),
+    _business("logistics", "Логистическая компания", 310000, 1900, 650, 18, "transport", "epic",
+              "routes", "Активные маршруты", {"storage": 120}),
+    _business("courier", "Курьерская служба", 65000, 430, 145, 7, "transport", "uncommon",
+              "deliveries", "Доставки в час"),
+    _business("construction", "Строительная компания", 420000, 2750, 920, 24, "industrial", "epic",
+              "projects", "Строительные проекты", {"propertyUpgradeDiscountPct": 0.08}),
+    _business("restaurant", "Ресторан", 180000, 1150, 390, 16, "hospitality", "rare",
+              "tables", "Загрузка столов"),
+    _business("cafe", "Кафе", 52000, 360, 120, 6, "hospitality", "uncommon",
+              "orders", "Заказы в час"),
+    _business("bar", "Бар", 95000, 660, 220, 9, "hospitality", "rare",
+              "night_shift", "Посетители за смену"),
+    _business("hotel", "Отель", 620000, 4100, 1380, 32, "hospitality", "legendary",
+              "occupancy", "Загрузка номеров", {"rentalIncomePct": 0.05}),
+    _business("hostel", "Хостел", 125000, 780, 270, 10, "hospitality", "rare",
+              "beds", "Занятые места", {"rentalIncomePct": 0.02}),
+    _business("fitness", "Фитнес-клуб", 210000, 1320, 440, 14, "service", "epic",
+              "memberships", "Активные абонементы"),
+    _business("supermarket", "Супермаркет", 360000, 2350, 820, 26, "retail", "epic",
+              "inventory", "Заполненность полок", {"storage": 80}),
+    _business("pharmacy", "Аптека", 150000, 980, 310, 10, "retail", "rare",
+              "prescriptions", "Заказы покупателей"),
+    _business("gas_station", "АЗС", 280000, 1780, 610, 12, "transport", "epic",
+              "fuel_stock", "Запас топлива", {"taxiFuelDiscountPct": 0.12}),
+    _business("carwash", "Автомойка", 60000, 390, 125, 6, "service", "rare",
+              "wash_bays", "Загрузка боксов", {"carServiceDiscountPct": 0.08}),
+    _business("warehouse_complex", "Складской комплекс", 480000, 3050, 980, 22, "industrial", "legendary",
+              "storage", "Загрузка складов", {"storage": 500}),
+    _business("data_center", "Дата-центр", 900000, 5900, 2200, 30, "tech", "legendary",
+              "compute", "Загрузка мощностей", {"miningEfficiencyPct": 0.04}),
+    _business("ad_agency", "Рекламное агентство", 135000, 850, 275, 10, "media", "rare",
+              "campaigns", "Активные кампании", {"businessIncomePct": 0.015}),
+    _business("print_shop", "Типография", 120000, 760, 250, 9, "industrial", "rare",
+              "print_orders", "Заказы в печати"),
+    _business("radio_station", "Радиостанция", 260000, 1580, 540, 16, "media", "epic",
+              "audience", "Аудитория эфира", {"mediaReach": 20}),
+    _business("tv_channel", "Телеканал", 780000, 5000, 1800, 38, "media", "legendary",
+              "ratings", "Рейтинг вещания", {"mediaReach": 60}),
+    _business("farm", "Ферма", 145000, 900, 290, 12, "agriculture", "rare",
+              "harvest", "Готовность урожая"),
+    _business("fishery", "Рыбное хозяйство", 190000, 1220, 410, 14, "agriculture", "rare",
+              "stock", "Запас рыбы"),
+    _business("sawmill", "Лесопилка", 270000, 1680, 590, 18, "industrial", "epic",
+              "timber", "Запас древесины", {"propertyUpgradeDiscountPct": 0.03}),
+    _business("factory", "Производственный завод", 750000, 4700, 1550, 40, "industrial", "legendary",
+              "production", "Загрузка линии"),
+    _business("jewelry", "Ювелирная мастерская", 330000, 2150, 720, 15, "retail", "epic",
+              "orders", "Заказы в работе", {"prestige": 25}),
+    _business("shopping_mall", "Торговый центр", 1100000, 7100, 2450, 55, "retail", "legendary",
+              "tenants", "Заполненность площадей", {"rentalIncomePct": 0.04}),
+    _business("business_center", "Бизнес-центр", 1350000, 8500, 2950, 60, "office", "legendary",
+              "offices", "Заполненность офисов", {"employeeSlots": 12}),
+
+    # Специализированные существующие бизнесы сохранены для совместимости.
+    _business("itstudio_basic", "IT-студия: Базовая", 200000, 1300, 420, 12, "tech", "epic",
+              "it_orders", "Заказы безопасности"),
+    _business("itstudio_medium", "IT-студия: Средняя", 450000, 2600, 850, 20, "tech", "epic",
+              "it_orders", "Заказы безопасности"),
+    _business("itstudio_advanced", "IT-студия: Продвинутая", 900000, 5000, 1700, 32, "tech", "legendary",
+              "it_orders", "Заказы безопасности"),
+    _business("itstudio_premium", "IT-студия: Премиальная", 1800000, 9200, 3200, 50, "tech", "legendary",
+              "it_orders", "Заказы безопасности"),
+    _business("media_holding", "Медиахолдинг", 1200000, 6200, 2100, 45, "media", "legendary",
+              "exposures", "Медийные кампании"),
+
+    # Автомобили используются как личное имущество и транспорт таксопарка.
     {"slug": "citycar", "type": TYPE_CAR, "name": "Городской хэтчбек", "rarity": "common",
-     "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 5}},
+     "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"prestige": 5, "taxiIncomePerHour": 95, "fuelPerHour": 3.2}},
     {"slug": "sedan", "type": TYPE_CAR, "name": "Бизнес-седан", "rarity": "uncommon",
-     "price": 40000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 20}},
+     "price": 40000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"prestige": 20, "taxiIncomePerHour": 210, "fuelPerHour": 5.5}},
     {"slug": "sport", "type": TYPE_CAR, "name": "Спорткар", "rarity": "rare",
-     "price": 150000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 60}},
+     "price": 150000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"prestige": 60, "taxiIncomePerHour": 460, "fuelPerHour": 9}},
     {"slug": "super", "type": TYPE_CAR, "name": "Суперкар", "rarity": "epic",
-     "price": 600000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 200}},
+     "price": 600000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"prestige": 200, "taxiIncomePerHour": 1100, "fuelPerHour": 16}},
 ]
 
 CATALOG_BY_SLUG = {c["slug"]: c for c in CATALOG}
+CATALOG_VERSION = 2
+
+
+async def effective_catalog(db: AsyncIOMotorDatabase) -> list[dict]:
+    """Канонический каталог с административными overrides.
+
+    Overrides лежат отдельно от игровых экземпляров, поэтому переживают
+    перезапуск сервера. При изменении цены админский endpoint также обновляет
+    уже купленные экземпляры, чтобы продажа, аренда и улучшения использовали
+    ту же стоимость, что и рынок.
+    """
+    overrides = {
+        x["slug"]: x async for x in db.asset_catalog_overrides.find({})
+    }
+    result = []
+    for item in CATALOG:
+        row = dict(item)
+        row["meta"] = dict(item.get("meta", {}))
+        override = overrides.get(item["slug"], {})
+        for key in ("price", "income_per_hour", "upkeep_per_hour", "sell_rate"):
+            if key in override:
+                row[key] = override[key]
+        if "meta" in override:
+            row["meta"].update(override["meta"])
+        result.append(row)
+    return result
+
+
+async def effective_catalog_item(db: AsyncIOMotorDatabase, slug: str) -> Optional[dict]:
+    for item in await effective_catalog(db):
+        if item["slug"] == slug:
+            return item
+    return None
 
 # ── Динамическая экономика рынка ─────────────────────────────────────────────
 # Цена каждого товара = базовая × множитель. Множитель двигается от спроса
@@ -328,6 +437,27 @@ class AdminAssetUpdate(BaseModel):
     upkeep_per_hour: Optional[float] = None
 
 
+class AdminCatalogUpdate(BaseModel):
+    price: Optional[float] = None
+    income_per_hour: Optional[float] = None
+    upkeep_per_hour: Optional[float] = None
+    sell_rate: Optional[float] = None
+
+    @field_validator("price", "income_per_hour", "upkeep_per_hour")
+    @classmethod
+    def non_negative(cls, value):
+        if value is not None and value < 0:
+            raise ValueError("Значение не может быть отрицательным")
+        return round(float(value), 2) if value is not None else value
+
+    @field_validator("sell_rate")
+    @classmethod
+    def sell_rate_ok(cls, value):
+        if value is not None and not 0 < value <= 1:
+            raise ValueError("Коэффициент продажи должен быть от 0 до 1")
+        return round(float(value), 4) if value is not None else value
+
+
 class AdminTransferBody(BaseModel):
     toUsername: str
 
@@ -382,6 +512,11 @@ def _income_per_hour(asset: dict) -> float:
     level = asset.get("level", 1)
     value = base * (1 + 0.25 * (level - 1))
     if asset.get("type") == TYPE_BUSINESS:
+        staff = asset.get("staff")
+        if isinstance(staff, list):
+            capacity = max(1, int(asset.get("employees", 1)))
+            staffing = min(1.0, len(staff) / capacity)
+            value *= 0.25 + staffing * 0.75
         value *= (1 + _materials_boost(asset))
     return round(value, 2)
 
@@ -426,8 +561,16 @@ def _rent_total(asset: dict, hours: int) -> float:
     return round(_rent_daily_rate(asset) * hours / 24, 2)
 
 
+def _sell_rate(asset: dict) -> float:
+    return max(0.0, min(1.0, float(asset.get("sell_rate", SELL_RATE))))
+
+
 def _upkeep_per_hour(asset: dict) -> float:
-    return round(asset.get("upkeep_per_hour", 0), 2)
+    base = float(asset.get("upkeep_per_hour", 0) or 0)
+    staff = asset.get("staff")
+    if isinstance(staff, list):
+        base = max(0.0, base * 0.55) + sum(float(x.get("salary", 0) or 0) for x in staff)
+    return round(base, 2)
 
 
 def _upgrade_cost(asset: dict) -> float:
@@ -507,6 +650,11 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
                 payout = round(payout * econ.get("rent_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
                 from market_events import event_shifts
                 payout = round(payout * (await event_shifts(db)).get("rental", 1.0), 2)
+            except Exception:
+                pass
+            try:
+                effects = await _owned_property_effects(db, asset["userId"])
+                payout = round(payout * (1 + effects.get("rentalIncomePct", 0)), 2)
             except Exception:
                 pass
             # Бонус «Гранд-отеля» (Крыша города) — +% к доходу от аренды.
@@ -614,6 +762,8 @@ def _studio_view(asset: dict) -> Optional[dict]:
 
 
 def _serialize(asset: dict) -> dict:
+    meta = asset.get("meta", {})
+    staff = asset.get("staff") if isinstance(asset.get("staff"), list) else []
     return {
         "id": str(asset["_id"]),
         "slug": asset.get("slug"),
@@ -623,6 +773,11 @@ def _serialize(asset: dict) -> dict:
         "rarity": asset.get("rarity"),
         "rooms": asset.get("rooms"),
         "employees": asset.get("employees", 0),
+        "staff": [{
+            "id": x.get("id"), "name": x.get("name"), "role": x.get("role", "worker"),
+            "salary": x.get("salary", 0), "hiredAt": x.get("hired_at").isoformat()
+            if isinstance(x.get("hired_at"), datetime) else None,
+        } for x in staff],
         "level": asset.get("level", 1),
         "price": asset.get("price", 0),
         "value": _current_value(asset),
@@ -630,8 +785,12 @@ def _serialize(asset: dict) -> dict:
         "upkeepPerHour": _upkeep_per_hour(asset),
         "profitPerHour": round(_income_per_hour(asset) - _upkeep_per_hour(asset), 2),
         "upgradeCost": _upgrade_cost(asset),
+        "sellRate": _sell_rate(asset),
         "accrued": _accrued(asset),
-        "meta": asset.get("meta", {}),
+        "meta": meta,
+        "mechanic": meta.get("mechanic"),
+        "metric": meta.get("metric"),
+        "effect": meta.get("effect", {}),
         "companyId": asset.get("companyId"),
         "rental": _rental_view(asset),
         "rentRatePerHour": _rent_rate_per_hour(asset),
@@ -660,7 +819,7 @@ async def get_market(
     await _drift_asset_market(db)
     mults = await _mult_map(db)
 
-    items = CATALOG
+    items = await effective_catalog(db)
     if type in ASSET_TYPES:
         items = [c for c in items if c["type"] == type]
     if search:
@@ -685,6 +844,10 @@ async def get_market(
             "incomePerHour": c.get("income_per_hour", 0),
             "upkeepPerHour": c.get("upkeep_per_hour", 0),
             "profitPerHour": round(c.get("income_per_hour", 0) - c.get("upkeep_per_hour", 0), 2),
+            "sellRate": c.get("sell_rate", SELL_RATE),
+            "estimatedSalePrice": round(price * c.get("sell_rate", SELL_RATE), 2),
+            "estimatedRentPerDay": _rent_daily_rate(c | {"price": price, "level": 1}),
+            "upgradeCost": round(price * 0.4, 2),
             "meta": c.get("meta", {}),
         })
     out.sort(key=lambda x: x["price"])
@@ -698,7 +861,7 @@ async def buy_asset(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка актива с рынка: списывает баланс, создаёт экземпляр во владении."""
-    catalog = CATALOG_BY_SLUG.get(payload.slug)
+    catalog = await effective_catalog_item(db, payload.slug)
     if not catalog:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
 
@@ -721,12 +884,19 @@ async def buy_asset(
         "rarity": catalog.get("rarity"),
         "rooms": catalog.get("rooms"),
         "employees": catalog.get("employees", 0),
-        "price": float(catalog["price"]),   # базовая цена — для расчёта стоимости/улучшений
+        "price": float(catalog["price"]),   # актуальная цена — для продажи/улучшений
         "income_per_hour": catalog.get("income_per_hour", 0),
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
+        "sell_rate": catalog.get("sell_rate", SELL_RATE),
         "level": 1,
         "meta": catalog.get("meta", {}),
         "companyId": None,      # None = личный актив; иначе принадлежит компании
+        "staff": ([{
+            "id": secrets.token_hex(6), "name": f"Сотрудник {i + 1}",
+            "role": "worker", "salary": float(catalog.get("meta", {}).get("baseSalaryPerHour", 0)),
+            "hired_at": _now(),
+        } for i in range(min(1, int(catalog.get("employees", 0))))]
+            if catalog["type"] == TYPE_BUSINESS else None),
         "rental": None,         # активное объявление/аренда (см. rental)
         "purchased_at": _now(),
         "last_collected": _now(),
@@ -756,7 +926,7 @@ async def get_my_assets(
 ):
     """Личные активы игрока (без переданных компании) + агрегаты."""
     user_id = str(current_user["_id"])
-    query = {"userId": user_id, "companyId": None}
+    query = {"userId": user_id, "companyId": None, "businessId": None}
     if type in ASSET_TYPES:
         query["type"] = type
     docs = [a async for a in db.user_assets.find(query)]
@@ -808,6 +978,20 @@ async def collect_income(
     amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
+    if asset["type"] == TYPE_BUSINESS:
+        await db.user_assets.update_one(
+            {"_id": asset["_id"]},
+            {"$inc": {"businessBalance": amount, "lifetimeProfit": amount}},
+        )
+        await db.business_operations.insert_one({
+            "businessId": asset_id, "userId": user_id, "type": "income",
+            "amount": amount, "createdAt": _now(),
+        })
+        return {
+            "collected": amount,
+            "businessBalance": round(float(asset.get("businessBalance", 0)) + amount, 2),
+            "balance": current_user.get("balance", 0.0),
+        }
     new_balance = await adjust_balance(db, user_id, amount)
     cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
     await record_transaction(
@@ -843,6 +1027,18 @@ async def _media_income_factor(db, user_id: str) -> float:
         return 1.0
 
 
+async def _owned_property_effects(db, user_id: str) -> dict:
+    """Суммарные игровые эффекты принадлежащего имущества и бизнесов."""
+    totals: dict = {}
+    async for owned in db.user_assets.find({
+        "userId": user_id, "type": {"$in": [TYPE_REALESTATE, TYPE_BUSINESS]},
+        "companyId": None,
+    }, {"meta": 1}):
+        for key, value in (owned.get("meta", {}).get("effect", {}) or {}).items():
+            totals[key] = totals.get(key, 0) + float(value or 0)
+    return totals
+
+
 async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
                                 event_income: float, city_bonus: float,
                                 media_factor: float = 1.0) -> float:
@@ -871,6 +1067,10 @@ async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
         amount = round(amount * (1 + city_bonus), 2)
     if media_factor != 1.0 and asset.get("type") == TYPE_BUSINESS:
         amount = round(amount * media_factor, 2)
+    if asset.get("type") == TYPE_BUSINESS:
+        effects = await _owned_property_effects(db, user_id)
+        if effects.get("businessIncomePct"):
+            amount = round(amount * (1 + effects["businessIncomePct"]), 2)
     return amount
 
 
@@ -894,13 +1094,25 @@ async def collect_all_income(
         amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
         if amount <= 0:
             continue
-        new_balance = await adjust_balance(db, user_id, amount)
         cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
-        await record_transaction(
-            db, user_id, INCOME, amount, cat,
-            f"Доход: {asset['name']}", balance_after=new_balance,
-            meta={"slug": asset.get("slug"), "assetId": str(asset["_id"])},
-        )
+        if asset["type"] == TYPE_BUSINESS:
+            await db.user_assets.update_one(
+                {"_id": asset["_id"]},
+                {"$inc": {"businessBalance": amount, "lifetimeProfit": amount}},
+            )
+            await db.business_operations.insert_one({
+                "businessId": str(asset["_id"]), "userId": user_id, "type": "income",
+                "amount": amount, "createdAt": _now(),
+            })
+            new_balance = None
+        else:
+            new_balance = await adjust_balance(db, user_id, amount)
+        if asset["type"] != TYPE_BUSINESS:
+            await record_transaction(
+                db, user_id, INCOME, amount, cat, f"Доход: {asset['name']}",
+                balance_after=new_balance,
+                meta={"slug": asset.get("slug"), "assetId": str(asset["_id"])},
+            )
         total = round(total + amount, 2)
         count += 1
 
@@ -926,6 +1138,9 @@ async def upgrade_asset(
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
     cost = _upgrade_cost(asset)
+    effects = await _owned_property_effects(db, user_id)
+    discount_key = "propertyUpgradeDiscountPct" if asset.get("type") == TYPE_REALESTATE else "upgradeDiscountPct"
+    cost = round(cost * (1 - min(0.5, effects.get(discount_key, 0))), 2)
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
@@ -998,7 +1213,13 @@ async def sell_asset(
     mult = await _asset_mult(db, asset.get("slug"))
     base_value = round(_current_value(asset) - asset.get("tuning_value", 0.0), 2)
     market_value = round(base_value * mult + asset.get("tuning_value", 0.0), 2)
-    payout = round(market_value * SELL_RATE + _accrued(asset), 2)
+    payout = round(market_value * _sell_rate(asset) + _accrued(asset), 2)
+    if asset.get("type") == TYPE_BUSINESS:
+        await db.user_assets.update_many(
+            {"businessId": asset_id},
+            {"$set": {"businessId": None}, "$unset": {"driverId": "", "lastTaxiCollected": ""}},
+        )
+        await db.business_operations.delete_many({"businessId": asset_id})
     await db.user_assets.delete_one({"_id": asset["_id"]})
     new_balance = await adjust_balance(db, user_id, payout)
     cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
@@ -1064,6 +1285,11 @@ async def transfer_to_player(
         {"_id": asset["_id"]},
         {"$set": {"userId": new_owner_id, "companyId": None, "rental": None, "last_collected": _now()}},
     )
+    if asset.get("type") == TYPE_BUSINESS:
+        await db.user_assets.update_many(
+            {"businessId": asset_id},
+            {"$set": {"userId": new_owner_id, "companyId": None, "rental": None}},
+        )
     try:
         from ws import push_to_user
         await push_to_user(user_id, {"type": "asset_update", "assetId": asset_id})
@@ -1193,6 +1419,56 @@ async def buy_materials(
 # ── Admin ────────────────────────────────────────────────────────────────────
 
 
+@router.get("/admin/catalog")
+async def admin_asset_catalog(
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Единственный список объектов для админки и игровой витрины."""
+    items = await effective_catalog(db)
+    return [{
+        "slug": x["slug"], "type": x["type"], "name": x["name"],
+        "category": x.get("category"), "rarity": x.get("rarity"),
+        "price": x.get("price", 0), "incomePerHour": x.get("income_per_hour", 0),
+        "upkeepPerHour": x.get("upkeep_per_hour", 0),
+        "sellRate": x.get("sell_rate", SELL_RATE),
+        "salePrice": round(x.get("price", 0) * x.get("sell_rate", SELL_RATE), 2),
+        "rentPerDay": _rent_daily_rate(x | {"level": 1}),
+        "upgradeCost": round(x.get("price", 0) * 0.4, 2),
+        "employees": x.get("employees", 0), "mechanic": x.get("meta", {}).get("mechanic"),
+        "metric": x.get("meta", {}).get("metric"), "effect": x.get("meta", {}).get("effect", {}),
+    } for x in items]
+
+
+@router.patch("/admin/catalog/{slug}")
+async def admin_update_catalog(
+    slug: str,
+    payload: AdminCatalogUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if slug not in CATALOG_BY_SLUG:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Объект каталога не найден")
+    update = payload.model_dump(exclude_unset=True)
+    if not update:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+    await db.asset_catalog_overrides.update_one(
+        {"slug": slug}, {"$set": {"slug": slug, **update, "updated_at": _now()}}, upsert=True,
+    )
+    # Уже купленные экземпляры должны немедленно увидеть новые цены во всех
+    # формулах: покупка/продажа, аренда и улучшение.
+    instance_update = {}
+    for source, target in (
+        ("price", "price"), ("income_per_hour", "income_per_hour"),
+        ("upkeep_per_hour", "upkeep_per_hour"), ("sell_rate", "sell_rate"),
+    ):
+        if source in update:
+            instance_update[target] = update[source]
+    if instance_update:
+        await db.user_assets.update_many({"slug": slug}, {"$set": instance_update})
+    return {"item": next(x for x in await admin_asset_catalog(_admin, db) if x["slug"] == slug)}
+
+
 async def _load_any(db: AsyncIOMotorDatabase, asset_id: str) -> dict:
     if not ObjectId.is_valid(asset_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID актива")
@@ -1230,6 +1506,12 @@ async def admin_delete_asset(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     asset = await _load_any(db, asset_id)
+    if asset.get("type") == TYPE_BUSINESS:
+        await db.user_assets.update_many(
+            {"businessId": asset_id},
+            {"$set": {"businessId": None}, "$unset": {"driverId": "", "lastTaxiCollected": ""}},
+        )
+        await db.business_operations.delete_many({"businessId": asset_id})
     await db.user_assets.delete_one({"_id": asset["_id"]})
     try:
         from ws import push_to_user
@@ -1256,6 +1538,11 @@ async def admin_transfer_asset(
         {"_id": asset["_id"]},
         {"$set": {"userId": new_owner_id, "companyId": None, "rental": None}},
     )
+    if asset.get("type") == TYPE_BUSINESS:
+        await db.user_assets.update_many(
+            {"businessId": asset_id},
+            {"$set": {"userId": new_owner_id, "companyId": None, "rental": None}},
+        )
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
     try:
         from ws import push_to_user
@@ -1288,8 +1575,7 @@ if __name__ == "__main__":
     # 1 час не должен стоить столько же, сколько 30 суток.
     assert _rent_total(demo_asset, 1) < _rent_total(demo_asset, RENT_MAX_HOURS)
 
-    # примерно $6000/сутки только за счёт аренды — таков ориентир баланса
-    # (окупаемость ~27 суток).
+    # Редкий объект за $160k должен давать около $6240/сутки.
     villa = {"type": "realestate", "price": 160000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
     assert 5400 <= _rent_daily_rate(villa) <= 6600, _rent_daily_rate(villa)
 
@@ -1302,12 +1588,11 @@ if __name__ == "__main__":
     assert _rent_daily_rate(common_re) < _rent_daily_rate(uncommon_re) < _rent_daily_rate(villa) \
         < _rent_daily_rate(epic_re) < _rent_daily_rate(legendary_re)
 
-    # Настоящий каталог: дешёвая студия НЕ должна почти совпадать по доходности
-    # с элитным замком (старый баг — единый пол в $2000 для всех активов).
-    studio_rate = _rent_daily_rate(CATALOG_BY_SLUG["studio"] | {"level": 1, "tuning_value": 0.0})
-    castle_rate = _rent_daily_rate(CATALOG_BY_SLUG["castle"] | {"level": 1, "tuning_value": 0.0})
-    assert studio_rate < 300, studio_rate
-    assert castle_rate > 90000, castle_rate
+    # Настоящий каталог: квартира заметно уступает промышленному объекту.
+    studio_rate = _rent_daily_rate(CATALOG_BY_SLUG["apartment"] | {"level": 1, "tuning_value": 0.0})
+    castle_rate = _rent_daily_rate(CATALOG_BY_SLUG["industrial_site"] | {"level": 1, "tuning_value": 0.0})
+    assert studio_rate < 500, studio_rate
+    assert castle_rate > 50000, castle_rate
     assert castle_rate / studio_rate > 100
 
     # Бизнесы и авто тоже сдаются в аренду — у каждого своя ставка через rarity,
@@ -1316,7 +1601,7 @@ if __name__ == "__main__":
     # полезной арендатору механики), поэтому у бизнеса важен slug.
     studio_biz = CATALOG_BY_SLUG["itstudio_basic"] | {"level": 1, "tuning_value": 0.0}
     media_biz = CATALOG_BY_SLUG["media_holding"] | {"level": 1, "tuning_value": 0.0}
-    plain_biz = CATALOG_BY_SLUG["coffee"] | {"level": 1, "tuning_value": 0.0}
+    plain_biz = CATALOG_BY_SLUG["cafe"] | {"level": 1, "tuning_value": 0.0}
     assert _is_rentable(studio_biz) and _rent_daily_rate(studio_biz) > 0
     assert _is_rentable(media_biz) and _rent_daily_rate(media_biz) > 0
     # Обычный бизнес (кофейня) сдавать нельзя — ставка 0.

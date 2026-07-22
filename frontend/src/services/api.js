@@ -678,6 +678,78 @@ export async function buyMaterials(id, qty) {
   })
 }
 
+// ── Business management ─────────────────────────────────────────────────────
+
+export async function fetchBusinessDashboard(id) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/dashboard`)
+}
+
+export async function fetchBusinessHistory(id) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/history`)
+}
+
+export async function hireBusinessEmployee(id, data) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/employees`, {
+    method: 'POST', body: JSON.stringify(data),
+  })
+}
+
+export async function fireBusinessEmployee(id, employeeId) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/employees/${encodeURIComponent(employeeId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function updateBusinessEmployee(id, employeeId, salary) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/employees/${encodeURIComponent(employeeId)}`, {
+    method: 'PATCH', body: JSON.stringify({ salary }),
+  })
+}
+
+export async function withdrawBusinessBalance(id) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/withdraw`, { method: 'POST' })
+}
+
+export async function buyTaxiVehicle(id, slug) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/fleet/buy`, {
+    method: 'POST', body: JSON.stringify({ slug }),
+  })
+}
+
+export async function attachTaxiVehicle(id, assetId) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/fleet/attach`, {
+    method: 'POST', body: JSON.stringify({ assetId }),
+  })
+}
+
+export async function assignTaxiVehicle(id, vehicleId, employeeId) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/fleet/assign`, {
+    method: 'POST', body: JSON.stringify({ vehicleId, employeeId }),
+  })
+}
+
+export async function repairTaxiVehicle(id, vehicleId) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/fleet/repair`, {
+    method: 'POST', body: JSON.stringify({ vehicleId }),
+  })
+}
+
+export async function refuelTaxiVehicle(id, vehicleId) {
+  return request(`/api/businesses/${encodeURIComponent(id)}/fleet/refuel`, {
+    method: 'POST', body: JSON.stringify({ vehicleId }),
+  })
+}
+
+export async function adminFetchAssetCatalog() {
+  return request('/api/assets/admin/catalog')
+}
+
+export async function adminUpdateCatalogItem(slug, data) {
+  return request(`/api/assets/admin/catalog/${encodeURIComponent(slug)}`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  })
+}
+
 // ── Notifications API ───────────────────────────────────────────────────────────
 
 export async function fetchNotifications(limit = 30) {

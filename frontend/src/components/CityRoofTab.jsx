@@ -54,6 +54,10 @@ const BUILDING_EMOJI = {
   stadium: '🏟️', airport: '✈️', hotel: '🏨', tower: '🏢', studio: '🎬', refinery: '🛢️',
 }
 
+// Названия зданий приходят с бэкенда по-русски (cityroof.py CITY_BUILDINGS);
+// локализуем по стабильному slug, оставляя серверное имя запасным вариантом.
+const buildingName = (t, slug, fallback) => t(`cityroof.buildings.${slug}`, fallback || slug)
+
 function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
   const [map, setMap] = useState(null)
@@ -344,7 +348,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                   <span className="cbonus-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
                   <div className="cbonus-body">
                     <div className="cbonus-top">
-                      <span className="cbonus-name">{b.name}</span>
+                      <span className="cbonus-name">{buildingName(t, b.slug, b.name)}</span>
                       <span className="cbonus-daily">+{(b.amount ?? b.daily).toLocaleString('ru-RU')} $</span>
                     </div>
                     <span className="cbonus-effect">
@@ -375,7 +379,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               onClick={() => openBusiness(b)}
             >
               <span className="city-tile-info">
-                <span className="city-tile-name">{b.name}</span>
+                <span className="city-tile-name">{buildingName(t, b.slug, b.name)}</span>
                 <span className="city-tile-reward"><Coins size={11} /> {b.reward}</span>
                 <span className="city-tile-owner">
                   {b.isMine ? t('cityroof.yours') : (b.ownerName || t('cityroof.free'))}
@@ -394,7 +398,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content cityroof-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={closeModal}><X size={18} /></button>
-            <h3>{selected.name}</h3>
+            <h3>{buildingName(t, selected.slug, selected.name)}</h3>
             <p className="modal-price">
               <Coins size={14} /> {t('cityroof.reward')}: {selected.reward} ·
               {' '}{selected.ownerName
@@ -443,7 +447,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 onClick={() => setConfirm({
                   danger: true,
                   title: t('cityroof.attack', { cost: map?.attackCost ?? 10 }),
-                  message: t('confirm.attack', { name: selected.name, cost: map?.attackCost ?? 10 }),
+                  message: t('confirm.attack', { name: buildingName(t, selected.slug, selected.name), cost: map?.attackCost ?? 10 }),
                   onConfirm: startAttack,
                 })}>
                 <Swords size={16} /> {busy ? t('bank.processing') : t('cityroof.attack', { cost: map?.attackCost ?? 10 })}

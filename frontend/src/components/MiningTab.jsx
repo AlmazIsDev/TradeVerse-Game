@@ -66,6 +66,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const [activeId, setActiveId] = useState(null)
   const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
   const [cartQty, setCartQty] = useState({}) // `${cat}::${modelKey}` -> сколько ставить оптом (gpu/fan)
+  const [openAdd, setOpenAdd] = useState({}) // `${farmId}::${cat}` -> раскрыт ли выбор детали (иначе зелёная «+»)
 
   const load = useCallback(async () => {
     try {
@@ -384,7 +385,18 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                     <span className="mslot-empty">{t('mining.placementTaken', { other: t(`mining.comp.${altPlacement}`, altPlacement) })}</span>
                   ) : capFull ? (
                     <span className="mslot-empty">{t('mining.capacityFull')}</span>
-                  ) : canAdd && (
+                  ) : canAdd && (() => {
+                    const addKey = `${farm.id}::${cat}`
+                    if (!openAdd[addKey]) {
+                      return (
+                        <button className="mslot-add-badge" disabled={busy}
+                          title={t('mining.addComponent', 'Добавить')}
+                          onClick={() => setOpenAdd(o => ({ ...o, [addKey]: true }))}>
+                          <Plus size={14} /> {t('mining.addComponent', 'Добавить')}
+                        </button>
+                      )
+                    }
+                    return (
                     avail.length > 0 ? (
                       multi ? (
                         <div className="mslot-cart">
@@ -434,7 +446,8 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                     ) : (
                       <span className="mslot-empty">{t('mining.noParts')}</span>
                     )
-                  )}
+                    )
+                  })()}
                 </div>
               )
             })}

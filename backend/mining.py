@@ -32,8 +32,8 @@ from notifications import push_notification
 
 router = APIRouter(prefix="/api/mining", tags=["mining"])
 
-# Обязательные компоненты для запуска добычи.
-REQUIRED_ROLES = ["motherboard", "cpu", "psu", "ram", "ssd", "cooling"]  # + хотя бы 1 gpu
+# Обязательные компоненты для запуска добычи (psu проверяется отдельно — список).
+REQUIRED_ROLES = ["motherboard", "cpu", "ram", "ssd", "cooling"]  # + хотя бы 1 gpu и 1 psu
 
 # Ёмкость по вентиляторам, когда корпус/стойка не установлены (открытый стенд).
 FAN_BASE_CAP = 6
@@ -61,6 +61,23 @@ MANAGER_REPAIR_PER_LEVEL = 6.0
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _psus(comp: dict) -> list:
+    """Список БП фермы (совместимо со старым одиночным полем ``psu``)."""
+    if comp.get("psus"):
+        return comp["psus"]
+    legacy = comp.get("psu")
+    return [legacy] if legacy else []
+
+
+def _psu_max(comp: dict) -> int:
+    """Сколько БП можно установить: зависит от размещения (корпус/стойка).
+    Открытый стенд — минимум 2; корпус/стойка дают ~1 БП на 3 посадочных места."""
+    enclosure = _enclosure_slots(comp)
+    if enclosure is not None:
+        return max(2, enclosure // 3 + 1)
+    return 2
 
 
 def _aware(dt):
@@ -174,16 +191,17 @@ def _repair_cost(farm: dict) -> float:
     return round(missing * (100 + 30 * gpus), 2)
 
 
-def _ai_should_repair(ai: bool, ai_level: int, condition: float,
-                      revenue: float, electricity: float, salary: float, repair_cost: float) -> bool:
+def _ai_should_repair(ai: bool, ai_level: int, condition: float, profit_per_h: float) -> bool:
     """Решение ИИ-управляющего о ремонте: чинит, когда износ ниже порога уровня
-    И когда добыча за тик покрывает ремонт (не загоняя игрока в минус)."""
+    И когда ферма в принципе прибыльна (положительный доход в час). Достаточность
+    средств проверяется отдельно при списании (adjust_balance) — здесь только
+    целесообразность, чтобы управляющий не чинил заведомо убыточную ферму."""
     if not ai:
         return False
     threshold = min(80.0, MANAGER_REPAIR_BASE + ai_level * MANAGER_REPAIR_PER_LEVEL)
     if condition >= threshold:
         return False
-    return revenue - electricity - salary - repair_cost >= 0
+    return profit_per_h > 0
 
 
 def _serialize(farm: dict, stats: dict, capacity: Optional[dict] = None) -> dict:
@@ -203,12 +221,13 @@ def _serialize(farm: dict, stats: dict, capacity: Optional[dict] = None) -> dict
         "totalMinedCoins": round(farm.get("total_mined_coins", 0.0), 8),
         "components": {
             "motherboard": comp.get("motherboard"),
-            "cpu": comp.get("cpu"), "psu": comp.get("psu"),
+            "cpu": comp.get("cpu"),
             "ram": comp.get("ram"), "ssd": comp.get("ssd"),
             "cooling": comp.get("cooling"), "case": comp.get("case"),
             "rack": comp.get("rack"), "ups": comp.get("ups"),
             "network": comp.get("network"),
             "gpus": comp.get("gpus", []), "fans": comp.get("fans", []),
+            "psus": _psus(comp),
         },
         "repairCost": _repair_cost(farm),
         "capacity": capacity if capacity is not None else _capacity(farm),
@@ -219,6 +238,8 @@ def _serialize(farm: dict, stats: dict, capacity: Optional[dict] = None) -> dict
 def _missing_required(farm: dict) -> list[str]:
     comp = farm.get("components", {})
     missing = [r for r in REQUIRED_ROLES if not comp.get(r)]
+    if not _psus(comp):
+        missing.append("psu")
     if not comp.get("gpus"):
         missing.append("gpu")
     return missing
@@ -261,10 +282,13 @@ def _capacity(farm: dict, rack_used_elsewhere: int = 0) -> dict:
 
     gpu_used = len(comp.get("gpus", []))
     fan_used = len(comp.get("fans", []))
+    psu_max = _psu_max(comp)
+    psu_used = len(_psus(comp))
     return {
         "gpu": max(0, gpu_max - gpu_used),
         "fan": max(0, fan_max - fan_used),
-        "gpuMax": gpu_max, "fanMax": fan_max,
+        "psu": max(0, psu_max - psu_used),
+        "gpuMax": gpu_max, "fanMax": fan_max, "psuMax": psu_max,
     }
 
 
@@ -472,7 +496,7 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
 
     comp = farm.get("components", {})
     if multi:
-        role_key = "gpus" if role == "gpu" else "fans"
+        role_key = {"gpu": "gpus", "fan": "fans", "psu": "psus"}[role]
         cap = await _capacity_for(db, farm)
         if role == "gpu":
             mb = comp.get("motherboard")
@@ -483,10 +507,19 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
                 if _enclosure_slots(comp) is not None and cap["gpuMax"] >= mb.get("specs", {}).get("gpuSlots", 0):
                     raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных слотов на материнской плате")
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных мест в корпусе/стойке")
+        elif role == "psu":
+            if cap["psu"] <= 0:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет мест под БП (установите корпус/стойку большего размера)")
         else:  # fan
             if cap["fan"] <= 0:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных мест для вентиляторов (установите корпус/стойку большего размера)")
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": payload.category}
+        # Миграция старого одиночного поля psu → список psus при первой установке.
+        if role == "psu" and comp.get("psu") and not comp.get("psus"):
+            await db.mining_farms.update_one(
+                {"_id": farm["_id"]},
+                {"$set": {"components.psus": [comp["psu"]]}, "$unset": {"components.psu": ""}},
+            )
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$push": {f"components.{role_key}": entry}})
     else:
         # Корпус и стойка — взаимоисключающие варианты размещения: можно
@@ -529,7 +562,7 @@ async def uninstall_component(farm_id: str, body: dict, current_user: dict = Dep
         if comp.get(role) and comp[role].get("hwId") == hw_id:
             await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": None}})
             changed = True
-    for role_key in ["gpus", "fans"]:
+    for role_key in ["gpus", "fans", "psus"]:
         if any(x.get("hwId") == hw_id for x in comp.get(role_key, [])):
             await db.mining_farms.update_one({"_id": farm["_id"]}, {"$pull": {f"components.{role_key}": {"hwId": hw_id}}})
             changed = True
@@ -552,7 +585,7 @@ async def start_mining(farm_id: str, current_user: dict = Depends(get_current_us
     econ = await get_econ(db)
     city = await _city_bonus(db, user_id)
     stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city)
-    psu_w = farm.get("components", {}).get("psu", {}).get("specs", {}).get("power", 0)
+    psu_w = sum(p.get("specs", {}).get("power", 0) for p in _psus(farm.get("components", {})))
     if psu_w < stats["power"]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Недостаточная мощность БП ({psu_w}W < {stats['power']}W)")
 
@@ -666,6 +699,33 @@ async def tick_all(db: AsyncIOMotorDatabase):
     ec, em = econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0)
     now = _now()
 
+    # ИИ авто-перезапуск: ферму с управляющим, отключённую за неуплату, снова
+    # запускаем, как только она собрана, прибыльна И у игрока есть кэш на тик
+    # расходов. Проверка баланса обязательна: выручка идёт в монеты, а
+    # электричество/зарплата списываются с кэша — без неё ферма «прибыльной»,
+    # но безденежной, щёлкала бы off↔mining каждый тик со спамом уведомлений.
+    async for farm in db.mining_farms.find({"status": "off", "manager.type": "ai"}):
+        if _missing_required(farm):
+            continue
+        city = await _city_bonus(db, farm["userId"])
+        stats = _compute(farm, market, ec, em, city)
+        if stats.get("profitPerHour", 0) <= 0:
+            continue
+        # кэш на ~1 тик (60с планировщика) расходов; иначе не трогаем — пусть
+        # ждёт пополнения, а не мигает статусом.
+        tick_h = 60.0 / 3600.0
+        tick_cost = (stats.get("electricityPerHour", 0.0) + stats.get("salaryPerHour", 0.0)) * tick_h
+        owner = await db.users.find_one({"_id": ObjectId(farm["userId"])}, {"balance": 1}) if ObjectId.is_valid(farm["userId"]) else None
+        if not owner or owner.get("balance", 0.0) < tick_cost:
+            continue
+        await db.mining_farms.update_one(
+            {"_id": farm["_id"]},
+            {"$set": {"status": "mining", "last_tick": now}},
+        )
+        await push_notification(db, farm["userId"], "mining", "Ферма перезапущена",
+                                f"ИИ-управляющий возобновил добычу на «{farm.get('name')}».",
+                                data={"farmId": str(farm["_id"])})
+
     async for farm in db.mining_farms.find({"status": "mining"}):
         last = _aware(farm.get("last_tick"))
         elapsed_h = min(MAX_ACCRUAL_H, (now - last).total_seconds() / 3600.0) if isinstance(last, datetime) else 0.0
@@ -696,10 +756,11 @@ async def tick_all(db: AsyncIOMotorDatabase):
         # применяется только если добыча покрывает его стоимость — иначе
         # управляющий не загоняет игрока в минус ради обслуживания.
         repair_cost = 0.0
+        worn_condition = new_condition   # износ без учёта возможного авто-ремонта
         if ai:
             farm["condition"] = new_condition   # _repair_cost считает по текущему износу
             candidate_cost = _repair_cost(farm)
-            if _ai_should_repair(ai, ai_level, new_condition, revenue, electricity, salary, candidate_cost):
+            if _ai_should_repair(ai, ai_level, new_condition, stats["profitPerHour"]):
                 repair_cost = candidate_cost
                 new_condition = 100.0
 
@@ -725,8 +786,13 @@ async def tick_all(db: AsyncIOMotorDatabase):
         if costs > 0.01:
             nb = await adjust_balance(db, user_id, -costs)
             if nb is None:
+                # Денег не хватило: откатываем авто-ремонт (не чиним бесплатно) и
+                # отключаем ферму. Долг фиксируем без стоимости ремонта.
+                owed = round(electricity + salary, 2)
+                set_fields["condition"] = round(worn_condition, 2)
                 set_fields["status"] = "off"
-                set_fields["electricity_owed"] = round(farm.get("electricity_owed", 0.0) + costs, 2)
+                set_fields["electricity_owed"] = round(farm.get("electricity_owed", 0.0) + owed, 2)
+                set_fields["total_spent"] = round(farm.get("total_spent", 0.0), 2)
                 await push_notification(db, user_id, "mining", "Ферма отключена",
                                         f"«{farm.get('name')}»: недостаточно денег на электричество.",
                                         data={"farmId": str(farm["_id"])})
@@ -840,15 +906,16 @@ async def admin_transfer_farm(
 if __name__ == "__main__":
     # Самопроверка решения ИИ о ремонте (см. _ai_should_repair / tick_all).
     # Без управляющего — не ремонтирует.
-    assert _ai_should_repair(False, 0, 10.0, 100, 1, 0, 50) is False
-    # Уровень 1 → порог ~56%; износ 40% ниже порога и добыча покрывает ремонт.
-    assert _ai_should_repair(True, 1, 40.0, 100, 10, 5, 50) is True
-    # Ниже порога, но добыча НЕ покрывает ремонт — не чинит (не уводит в минус).
-    assert _ai_should_repair(True, 1, 40.0, 20, 10, 5, 50) is False
+    assert _ai_should_repair(False, 0, 10.0, 100.0) is False
+    # Уровень 1 → порог ~56%; износ 40% ниже порога, ферма прибыльна → чинит.
+    assert _ai_should_repair(True, 1, 40.0, 85.0) is True
+    # Ниже порога, но ферма убыточна (profit ≤ 0) — не чинит.
+    assert _ai_should_repair(True, 1, 40.0, 0.0) is False
+    assert _ai_should_repair(True, 1, 40.0, -5.0) is False
     # Состояние выше порога — чинить рано.
-    assert _ai_should_repair(True, 5, 90.0, 1000, 1, 1, 10) is False
+    assert _ai_should_repair(True, 5, 90.0, 1000.0) is False
     # Порог растёт с уровнем: level 5 → 80%, износ 70% уже требует ремонта.
-    assert _ai_should_repair(True, 5, 70.0, 1000, 1, 1, 10) is True
+    assert _ai_should_repair(True, 5, 70.0, 1000.0) is True
 
     # Майнинг добывает МОНЕТУ: qty = revenue_usd / price; расходы остаются в кэше.
     assert _mined_qty(100.0, 50.0) == 2.0           # 100$ по курсу 50 → 2 монеты
@@ -869,4 +936,14 @@ if __name__ == "__main__":
     assert _capacity(_farm, 44)["gpu"] == 1
     # Стойка занята полностью на других фермах → 0 доступных мест.
     assert _capacity(_farm, 48)["gpu"] == 0
+
+    # БП — multi-компонент: открытый стенд даёт 2 места, корпус/стойка больше;
+    # старое одиночное поле psu совместимо со списком psus.
+    assert _psu_max({}) == 2
+    assert _psu_max({"case": {"specs": {"slots": 8}}}) == 3
+    assert _psu_max({"rack": {"specs": {"slots": 48}}}) == 17
+    assert _psus({"psu": {"hwId": "x"}}) == [{"hwId": "x"}]        # legacy single
+    assert _psus({"psus": [{"hwId": "a"}], "psu": {"hwId": "x"}}) == [{"hwId": "a"}]
+    _pf = {"components": {"psus": [{}], "case": {"specs": {"slots": 8}}}}
+    assert _capacity(_pf)["psu"] == 2                              # 3 max − 1 used
     print("mining self-check OK")

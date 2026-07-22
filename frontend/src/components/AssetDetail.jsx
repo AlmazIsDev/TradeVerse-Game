@@ -163,7 +163,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <Star size={16} fill={asset.isFavorite ? '#fbbf24' : 'none'} />
             </button>
           </div>
-          <div className="ad-sector">{asset.sector}{asset.issuerName ? ` · ${asset.issuerName}` : ''}</div>
+          <div className="ad-sector">{asset.sectorKey ? t(`sectors.${asset.sectorKey}`, asset.sector) : asset.sector}{asset.issuerName ? ` · ${asset.issuerName}` : ''}</div>
         </div>
         <div className="ad-price-block">
           <span className="ad-price">${formatMoney(asset.price)}</span>

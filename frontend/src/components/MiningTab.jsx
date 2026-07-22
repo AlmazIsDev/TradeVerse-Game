@@ -15,7 +15,7 @@ import {
 
 // Категории компонентов: обязательные помечены req; multi — можно несколько.
 const CATS = [
-  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true },
+  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true, multi: true },
   { cat: 'ram', req: true }, { cat: 'ssd', req: true }, { cat: 'cooling', req: true },
   { cat: 'gpu', req: true, multi: true }, { cat: 'fan', multi: true },
   { cat: 'case' }, { cat: 'rack' }, { cat: 'ups' }, { cat: 'network' },
@@ -332,8 +332,9 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <h4><Cpu size={16} /> {t('mining.assembly')}</h4>
           <div className="mining-slots">
             {CATS.map(({ cat, req, multi }) => {
+              const multiKey = cat === 'gpu' ? 'gpus' : cat === 'fan' ? 'fans' : 'psus'
               const installed = multi
-                ? (cat === 'gpu' ? farm.components?.gpus : farm.components?.fans) || []
+                ? (farm.components?.[multiKey]) || []
                 : (farm.components?.[cat] ? [farm.components[cat]] : [])
               const avail = parts[cat] || []
               // Корпус и стойка — взаимоисключающие способы размещения (см.
@@ -342,7 +343,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
               const blockedByAlt = altPlacement && farm.components?.[altPlacement]
               // Ёмкость размещения: сколько ещё компонентов этой роли влезет
               // (сервер валидирует повторно — см. install_component).
-              const capLeft = multi ? (farm.capacity?.[cat === 'gpu' ? 'gpu' : 'fan'] ?? null) : null
+              const capLeft = multi ? (farm.capacity?.[cat] ?? null) : null
               const capFull = capLeft != null && capLeft <= 0
               const canAdd = (multi || installed.length === 0) && !blockedByAlt && !capFull
               // Группируем одинаковые детали (по имени+специфике), чтобы не плодить

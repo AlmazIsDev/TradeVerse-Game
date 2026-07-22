@@ -282,15 +282,17 @@ function SettingsPage({ user, onUserUpdate }) {
 
           <div className="form-group">
             <label>{t('settings.bio')}</label>
-            <textarea
-              className="settings-bio-input"
-              value={bio}
-              onChange={e => setBio(e.target.value)}
-              placeholder={t('settings.bioPlaceholder')}
-              maxLength={280}
-              rows={3}
-            />
-            <span className="settings-bio-count">{(bio || '').length}/280</span>
+            <div className="settings-bio-field">
+              <textarea
+                className="settings-bio-input"
+                value={bio}
+                onChange={e => setBio(e.target.value)}
+                placeholder={t('settings.bioPlaceholder')}
+                maxLength={280}
+                rows={3}
+              />
+              <span className="settings-bio-count">{(bio || '').length}/280</span>
+            </div>
           </div>
           <button
             className="submit-btn settings-save-btn"

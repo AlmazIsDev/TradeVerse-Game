@@ -168,6 +168,19 @@ def _format_coin(coin: dict) -> dict:
     return coin
 
 
+async def _attach_company_logos(db: AsyncIOMotorDatabase, coins: list[dict]) -> None:
+    """Подставляет логотип компании в монеты без image (старые эмиссии)."""
+    cids = list({c.get("companyId") for c in coins if c.get("companyId") and not c.get("image")})
+    if not cids:
+        return
+    ids = [ObjectId(c) for c in cids if ObjectId.is_valid(c)]
+    logos = {str(c["_id"]): c.get("logo") async for c in
+             db.companies.find({"_id": {"$in": ids}}, {"logo": 1})}
+    for c in coins:
+        if not c.get("image") and logos.get(c.get("companyId")):
+            c["image"] = logos[c["companyId"]]
+
+
 async def _read_market(db: AsyncIOMotorDatabase) -> list[dict]:
     """БЫСТРОЕ чтение рынка из БД (без сети/бэкфилла/снимков).
 
@@ -185,6 +198,7 @@ async def _read_market(db: AsyncIOMotorDatabase) -> list[dict]:
         await ensure_coins_seeded(db)
 
     coins = [_format_coin(c) async for c in db.crypto_assets.find({})]
+    await _attach_company_logos(db, coins)
     coins.sort(key=lambda c: c.get("marketCap") or (c.get("price", 0) * c.get("supply", 0)), reverse=True)
     _MARKET_CACHE["ts"] = now
     _MARKET_CACHE["data"] = coins

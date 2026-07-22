@@ -260,11 +260,11 @@ async def market_history(
 
 
 STOCK_META = {
-    "AAPL": {"sector": "Технологии", "description": "Apple Inc. — производитель потребительской электроники, ПО и услуг."},
-    "GOOGL": {"sector": "Технологии", "description": "Alphabet (Google) — поиск, реклама, облако и ИИ."},
-    "MSFT": {"sector": "Технологии", "description": "Microsoft — ПО, облако Azure, игровое подразделение."},
-    "TSLA": {"sector": "Автомобили / Энергетика", "description": "Tesla — электромобили и решения для хранения энергии."},
-    "NVDA": {"sector": "Полупроводники", "description": "NVIDIA — графические и ИИ-ускорители."},
+    "AAPL": {"sector": "Технологии", "sectorKey": "technology", "description": "Apple Inc. — производитель потребительской электроники, ПО и услуг."},
+    "GOOGL": {"sector": "Технологии", "sectorKey": "technology", "description": "Alphabet (Google) — поиск, реклама, облако и ИИ."},
+    "MSFT": {"sector": "Технологии", "sectorKey": "technology", "description": "Microsoft — ПО, облако Azure, игровое подразделение."},
+    "TSLA": {"sector": "Автомобили / Энергетика", "sectorKey": "auto_energy", "description": "Tesla — электромобили и решения для хранения энергии."},
+    "NVDA": {"sector": "Полупроводники", "sectorKey": "semiconductors", "description": "NVIDIA — графические и ИИ-ускорители."},
 }
 
 
@@ -305,11 +305,16 @@ async def market_asset(
             volume += (e.get("quantity", 0) or 0) * (e.get("priceAfter", price) or price)
         held = await db.stock_holdings.find_one({"userId": user_id, "symbol": symbol})
         meta = STOCK_META.get(symbol, {})
+        logo_img = stock.get("logo")
+        if not logo_img and stock.get("companyId") and ObjectId.is_valid(stock["companyId"]):
+            comp = await db.companies.find_one({"_id": ObjectId(stock["companyId"])}, {"logo": 1})
+            logo_img = comp.get("logo") if comp else None
         info = {
             "market": market, "symbol": symbol, "name": stock.get("name"),
-            "logo": symbol[:1], "color": "#6366f1",
+            "logo": symbol[:1], "image": logo_img, "color": "#6366f1",
             "source": stock.get("source", "sim"),
             "sector": meta.get("sector") or ("Пользовательская эмиссия" if stock.get("issuer") else "—"),
+            "sectorKey": meta.get("sectorKey") or ("user_emission" if stock.get("issuer") else None),
             "description": stock.get("description") or meta.get("description") or "",
             "issuerName": stock.get("issuer_name"),
             "price": price,
@@ -328,11 +333,16 @@ async def market_asset(
         price = float(coin.get("price", 0))
         supply = coin.get("supply", 0)
         held = await db.crypto_holdings.find_one({"userId": user_id, "symbol": symbol})
+        coin_img = coin.get("image")
+        if not coin_img and coin.get("companyId") and ObjectId.is_valid(coin["companyId"]):
+            comp = await db.companies.find_one({"_id": ObjectId(coin["companyId"])}, {"logo": 1})
+            coin_img = comp.get("logo") if comp else None
         info = {
             "market": market, "symbol": symbol, "name": coin.get("name"),
-            "logo": symbol[:2], "image": coin.get("image"), "color": coin.get("color", "#6366f1"),
+            "logo": symbol[:2], "image": coin_img, "color": coin.get("color", "#6366f1"),
             "source": coin.get("source", "sim"),
             "sector": "Криптовалюта",
+            "sectorKey": "crypto",
             "description": coin.get("description") or "",
             "price": price,
             "change": 0.0,

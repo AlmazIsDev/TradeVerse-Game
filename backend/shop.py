@@ -47,7 +47,7 @@ CATEGORY_ROLE = {
     "motherboard": {"role": "motherboard", "required": True},
     "ram": {"role": "ram", "required": True},
     "ssd": {"role": "ssd", "required": True},
-    "psu": {"role": "psu", "required": True},
+    "psu": {"role": "psu", "required": True, "multi": True},
     "cooling": {"role": "cooling", "required": True},
     "case": {"role": "case", "required": False},
     "rack": {"role": "rack", "required": False},

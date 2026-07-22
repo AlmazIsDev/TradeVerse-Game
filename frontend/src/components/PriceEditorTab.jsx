@@ -1,265 +1,140 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Save, RotateCcw, Monitor, Cpu, Box, Wrench, Home, Briefcase, Search, DollarSign } from 'lucide-react'
+import { Save, Home, Briefcase, Car, Search, RefreshCw } from 'lucide-react'
+import { adminFetchAssetCatalog, adminUpdateCatalogItem } from '../services/api'
+import { formatMoney } from './TransactionsPanel'
 
-// Каталоги товаров (справочник позиций для редактора цен).
-import {
-  GPU_PRODUCTS, CPU_PRODUCTS, CASE_PRODUCTS,
-  SUPPLIES_PRODUCTS, REAL_ESTATE_PRODUCTS, BUSINESS_PRODUCTS,
-} from '../utils/shopCatalog'
-
-const PRICE_CATEGORIES = [
-  { id: 'gpu', labelKey: 'admin.prices.gpu', icon: Monitor, products: GPU_PRODUCTS },
-  { id: 'cpu', labelKey: 'admin.prices.cpu', icon: Cpu, products: CPU_PRODUCTS },
-  { id: 'case', labelKey: 'admin.prices.case', icon: Box, products: CASE_PRODUCTS },
-  { id: 'supplies', labelKey: 'admin.prices.supplies', icon: Wrench, products: SUPPLIES_PRODUCTS },
-  { id: 'realestate', labelKey: 'admin.prices.realestate', icon: Home, products: REAL_ESTATE_PRODUCTS },
-  { id: 'business', labelKey: 'admin.prices.business', icon: Briefcase, products: BUSINESS_PRODUCTS },
+const CATEGORIES = [
+  { id: 'realestate', icon: Home },
+  { id: 'business', icon: Briefcase },
+  { id: 'car', icon: Car },
 ]
 
 function PriceEditorTab() {
   const { t } = useTranslation()
-  const [activeCategory, setActiveCategory] = useState('gpu')
-  const [prices, setPrices] = useState({})
-  const [searchQuery, setSearchQuery] = useState('')
-  const [hasChanges, setHasChanges] = useState(false)
-  const [savedMessage, setSavedMessage] = useState(false)
+  const [category, setCategory] = useState('realestate')
+  const [items, setItems] = useState([])
+  const [forms, setForms] = useState({})
+  const [search, setSearch] = useState('')
+  const [busy, setBusy] = useState('')
+  const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
 
-  const currentCategory = PRICE_CATEGORIES.find(c => c.id === activeCategory)
-  const products = currentCategory?.products || []
-
-  // Загрузка цен из API при монтировании
-  useEffect(() => {
-    let cancelled = false
-    async function loadPrices() {
-      try {
-        const storedUser = localStorage.getItem('tradeverse_user')
-        const token = storedUser ? JSON.parse(storedUser).token : null
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
-        const resp = await fetch('/api/admin/shop-prices', { headers })
-        if (!cancelled && resp.ok) {
-          const data = await resp.json()
-          if (!cancelled) {
-            setPrices(data.prices || {})
-          }
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    loadPrices()
-    return () => { cancelled = true }
-  }, [])
-
-  // Фильтрация по поиску
-  const filteredProducts = searchQuery
-    ? products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : products
-
-  const handlePriceChange = useCallback((productId, value) => {
-    setPrices(prev => {
-      const updated = { ...prev, [productId]: value === '' ? null : parseFloat(value) || null }
-      return updated
-    })
-    setHasChanges(true)
-  }, [])
-
-  const handleSave = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoading(true)
     try {
-      const storedUser = localStorage.getItem('tradeverse_user')
-      const token = storedUser ? JSON.parse(storedUser).token : null
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      }
-      await fetch('/api/admin/shop-prices', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ prices }),
-      })
-      setHasChanges(false)
-      setSavedMessage(true)
-      setTimeout(() => setSavedMessage(false), 2000)
-    } catch {
-      // ignore
+      const rows = await adminFetchAssetCatalog()
+      setItems(rows)
+      setForms(Object.fromEntries(rows.map(row => [row.slug, {
+        price: String(row.price),
+        income_per_hour: String(row.incomePerHour),
+        upkeep_per_hour: String(row.upkeepPerHour),
+        sell_rate: String(row.sellRate),
+      }])))
+    } finally {
+      setLoading(false)
     }
-  }, [prices])
+  }, [])
 
-  const handleReset = useCallback(() => {
-    if (!confirm(t('admin.prices.resetConfirm'))) return
-    setPrices({})
-    setHasChanges(true)
-  }, [t])
+  useEffect(() => { load() }, [load])
 
-  const handleResetCategory = useCallback(() => {
-    if (!confirm(t('admin.prices.resetCategoryConfirm'))) return
-    setPrices(prev => {
-      const updated = { ...prev }
-      products.forEach(p => {
-        delete updated[p.id]
+  const visible = useMemo(() => items.filter(item =>
+    item.type === category && (!search || item.name.toLowerCase().includes(search.toLowerCase()) || item.slug.includes(search.toLowerCase()))
+  ), [category, items, search])
+
+  const change = (slug, key, value) => setForms(old => ({
+    ...old, [slug]: { ...old[slug], [key]: value },
+  }))
+
+  const save = async (item) => {
+    const form = forms[item.slug]
+    setBusy(item.slug)
+    setMessage('')
+    try {
+      await adminUpdateCatalogItem(item.slug, {
+        price: Number(form.price),
+        income_per_hour: Number(form.income_per_hour),
+        upkeep_per_hour: Number(form.upkeep_per_hour),
+        sell_rate: Number(form.sell_rate),
       })
-      return updated
-    })
-    setHasChanges(true)
-  }, [products, t])
-
-  const getPrice = (productId) => {
-    const val = prices[productId]
-    return val !== undefined && val !== null ? val : ''
+      setMessage(t('admin.prices.saved'))
+      await load()
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy('')
+    }
   }
 
-  const formatPrice = (val) => {
-    if (val === '' || val === null || val === undefined) return t('common.notSet')
-    return `$${Number(val).toLocaleString()}`
-  }
-
-  // Подсчёт установленных цен для каждой категории
-  const getCategoryStats = (cat) => {
-    const setCount = cat.products.filter(p => prices[p.id] !== undefined && prices[p.id] !== null).length
-    return { set: setCount, total: cat.products.length }
-  }
-
-  if (loading) {
-    return <div className="price-editor">{t('common.loading')}</div>
-  }
+  if (loading) return <div className="loading-state"><div className="spinner" /></div>
 
   return (
-    <div className="price-editor">
-      {/* Категории-вкладки */}
+    <div className="price-editor asset-catalog-editor">
       <div className="price-editor-categories">
-        {PRICE_CATEGORIES.map(cat => {
-          const stats = getCategoryStats(cat)
-          const Icon = cat.icon
+        {CATEGORIES.map(row => {
+          const Icon = row.icon
+          const count = items.filter(item => item.type === row.id).length
           return (
-            <button
-              key={cat.id}
-              className={`price-editor-category-btn ${activeCategory === cat.id ? 'active' : ''}`}
-              onClick={() => { setActiveCategory(cat.id); setSearchQuery('') }}
-            >
+            <button key={row.id} className={`price-editor-category-btn ${category === row.id ? 'active' : ''}`}
+              onClick={() => setCategory(row.id)}>
               <Icon size={16} />
-              <span>{t(cat.labelKey)}</span>
-              <span className="price-editor-category-stats">
-                {stats.set}/{stats.total}
-              </span>
+              <span>{t(`market.cat_${row.id}`)}</span>
+              <span className="price-editor-category-stats">{count}</span>
             </button>
           )
         })}
       </div>
 
-      {/* Панель инструментов */}
       <div className="price-editor-toolbar">
         <div className="price-editor-search">
           <Search size={16} />
-          <input
-            type="text"
-            placeholder={t('admin.prices.searchPlaceholder')}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="price-editor-search-input"
-          />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder={t('admin.prices.searchPlaceholder')} />
         </div>
-        <div className="price-editor-actions">
-          <button className="admin-btn" onClick={handleResetCategory}>
-            <RotateCcw size={14} />
-            <span>{t('admin.prices.resetCategory')}</span>
-          </button>
-          <button className="admin-btn" onClick={handleReset}>
-            <RotateCcw size={14} />
-            <span>{t('admin.prices.resetAll')}</span>
-          </button>
-          <button
-            className={`admin-btn admin-btn-primary ${!hasChanges ? 'disabled' : ''}`}
-            onClick={handleSave}
-            disabled={!hasChanges}
-          >
-            <Save size={14} />
-            <span>{t('admin.save')}</span>
-          </button>
-        </div>
+        <button className="admin-btn" onClick={load}><RefreshCw size={14} /></button>
       </div>
 
-      {/* Сообщение о сохранении */}
-      {savedMessage && (
-        <div className="price-editor-saved-msg">
-          {t('admin.prices.saved')}
-        </div>
-      )}
+      {message && <div className="price-editor-saved-msg">{message}</div>}
 
-      {/* Таблица товаров */}
-      <div className="price-editor-table-wrapper">
-        <table className="price-editor-table">
-          <thead>
-            <tr>
-              <th className="price-editor-th-id">ID</th>
-              <th className="price-editor-th-name">{t('common.name')}</th>
-              <th className="price-editor-th-price">{t('common.price')}</th>
-              <th className="price-editor-th-current">{t('admin.prices.currentPrice')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredProducts.map(product => {
-              const currentPrice = getPrice(product.id)
-              const hasPrice = currentPrice !== '' && currentPrice !== null && currentPrice !== undefined
-              return (
-                <tr key={product.id} className={`price-editor-row ${hasPrice ? 'has-price' : 'no-price'}`}>
-                  <td className="price-editor-td-id">{product.id}</td>
-                  <td className="price-editor-td-name">
-                    <span className="price-editor-product-name">{product.name}</span>
-                    {product.company && (
-                      <span className="price-editor-product-meta">{product.company} · {product.line}</span>
-                    )}
-                    {product.rarity && (
-                      <span className="price-editor-product-meta">{t(`realestate.rarities.${product.rarity}`)}</span>
-                    )}
-                    {product.category && activeCategory === 'supplies' && (
-                      <span className="price-editor-product-meta">{t(`supplies.${product.category}`)}</span>
-                    )}
-                    {product.category && activeCategory === 'business' && (
-                      <span className="price-editor-product-meta">{t(`business.categories.${product.category}`)}</span>
-                    )}
-                  </td>
-                  <td className="price-editor-td-price">
-                    <div className="price-editor-input-wrapper">
-                      <DollarSign size={14} className="price-editor-input-icon" />
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={currentPrice}
-                        onChange={e => handlePriceChange(product.id, e.target.value)}
-                        placeholder="0"
-                        className="price-editor-input"
-                      />
-                    </div>
-                  </td>
-                  <td className="price-editor-td-current">
-                    <span className={`price-editor-current-value ${hasPrice ? 'set' : 'not-set'}`}>
-                      {formatPrice(currentPrice)}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-        {filteredProducts.length === 0 && (
-          <div className="price-editor-empty">
-            {t('admin.prices.noProducts')}
-          </div>
-        )}
-      </div>
-
-      {/* Итого */}
-      <div className="price-editor-footer">
-        <span>{t('admin.prices.totalProducts', { count: filteredProducts.length })}</span>
-        <span>
-          {t('admin.prices.pricesSet', {
-            count: filteredProducts.filter(p => prices[p.id] !== undefined && prices[p.id] !== null).length
-          })}
-        </span>
+      <div className="catalog-admin-list">
+        {visible.map(item => {
+          const form = forms[item.slug] || {}
+          const price = Number(form.price) || 0
+          const sellRate = Number(form.sell_rate) || 0
+          const rarityRentPct = { common: .024, uncommon: .033, rare: .039, epic: .057, legendary: .078 }[item.rarity] || 0
+          return (
+            <div key={item.slug} className="catalog-admin-row">
+              <div className="catalog-admin-name">
+                <strong>{item.name}</strong>
+                <span>{item.slug} · {item.rarity}</span>
+                {item.mechanic && <span>{item.metric}</span>}
+              </div>
+              <label>{t('common.price')}
+                <input type="number" min="0" value={form.price}
+                  onChange={e => change(item.slug, 'price', e.target.value)} />
+              </label>
+              <label>{t('admin.property.fieldIncome')}
+                <input type="number" min="0" value={form.income_per_hour}
+                  onChange={e => change(item.slug, 'income_per_hour', e.target.value)} />
+              </label>
+              <label>{t('admin.property.fieldUpkeep')}
+                <input type="number" min="0" value={form.upkeep_per_hour}
+                  onChange={e => change(item.slug, 'upkeep_per_hour', e.target.value)} />
+              </label>
+              <label>{t('admin.prices.sellRate')}
+                <input type="number" min=".01" max="1" step=".01" value={form.sell_rate}
+                  onChange={e => change(item.slug, 'sell_rate', e.target.value)} />
+              </label>
+              <div className="catalog-admin-impact">
+                <span>{t('admin.prices.sale')}: <b>${formatMoney(price * sellRate)}</b></span>
+                <span>{t('admin.prices.rent')}: <b>${formatMoney(item.type === 'business' && !item.slug.startsWith('itstudio_') && item.slug !== 'media_holding' ? 0 : price * rarityRentPct)}</b></span>
+                <span>{t('admin.prices.upgrade')}: <b>${formatMoney(price * .4)}</b></span>
+              </div>
+              <button className="admin-btn admin-btn-primary" disabled={busy === item.slug}
+                onClick={() => save(item)}><Save size={14} /></button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

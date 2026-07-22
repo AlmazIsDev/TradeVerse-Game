@@ -36,7 +36,6 @@ from economy import router as economy_router
 from crypto import router as crypto_router
 from stocks import router as stocks_router
 from assets import router as assets_router
-from businesses import router as businesses_router
 from company import router as company_router
 from user_profile import router as user_profile_router
 from cityroof import router as cityroof_router
@@ -105,9 +104,6 @@ async def lifespan(app: FastAPI):
     await db.stock_events.create_index("symbol")
     await db.stock_events.create_index("timestamp")
     await db.user_assets.create_index("userId")
-    await db.user_assets.create_index([("businessId", 1), ("type", 1)])
-    await db.asset_catalog_overrides.create_index("slug", unique=True)
-    await db.business_operations.create_index([("businessId", 1), ("createdAt", -1)])
     await db.asset_market.create_index("slug", unique=True)
     await db.companies.create_index("ownerId", unique=True)
     await db.company_members.create_index([("companyId", 1), ("userId", 1)])
@@ -158,7 +154,6 @@ app.include_router(economy_router)
 app.include_router(crypto_router)
 app.include_router(stocks_router)
 app.include_router(assets_router)
-app.include_router(businesses_router)
 app.include_router(company_router)
 app.include_router(user_profile_router)
 app.include_router(cityroof_router)

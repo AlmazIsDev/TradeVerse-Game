@@ -11,7 +11,6 @@ import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
-import BusinessManagementModal from './BusinessManagementModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
@@ -30,16 +29,8 @@ const TYPE_TABS = [
 
 // «Изображения» объектов (эмодзи-баннеры вместо фото — работает без внешних ассетов)
 const ASSET_EMOJI = {
-  apartment: '🏢', house: '🏠', cottage: '🏡', mansion: '🏛️',
-  garage: '🅿️', parking_space: '🅿️', warehouse: '📦', hangar: '🏗️',
-  office: '🏢', commercial_unit: '🏬', land_plot: '🌳', industrial_site: '🏭',
-  taxi_fleet: '🚕', auto_service: '🔧', car_dealership: '🚘', logistics: '🚚',
-  courier: '📦', construction: '🏗️', restaurant: '🍽️', cafe: '☕', bar: '🍸',
-  hotel: '🏨', hostel: '🛏️', fitness: '🏋️', supermarket: '🛒', pharmacy: '💊',
-  gas_station: '⛽', carwash: '🚿', warehouse_complex: '🏭', data_center: '🖥️',
-  ad_agency: '📣', print_shop: '🖨️', radio_station: '📻', tv_channel: '📺',
-  farm: '🌾', fishery: '🎣', sawmill: '🪵', factory: '🏭', jewelry: '💎',
-  shopping_mall: '🏬', business_center: '🏙️',
+  studio: '🏠', flat2: '🏢', townhouse: '🏘️', villa: '🏖️', penthouse: '🌆', castle: '🏰',
+  shawarma: '🌯', coffee: '☕', carwash: '🚿', factory: '🏭',
   itstudio_basic: '💻', itstudio_medium: '💻', itstudio_advanced: '💻', itstudio_premium: '💻',
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
 }
@@ -60,7 +51,7 @@ const RARITY_GRAD = {
   legendary: 'linear-gradient(135deg,#b45309,#78350f)',
 }
 
-function MyAssetsTab({ defaultType = 'realestate', balance: _balance = 0, onBalanceChange }) {
+function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [activeType, setActiveType] = useState(defaultType)
   const [assets, setAssets] = useState([])
@@ -89,7 +80,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance: _balance = 0, onBala
   const [giftModal, setGiftModal] = useState(null)               // актив, передаваемый игроку
   const [giftName, setGiftName] = useState('')
   const [mediaModal, setMediaModal] = useState(false)            // разоблачение в СМИ (актив «Медиахолдинг»)
-  const [businessModal, setBusinessModal] = useState(null)
   const menuRef = useRef(null)
 
   // Закрытие меню «Взаимодействие» по клику вне него.
@@ -381,13 +371,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance: _balance = 0, onBala
         key: 'tune', className: 'upgrade', disabled: busy,
         icon: <Wrench size={15} />, label: t('tune.title'),
         onClick: () => setTuneModal(a),
-      })
-    }
-    if (a.type === 'business') {
-      actions.push({
-        key: 'manage-business', disabled: busy, icon: <SlidersHorizontal size={15} />,
-        label: t('businessManager.management'),
-        onClick: () => setBusinessModal(a),
       })
     }
     if (a.type === 'business' && !a.slug?.startsWith('itstudio_')) {
@@ -714,15 +697,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance: _balance = 0, onBala
         <MediaExposeModal
           onClose={() => setMediaModal(false)}
           onBalanceChange={onBalanceChange}
-        />
-      )}
-
-      {businessModal && (
-        <BusinessManagementModal
-          asset={businessModal}
-          onClose={() => setBusinessModal(null)}
-          onBalanceChange={onBalanceChange}
-          onChanged={() => load(true)}
         />
       )}
 

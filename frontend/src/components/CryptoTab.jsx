@@ -27,7 +27,7 @@ function forecast(coin) {
   return { change, vol: Math.round(vol * 10) / 10, probUp, up: change >= 0 }
 }
 
-function CryptoTab({ balance = 0, onBalanceChange }) {
+function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
   const [account, setAccount] = useState(null)
   const [market, setMarket] = useState([])
@@ -237,7 +237,10 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
                   <div key={coin.symbol} className="crypto-coin clickable" onClick={() => setDetailSymbol(coin.symbol)}>
                     {coinLogo(coin)}
                     <div className="crypto-coin-info">
-                      <span className="crypto-coin-symbol">{coin.symbol}</span>
+                      <span className="crypto-coin-symbol">
+                        {coin.symbol}
+                        {coin.issuer && coin.issuer === currentUserId && <span className="stock-issued-badge">{t('crypto.ownCoin')}</span>}
+                      </span>
                       <span className="crypto-coin-name">{coin.name}</span>
                     </div>
                     <div className="crypto-coin-price">

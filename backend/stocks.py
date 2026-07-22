@@ -180,6 +180,7 @@ def _format_stock_v2(stock: dict) -> dict:
         "marketCap": round(price * total_shares, 2),
         "issuer": stock.get("issuer"),
         "issuerName": stock.get("issuer_name"),
+        "image": stock.get("logo"),
         "configOverrides": stock.get("config") or {},
         "updated_at": _iso(stock.get("updated_at")),
     }
@@ -199,6 +200,19 @@ async def _holdings_map(db: AsyncIOMotorDatabase, user_id: str) -> dict:
 # ── Read endpoints ───────────────────────────────────────────────────────────
 
 
+async def _attach_company_logos(db: AsyncIOMotorDatabase, stocks: list[dict]) -> None:
+    """Подставляет логотип компании в акции без сохранённого logo (старые эмиссии)."""
+    cids = list({s.get("companyId") for s in stocks if s.get("companyId") and not s.get("logo")})
+    if not cids:
+        return
+    ids = [ObjectId(c) for c in cids if ObjectId.is_valid(c)]
+    logos = {str(c["_id"]): c.get("logo") async for c in
+             db.companies.find({"_id": {"$in": ids}}, {"logo": 1})}
+    for s in stocks:
+        if not s.get("logo") and logos.get(s.get("companyId")):
+            s["logo"] = logos[s["companyId"]]
+
+
 @router.get("")
 async def list_stocks(
     current_user: dict = Depends(get_current_user),
@@ -211,6 +225,7 @@ async def list_stocks(
     страница открывается мгновенно (никаких сетевых запросов и бэкфилла).
     """
     stocks = await find_all_stocks(db)
+    await _attach_company_logos(db, stocks)
     holdings = await _holdings_map(db, str(current_user["_id"]))
     out = []
     for s in stocks:
@@ -795,6 +810,7 @@ async def get_stock_v2(
     stock = await find_stock_by_symbol(db, symbol)
     if not stock:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Акция '{symbol}' не найдена")
+    await _attach_company_logos(db, [stock])
     return _format_stock_v2(stock)
 
 

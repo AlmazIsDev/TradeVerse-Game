@@ -639,6 +639,45 @@ async def get_my_stats(
     return {"stats": stats, "achievements": achievements}
 
 
+@app.get("/api/user/{user_id}/profile")
+async def get_public_profile(
+    user_id: str,
+    _user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Публичная карточка игрока (никнейм, аватар, «о себе», капитал, ачивки).
+
+    Показывает только агрегированные цифры — те же, что видны в таблице лидеров.
+    Работает и для скрытых из лидерборда: скрытие убирает из общего списка, но
+    не запрещает открыть профиль по прямой ссылке из состава компании/крыши.
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    entries = await _compute_leaderboard_entries(db, {"_id": user["_id"]})
+    stats = entries[0] if entries else {
+        "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
+        "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
+    }
+    achievements = [
+        {"id": "networth_1m", "reached": stats["netWorth"] >= 1_000_000},
+        {"id": "in_profit", "reached": stats["profit"] > 0},
+        {"id": "diversified", "reached": sum(1 for k in ("stocks", "crypto", "assets", "company") if stats.get(k, 0) > 0) >= 3},
+        {"id": "company_owner", "reached": stats.get("company", 0) > 0},
+    ]
+    return {
+        "userId": str(user["_id"]),
+        "username": user.get("username", "—"),
+        "avatar": user.get("avatar"),
+        "bio": user.get("bio") or "",
+        "createdAt": user.get("created_at"),
+        "stats": stats,
+        "achievements": achievements,
+    }
+
+
 # ── Admin Endpoints ──────────────────────────────────────────────────────────
 
 

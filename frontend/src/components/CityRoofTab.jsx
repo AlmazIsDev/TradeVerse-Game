@@ -7,6 +7,7 @@ import {
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
+import PlayerProfileModal from './PlayerProfileModal'
 import {
   Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
   Gift, Zap, ShieldPlus, Clock,
@@ -58,6 +59,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [map, setMap] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)      // business
+  const [profileId, setProfileId] = useState(null)
   const [session, setSession] = useState(null)        // { sessionId, length, symbolRange, ... }
   const [guess, setGuess] = useState([])
   const [attempts, setAttempts] = useState([])        // [{ guess, exact, present }]
@@ -395,7 +397,11 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             <h3>{selected.name}</h3>
             <p className="modal-price">
               <Coins size={14} /> {t('cityroof.reward')}: {selected.reward} ·
-              {' '}{selected.ownerName ? t('cityroof.owner', { name: selected.isMine ? t('cityroof.yours') : selected.ownerName }) : t('cityroof.free')}
+              {' '}{selected.ownerName
+                ? selected.isMine
+                  ? t('cityroof.owner', { name: t('cityroof.yours') })
+                  : <>{t('cityroof.ownerLabel', 'Владелец')}: <span className="player-link" onClick={() => setProfileId(selected.ownerId)}>{selected.ownerName}</span></>
+                : t('cityroof.free')}
               {selected.protectionLevel > 0 && <> · <Shield size={12} /> {selected.protectionLevel}</>}
             </p>
 
@@ -525,6 +531,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
         onCancel={() => setConfirm(null)}
       />
+      {profileId && <PlayerProfileModal userId={profileId} onClose={() => setProfileId(null)} />}
     </div>
   )
 }

@@ -152,7 +152,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'mining':
         return <MiningTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'crypto':
-        return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} />
+        return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'realestate':
         return <MarketTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'myhomes':

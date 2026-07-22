@@ -347,6 +347,11 @@ export async function fetchCurrentUser() {
   return request('/api/user/me')
 }
 
+/** Публичная карточка игрока по id (никнейм, аватар, «о себе», капитал, ачивки). */
+export async function fetchPlayerProfile(userId) {
+  return request(`/api/user/${encodeURIComponent(userId)}/profile`)
+}
+
 /** Сменить никнейм. */
 export async function updateProfile(data) {
   return request('/api/user/profile', { method: 'PATCH', body: JSON.stringify(data) })

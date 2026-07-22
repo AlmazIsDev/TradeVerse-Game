@@ -168,8 +168,9 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     ? portfolio.map(p => stocks.find(s => s.symbol === p.symbol)).filter(Boolean)
     : marketView).slice(0, 4)
 
-  const badge = (stock) => (
-    <span className="crypto-coin-badge" style={{ background: '#0071e3' }}>{(stock.symbol || '?').slice(0, 2)}</span>
+  const badge = (stock) => (stock.image
+    ? <img className="crypto-coin-img" src={stock.image} alt={stock.symbol} />
+    : <span className="crypto-coin-badge" style={{ background: '#0071e3' }}>{(stock.symbol || '?').slice(0, 2)}</span>
   )
 
   return (
@@ -213,7 +214,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                       <div className="crypto-coin-info">
                         <span className="crypto-coin-symbol">
                           {stock.symbol}
-                          {stock.issuer && <span className="stock-issued-badge">{t('stocks.issued')}</span>}
+                          {stock.issuer && stock.issuer === currentUserId && <span className="stock-issued-badge">{t('stocks.issued')}</span>}
                         </span>
                         <span className="crypto-coin-name">{stock.name}{stock.issuerName ? ` · ${stock.issuerName}` : ''}</span>
                       </div>

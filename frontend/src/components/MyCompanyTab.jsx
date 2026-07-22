@@ -9,6 +9,7 @@ import {
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import CompanyAssetsPanel from './CompanyAssetsPanel'
+import PlayerProfileModal from './PlayerProfileModal'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
@@ -58,6 +59,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [profileId, setProfileId] = useState(null)
 
   const [newName, setNewName] = useState('')
   const [companies, setCompanies] = useState([])
@@ -573,7 +575,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                     <span className="company-emp-avatar">{(m.username || '?').slice(0, 2).toUpperCase()}</span>
                   )}
                   <div className="company-emp-text">
-                    <span className="company-emp-name">{m.username}</span>
+                    <span className="company-emp-name player-link" onClick={() => setProfileId(m.userId)}>{m.username}</span>
                     {m.roleTitle && <span className="company-emp-role">{m.roleTitle}</span>}
                   </div>
                 </div>
@@ -896,6 +898,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         onConfirm={doRecall}
         onCancel={() => setConfirmRecall(null)}
       />
+      {profileId && <PlayerProfileModal userId={profileId} onClose={() => setProfileId(null)} />}
     </div>
   )
 }

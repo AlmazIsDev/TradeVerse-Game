@@ -1,4 +1,11 @@
 {
+  "errors": {
+    "sessionExpired": "Session expired. Please sign in again.",
+    "sessionRefreshFailed": "Failed to refresh session.",
+    "serverError": "Server error: {{status}}",
+    "networkError": "Could not connect to the server. Check your connection.",
+    "loadFailed": "An error occurred while loading data"
+  },
   "nav": {
     "stocks": "Stocks",
     "mining": "Mining",
@@ -72,7 +79,8 @@
     "to": "To",
     "notSet": "Not set",
     "name": "Name",
-    "confirmTitle": "Confirm action"
+    "confirmTitle": "Confirm action",
+    "delete": "Delete"
   },
   "stocks": {
     "title": "Stocks",
@@ -759,7 +767,10 @@
     "logout": "Logout",
     "search": "Search",
     "markAllRead": "Mark all read",
-    "user": "User"
+    "user": "User",
+    "copyCard": "Copy card number",
+    "hideCard": "Hide card",
+    "showCard": "Show card"
   },
   "profile": {
     "name": "Name",
@@ -900,6 +911,13 @@
     "stockUpdated": "Stock updated",
     "stockDeleted": "Stock deleted",
     "transactionDeleted": "Transaction deleted",
+    "searchTx": "Search by ticker...",
+    "txType": "Type",
+    "txSymbol": "Ticker",
+    "txQty": "Qty",
+    "txPrice": "Price",
+    "txTotal": "Total",
+    "txTime": "Time",
     "configUpdated": "Config updated",
     "fillAllFields": "Fill in all fields",
     "fillKeyAndValue": "Fill in key and value",
@@ -1031,6 +1049,9 @@
     "newFarm": "New farm",
     "pickPart": "+ Add part",
     "addComponent": "Add",
+    "install": "Install",
+    "inStock": "In stock",
+    "removeAll": "Remove all",
     "noParts": "None free — buy in the shop",
     "placementTaken": "{{other}} already installed — only one placement option allowed",
     "aiManagerHint": "Automatically picks the best coin and looks after the farm",

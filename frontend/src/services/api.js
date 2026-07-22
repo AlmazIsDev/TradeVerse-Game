@@ -1,3 +1,5 @@
+import i18n from '../i18n'
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const STORAGE_KEY = 'tradeverse_user'
@@ -172,7 +174,7 @@ async function refreshAccessToken() {
   const refreshToken = getRefreshToken()
   if (!refreshToken) {
     forceLogout()
-    throw new ApiError('Сессия истекла. Войдите заново.', 401)
+    throw new ApiError(i18n.t('errors.sessionExpired'), 401)
   }
 
   try {
@@ -184,7 +186,7 @@ async function refreshAccessToken() {
 
     if (!response.ok) {
       forceLogout()
-      throw new ApiError('Сессия истекла. Войдите заново.', 401)
+      throw new ApiError(i18n.t('errors.sessionExpired'), 401)
     }
 
     const data = await response.json()
@@ -195,7 +197,7 @@ async function refreshAccessToken() {
   } catch (err) {
     if (err instanceof ApiError) throw err
     forceLogout()
-    throw new ApiError('Не удалось обновить сессию.', 401)
+    throw new ApiError(i18n.t('errors.sessionRefreshFailed'), 401)
   }
 }
 
@@ -244,7 +246,7 @@ async function request(endpoint, options = {}) {
       if (!retryResponse.ok) {
         const errorText = await retryResponse.text().catch(() => '')
         throw new ApiError(
-          errorText || `Ошибка сервера: ${retryResponse.status}`,
+          errorText || i18n.t('errors.serverError', { status: retryResponse.status }),
           retryResponse.status
         )
       }
@@ -271,7 +273,7 @@ async function request(endpoint, options = {}) {
         } catch { /* тело не JSON — используем как есть */ }
       }
       throw new ApiError(
-        message || `Ошибка сервера: ${response.status}`,
+        message || i18n.t('errors.serverError', { status: response.status }),
         response.status
       )
     }
@@ -279,7 +281,7 @@ async function request(endpoint, options = {}) {
     return await response.json()
   } catch (error) {
     if (error instanceof ApiError) throw error
-    throw new ApiError('Не удалось подключиться к серверу. Проверьте подключение.', 0)
+    throw new ApiError(i18n.t('errors.networkError'), 0)
   }
 }
 

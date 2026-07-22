@@ -283,8 +283,8 @@ export const CASE_PRODUCTS = [
 ]
 
 export const SUPPLIES_PRODUCTS = [
-  { id: 1, name: 'Охлаждающая жидкость', price: null, category: 'cooling' },
-  { id: 2, name: 'Чип для улучшения видеокарты', price: null, category: 'upgrade' },
+  { id: 1, name: 'Coolant', price: null, category: 'cooling' },
+  { id: 2, name: 'GPU upgrade chip', price: null, category: 'upgrade' },
 ]
 
 export const REAL_ESTATE_PRODUCTS = [

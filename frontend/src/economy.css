@@ -1914,6 +1914,9 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .mslot-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; padding: 0; }
 .mslot-pick { width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12px; background: var(--color-bg-secondary); border: 1px solid var(--hairline); border-radius: 6px; color: var(--color-text-primary); cursor: pointer; }
 .mslot-empty { display: block; margin-top: 6px; font-size: 11px; color: var(--color-text-secondary); }
+.mslot-add-badge { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: #fff; background: var(--color-success, #22c55e); border: none; border-radius: 6px; cursor: pointer; }
+.mslot-add-badge:hover:not(:disabled) { filter: brightness(1.08); }
+.mslot-add-badge:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ===========================================================================
    Realtime pop-up приглашений, ConfirmDialog, настройки компании, анимации

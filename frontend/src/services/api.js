@@ -450,6 +450,46 @@ export async function adminTransferFarm(farmId, toUsername) {
   })
 }
 
+// ── Admin: универсальный редактор БД ────────────────────────────────────────
+
+export async function adminListCollections() {
+  return request('/api/admin/db/collections')
+}
+
+export async function adminListDocuments(name, opts = {}) {
+  const params = new URLSearchParams()
+  const { q, skip, limit } = opts
+  if (q) params.set('q', q)
+  if (skip != null) params.set('skip', skip)
+  if (limit != null) params.set('limit', limit)
+  const query = params.toString()
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}${query ? `?${query}` : ''}`)
+}
+
+export async function adminGetDocument(name, docId) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}/${encodeURIComponent(docId)}`)
+}
+
+export async function adminCreateDocument(name, doc) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}`, {
+    method: 'POST',
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function adminUpdateDocument(name, docId, doc) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}/${encodeURIComponent(docId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function adminDeleteDocument(name, docId) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}/${encodeURIComponent(docId)}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function adminUpdateCompany(companyId, data) {
   return request(`/api/company/admin/${encodeURIComponent(companyId)}`, {
     method: 'PATCH',
@@ -548,6 +588,24 @@ export async function transferCrypto(recipient, symbol, amount) {
 
 export async function fetchCryptoTransfers(limit = 30) {
   return request(`/api/crypto/transfers?limit=${limit}`)
+}
+
+export async function adminUpdateCoin(symbol, data) {
+  return request(`/api/crypto/admin/${encodeURIComponent(symbol)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminCreateCoin(data) {
+  return request('/api/crypto/admin', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminDeleteCoin(symbol) {
+  return request(`/api/crypto/admin/${encodeURIComponent(symbol)}`, { method: 'DELETE' })
 }
 
 // ── Stock Trading API ─────────────────────────────────────────────────────────
@@ -700,6 +758,29 @@ export async function fetchMarketAsset(market, symbol) {
 
 export async function fetchMarketHistory(market, symbol, interval = '7d') {
   return request(`/api/market/history?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`)
+}
+
+export async function adminListPriceHistory(market, symbol) {
+  return request(`/api/admin/price-history?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`)
+}
+
+export async function adminAddPricePoint(data) {
+  return request('/api/admin/price-history', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function adminUpdatePricePoint(pointId, data) {
+  return request(`/api/admin/price-history/${encodeURIComponent(pointId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminDeletePricePoint(pointId) {
+  return request(`/api/admin/price-history/${encodeURIComponent(pointId)}`, { method: 'DELETE' })
+}
+
+export async function adminRegeneratePriceHistory(data) {
+  return request('/api/admin/price-history/regenerate', { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function fetchFavorites() {

@@ -367,6 +367,17 @@ class InstallBody(BaseModel):
     hwId: Optional[str] = None   # конкретная деталь из инвентаря (игрок выбирает сам)
 
 
+class InstallBatchBody(BaseModel):
+    items: list[InstallBody]
+
+    @field_validator("items")
+    @classmethod
+    def not_empty(cls, v):
+        if not v:
+            raise ValueError("Пустой список компонентов")
+        return v[:100]   # разумный потолок на один batch
+
+
 class CoinBody(BaseModel):
     symbol: str
 
@@ -468,29 +479,30 @@ async def delete_farm(farm_id: str, current_user: dict = Depends(get_current_use
     return {"ok": True}
 
 
-@router.post("/farms/{farm_id}/install")
-async def install_component(farm_id: str, payload: InstallBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
-    """Установить в ферму свободное оборудование выбранной категории."""
-    user_id = str(current_user["_id"])
-    farm = await _load_farm(db, user_id, farm_id)
-    meta = CATEGORY_ROLE.get(payload.category)
+async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optional[str]) -> None:
+    """Установить один компонент в ферму (общая логика single/batch).
+
+    Мутирует БД; farm — свежезагруженная ферма (при пакетной установке
+    перезагружается между вызовами, т.к. ёмкость зависит от уже установленного).
+    Бросает HTTPException при любой ошибке валидации."""
+    meta = CATEGORY_ROLE.get(category)
     if not meta:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестная категория")
     role = meta["role"]
     multi = meta.get("multi", False)
 
     # Игрок может выбрать КОНКРЕТНУЮ деталь (hwId) — иначе берётся любая свободная.
-    if payload.hwId:
-        if not ObjectId.is_valid(payload.hwId):
+    if hw_id:
+        if not ObjectId.is_valid(hw_id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID детали")
         hw = await db.user_hardware.find_one({
-            "_id": ObjectId(payload.hwId), "userId": user_id,
-            "category": payload.category, "farmId": None,
+            "_id": ObjectId(hw_id), "userId": user_id,
+            "category": category, "farmId": None,
         })
         if not hw:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Деталь недоступна (не найдена или уже установлена)")
     else:
-        hw = await db.user_hardware.find_one({"userId": user_id, "category": payload.category, "farmId": None})
+        hw = await db.user_hardware.find_one({"userId": user_id, "category": category, "farmId": None})
         if not hw:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободного оборудования — купите в магазине")
 
@@ -513,7 +525,7 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
         else:  # fan
             if cap["fan"] <= 0:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных мест для вентиляторов (установите корпус/стойку большего размера)")
-        entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": payload.category}
+        entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": category}
         # Миграция старого одиночного поля psu → список psus при первой установке.
         if role == "psu" and comp.get("psu") and not comp.get("psus"):
             await db.mining_farms.update_one(
@@ -537,15 +549,50 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
         old = comp.get(role)
         if old and old.get("hwId") and role != "rack":
             await db.user_hardware.update_one({"_id": ObjectId(old["hwId"])}, {"$set": {"farmId": None}})
-        entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": payload.category}
+        entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": entry}})
 
     # Стойка — общий пул слотов на несколько ферм: НЕ привязываем её к ферме
     # (farmId остаётся None), чтобы она оставалась доступна другим фермам.
     if role != "rack":
         await db.user_hardware.update_one({"_id": hw["_id"]}, {"$set": {"farmId": str(farm["_id"])}})
+
+
+@router.post("/farms/{farm_id}/install")
+async def install_component(farm_id: str, payload: InstallBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Установить в ферму свободное оборудование выбранной категории."""
+    user_id = str(current_user["_id"])
+    farm = await _load_farm(db, user_id, farm_id)
+    await _install_one(db, user_id, farm, payload.category, payload.hwId)
     updated = await db.mining_farms.find_one({"_id": farm["_id"]})
     return await _serialize_with_stats(db, updated, user_id)
+
+
+@router.post("/farms/{farm_id}/install-batch")
+async def install_components_batch(farm_id: str, payload: InstallBatchBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Установить несколько компонентов одним запросом.
+
+    Каждый ставится по очереди (ёмкость зависит от уже установленного), ферма
+    перезагружается между установками. Если какая-то деталь не проходит
+    валидацию — прерываемся на ней, ранее установленные остаются."""
+    user_id = str(current_user["_id"])
+    farm = await _load_farm(db, user_id, farm_id)
+    installed = 0
+    error = None
+    for item in payload.items:
+        try:
+            await _install_one(db, user_id, farm, item.category, item.hwId)
+            installed += 1
+            farm = await _load_farm(db, user_id, farm_id)   # ёмкость зависит от уже установленного
+        except HTTPException as e:
+            error = e.detail
+            break
+    updated = await db.mining_farms.find_one({"_id": farm["_id"]})
+    result = await _serialize_with_stats(db, updated, user_id)
+    result["installed"] = installed
+    if error:
+        result["error"] = error
+    return result
 
 
 @router.post("/farms/{farm_id}/uninstall")

@@ -165,6 +165,10 @@ def _format_coin(coin: dict) -> dict:
     coin.pop("updated_at", None)
     coin.pop("base_price", None)
     coin.pop("market_price", None)   # внутреннее поле «рыночной» цены
+    if coin.get("marketCap") is None:
+        price = coin.get("price") or 0
+        supply = coin.get("supply") or 0
+        coin["marketCap"] = round(price * supply)
     return coin
 
 

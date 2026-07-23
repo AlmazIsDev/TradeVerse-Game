@@ -922,6 +922,7 @@ export async function fetchMiningParts() { return request('/api/mining/parts') }
 export async function createFarm(name) { return request('/api/mining/farms', { method: 'POST', body: JSON.stringify({ name }) }) }
 export async function deleteFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
 export async function installComponent(id, category, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category, hwId }) }) }
+export async function installComponentsBatch(id, items) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install-batch`, { method: 'POST', body: JSON.stringify({ items }) }) }
 export async function uninstallComponent(id, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/uninstall`, { method: 'POST', body: JSON.stringify({ hwId }) }) }
 export async function startMining(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/start`, { method: 'POST' }) }
 export async function stopMining(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/stop`, { method: 'POST' }) }

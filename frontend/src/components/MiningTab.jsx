@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchFarms, fetchMiningMarket, fetchMiningParts, createFarm, deleteFarm, installComponent,
+  installComponentsBatch,
   uninstallComponent, startMining, stopMining, setFarmCoin, setOverclock,
   repairFarm, farmManager,
 } from '../services/api'
@@ -113,12 +114,13 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     }
   }
 
-  // Массовая установка одинаковых деталей (GPU/вентиляторы): ставим по одной,
-  // но не больше свободной ёмкости и наличия. Сервер валидирует каждую.
+  // Массовая установка одинаковых деталей (GPU/вентиляторы): один batch-запрос,
+  // сервер валидирует и ставит каждую по очереди.
   const installMany = async (cat, hwIds) => {
     setBusy(true)
     try {
-      for (const hwId of hwIds) await installComponent(farm.id, cat, hwId)
+      const res = await installComponentsBatch(farm.id, hwIds.map(hwId => ({ category: cat, hwId })))
+      if (res?.error) flash(res.error, 'error')
     } catch (err) {
       flash(err.message, 'error')
     } finally {

@@ -4214,3 +4214,20 @@ textarea:focus {
   text-align: right;
   font-weight: 600;
 }
+
+.db-doc-preview {
+  flex: 1;
+  font-family: monospace;
+  font-size: 0.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-json-textarea {
+  width: 100%;
+  font-family: monospace;
+  font-size: 0.85em;
+  resize: vertical;
+  margin: 8px 0;
+}

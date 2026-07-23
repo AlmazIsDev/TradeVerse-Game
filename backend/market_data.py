@@ -38,7 +38,7 @@ VALID_MARKETS = {MARKET_STOCK, MARKET_CRYPTO}
 
 # Кэширование: как часто обновлять цены из внешнего API (сек).
 REFRESH_INTERVAL_S = int(os.getenv("MARKET_REFRESH_SECONDS", "120"))
-CRYPTO_COUNT = int(os.getenv("MARKET_CRYPTO_COUNT", "50"))
+CRYPTO_COUNT = int(os.getenv("MARKET_CRYPTO_COUNT", "15"))
 
 _COIN_COLORS = ["#f7931a", "#627eea", "#22c55e", "#eab308", "#ec4899",
                 "#8b5cf6", "#06b6d4", "#64748b", "#f43f5e", "#10b981"]
@@ -248,6 +248,15 @@ class MarketDataService:
                     upsert=True,
                 )
                 await MarketDataService.record_snapshot(db, "crypto", m["symbol"], m["price"], force=True)
+            # Подчищаем API-монеты, выпавшие из топ-N (напр. после снижения лимита):
+            # только coingecko-источник, игровые/компанийные (без source) не трогаем.
+            keep = [m["symbol"] for m in markets]
+            stale = [c["symbol"] async for c in db.crypto_assets.find(
+                {"source": "coingecko", "symbol": {"$nin": keep}}, {"symbol": 1})]
+            if stale:
+                await db.crypto_assets.delete_many({"symbol": {"$in": stale}})
+                await db.price_history.delete_many({"market": "crypto", "symbol": {"$in": stale}})
+                logger.info("CoinGecko: удалено %d устаревших монет", len(stale))
             await MarketDataService._set_meta(db, "crypto", "live")
             logger.info("CoinGecko: обновлено %d монет", len(markets))
             return "live"

@@ -4162,3 +4162,55 @@ textarea:focus {
     scroll-behavior: auto !important;
   }
 }
+
+.price-history-modal {
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.price-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.price-history-regenerate {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.price-history-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.price-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.price-history-row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.price-history-ts {
+  flex: 1;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.price-history-price {
+  min-width: 80px;
+  text-align: right;
+  font-weight: 600;
+}

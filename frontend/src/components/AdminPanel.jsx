@@ -167,7 +167,9 @@ function AdminPanel({ user, onClose }) {
         }
       } else if (activeSection === 'crypto') {
         const data = await fetchCryptoMarket()
-        setCoins(data)
+        // Прячем API-монеты (CoinGecko) — их всё равно перезатирает рефреш;
+        // админ управляет только игровыми и компанийными монетами.
+        setCoins(data.filter(c => c.source !== 'coingecko'))
       } else if (activeSection === 'config') {
         const keys = ['sidebar_menu', 'header_title', 'app_version']
         const items = []

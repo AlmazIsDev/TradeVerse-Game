@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig, fetchBotOrders } from '../services/api'
+import {
+  fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig, fetchBotOrders,
+  adminListCollections, adminListDocuments, adminCreateDocument, adminUpdateDocument, adminDeleteDocument,
+} from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import UserPropertyModal from './UserPropertyModal'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
+  Database,
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 
@@ -86,9 +90,24 @@ function AdminPanel({ user, onClose }) {
   const [editErrors, setEditErrors] = useState({})
   const [propertyUser, setPropertyUser] = useState(null)
 
+  // ── Состояние для вкладки "База данных" ─────────────────────────────────
+  const [dbCollections, setDbCollections] = useState([])
+  const [dbActiveCollection, setDbActiveCollection] = useState('')
+  const [dbDocs, setDbDocs] = useState({ items: [], total: 0 })
+  const [dbSearch, setDbSearch] = useState('')
+  const [dbEditingDoc, setDbEditingDoc] = useState(null) // { id, text } | { id: null, text } для нового документа
+  const [dbJsonError, setDbJsonError] = useState(null)
+
   useEffect(() => {
     loadData()
   }, [activeSection])
+
+  useEffect(() => {
+    if (activeSection !== 'database' || !dbActiveCollection) return
+    adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
+      .then(setDbDocs)
+      .catch(err => showMessage(t('admin.error') + ': ' + err.message))
+  }, [dbActiveCollection, dbSearch])
 
   // Живое обновление списка пользователей (только для админов — см. push_to_admins
   // в backend/ws.py). Транзакции намеренно НЕ обновляются пушем — по решению
@@ -124,6 +143,16 @@ function AdminPanel({ user, onClose }) {
           setBotOrders(botData)
         } catch (e) {
           console.error('Failed to load bot orders:', e)
+        }
+      } else if (activeSection === 'database') {
+        if (dbCollections.length === 0) {
+          const cols = await adminListCollections()
+          setDbCollections(cols)
+          if (!dbActiveCollection && cols.length) setDbActiveCollection(cols[0])
+        }
+        if (dbActiveCollection) {
+          const data = await adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
+          setDbDocs(data)
         }
       } else if (activeSection === 'config') {
         const keys = ['sidebar_menu', 'header_title', 'app_version']
@@ -359,6 +388,55 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
+  // ── Обработчики базы данных ────────────────────────────────────────────────
+
+  const handleDbOpenNew = () => {
+    setDbJsonError(null)
+    setDbEditingDoc({ id: null, text: '{\n  \n}' })
+  }
+
+  const handleDbOpenEdit = (doc) => {
+    setDbJsonError(null)
+    const id = doc._id?.$oid || doc._id
+    setDbEditingDoc({ id, text: JSON.stringify(doc, null, 2) })
+  }
+
+  const handleDbSave = async () => {
+    let parsed
+    try {
+      parsed = JSON.parse(dbEditingDoc.text)
+    } catch (err) {
+      setDbJsonError(t('admin.database.invalidJson') + ': ' + err.message)
+      return
+    }
+    try {
+      if (dbEditingDoc.id) {
+        await adminUpdateDocument(dbActiveCollection, dbEditingDoc.id, parsed)
+      } else {
+        await adminCreateDocument(dbActiveCollection, parsed)
+      }
+      setDbEditingDoc(null)
+      showMessage(t('admin.database.saved'))
+      const data = await adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
+      setDbDocs(data)
+    } catch (err) {
+      showMessage(t('admin.error') + ': ' + err.message)
+    }
+  }
+
+  const handleDbDelete = async (doc) => {
+    const id = doc._id?.$oid || doc._id
+    if (!confirm(t('admin.database.deleteConfirm'))) return
+    try {
+      await adminDeleteDocument(dbActiveCollection, id)
+      showMessage(t('admin.database.deleted'))
+      const data = await adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
+      setDbDocs(data)
+    } catch (err) {
+      showMessage(t('admin.error') + ': ' + err.message)
+    }
+  }
+
   const sections = [
     { id: 'stocks', label: t('admin.stocks'), icon: Package },
     { id: 'prices', label: t('admin.prices.title'), icon: DollarSign },
@@ -366,6 +444,7 @@ function AdminPanel({ user, onClose }) {
     { id: 'transactions', label: t('admin.transactions'), icon: ArrowLeftRight },
     { id: 'economy', label: t('econ.tab'), icon: Activity },
     { id: 'config', label: t('admin.config'), icon: Settings },
+    { id: 'database', label: t('admin.database.title'), icon: Database },
   ]
 
   return (
@@ -496,6 +575,68 @@ function AdminPanel({ user, onClose }) {
 
         {!loading && activeSection === 'prices' && (
           <PriceEditorTab />
+        )}
+
+        {!loading && activeSection === 'database' && (
+          <div>
+            <div className="admin-toolbar">
+              <select
+                className="admin-input"
+                value={dbActiveCollection}
+                onChange={e => setDbActiveCollection(e.target.value)}
+              >
+                {dbCollections.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <div className="tx-search"><Search size={15} className="tx-search-icon" />
+                <input value={dbSearch} onChange={e => setDbSearch(e.target.value)} placeholder={t('admin.database.searchPlaceholder')} /></div>
+              <span className="admin-count">{dbDocs.total}</span>
+              <button className="admin-btn admin-btn-primary" onClick={handleDbOpenNew}>
+                <Plus size={16} /> {t('admin.database.newDocument')}
+              </button>
+            </div>
+            <div className="admin-list">
+              {dbDocs.items.map(doc => {
+                const id = doc._id?.$oid || doc._id
+                return (
+                  <div key={id} className="admin-stock-item">
+                    <div className="db-doc-preview">{JSON.stringify(doc).slice(0, 160)}</div>
+                    <div className="stock-actions">
+                      <button className="admin-btn" onClick={() => handleDbOpenEdit(doc)}>
+                        <Edit3 size={14} />
+                      </button>
+                      <button className="admin-btn admin-btn-danger" onClick={() => handleDbDelete(doc)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+              {dbDocs.items.length === 0 && <p className="empty-state">{t('admin.database.noDocuments')}</p>}
+            </div>
+          </div>
+        )}
+
+        {dbEditingDoc && (
+          <div className="modal-overlay" onClick={() => setDbEditingDoc(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <h3>{dbEditingDoc.id ? t('admin.database.editDocument') : t('admin.database.newDocument')}</h3>
+              <textarea
+                className="admin-input db-json-textarea"
+                value={dbEditingDoc.text}
+                onChange={e => setDbEditingDoc({ ...dbEditingDoc, text: e.target.value })}
+                rows={16}
+              />
+              {dbJsonError && <div className="admin-field-error">{dbJsonError}</div>}
+              <div className="modal-buttons">
+                <button className="admin-btn admin-btn-primary" onClick={handleDbSave}>
+                  <Save size={14} /> {t('admin.save')}
+                </button>
+                <button className="admin-btn" onClick={() => setDbEditingDoc(null)}>
+                  {t('admin.cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Config Modal */}

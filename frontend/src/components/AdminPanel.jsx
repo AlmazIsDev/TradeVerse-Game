@@ -3,14 +3,16 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig, fetchBotOrders,
   adminListCollections, adminListDocuments, adminCreateDocument, adminUpdateDocument, adminDeleteDocument,
+  fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
 } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import UserPropertyModal from './UserPropertyModal'
+import PriceHistoryEditor from './PriceHistoryEditor'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
-  Database,
+  Database, Coins,
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 
@@ -98,6 +100,15 @@ function AdminPanel({ user, onClose }) {
   const [dbEditingDoc, setDbEditingDoc] = useState(null) // { id, text } | { id: null, text } для нового документа
   const [dbJsonError, setDbJsonError] = useState(null)
 
+  // ── Состояние для вкладки "Крипта" ──────────────────────────────────────
+  const [coins, setCoins] = useState([])
+  const [coinSearch, setCoinSearch] = useState('')
+  const [editingCoin, setEditingCoin] = useState(null) // символ редактируемой монеты
+  const [coinForm, setCoinForm] = useState({ name: '', price: '', marketCap: '', volatility: '', color: '', description: '' })
+  const [showAddCoinForm, setShowAddCoinForm] = useState(false)
+  const [newCoin, setNewCoin] = useState({ symbol: '', name: '', price: '', volatility: '0.05', color: '#6366f1', supply: '', description: '' })
+  const [chartAsset, setChartAsset] = useState(null) // { market, symbol } | null — открывает PriceHistoryEditor
+
   useEffect(() => {
     loadData()
   }, [activeSection])
@@ -154,6 +165,9 @@ function AdminPanel({ user, onClose }) {
           const data = await adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
           setDbDocs(data)
         }
+      } else if (activeSection === 'crypto') {
+        const data = await fetchCryptoMarket()
+        setCoins(data)
       } else if (activeSection === 'config') {
         const keys = ['sidebar_menu', 'header_title', 'app_version']
         const items = []
@@ -437,8 +451,76 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
+  // ── Обработчики крипты ─────────────────────────────────────────────────────
+
+  const handleStartEditCoin = (coin) => {
+    setEditingCoin(coin.symbol)
+    setCoinForm({
+      name: coin.name || '',
+      price: coin.price != null ? String(coin.price) : '',
+      marketCap: coin.marketCap != null ? String(coin.marketCap) : '',
+      volatility: coin.volatility != null ? String(coin.volatility) : '',
+      color: coin.color || '',
+      description: coin.description || '',
+    })
+  }
+
+  const handleSaveCoin = async () => {
+    const payload = {}
+    if (coinForm.name) payload.name = coinForm.name
+    if (coinForm.price !== '') payload.price = parseFloat(coinForm.price)
+    if (coinForm.marketCap !== '') payload.marketCap = parseFloat(coinForm.marketCap)
+    if (coinForm.volatility !== '') payload.volatility = parseFloat(coinForm.volatility)
+    if (coinForm.color) payload.color = coinForm.color
+    if (coinForm.description !== '') payload.description = coinForm.description
+    try {
+      await adminUpdateCoin(editingCoin, payload)
+      setEditingCoin(null)
+      showMessage(t('admin.crypto.saved'))
+      loadData()
+    } catch (err) {
+      showMessage(t('admin.error') + ': ' + err.message)
+    }
+  }
+
+  const handleAddCoin = async () => {
+    if (!newCoin.symbol || !newCoin.name || !newCoin.price) {
+      showMessage(t('admin.fillAllFields'))
+      return
+    }
+    try {
+      await adminCreateCoin({
+        symbol: newCoin.symbol.toUpperCase(),
+        name: newCoin.name,
+        price: parseFloat(newCoin.price),
+        volatility: parseFloat(newCoin.volatility) || 0.05,
+        color: newCoin.color || '#6366f1',
+        supply: newCoin.supply !== '' ? parseFloat(newCoin.supply) : undefined,
+        description: newCoin.description,
+      })
+      setNewCoin({ symbol: '', name: '', price: '', volatility: '0.05', color: '#6366f1', supply: '', description: '' })
+      setShowAddCoinForm(false)
+      showMessage(t('admin.crypto.added'))
+      loadData()
+    } catch (err) {
+      showMessage(t('admin.error') + ': ' + err.message)
+    }
+  }
+
+  const handleDeleteCoin = async (symbol) => {
+    if (!confirm(t('admin.crypto.deleteConfirm', { symbol }))) return
+    try {
+      await adminDeleteCoin(symbol)
+      showMessage(t('admin.crypto.deleted', { symbol }))
+      loadData()
+    } catch (err) {
+      showMessage(t('admin.error') + ': ' + err.message)
+    }
+  }
+
   const sections = [
     { id: 'stocks', label: t('admin.stocks'), icon: Package },
+    { id: 'crypto', label: t('admin.crypto.title'), icon: Coins },
     { id: 'prices', label: t('admin.prices.title'), icon: DollarSign },
     { id: 'users', label: t('admin.users'), icon: Users },
     { id: 'transactions', label: t('admin.transactions'), icon: ArrowLeftRight },
@@ -558,6 +640,9 @@ function AdminPanel({ user, onClose }) {
                         <button className="admin-btn" onClick={() => setEditingStock({ ...stock })}>
                           <Edit3 size={14} />
                         </button>
+                        <button className="admin-btn" onClick={() => setChartAsset({ market: 'stock', symbol: stock.symbol })} title={t('admin.priceHistory.title')}>
+                          <RefreshCw size={14} />
+                        </button>
                         <button className="admin-btn" onClick={() => handleEditStockConfig({ ...stock })} title={t('admin.stockConfig') || 'Настроить конфиг'}>
                           <Sliders size={14} />
                         </button>
@@ -637,6 +722,119 @@ function AdminPanel({ user, onClose }) {
               </div>
             </div>
           </div>
+        )}
+
+        {!loading && activeSection === 'crypto' && (
+          <div>
+            <div className="admin-toolbar">
+              <button className="admin-btn admin-btn-primary" onClick={() => setShowAddCoinForm(v => !v)}>
+                <Plus size={16} /> {t('admin.crypto.addCoin')}
+              </button>
+            </div>
+            {showAddCoinForm && (
+              <div className="admin-add-form">
+                <div className="form-row">
+                  <input placeholder={t('admin.tickerPlaceholder')} value={newCoin.symbol}
+                    onChange={e => setNewCoin({ ...newCoin, symbol: e.target.value })} className="admin-input" />
+                  <input placeholder={t('admin.namePlaceholder')} value={newCoin.name}
+                    onChange={e => setNewCoin({ ...newCoin, name: e.target.value })} className="admin-input" />
+                  <input placeholder={t('admin.pricePlaceholder')} type="number" value={newCoin.price}
+                    onChange={e => setNewCoin({ ...newCoin, price: e.target.value })} className="admin-input" />
+                  <input placeholder={t('admin.crypto.supplyPlaceholder')} type="number" value={newCoin.supply}
+                    onChange={e => setNewCoin({ ...newCoin, supply: e.target.value })} className="admin-input" />
+                  <button className="admin-btn admin-btn-primary" onClick={handleAddCoin}>
+                    <Plus size={16} /> {t('admin.addButton')}
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="admin-list">
+              <div className="admin-toolbar">
+                <div className="tx-search"><Search size={15} className="tx-search-icon" />
+                  <input value={coinSearch} onChange={e => setCoinSearch(e.target.value)} placeholder={t('admin.searchStocks')} /></div>
+                <span className="admin-count">{coins.length}</span>
+              </div>
+              {coins.filter(c => !coinSearch || c.symbol.toLowerCase().includes(coinSearch.toLowerCase()) || (c.name || '').toLowerCase().includes(coinSearch.toLowerCase())).map(coin => (
+                <div key={coin.symbol} className="admin-stock-item">
+                  <div className="stock-info">
+                    <strong>{coin.symbol}</strong>
+                    <span>{coin.name}</span>
+                    <span className="stock-price">${coin.price?.toFixed?.(coin.price < 1 ? 6 : 2)}</span>
+                    <span className="admin-count">{t('admin.crypto.marketCap')}: {coin.marketCap != null ? `$${Math.round(coin.marketCap).toLocaleString()}` : '—'}</span>
+                  </div>
+                  <div className="stock-actions">
+                    <button className="admin-btn" onClick={() => setChartAsset({ market: 'crypto', symbol: coin.symbol })} title={t('admin.priceHistory.title')}>
+                      <RefreshCw size={14} />
+                    </button>
+                    <button className="admin-btn" onClick={() => handleStartEditCoin(coin)}>
+                      <Edit3 size={14} />
+                    </button>
+                    <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteCoin(coin.symbol)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {coins.length === 0 && <p className="empty-state">{t('admin.crypto.noCoins')}</p>}
+            </div>
+          </div>
+        )}
+
+        {editingCoin && (
+          <div className="modal-overlay" onClick={() => setEditingCoin(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <h3>{t('admin.crypto.editCoin')}: {editingCoin}</h3>
+              <div className="config-form">
+                <div className="config-field">
+                  <label>{t('admin.name')}</label>
+                  <input value={coinForm.name} onChange={e => setCoinForm({ ...coinForm, name: e.target.value })} />
+                </div>
+                <div className="config-field">
+                  <label>{t('admin.price')}</label>
+                  <input type="number" step="0.000001" value={coinForm.price}
+                    onChange={e => setCoinForm({ ...coinForm, price: e.target.value })} />
+                </div>
+                <div className="config-field">
+                  <label>
+                    {t('admin.crypto.marketCap')}
+                    <Tooltip text={t('admin.crypto.marketCapHelp')} />
+                  </label>
+                  <input type="number" step="1" value={coinForm.marketCap}
+                    onChange={e => setCoinForm({ ...coinForm, marketCap: e.target.value })} />
+                </div>
+                <div className="config-field">
+                  <label>{t('admin.crypto.volatility')}</label>
+                  <input type="number" step="0.01" min="0.001" max="1" value={coinForm.volatility}
+                    onChange={e => setCoinForm({ ...coinForm, volatility: e.target.value })} />
+                </div>
+                <div className="config-field">
+                  <label>{t('admin.crypto.color')}</label>
+                  <input type="color" value={coinForm.color || '#6366f1'}
+                    onChange={e => setCoinForm({ ...coinForm, color: e.target.value })} />
+                </div>
+                <div className="config-field">
+                  <label>{t('admin.crypto.description')}</label>
+                  <input value={coinForm.description} onChange={e => setCoinForm({ ...coinForm, description: e.target.value })} />
+                </div>
+              </div>
+              <div className="modal-buttons">
+                <button className="admin-btn admin-btn-primary" onClick={handleSaveCoin}>
+                  <Save size={14} /> {t('admin.save')}
+                </button>
+                <button className="admin-btn" onClick={() => setEditingCoin(null)}>
+                  {t('admin.cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {chartAsset && (
+          <PriceHistoryEditor
+            market={chartAsset.market}
+            symbol={chartAsset.symbol}
+            onClose={() => setChartAsset(null)}
+          />
         )}
 
         {/* Config Modal */}

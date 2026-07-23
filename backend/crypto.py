@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_CRYPTO,
@@ -649,3 +649,105 @@ async def crypto_transfers(
             "timestamp": tr["ts"].isoformat() if isinstance(tr.get("ts"), datetime) else None,
         })
     return out
+
+
+# ── Admin: create / edit / delete coins ──────────────────────────────────────
+
+
+class CryptoAdminUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    marketCap: Optional[float] = None
+    volatility: Optional[float] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CryptoAdminCreate(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    volatility: float = 0.05
+    color: str = "#6366f1"
+    supply: Optional[float] = None
+    description: str = ""
+
+
+@router.patch("/admin/{symbol}")
+async def admin_update_coin(
+    symbol: str,
+    payload: CryptoAdminUpdate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Точечное редактирование монеты. marketCap задаёт supply = marketCap/price;
+    price дополнительно переустанавливает base_price (якорь коридора _walk_price)."""
+    symbol = symbol.upper()
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if not coin:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+
+    fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+    new_price = fields.get("price")
+    new_market_cap = fields.pop("marketCap", None)
+    if new_market_cap is not None:
+        price_for_supply = new_price if new_price is not None else float(coin.get("price", 0))
+        if price_for_supply > 0:
+            fields["supply"] = round(new_market_cap / price_for_supply)
+            fields["marketCap"] = round(new_market_cap, 2)
+    if new_price is not None:
+        fields["base_price"] = new_price
+    fields["updated_at"] = datetime.utcnow()
+
+    await db.crypto_assets.update_one({"symbol": symbol}, {"$set": fields})
+    _MARKET_CACHE["ts"] = None
+    updated = await db.crypto_assets.find_one({"symbol": symbol})
+    return _format_coin(updated)
+
+
+@router.post("/admin", status_code=status.HTTP_201_CREATED)
+async def admin_create_coin(
+    payload: CryptoAdminCreate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    symbol = payload.symbol.upper()
+    if await db.crypto_assets.find_one({"symbol": symbol}):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Монета '{symbol}' уже существует")
+    supply = payload.supply if payload.supply is not None else 0
+    doc = {
+        "symbol": symbol, "name": payload.name, "price": payload.price,
+        "base_price": payload.price, "volatility": payload.volatility,
+        "color": payload.color, "supply": supply, "description": payload.description,
+        "change24h": 0.0, "ath": payload.price, "atl": payload.price,
+        "volume24h": round(payload.price * supply * 0.04, 2),
+        "updated_at": datetime.utcnow(),
+    }
+    await db.crypto_assets.insert_one(doc)
+    await MarketDataService.ensure_backfill(db, "crypto", symbol, payload.price, payload.volatility)
+    _MARKET_CACHE["ts"] = None
+    created = await db.crypto_assets.find_one({"symbol": symbol})
+    return _format_coin(created)
+
+
+@router.delete("/admin/{symbol}")
+async def admin_delete_coin(
+    symbol: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Удаляет монету. ponytail: не каскадит crypto_holdings/price_history —
+    приемлемо для админ-инструмента удаления монеты, которую никто не держит."""
+    symbol = symbol.upper()
+    result = await db.crypto_assets.delete_one({"symbol": symbol})
+    if result.deleted_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+    _MARKET_CACHE["ts"] = None
+    return {"deleted": True}
+
+
+if __name__ == "__main__":
+    # marketCap -> supply recompute (единственная нетривиальная новая логика здесь).
+    price, market_cap = 100.0, 50_000_000.0
+    assert round(market_cap / price) == 500_000
+    print("crypto self-check OK")

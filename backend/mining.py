@@ -533,12 +533,31 @@ class AdminTransferBody(BaseModel):
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
+async def _best_farm_profile(db, user_id: str) -> Optional[dict]:
+    """Профиль лучшей ПОЛНОСТЬЮ СОБРАННОЙ фермы игрока (не обязательно
+    запущенной — чтобы можно было посмотреть рейтинг монет ДО старта добычи)."""
+    best = None
+    async for farm in db.mining_farms.find({"userId": user_id}):
+        if _missing_required(farm):
+            continue
+        profile = _farm_hw_profile(farm)
+        if best is None or profile["hashrate"] > best["hashrate"]:
+            best = profile
+    return best
+
+
 @router.get("/market")
-async def mining_market(_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
-    """Монеты для выбора добычи + рекомендация ИИ (самая прибыльная)."""
+async def mining_market(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Монеты для выбора добычи + рекомендация ИИ, ранжированные под хешрейт
+    лучшей собранной фермы игрока (без собранной фермы — по цене, как раньше)."""
     market = await _coin_market(db)
-    coins = sorted(market.values(), key=lambda c: _coin_profitability(c), reverse=True)
-    return {"coins": coins, "best": choose_best_coin(market)}
+    profile = await _best_farm_profile(db, str(current_user["_id"]))
+    best = choose_best_coin(market, profile)
+    if profile:
+        coins = sorted(market.values(), key=lambda c: _coin_revenue_per_h(c, profile), reverse=True)
+    else:
+        coins = sorted(market.values(), key=lambda c: c.get("price", 0), reverse=True)
+    return {"coins": coins, "best": best}
 
 
 @router.get("/parts")
@@ -763,7 +782,7 @@ async def start_mining(farm_id: str, current_user: dict = Depends(get_current_us
     manager = farm.get("manager") or {}
     if not coin:
         if manager.get("type") == "ai":
-            coin = choose_best_coin(market)
+            coin = choose_best_coin(market, _farm_hw_profile(farm))
         else:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Выберите криптовалюту для добычи")
 
@@ -896,7 +915,16 @@ async def tick_all(db: AsyncIOMotorDatabase):
                                 f"ИИ-управляющий возобновил добычу на «{farm.get('name')}».",
                                 data={"farmId": str(farm["_id"])})
 
-    async for farm in db.mining_farms.find({"status": "mining"}):
+    # Живой вклад игроков в сложность (второстепенный сигнал, см. LIVE_WEIGHT):
+    # суммарный хешрейт активных ферм по монетам, O(активных ферм) за тик.
+    active_farms = await db.mining_farms.find({"status": "mining"}).to_list(length=None)
+    live_hashrate_by_coin: dict = {}
+    for farm in active_farms:
+        sym = farm.get("coin")
+        if sym:
+            live_hashrate_by_coin[sym] = live_hashrate_by_coin.get(sym, 0.0) + _farm_hashrate(farm)
+
+    for farm in active_farms:
         last = _aware(farm.get("last_tick"))
         elapsed_h = min(MAX_ACCRUAL_H, (now - last).total_seconds() / 3600.0) if isinstance(last, datetime) else 0.0
         if elapsed_h < MINING_MIN_ELAPSED_H:
@@ -906,19 +934,36 @@ async def tick_all(db: AsyncIOMotorDatabase):
         manager = farm.get("manager") or {"type": "player", "level": 0}
         ai = manager.get("type") == "ai"
         ai_level = manager.get("level", 0) if ai else 0
+        own_hashrate = _farm_hashrate(farm)
 
-        # ИИ автоматически выбирает самую прибыльную монету.
+        # ИИ автоматически выбирает монету, максимизирующую ЕГО СОБСТВЕННУЮ выручку.
         if ai:
-            best = choose_best_coin(market)
+            profile = _farm_hw_profile(farm)
+            live_excl_self = {sym: h - (own_hashrate if sym == farm.get("coin") else 0.0)
+                               for sym, h in live_hashrate_by_coin.items()}
+            best = choose_best_coin(market, profile, live_excl_self)
             if best and best != farm.get("coin"):
                 farm["coin"] = best
 
+        coin_sym_for_live = farm.get("coin")
+        live_on_coin = max(0.0, live_hashrate_by_coin.get(coin_sym_for_live, 0.0) - own_hashrate) if coin_sym_for_live else 0.0
+
         city = await _city_bonus(db, user_id)
-        stats = _compute(farm, market, ec, em, city)
+        stats = _compute(farm, market, ec, em, city, live_hashrate_on_coin=live_on_coin)
+
+        # ИБП: шанс просадки питания за тик; без достаточного резерва — тик
+        # без выручки и доп. износ (UPS — gate, не постоянный множитель).
+        extra_wear = 0.0
+        if random.random() < BROWNOUT_CHANCE and not stats.get("upsProtected", False):
+            stats = dict(stats)
+            stats["revenuePerHour"] = 0.0
+            stats["profitPerHour"] = round(-stats["electricityPerHour"] - stats["salaryPerHour"], 2)
+            extra_wear = UPS_WEAR_PENALTY
+
         revenue = round(stats["revenuePerHour"] * elapsed_h, 2)
         electricity = round(stats["electricityPerHour"] * elapsed_h, 2)
         salary = round(stats["salaryPerHour"] * elapsed_h, 2)
-        wear = stats["wearPerHour"] * elapsed_h
+        wear = stats["wearPerHour"] * elapsed_h + extra_wear
         new_condition = max(0.0, farm.get("condition", 100.0) - wear)
 
         # ИИ авто-ремонт: держит ферму в рабочем состоянии, не дожидаясь

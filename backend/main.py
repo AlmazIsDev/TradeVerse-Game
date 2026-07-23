@@ -45,6 +45,7 @@ from econ import router as econ_router
 from market_events import router as events_router
 from shop import router as shop_router
 from mining import router as mining_router
+from admin_db import router as admin_db_router
 from media import router as media_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
@@ -163,6 +164,7 @@ app.include_router(econ_router)
 app.include_router(events_router)
 app.include_router(shop_router)
 app.include_router(mining_router)
+app.include_router(admin_db_router)
 app.include_router(media_router)
 app.include_router(ws_router)
 

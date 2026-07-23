@@ -1008,6 +1008,44 @@
       "noProducts": "Товары не найдены",
       "totalProducts": "Всего товаров: {{count}}",
       "pricesSet": "С ценой: {{count}}"
+    },
+    "database": {
+      "title": "База данных",
+      "searchPlaceholder": "Поиск...",
+      "newDocument": "Новый документ",
+      "editDocument": "Редактировать документ",
+      "noDocuments": "Документы не найдены",
+      "invalidJson": "Некорректный JSON",
+      "saved": "Документ сохранён",
+      "deleted": "Документ удалён",
+      "deleteConfirm": "Удалить документ? Действие необратимо."
+    },
+    "crypto": {
+      "title": "Крипта",
+      "addCoin": "Добавить монету",
+      "editCoin": "Редактировать монету",
+      "marketCap": "Капитализация",
+      "marketCapHelp": "При изменении капитализации supply пересчитывается как marketCap / price",
+      "volatility": "Волатильность",
+      "color": "Цвет",
+      "description": "Описание",
+      "supplyPlaceholder": "Supply (опционально)",
+      "saved": "Монета сохранена",
+      "added": "Монета добавлена",
+      "deleted": "Монета {{symbol}} удалена",
+      "deleteConfirm": "Удалить монету {{symbol}}?",
+      "noCoins": "Монеты не найдены"
+    },
+    "priceHistory": {
+      "title": "График цены",
+      "newPointPrice": "Цена новой точки",
+      "addPoint": "Добавить точку",
+      "priceOverride": "Цена (для regenerate)",
+      "volatilityOverride": "Волатильность (для regenerate)",
+      "regenerate": "Пересоздать историю",
+      "regenerateConfirm": "Пересоздать всю историю цен? Текущие точки будут удалены безвозвратно.",
+      "deletePointConfirm": "Удалить эту точку?",
+      "noPoints": "История пуста"
     }
   },
   "econ": {

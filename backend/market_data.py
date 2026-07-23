@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from providers import CoinGeckoProvider
 
@@ -73,6 +73,32 @@ def _aware(dt: datetime) -> datetime:
     return dt
 
 
+def _build_walk_docs(market: str, symbol: str, current_price: float, volatility: float = 0.03) -> list[dict]:
+    """Строит историю случайным блужданием назад во времени от текущей цены.
+
+    Год по дням + последние 3 суток плотнее (для интервалов 1h/24h). Чистая
+    функция — не трогает БД, используется и одноразовым бэкфиллом, и
+    принудительным regenerate.
+    """
+    symbol = symbol.upper()
+    now = _now()
+    docs: list[dict] = []
+
+    def walk_back(points: int, step: timedelta, price: float, vol: float):
+        seq = []
+        p = price
+        for i in range(points):
+            seq.append((now - step * i, round(max(current_price * 0.15, min(current_price * 6, p)), 6)))
+            p = p / (1 + random.gauss(0, vol))
+        return seq
+
+    for ts, p in walk_back(365, timedelta(days=1), current_price, volatility):
+        docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
+    for ts, p in walk_back(144, timedelta(minutes=30), current_price, volatility * 0.4):
+        docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
+    return docs
+
+
 class MarketDataService:
     """Единая точка работы с историей цен."""
 
@@ -97,23 +123,16 @@ class MarketDataService:
         symbol = symbol.upper()
         if await db.price_history.find_one({"market": market, "symbol": symbol}):
             return
-        now = _now()
-        docs: list[dict] = []
+        docs = _build_walk_docs(market, symbol, current_price, volatility)
+        if docs:
+            await db.price_history.insert_many(docs)
 
-        def walk_back(points: int, step: timedelta, price: float, vol: float):
-            """Случайное блуждание назад во времени от текущей цены."""
-            seq = []
-            p = price
-            for i in range(points):
-                seq.append((now - step * i, round(max(current_price * 0.15, min(current_price * 6, p)), 6)))
-                p = p / (1 + random.gauss(0, vol))
-            return seq
-
-        # Год по дням + последние 3 суток плотнее (для 1h/24h интервалов).
-        for ts, p in walk_back(365, timedelta(days=1), current_price, volatility):
-            docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
-        for ts, p in walk_back(144, timedelta(minutes=30), current_price, volatility * 0.4):
-            docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
+    @staticmethod
+    async def regenerate(db, market: str, symbol: str, current_price: float, volatility: float = 0.03):
+        """Принудительно пересоздаёт историю символа (сносит старую, строит заново)."""
+        symbol = symbol.upper()
+        await db.price_history.delete_many({"market": market, "symbol": symbol})
+        docs = _build_walk_docs(market, symbol, current_price, volatility)
         if docs:
             await db.price_history.insert_many(docs)
 
@@ -400,3 +419,125 @@ async def toggle_favorite(
         {"userId": user_id, "market": payload.market, "symbol": symbol, "created_at": _now()}
     )
     return {"favorite": True}
+
+
+# ── Admin: point-edit + regenerate price history ────────────────────────────────
+
+
+class PricePointBody(BaseModel):
+    market: str
+    symbol: str
+    price: float
+    ts: Optional[datetime] = None
+
+
+class PricePointUpdate(BaseModel):
+    price: Optional[float] = None
+    ts: Optional[datetime] = None
+
+
+class RegenerateBody(BaseModel):
+    market: str
+    symbol: str
+    price: Optional[float] = None
+    volatility: Optional[float] = None
+
+
+def _format_point(doc: dict) -> dict:
+    return {"id": str(doc["_id"]), "ts": _aware(doc["ts"]).isoformat(), "price": doc["price"]}
+
+
+@router.get("/admin/price-history")
+async def admin_list_price_history(
+    market: str = Query(...),
+    symbol: str = Query(...),
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный рынок")
+    rows = [r async for r in db.price_history.find(
+        {"market": market, "symbol": symbol.upper()}
+    ).sort("ts", 1)]
+    return [_format_point(r) for r in rows]
+
+
+@router.post("/admin/price-history", status_code=status.HTTP_201_CREATED)
+async def admin_add_price_point(
+    payload: PricePointBody,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if payload.market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный рынок")
+    doc = {
+        "market": payload.market, "symbol": payload.symbol.upper(),
+        "price": round(payload.price, 6), "ts": _aware(payload.ts) if payload.ts else _now(),
+    }
+    result = await db.price_history.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _format_point(doc)
+
+
+@router.patch("/admin/price-history/{point_id}")
+async def admin_update_price_point(
+    point_id: str,
+    payload: PricePointUpdate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    fields = payload.model_dump(exclude_unset=True)
+    if "price" in fields and fields["price"] is not None:
+        fields["price"] = round(fields["price"], 6)
+    if "ts" in fields and fields["ts"] is not None:
+        fields["ts"] = _aware(fields["ts"])
+    if not fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Пустое тело запроса")
+    result = await db.price_history.update_one({"_id": ObjectId(point_id)}, {"$set": fields})
+    if result.matched_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Точка истории не найдена")
+    doc = await db.price_history.find_one({"_id": ObjectId(point_id)})
+    return _format_point(doc)
+
+
+@router.delete("/admin/price-history/{point_id}")
+async def admin_delete_price_point(
+    point_id: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    result = await db.price_history.delete_one({"_id": ObjectId(point_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Точка истории не найдена")
+    return {"deleted": True}
+
+
+@router.post("/admin/price-history/regenerate")
+async def admin_regenerate_price_history(
+    payload: RegenerateBody,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if payload.market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный рынок")
+    symbol = payload.symbol.upper()
+    coll = db.stocks if payload.market == MARKET_STOCK else db.crypto_assets
+    asset = await coll.find_one({"symbol": symbol})
+    if not asset:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
+    price = payload.price if payload.price is not None else float(asset.get("price", 0))
+    volatility = payload.volatility if payload.volatility is not None else float(asset.get("volatility", 0.03))
+    await MarketDataService.regenerate(db, payload.market, symbol, price, volatility)
+    return {"regenerated": True, "points": 365 + 144}
+
+
+if __name__ == "__main__":
+    docs = _build_walk_docs("stock", "test", 100.0, 0.03)
+    assert len(docs) == 365 + 144, len(docs)
+    for d in docs:
+        assert 100.0 * 0.15 <= d["price"] <= 100.0 * 6, d["price"]
+        assert d["symbol"] == "TEST"
+    daily_leg = docs[:365]
+    assert daily_leg[0]["ts"] > daily_leg[-1]["ts"]
+    assert (daily_leg[0]["ts"] - daily_leg[-1]["ts"]).days == 364
+    print("market_data self-check OK")

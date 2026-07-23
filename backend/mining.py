@@ -25,7 +25,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
 from auth import get_current_user, require_admin
-from database import get_db
+from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_MINING, adjust_balance, record_transaction
 from econ import get_econ
 from shop import CATEGORY_ROLE
@@ -65,6 +65,8 @@ EFF_FLOOR = 0.15            # компоненты не гасят добычу 
 # ── ИБП (см. tick_all: шанс просадки питания за тик) ──
 BROWNOUT_CHANCE = 0.05      # шанс просадки питания за тик
 UPS_WEAR_PENALTY = 5.0      # доп. износ (%) при незащённой просадке
+
+MIGRATION_KEY = "mining_rebalance_v1"
 
 MANAGER_BASE_COST = 25000.0
 MANAGER_UPGRADE_COST = 15000.0
@@ -878,6 +880,30 @@ async def manage_manager(farm_id: str, payload: ManagerBody, current_user: dict 
     return {"ok": True, "manager": new_manager, "balance": new_balance}
 
 
+# ── Миграция: мягкий сброс старых ферм под новую экономику ───────────────────
+
+
+def _reset_farm_fields() -> dict:
+    """Поля фермы после мягкого сброса: снятое железо, простой, без долгов."""
+    return {
+        "components": {"gpus": [], "fans": []},
+        "status": "idle",
+        "coin": None,
+        "condition": 100.0,
+        "overclock": 1.0,
+        "electricity_owed": 0.0,
+    }
+
+
+async def soft_reset_farms(db: AsyncIOMotorDatabase) -> None:
+    """Один раз возвращает всё железо в инвентарь и обнуляет фермы под новую экономику."""
+    if await find_config_by_key(db, MIGRATION_KEY):
+        return
+    await db.mining_farms.update_many({}, {"$set": _reset_farm_fields()})
+    await db.user_hardware.update_many({"farmId": {"$ne": None}}, {"$set": {"farmId": None}})
+    await upsert_config(db, MIGRATION_KEY, "1")
+
+
 # ── Фоновый тик добычи (вызывается Scheduler'ом) ─────────────────────────────
 
 
@@ -1214,4 +1240,11 @@ if __name__ == "__main__":
     assert _coin_difficulty(340.0) > _coin_difficulty(0.85) * 100   # дороже монета — непропорционально сложнее
     assert _farm_share(0.0, 100.0) == 0.0
     assert 0.0 < _farm_share(100.0, 100.0) < 1.0
+
+    # ── Мягкий сброс: железо снято, простой, долги обнулены ──
+    _reset = _reset_farm_fields()
+    assert _reset["components"] == {"gpus": [], "fans": []}
+    assert _reset["status"] == "idle" and _reset["coin"] is None
+    assert _reset["condition"] == 100.0
+    assert _reset["electricity_owed"] == 0.0
     print("mining self-check OK")

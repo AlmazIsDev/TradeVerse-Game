@@ -247,7 +247,7 @@ def choose_best_coin(market: dict, profile: Optional[dict] = None,
 
 
 def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float = 1.0,
-             city: Optional[dict] = None) -> dict:
+             city: Optional[dict] = None, live_hashrate_on_coin: float = 0.0) -> dict:
     # city — бонусы зданий «Крыши города»: yield (+% к добыче), energy (−% к счёту за свет).
     city = city or {}
     yield_bonus = float(city.get("yield", 0.0))
@@ -257,10 +257,8 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     fans = comp.get("fans", [])
     overclock = farm.get("overclock", 1.0)
     condition = farm.get("condition", 100.0)
-    cond_factor = 0.5 + 0.5 * (condition / 100.0)
 
-    base_hash = sum(g.get("specs", {}).get("hashrate", 0) for g in gpus)
-    hashrate = round(base_hash * overclock * cond_factor, 1)
+    hashrate = _farm_hashrate(farm)
     gpu_power = sum(g.get("specs", {}).get("power", 0) for g in gpus) * overclock
     cpu_power = comp.get("cpu", {}).get("specs", {}).get("power", 0)
     mb_power = comp.get("motherboard", {}).get("specs", {}).get("power", 0)
@@ -272,10 +270,17 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     cool_bonus = min(0.5, ai_level * 0.06)
     temperature = round(TEMP_AMBIENT + (total_power / max(1, cooling_cap)) * TEMP_FACTOR * (1 - cool_bonus), 1)
 
+    profile = _farm_hw_profile(farm)
+    gpu_count = profile["gpu_count"]
+    gpu_eff = _gpu_efficiency(profile["cores"], gpu_count)
+    ssd_eff = _ssd_efficiency(profile["ssd_gb"], gpu_count)
+    net_eff = _net_efficiency(profile["net_speed"], gpu_count)
+
     coin_sym = farm.get("coin")
     coin = market.get(coin_sym) if coin_sym else None
-    prof = _coin_profitability(coin)
-    revenue_per_h = round(hashrate * HASH_YIELD * prof * economy_mult * (1 + yield_bonus), 2)
+    ram_eff = _ram_efficiency(profile["ram_gb"], gpu_count, float(coin["price"])) if coin else 1.0
+    base_revenue = _coin_revenue_per_h(coin, profile, live_hashrate_on_coin)
+    revenue_per_h = round(base_revenue * gpu_eff * ssd_eff * net_eff * economy_mult * (1 + yield_bonus), 2)
 
     electricity_per_h = round(total_power * energy_cost * ELEC_SCALE * (1 - energy_discount), 2)
     salary_per_h = round(MANAGER_SALARY_PER_H * ai_level, 2) if manager.get("type") == "ai" else 0.0
@@ -290,8 +295,11 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
         "coolingCapacity": cooling_cap, "condition": round(condition, 1),
         "revenuePerHour": revenue_per_h, "electricityPerHour": electricity_per_h,
         "salaryPerHour": salary_per_h, "profitPerHour": profit_per_h,
-        "wearPerHour": wear_per_h, "gpuCount": len(gpus),
+        "wearPerHour": wear_per_h, "gpuCount": gpu_count,
         "overheating": temperature >= OVERHEAT_TEMP,
+        "upsProtected": profile["ups_backup"] >= total_power,
+        "efficiency": {"gpu": round(gpu_eff, 3), "ram": round(ram_eff, 3),
+                       "ssd": round(ssd_eff, 3), "network": round(net_eff, 3)},
     }
 
 
@@ -1124,6 +1132,28 @@ if __name__ == "__main__":
     assert _strong_best == "EXPENSIVE", f"сильная ферма должна тянуться к дорогим монетам, получили {_strong_best}"
     # Без профиля (нет собранной фермы) — откат на сортировку по цене.
     assert choose_best_coin(_market, None) == "EXPENSIVE"
+
+    # ── _compute expone efficiency/upsProtected и использует новую формулу дохода ──
+    _test_farm = {
+        "components": {
+            "motherboard": {"specs": {"gpuSlots": 8, "power": 60}},
+            "cpu": {"specs": {"cores": 8, "power": 109}},
+            "ram": {"specs": {"gb": 32, "power": 5}},
+            "ssd": {"specs": {"gb": 512, "power": 6}},
+            "cooling": {"specs": {"cooling": 1600, "power": 40}},
+            "gpus": [{"specs": {"hashrate": 1887, "power": 214}}] * 8,
+            "fans": [], "psus": [{"specs": {"power": 3000}}],
+        },
+        "overclock": 1.0, "condition": 100.0, "coin": "ORB",
+        "manager": {"type": "player", "level": 0},
+    }
+    _test_market = {"ORB": {"symbol": "ORB", "price": 12.4, "change24h": 0.0}}
+    _test_stats = _compute(_test_farm, _test_market, energy_cost=0.12, economy_mult=1.0)
+    assert "efficiency" in _test_stats and set(_test_stats["efficiency"]) == {"gpu", "ram", "ssd", "network"}
+    assert _test_stats["efficiency"]["gpu"] == 1.0        # 8 ядер / 8 GPU
+    assert _test_stats["upsProtected"] is False            # нет установленного ИБП → backup=0
+    assert _test_stats["revenuePerHour"] > 0
+    assert _test_stats["gpuCount"] == 8
 
     # ── Эффективность компонентов: клэмп на границах [EFF_FLOOR, 1.0] ──
     assert _gpu_efficiency(8, 8) == 1.0                  # 8 ядер кормят 8 GPU — полная эффективность

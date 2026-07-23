@@ -258,6 +258,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
 
         {/* Мониторинг — только для собранной фермы (иначе показатели не считаются). */}
         {assembled ? (
+          <>
           <div className="mining-stat-cards">
             <div className="msc"><Activity size={16} /><span>{t('mining.hashrate')}</span><b>{formatCompact(s.hashrate)} H/s</b></div>
             <div className="msc"><Zap size={16} /><span>{t('mining.power')}</span><b>{formatCompact(s.power)} W</b></div>
@@ -268,6 +269,19 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             <div className="msc"><TrendingUp size={16} /><span>{t('mining.profitHr')}</span><b className={s.profitPerHour >= 0 ? 'up' : 'down'}>${formatMoney(s.profitPerHour)}</b></div>
             <div className="msc"><HardDrive size={16} /><span>{t('mining.earned')}</span><b>${formatCompact(farm.totalEarned)}</b></div>
           </div>
+          <div className="mining-eff-row">
+            {['gpu', 'ram', 'ssd', 'network'].map(k => (
+              <span key={k} className={`mining-eff-badge ${(s.efficiency?.[k] ?? 1) < 0.5 ? 'low' : ''}`}>
+                {t(`mining.eff.${k}`)}: {Math.round((s.efficiency?.[k] ?? 1) * 100)}%
+              </span>
+            ))}
+            {farm.components?.ups && (
+              <span className={`mining-eff-badge ${s.upsProtected ? 'ok' : 'warn'}`}>
+                {t('mining.upsStatus')}: {s.upsProtected ? t('mining.upsOk') : t('mining.upsWeak')}
+              </span>
+            )}
+          </div>
+          </>
         ) : (
           <div className="mining-not-assembled">
             <Cpu size={18} /> {t('mining.notAssembled')}

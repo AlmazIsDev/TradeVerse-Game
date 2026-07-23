@@ -1884,6 +1884,11 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .msc b { font-size: 17px; color: var(--color-text-primary); }
 .msc b.up { color: var(--color-success); } .msc b.down { color: var(--color-danger); }
 .msc b.ok { color: var(--color-success); } .msc b.warn { color: #ff9f0a; } .msc b.crit { color: var(--color-danger); }
+.mining-eff-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 var(--spacing-md); }
+.mining-eff-badge { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: var(--color-bg-tertiary); border: 1px solid var(--hairline); color: var(--color-text-secondary); }
+.mining-eff-badge.low { color: var(--color-danger); border-color: rgba(255, 59, 48, 0.35); }
+.mining-eff-badge.ok { color: var(--color-success); border-color: rgba(52, 199, 89, 0.35); }
+.mining-eff-badge.warn { color: #ff9f0a; border-color: rgba(255, 159, 10, 0.35); }
 
 .mining-panel-controls { display: flex; align-items: flex-end; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
 .mpc-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--color-text-secondary); }

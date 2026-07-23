@@ -130,6 +130,7 @@ async def lifespan(app: FastAPI):
     await db.refresh_tokens.create_index("token_hash", unique=True)
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
     await init_db()
+    await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
     start_scheduler()   # единый фоновый планировщик всех систем
     yield
     await stop_scheduler()

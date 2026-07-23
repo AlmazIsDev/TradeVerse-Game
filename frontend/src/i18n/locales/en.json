@@ -1008,6 +1008,44 @@
       "noProducts": "No products found",
       "totalProducts": "Total products: {{count}}",
       "pricesSet": "With price: {{count}}"
+    },
+    "database": {
+      "title": "Database",
+      "searchPlaceholder": "Search...",
+      "newDocument": "New document",
+      "editDocument": "Edit document",
+      "noDocuments": "No documents found",
+      "invalidJson": "Invalid JSON",
+      "saved": "Document saved",
+      "deleted": "Document deleted",
+      "deleteConfirm": "Delete this document? This cannot be undone."
+    },
+    "crypto": {
+      "title": "Crypto",
+      "addCoin": "Add coin",
+      "editCoin": "Edit coin",
+      "marketCap": "Market cap",
+      "marketCapHelp": "Changing market cap recalculates supply as marketCap / price",
+      "volatility": "Volatility",
+      "color": "Color",
+      "description": "Description",
+      "supplyPlaceholder": "Supply (optional)",
+      "saved": "Coin saved",
+      "added": "Coin added",
+      "deleted": "Coin {{symbol}} deleted",
+      "deleteConfirm": "Delete coin {{symbol}}?",
+      "noCoins": "No coins found"
+    },
+    "priceHistory": {
+      "title": "Price chart",
+      "newPointPrice": "New point price",
+      "addPoint": "Add point",
+      "priceOverride": "Price (for regenerate)",
+      "volatilityOverride": "Volatility (for regenerate)",
+      "regenerate": "Regenerate history",
+      "regenerateConfirm": "Regenerate the entire price history? Existing points will be permanently deleted.",
+      "deletePointConfirm": "Delete this point?",
+      "noPoints": "No history yet"
     }
   },
   "econ": {

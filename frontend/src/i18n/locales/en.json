@@ -1018,7 +1018,11 @@
       "invalidJson": "Invalid JSON",
       "saved": "Document saved",
       "deleted": "Document deleted",
-      "deleteConfirm": "Delete this document? This cannot be undone."
+      "deleteConfirm": "Delete this document? This cannot be undone.",
+      "sortNone": "No sorting",
+      "sortAsc": "Ascending",
+      "sortDesc": "Descending",
+      "pageOf": "Page {{page}} of {{total}}"
     },
     "crypto": {
       "title": "Crypto",

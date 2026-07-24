@@ -4231,3 +4231,10 @@ textarea:focus {
   resize: vertical;
   margin: 8px 0;
 }
+
+.db-pagination {
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}

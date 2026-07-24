@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 
 from bson import json_util, ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -58,6 +59,8 @@ async def list_documents(
     q: str = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=LIST_LIMIT_CAP),
+    sort: str = Query(None),
+    order: int = Query(-1),
     _admin: dict = Depends(require_admin),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
@@ -65,12 +68,30 @@ async def list_documents(
     query: dict = {}
     if q:
         sample = await coll.find_one({})
-        string_fields = [k for k, v in (sample or {}).items() if isinstance(v, str)]
-        if string_fields:
-            escaped = re.escape(q)
-            query = {"$or": [{f: {"$regex": escaped, "$options": "i"}} for f in string_fields]}
-    total = await coll.count_documents(query)
-    items = [_to_json(doc) async for doc in coll.find(query).skip(skip).limit(limit)]
+        escaped = re.escape(q)
+        clauses = []
+        for k, v in (sample or {}).items():
+            if isinstance(v, str):
+                clauses.append({k: {"$regex": escaped, "$options": "i"}})
+            elif isinstance(v, datetime):
+                # Даты хранятся как BSON datetime — строковый префикс ("2026-07-")
+                # не матчит их regex'ом. Приводим к строке в агрегации и матчим.
+                clauses.append({"$expr": {"$regexMatch": {
+                    "input": {"$cond": [
+                        {"$eq": [{"$type": f"${k}"}, "date"]},
+                        {"$dateToString": {"date": f"${k}", "format": "%Y-%m-%d %H:%M:%S"}},
+                        "",
+                    ]},
+                    "regex": escaped, "options": "i",
+                }}})
+        if clauses:
+            query = {"$or": clauses}
+    # count_documents на 900k без фильтра медленный — берём быструю оценку.
+    total = await (coll.count_documents(query) if query else coll.estimated_document_count())
+    cursor = coll.find(query)
+    if sort:
+        cursor = cursor.sort(sort, 1 if order >= 0 else -1)
+    items = [_to_json(doc) async for doc in cursor.skip(skip).limit(limit)]
     return {"items": items, "total": total}
 
 
@@ -135,7 +156,7 @@ async def delete_document(
 
 
 if __name__ == "__main__":
-    from datetime import datetime, timezone
+    from datetime import timezone
 
     # json_util round-trip сохраняет ObjectId и datetime как типы, не строки.
     doc = {"_id": ObjectId(), "created_at": datetime.now(timezone.utc), "name": "x"}

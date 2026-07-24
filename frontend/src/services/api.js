@@ -458,10 +458,12 @@ export async function adminListCollections() {
 
 export async function adminListDocuments(name, opts = {}) {
   const params = new URLSearchParams()
-  const { q, skip, limit } = opts
+  const { q, skip, limit, sort, order } = opts
   if (q) params.set('q', q)
   if (skip != null) params.set('skip', skip)
   if (limit != null) params.set('limit', limit)
+  if (sort) params.set('sort', sort)
+  if (order != null) params.set('order', order)
   const query = params.toString()
   return request(`/api/admin/db/collections/${encodeURIComponent(name)}${query ? `?${query}` : ''}`)
 }

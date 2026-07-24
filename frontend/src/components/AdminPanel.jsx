@@ -12,7 +12,7 @@ import PriceHistoryEditor from './PriceHistoryEditor'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
-  Database, Coins,
+  Database, Coins, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 
@@ -31,6 +31,7 @@ function Tooltip({ text }) {
 }
 
 const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
+const DB_PAGE_SIZE = 50
 
 function AdminPanel({ user, onClose }) {
   const { t } = useTranslation()
@@ -97,6 +98,9 @@ function AdminPanel({ user, onClose }) {
   const [dbActiveCollection, setDbActiveCollection] = useState('')
   const [dbDocs, setDbDocs] = useState({ items: [], total: 0 })
   const [dbSearch, setDbSearch] = useState('')
+  const [dbPage, setDbPage] = useState(0)          // 0-based
+  const [dbSort, setDbSort] = useState('')          // поле сортировки ('' = без сортировки)
+  const [dbOrder, setDbOrder] = useState(-1)        // 1 asc / -1 desc
   const [dbEditingDoc, setDbEditingDoc] = useState(null) // { id, text } | { id: null, text } для нового документа
   const [dbJsonError, setDbJsonError] = useState(null)
 
@@ -113,12 +117,21 @@ function AdminPanel({ user, onClose }) {
     loadData()
   }, [activeSection])
 
+  // Сброс на первую страницу при смене коллекции, поиска или сортировки.
+  useEffect(() => { setDbPage(0) }, [dbActiveCollection, dbSearch, dbSort, dbOrder])
+
   useEffect(() => {
     if (activeSection !== 'database' || !dbActiveCollection) return
-    adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
+    adminListDocuments(dbActiveCollection, {
+      q: dbSearch || undefined,
+      skip: dbPage * DB_PAGE_SIZE,
+      limit: DB_PAGE_SIZE,
+      sort: dbSort || undefined,
+      order: dbOrder,
+    })
       .then(setDbDocs)
       .catch(err => showMessage(t('admin.error') + ': ' + err.message))
-  }, [dbActiveCollection, dbSearch])
+  }, [dbActiveCollection, dbSearch, dbPage, dbSort, dbOrder])
 
   // Живое обновление списка пользователей (только для админов — см. push_to_admins
   // в backend/ws.py). Транзакции намеренно НЕ обновляются пушем — по решению
@@ -161,10 +174,7 @@ function AdminPanel({ user, onClose }) {
           setDbCollections(cols)
           if (!dbActiveCollection && cols.length) setDbActiveCollection(cols[0])
         }
-        if (dbActiveCollection) {
-          const data = await adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
-          setDbDocs(data)
-        }
+        // Документы грузит отдельный effect (по dbActiveCollection/page/sort/search).
       } else if (activeSection === 'crypto') {
         const data = await fetchCryptoMarket()
         // Прячем API-монеты (CoinGecko) — их всё равно перезатирает рефреш;
@@ -417,6 +427,17 @@ function AdminPanel({ user, onClose }) {
     setDbEditingDoc({ id, text: JSON.stringify(doc, null, 2) })
   }
 
+  const reloadDbDocs = async () => {
+    const data = await adminListDocuments(dbActiveCollection, {
+      q: dbSearch || undefined,
+      skip: dbPage * DB_PAGE_SIZE,
+      limit: DB_PAGE_SIZE,
+      sort: dbSort || undefined,
+      order: dbOrder,
+    })
+    setDbDocs(data)
+  }
+
   const handleDbSave = async () => {
     let parsed
     try {
@@ -433,8 +454,7 @@ function AdminPanel({ user, onClose }) {
       }
       setDbEditingDoc(null)
       showMessage(t('admin.database.saved'))
-      const data = await adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
-      setDbDocs(data)
+      await reloadDbDocs()
     } catch (err) {
       showMessage(t('admin.error') + ': ' + err.message)
     }
@@ -446,8 +466,7 @@ function AdminPanel({ user, onClose }) {
     try {
       await adminDeleteDocument(dbActiveCollection, id)
       showMessage(t('admin.database.deleted'))
-      const data = await adminListDocuments(dbActiveCollection, { q: dbSearch || undefined, limit: 100 })
-      setDbDocs(data)
+      await reloadDbDocs()
     } catch (err) {
       showMessage(t('admin.error') + ': ' + err.message)
     }
@@ -664,7 +683,11 @@ function AdminPanel({ user, onClose }) {
           <PriceEditorTab />
         )}
 
-        {!loading && activeSection === 'database' && (
+        {!loading && activeSection === 'database' && (() => {
+          // Поля для сортировки — объединение ключей документов текущей страницы.
+          const sortFields = [...new Set(dbDocs.items.flatMap(d => Object.keys(d)))]
+          const totalPages = Math.max(1, Math.ceil((dbDocs.total || 0) / DB_PAGE_SIZE))
+          return (
           <div>
             <div className="admin-toolbar">
               <select
@@ -676,6 +699,14 @@ function AdminPanel({ user, onClose }) {
               </select>
               <div className="tx-search"><Search size={15} className="tx-search-icon" />
                 <input value={dbSearch} onChange={e => setDbSearch(e.target.value)} placeholder={t('admin.database.searchPlaceholder')} /></div>
+              <select className="admin-input" value={dbSort} onChange={e => setDbSort(e.target.value)}>
+                <option value="">{t('admin.database.sortNone')}</option>
+                {sortFields.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+              <button className="admin-btn" disabled={!dbSort} onClick={() => setDbOrder(o => -o)}
+                title={dbOrder >= 0 ? t('admin.database.sortAsc') : t('admin.database.sortDesc')}>
+                {dbOrder >= 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
               <span className="admin-count">{dbDocs.total}</span>
               <button className="admin-btn admin-btn-primary" onClick={handleDbOpenNew}>
                 <Plus size={16} /> {t('admin.database.newDocument')}
@@ -700,8 +731,20 @@ function AdminPanel({ user, onClose }) {
               })}
               {dbDocs.items.length === 0 && <p className="empty-state">{t('admin.database.noDocuments')}</p>}
             </div>
+            {dbDocs.total > DB_PAGE_SIZE && (
+              <div className="admin-toolbar db-pagination">
+                <button className="admin-btn" disabled={dbPage === 0} onClick={() => setDbPage(p => Math.max(0, p - 1))}>
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="admin-count">{t('admin.database.pageOf', { page: dbPage + 1, total: totalPages })}</span>
+                <button className="admin-btn" disabled={dbPage + 1 >= totalPages} onClick={() => setDbPage(p => p + 1)}>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
           </div>
-        )}
+          )
+        })()}
 
         {dbEditingDoc && (
           <div className="modal-overlay" onClick={() => setDbEditingDoc(null)}>

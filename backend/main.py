@@ -853,7 +853,17 @@ async def admin_get_all_transactions(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     transactions = await find_all_transactions(db, limit)
-    return [_format_transaction(t) for t in transactions]
+    # Резолвим userId -> username одним запросом, чтобы в UI были имена, а не ObjectId.
+    ids = set()
+    for t in transactions:
+        uid = t.get("userId")
+        if isinstance(uid, str) and ObjectId.is_valid(uid):
+            ids.add(ObjectId(uid))
+    names: dict[str, str] = {}
+    if ids:
+        async for u in db.users.find({"_id": {"$in": list(ids)}}, {"username": 1}):
+            names[str(u["_id"])] = u.get("username", "")
+    return [_format_transaction(t, names) for t in transactions]
 
 
 @app.delete("/api/admin/transactions/{tx_id}")
@@ -895,10 +905,17 @@ def _format_stock(stock: dict) -> dict:
     }
 
 
-def _format_transaction(tx: dict) -> dict:
+def _format_transaction(tx: dict, names: dict | None = None) -> dict:
+    uid = tx.get("userId", "")
     return {
         "id": tx.get("id", ""),
-        "userId": tx.get("userId", ""),
+        "userId": uid,
+        "username": (names or {}).get(uid, ""),
+        "direction": tx.get("direction") or ("income" if tx.get("type") == "sell" else "expense"),
+        "category": tx.get("category") or ("trade" if tx.get("symbol") else "system"),
+        "label": tx.get("label") or tx.get("symbol") or "",
+        "counterparty": tx.get("counterparty"),
+        "balance_after": tx.get("balance_after"),
         "type": tx.get("type", ""),
         "symbol": tx.get("symbol", ""),
         "amount": tx.get("amount", 0),

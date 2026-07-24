@@ -2698,7 +2698,7 @@ body {
 .admin-tx-table { display: flex; flex-direction: column; }
 .admin-tx-row {
   display: grid;
-  grid-template-columns: 68px 1fr 70px 90px 100px 1fr 44px;
+  grid-template-columns: 84px 1.4fr 110px 1fr 120px 120px 108px 44px;
   align-items: center; gap: var(--spacing-sm);
   padding: 6px 10px; border-bottom: 1px solid var(--hairline);
   font-size: 13px; color: var(--color-text-primary);
@@ -2709,6 +2709,17 @@ body {
   position: sticky; top: 0; background: var(--color-bg-primary); z-index: 1;
 }
 .admin-tx-row.bot { opacity: 0.85; }
+.admin-tx-row .tx-num { text-align: right; }
+.admin-tx-row .tx-amount { font-family: monospace; font-weight: 600; }
+.admin-tx-row .tx-amount.income { color: var(--color-success); }
+.admin-tx-row .tx-amount.expense { color: var(--color-danger); }
+.admin-tx-row .tx-balance { font-family: monospace; color: var(--color-text-secondary); }
+.admin-tx-row .tx-user { color: var(--color-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-cat {
+  display: inline-block; padding: 1px 8px; border-radius: 8px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em;
+  background: var(--fill-soft); color: var(--color-text-secondary);
+}
 .admin-tx-row .tx-total { font-family: monospace; text-align: right; color: var(--color-accent-hover); }
 .admin-tx-row .tx-time { font-size: 12px; color: var(--color-text-secondary); }
 .admin-tx-row .tx-act { display: flex; justify-content: flex-end; }

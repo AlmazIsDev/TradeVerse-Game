@@ -1128,32 +1128,48 @@ function AdminPanel({ user, onClose }) {
         )}
 
         {!loading && activeSection === 'transactions' && (() => {
-          // Объединяем пользовательские сделки и ордера ботов в один поток.
+          const fmtTs = (ts) => {
+            if (!ts) return '—'
+            const d = new Date(ts)
+            if (isNaN(d.getTime())) return ts
+            const p = n => String(n).padStart(2, '0')
+            return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`
+          }
+          const fmtMoney = (v) => `$${Math.abs(Number(v) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          // Единый поток: операции реестра + сделки ботов. У реестра есть направление
+          // (income/expense), категория и человекочитаемый label — их и показываем.
           const allTx = [
             ...transactions.map(tx => ({
-              key: `u-${tx.id}`, id: tx.id, source: 'user', type: tx.type,
-              symbol: tx.symbol, qty: tx.amount, price: tx.price, timestamp: tx.timestamp,
+              key: `u-${tx.id}`, id: tx.id, source: 'user',
+              direction: tx.direction, category: tx.category || '—',
+              label: tx.label || tx.symbol || '—', username: tx.username || tx.userId || '—',
+              amount: tx.amount, balanceAfter: tx.balance_after, timestamp: tx.timestamp,
             })),
             ...botOrders.map(tx => ({
-              key: `b-${tx.id}`, id: tx.id, source: 'bot', type: 'bot',
-              symbol: tx.symbol, qty: tx.quantity, price: tx.pricePerShare, timestamp: tx.timestamp,
+              key: `b-${tx.id}`, id: tx.id, source: 'bot',
+              direction: tx.type === 'sell' ? 'income' : 'expense', category: 'trade',
+              label: `${(tx.type || '').toUpperCase()} ${tx.symbol || ''}`.trim(), username: 'BOT',
+              amount: (Number(tx.quantity) || 0) * (Number(tx.pricePerShare) || 0),
+              balanceAfter: null, timestamp: tx.timestamp,
             })),
           ]
           const q = txSearch.trim().toLowerCase()
+          const match = (tx) => !q || [tx.label, tx.category, tx.username].some(s => (s || '').toLowerCase().includes(q))
           const filtered = allTx.filter(tx => {
-            if (txFilter !== 'all' && tx.type !== txFilter) return false
-            if (q && !(tx.symbol || '').toLowerCase().includes(q)) return false
-            return true
+            if (txFilter === 'bot' && tx.source !== 'bot') return false
+            if (txFilter === 'income' && tx.direction !== 'income') return false
+            if (txFilter === 'expense' && tx.direction !== 'expense') return false
+            return match(tx)
           })
           return (
             <>
               <div className="tx-filter-bar">
                 <div className="tx-search"><Search size={15} className="tx-search-icon" />
-                  <input value={txSearch} onChange={e => setTxSearch(e.target.value)} placeholder={t('admin.searchTx', 'Поиск по тикеру...')} /></div>
+                  <input value={txSearch} onChange={e => setTxSearch(e.target.value)} placeholder={t('admin.searchTx', 'Поиск по операции, категории, игроку...')} /></div>
                 <div className="tx-chips">
-                  {['all', 'buy', 'sell', 'bot'].map(f => (
+                  {['all', 'income', 'expense', 'bot'].map(f => (
                     <button key={f} className={`tx-chip ${txFilter === f ? 'active' : ''}`} onClick={() => setTxFilter(f)}>
-                      {f.toUpperCase()}
+                      {t(`admin.txFilter.${f}`, f.toUpperCase())}
                     </button>
                   ))}
                 </div>
@@ -1162,33 +1178,27 @@ function AdminPanel({ user, onClose }) {
                 </button>
                 <span className="admin-count">{filtered.length} / {allTx.length}</span>
               </div>
-              <div className="admin-tx-table">
+              <div className="admin-tx-table tx-cols-6">
                 <div className="admin-tx-row admin-tx-head">
-                  <span>{t('admin.txType', 'Тип')}</span>
-                  <span>{t('admin.txSymbol', 'Тикер')}</span>
-                  <span>{t('admin.txQty', 'Кол-во')}</span>
-                  <span>{t('admin.txPrice', 'Цена')}</span>
-                  <span>{t('admin.txTotal', 'Итого')}</span>
+                  <span>{t('admin.txDirection', 'Операция')}</span>
+                  <span>{t('admin.txLabel', 'Описание')}</span>
+                  <span>{t('admin.txCategory', 'Категория')}</span>
+                  <span>{t('admin.txUser', 'Игрок')}</span>
+                  <span className="tx-num">{t('admin.txAmount', 'Сумма')}</span>
+                  <span className="tx-num">{t('admin.txBalance', 'Баланс после')}</span>
                   <span>{t('admin.txTime', 'Время')}</span>
                   <span></span>
                 </div>
                 {filtered.map(tx => {
-                  const total = (Number(tx.qty) || 0) * (Number(tx.price) || 0)
-                  const fmtTs = (ts) => {
-                    if (!ts) return '—'
-                    const d = new Date(ts)
-                    if (isNaN(d.getTime())) return ts
-                    const p = n => String(n).padStart(2, '0')
-                    return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`
-                  }
-                  const hasPrice = Number(tx.price) > 0
+                  const income = tx.direction === 'income'
                   return (
                     <div key={tx.key} className={`admin-tx-row ${tx.source === 'bot' ? 'bot' : ''}`}>
-                      <span><span className={`tx-type ${tx.type?.toLowerCase()}`}>{tx.type?.toUpperCase()}</span></span>
-                      <span><strong>{tx.symbol || '—'}</strong></span>
-                      <span>{tx.qty}</span>
-                      <span>{hasPrice ? `$${Number(tx.price).toFixed(2)}` : '—'}</span>
-                      <span className="tx-total">{total > 0 ? `$${total.toFixed(2)}` : '—'}</span>
+                      <span><span className={`tx-type ${income ? 'income' : 'expense'}`}>{income ? t('admin.txIn', 'Доход') : t('admin.txOut', 'Расход')}</span></span>
+                      <span><strong>{tx.label}</strong></span>
+                      <span><span className="tx-cat">{tx.category}</span></span>
+                      <span className="tx-user">{tx.username}</span>
+                      <span className={`tx-num tx-amount ${income ? 'income' : 'expense'}`}>{income ? '+' : '−'}{fmtMoney(tx.amount)}</span>
+                      <span className="tx-num tx-balance">{tx.balanceAfter != null ? fmtMoney(tx.balanceAfter) : '—'}</span>
                       <span className="tx-time">{fmtTs(tx.timestamp)}</span>
                       <span className="tx-act">
                         {tx.source === 'user'

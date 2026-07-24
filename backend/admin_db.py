@@ -24,6 +24,45 @@ router = APIRouter(prefix="/api/admin/db", tags=["admin-db"])
 
 LIST_LIMIT_CAP = 200
 
+# Резолвер ID-ссылок -> человекочитаемое имя. Универсальный редактор не знает
+# схему, поэтому маппинг полей задаём явно по соглашениям об именах.
+# field -> (target_collection, display_field)
+REF_MAP = {
+    "userId": ("users", "username"),
+    "ownerId": ("users", "username"),
+    "orderedBy": ("users", "username"),
+    "issuer": ("users", "username"),
+    "sellerId": ("users", "username"),
+    "buyerId": ("users", "username"),
+    "companyId": ("companies", "name"),
+    "businessId": ("cityroof_businesses", "name"),
+    "studioAssetId": ("user_assets", "name"),
+}
+_COLL_DISPLAY = {coll: disp for coll, disp in REF_MAP.values()}
+
+
+async def _resolve_refs(db: AsyncIOMotorDatabase, docs: list) -> dict:
+    """id-строка -> отображаемое имя для известных ссылочных полей (батчами по коллекциям)."""
+    ids_by_coll: dict[str, set] = {}
+    for doc in docs:
+        for field, (coll, _) in REF_MAP.items():
+            v = doc.get(field)
+            if isinstance(v, ObjectId):
+                oid = v
+            elif isinstance(v, str) and ObjectId.is_valid(v):
+                oid = ObjectId(v)
+            else:
+                continue
+            ids_by_coll.setdefault(coll, set()).add(oid)
+    out: dict[str, str] = {}
+    for coll, ids in ids_by_coll.items():
+        disp = _COLL_DISPLAY[coll]
+        async for d in db[coll].find({"_id": {"$in": list(ids)}}, {disp: 1}):
+            name = d.get(disp)
+            if name is not None:
+                out[str(d["_id"])] = name
+    return out
+
 
 def _to_json(doc) -> dict:
     """BSON doc -> JSON-safe dict через Extended JSON (ObjectId -> {"$oid": ...}, datetime -> {"$date": ...}).
@@ -91,8 +130,10 @@ async def list_documents(
     cursor = coll.find(query)
     if sort:
         cursor = cursor.sort(sort, 1 if order >= 0 else -1)
-    items = [_to_json(doc) async for doc in cursor.skip(skip).limit(limit)]
-    return {"items": items, "total": total}
+    raw = [doc async for doc in cursor.skip(skip).limit(limit)]
+    refs = await _resolve_refs(db, raw)
+    items = [_to_json(doc) for doc in raw]
+    return {"items": items, "total": total, "refs": refs}
 
 
 @router.get("/collections/{name}/{doc_id}")
@@ -169,5 +210,9 @@ if __name__ == "__main__":
     stripped = _strip_id({"_id": "abc", "role": "admin"})
     assert "_id" not in stripped
     assert stripped["role"] == "admin"
+
+    # REF_MAP и производный _COLL_DISPLAY согласованы.
+    assert _COLL_DISPLAY["users"] == "username"
+    assert REF_MAP["businessId"] == ("cityroof_businesses", "name")
 
     print("admin_db self-check OK")

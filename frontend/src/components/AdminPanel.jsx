@@ -33,13 +33,17 @@ function Tooltip({ text }) {
 const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
 
 // Подсветка полей документа по типу значения — чтобы не путаться где что.
-function DbDocPreview({ doc }) {
-  const entries = Object.entries(doc)
+// refs: карта id-строка -> человекочитаемое имя (юзернейм/название бизнеса).
+function DbDocPreview({ doc, refs = {} }) {
+  const entries = Object.entries(doc).filter(([k]) => k !== '_id')
   return (
     <div className="db-doc-preview">
       {entries.map(([k, v], i) => {
+        const idStr = typeof v === 'string' ? v : v && v.$oid
+        const name = idStr && refs[idStr]
         let cls = 'dbv-other', text
-        if (v === null) { cls = 'dbv-null'; text = 'null' }
+        if (name != null) { cls = 'dbv-ref'; text = `${name}` }
+        else if (v === null) { cls = 'dbv-null'; text = 'null' }
         else if (typeof v === 'boolean') { cls = 'dbv-bool'; text = String(v) }
         else if (typeof v === 'number') { cls = 'dbv-num'; text = String(v) }
         else if (typeof v === 'string') { cls = 'dbv-str'; text = `"${v}"` }
@@ -743,7 +747,7 @@ function AdminPanel({ user, onClose }) {
                 const id = doc._id?.$oid || doc._id
                 return (
                   <div key={id} className="admin-stock-item">
-                    <DbDocPreview doc={doc} />
+                    <DbDocPreview doc={doc} refs={dbDocs.refs} />
                     <div className="stock-actions">
                       <button className="admin-btn" onClick={() => handleDbOpenEdit(doc)}>
                         <Edit3 size={14} />

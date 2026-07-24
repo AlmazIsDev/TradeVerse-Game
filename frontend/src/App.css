@@ -4240,6 +4240,7 @@ textarea:focus {
 .dbv-id { color: #4ec9b0; }
 .dbv-date { color: #569cd6; }
 .dbv-other { color: var(--color-text-primary); }
+.dbv-ref { color: #4fc1ff; font-weight: 600; }
 
 .db-json-textarea {
   width: 100%;

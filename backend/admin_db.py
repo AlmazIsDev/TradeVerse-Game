@@ -125,15 +125,24 @@ async def list_documents(
                 }}})
         if clauses:
             query = {"$or": clauses}
-    # count_documents на 900k без фильтра медленный — берём быструю оценку.
-    total = await (coll.count_documents(query) if query else coll.estimated_document_count())
+    # Точный count_documents(query) на 900k делает полный скан (regex/$expr не
+    # индексируются) — это главный источник тормозов. Считаем total только для
+    # пустого фильтра (быстрая оценка); при поиске обходимся флагом has_more.
+    total = None if query else await coll.estimated_document_count()
     cursor = coll.find(query)
     if sort:
-        cursor = cursor.sort(sort, 1 if order >= 0 else -1)
-    raw = [doc async for doc in cursor.skip(skip).limit(limit)]
+        # sort без индекса на большой выборке упирается в лимит памяти (32МБ) и
+        # падает — разрешаем досортировку на диске.
+        cursor = cursor.sort(sort, 1 if order >= 0 else -1).allow_disk_use(True)
+    # maxTimeMS: лучше быстрая ошибка, чем зависший на минуту запрос.
+    cursor = cursor.max_time_ms(20000)
+    # Берём на 1 больше лимита — так узнаём про следующую страницу без count.
+    raw = [doc async for doc in cursor.skip(skip).limit(limit + 1)]
+    has_more = len(raw) > limit
+    raw = raw[:limit]
     refs = await _resolve_refs(db, raw)
     items = [_to_json(doc) for doc in raw]
-    return {"items": items, "total": total, "refs": refs}
+    return {"items": items, "total": total, "has_more": has_more, "refs": refs}
 
 
 @router.get("/collections/{name}/{doc_id}")

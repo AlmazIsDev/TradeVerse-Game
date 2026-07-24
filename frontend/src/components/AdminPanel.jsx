@@ -128,6 +128,7 @@ function AdminPanel({ user, onClose }) {
   const [dbActiveCollection, setDbActiveCollection] = useState('')
   const [dbDocs, setDbDocs] = useState({ items: [], total: 0 })
   const [dbSearch, setDbSearch] = useState('')
+  const [dbSearchInput, setDbSearchInput] = useState('') // сырой ввод; dbSearch — дебаунсенное значение
   const [dbPage, setDbPage] = useState(0)          // 0-based
   const [dbSort, setDbSort] = useState('')          // поле сортировки ('' = без сортировки)
   const [dbOrder, setDbOrder] = useState(-1)        // 1 asc / -1 desc
@@ -149,6 +150,12 @@ function AdminPanel({ user, onClose }) {
 
   // Сброс на первую страницу при смене коллекции, поиска или сортировки.
   useEffect(() => { setDbPage(0) }, [dbActiveCollection, dbSearch, dbSort, dbOrder])
+
+  // Дебаунс поискового ввода — regex-поиск по 900k дорогой, не дёргаем на каждый символ.
+  useEffect(() => {
+    const id = setTimeout(() => setDbSearch(dbSearchInput.trim()), 400)
+    return () => clearTimeout(id)
+  }, [dbSearchInput])
 
   useEffect(() => {
     if (activeSection !== 'database' || !dbActiveCollection) return
@@ -716,7 +723,11 @@ function AdminPanel({ user, onClose }) {
         {!loading && activeSection === 'database' && (() => {
           // Поля для сортировки — объединение ключей документов текущей страницы.
           const sortFields = [...new Set(dbDocs.items.flatMap(d => Object.keys(d)))]
-          const totalPages = Math.max(1, Math.ceil((dbDocs.total || 0) / DB_PAGE_SIZE))
+          // total известен только без поиска; при поиске листаем по has_more.
+          const knownTotal = dbDocs.total != null
+          const totalPages = knownTotal ? Math.max(1, Math.ceil((dbDocs.total || 0) / DB_PAGE_SIZE)) : null
+          const hasNext = knownTotal ? dbPage + 1 < totalPages : !!dbDocs.has_more
+          const showPager = dbPage > 0 || hasNext
           return (
           <div>
             <div className="admin-toolbar">
@@ -728,7 +739,7 @@ function AdminPanel({ user, onClose }) {
                 {dbCollections.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <div className="tx-search"><Search size={15} className="tx-search-icon" />
-                <input value={dbSearch} onChange={e => setDbSearch(e.target.value)} placeholder={t('admin.database.searchPlaceholder')} /></div>
+                <input value={dbSearchInput} onChange={e => setDbSearchInput(e.target.value)} placeholder={t('admin.database.searchPlaceholder')} /></div>
               <select className="admin-input" value={dbSort} onChange={e => setDbSort(e.target.value)}>
                 <option value="">{t('admin.database.sortNone')}</option>
                 {sortFields.map(f => <option key={f} value={f}>{f}</option>)}
@@ -737,7 +748,7 @@ function AdminPanel({ user, onClose }) {
                 title={dbOrder >= 0 ? t('admin.database.sortAsc') : t('admin.database.sortDesc')}>
                 {dbOrder >= 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
-              <span className="admin-count">{dbDocs.total}</span>
+              <span className="admin-count">{knownTotal ? dbDocs.total : dbDocs.items.length}</span>
               <button className="admin-btn admin-btn-primary" onClick={handleDbOpenNew}>
                 <Plus size={16} /> {t('admin.database.newDocument')}
               </button>
@@ -761,13 +772,15 @@ function AdminPanel({ user, onClose }) {
               })}
               {dbDocs.items.length === 0 && <p className="empty-state">{t('admin.database.noDocuments')}</p>}
             </div>
-            {dbDocs.total > DB_PAGE_SIZE && (
+            {showPager && (
               <div className="admin-toolbar db-pagination">
                 <button className="admin-btn" disabled={dbPage === 0} onClick={() => setDbPage(p => Math.max(0, p - 1))}>
                   <ChevronLeft size={14} />
                 </button>
-                <span className="admin-count">{t('admin.database.pageOf', { page: dbPage + 1, total: totalPages })}</span>
-                <button className="admin-btn" disabled={dbPage + 1 >= totalPages} onClick={() => setDbPage(p => p + 1)}>
+                <span className="admin-count">
+                  {knownTotal ? t('admin.database.pageOf', { page: dbPage + 1, total: totalPages }) : dbPage + 1}
+                </span>
+                <button className="admin-btn" disabled={!hasNext} onClick={() => setDbPage(p => p + 1)}>
                   <ChevronRight size={14} />
                 </button>
               </div>

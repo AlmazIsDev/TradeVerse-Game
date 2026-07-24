@@ -31,6 +31,32 @@ function Tooltip({ text }) {
 }
 
 const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
+
+// Подсветка полей документа по типу значения — чтобы не путаться где что.
+function DbDocPreview({ doc }) {
+  const entries = Object.entries(doc)
+  return (
+    <div className="db-doc-preview">
+      {entries.map(([k, v], i) => {
+        let cls = 'dbv-other', text
+        if (v === null) { cls = 'dbv-null'; text = 'null' }
+        else if (typeof v === 'boolean') { cls = 'dbv-bool'; text = String(v) }
+        else if (typeof v === 'number') { cls = 'dbv-num'; text = String(v) }
+        else if (typeof v === 'string') { cls = 'dbv-str'; text = `"${v}"` }
+        else if (v && v.$oid) { cls = 'dbv-id'; text = v.$oid }
+        else if (v && v.$date) { cls = 'dbv-date'; text = typeof v.$date === 'string' ? v.$date : JSON.stringify(v.$date) }
+        else { text = JSON.stringify(v) }
+        return (
+          <span key={k} className="db-field">
+            <span className="db-key">{k}:</span>
+            <span className={cls}>{text}</span>
+            {i < entries.length - 1 && <span className="db-sep">,</span>}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
 const DB_PAGE_SIZE = 50
 
 function AdminPanel({ user, onClose }) {
@@ -717,7 +743,7 @@ function AdminPanel({ user, onClose }) {
                 const id = doc._id?.$oid || doc._id
                 return (
                   <div key={id} className="admin-stock-item">
-                    <div className="db-doc-preview">{JSON.stringify(doc).slice(0, 160)}</div>
+                    <DbDocPreview doc={doc} />
                     <div className="stock-actions">
                       <button className="admin-btn" onClick={() => handleDbOpenEdit(doc)}>
                         <Edit3 size={14} />

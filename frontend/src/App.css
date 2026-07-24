@@ -2365,6 +2365,11 @@ body {
   box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.15);
 }
 
+.admin-input option {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
 .admin-btn {
   display: flex;
   align-items: center;
@@ -4217,12 +4222,24 @@ textarea:focus {
 
 .db-doc-preview {
   flex: 1;
+  min-width: 0;
   font-family: monospace;
   font-size: 0.8em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.db-field { margin-right: 10px; }
+.db-key { color: var(--color-accent); margin-right: 4px; }
+.db-sep { color: var(--color-text-secondary); }
+.dbv-str { color: var(--color-success); }
+.dbv-num { color: #e0a54b; }
+.dbv-bool { color: #c586c0; }
+.dbv-null { color: var(--color-text-secondary); font-style: italic; }
+.dbv-id { color: #4ec9b0; }
+.dbv-date { color: #569cd6; }
+.dbv-other { color: var(--color-text-primary); }
 
 .db-json-textarea {
   width: 100%;

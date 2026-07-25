@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import math
 import random
 from datetime import datetime, timezone
 
@@ -444,12 +445,50 @@ async def get_crypto_market(
 # ── Trade ────────────────────────────────────────────────────────────────────
 
 
+def _crypto_quote(coin: dict, action: str, quantity: float) -> dict:
+    """Расчёт сделки БЕЗ записи в БД — единый источник правды для /quote и модалки."""
+    ref_price = float(coin.get("price") or 0)
+    fill_price, _ = _project_fill(coin, action, quantity * ref_price)
+    cost = round(quantity * fill_price, 2)
+    fee = round(cost * CRYPTO_TRADE_FEE_RATE, 2)
+    return {
+        "price": ref_price,
+        "fillPrice": fill_price,
+        "cost": cost,
+        "fee": fee,
+        "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
+        "feeRate": CRYPTO_TRADE_FEE_RATE,
+    }
+
+
+def _max_affordable(coin: dict, balance: float) -> float:
+    """Максимальное количество, которое реально влезает в баланс.
+
+    Клиент это посчитать не может: price-impact зависит от объёма сделки, поэтому
+    любая фиксированная «скидка на комиссию» либо не дотягивает, либо перебирает —
+    кнопка МАКС предлагала сумму, которую тут же отклоняли по балансу. Стоимость
+    монотонна по количеству, так что берём дихотомию по той же формуле.
+    """
+    price = float(coin.get("price") or 0)
+    if price <= 0 or balance <= 0:
+        return 0.0
+    lo, hi = 0.0, balance / price          # без impact и комиссии — заведомо больше ответа
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if _crypto_quote(coin, "buy", mid)["total"] <= balance:
+            lo = mid
+        else:
+            hi = mid
+    # Округляем вниз: вверх вылезло бы за баланс, который мы только что подбирали.
+    return math.floor(lo * 1e8) / 1e8
+
+
 @router.get("/quote")
 async def quote_crypto(
     symbol: str = Query(...),
     action: str = Query("buy"),
     quantity: float = Query(0, ge=0),
-    _user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Предварительный расчёт сделки по той же формуле, что и /trade.
@@ -464,18 +503,9 @@ async def quote_crypto(
     coin = await db.crypto_assets.find_one({"symbol": symbol})
     if coin is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
-    ref_price = float(coin.get("price") or 0)
-    fill_price, _ = _project_fill(coin, action, quantity * ref_price)
-    cost = round(quantity * fill_price, 2)
-    fee = round(cost * CRYPTO_TRADE_FEE_RATE, 2)
-    return {
-        "price": ref_price,
-        "fillPrice": fill_price,
-        "cost": cost,
-        "fee": fee,
-        "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
-        "feeRate": CRYPTO_TRADE_FEE_RATE,
-    }
+    q = _crypto_quote(coin, action, quantity)
+    q["maxAffordable"] = _max_affordable(coin, float(current_user.get("balance") or 0))
+    return q
 
 
 @router.post("/trade")

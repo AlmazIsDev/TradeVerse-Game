@@ -532,6 +532,26 @@ def _quote_stock(stock: dict, action: str, quantity: int) -> dict:
     }
 
 
+def _max_affordable_shares(stock: dict, balance: float) -> int:
+    """Сколько акций реально влезает в баланс с учётом impact и комиссии.
+
+    Клиент этого посчитать не может: impact растёт с размером ордера, поэтому
+    фиксированная «скидка на комиссию» либо не дотягивает, либо перебирает —
+    кнопка МАКС предлагала объём, который тут же отклоняли по балансу.
+    """
+    price = float(stock.get("price") or 0)
+    if price <= 0 or balance <= 0:
+        return 0
+    lo, hi = 0, int(balance / price) + 1     # без impact и комиссии — заведомо больше ответа
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _quote_stock(stock, "buy", mid)["total"] <= balance:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
 @router.get("/quote")
 async def quote_stock(
     symbol: str = Query(...),
@@ -550,7 +570,12 @@ async def quote_stock(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Акция '{symbol}' не найдена")
     q = _quote_stock(stock, action, quantity)
     q["maxOrder"] = MAX_ORDER_SHARES
-    q["freeShares"] = stock.get("free_shares", _resolve_config(stock)["total_shares"])
+    free = stock.get("free_shares", _resolve_config(stock)["total_shares"])
+    q["freeShares"] = free
+    q["maxAffordable"] = min(
+        _max_affordable_shares(stock, float(current_user.get("balance") or 0)),
+        int(free), MAX_ORDER_SHARES,
+    )
     return q
 
 

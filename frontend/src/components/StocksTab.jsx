@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
+import { parseQty } from '../utils/qty'
 import AssetDetail from './AssetDetail'
 import { toast } from './Toast'
 import {
@@ -27,7 +28,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [trade, setTrade] = useState(null)     // { ...stock, action }
-  const [qty, setQty] = useState('1')
+  const [qty, setQty] = useState('')
   const [quote, setQuote] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -53,19 +54,20 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
 
   const openTrade = (stock, action) => {
     setTrade({ ...stock, action })
-    setQty('1')
+    setQty('')
   }
 
   const heldFor = (symbol) => portfolio.find(p => p.symbol === symbol)
 
   const confirmTrade = async () => {
     if (!trade) return
-    const q = Math.floor(Number(qty))
-    if (!Number.isFinite(q) || q < 1) {
+    const q = parseQty(qty, 'stock')
+    if (!(q >= 1)) {
       toast(t('bank.invalidAmount'), 'error')
       return
     }
-    if (trade.action === 'buy' && q * trade.price > balance) {
+    // Сверяемся с котировкой бэкенда: q * price не учитывает price-impact и комиссию.
+    if (trade.action === 'buy' && (quote ? quote.total : q * trade.price) > balance) {
       toast(t('stocks.insufficientFunds'), 'error')
       return
     }
@@ -78,6 +80,9 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     try {
       const res = await tradeStock(trade.symbol, trade.action, q)
       onBalanceChange?.(res.balance)
+      // Иначе прежнее количество переоценивается по уже уменьшенному балансу
+      // и сразу после «успешно» выскакивает «не хватает средств».
+      setQty('')
       toast(t('stocks.tradeSuccess'))
       setRefreshKey(k => k + 1)
       await load()
@@ -260,7 +265,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                       {badge(p)}
                       <div className="crypto-holding-info">
                         <span className="crypto-holding-symbol">{p.symbol}</span>
-                        <span className="crypto-holding-qty">{p.quantity} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
+                        <span className="crypto-holding-qty">{formatQty(p.quantity)} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
                       </div>
                       <div className="crypto-holding-values">
                         <span className="crypto-holding-value">${formatMoney(p.value)}</span>
@@ -306,15 +311,21 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
       {/* Модалка сделки */}
       {trade && (
         <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content trade-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
-            <h3>
-              {trade.action === 'buy'
-                ? t('stocks.buyShares', { ticker: trade.symbol })
-                : t('stocks.sellShares', { ticker: trade.symbol })}
-            </h3>
-            <p className="modal-company">{trade.name}</p>
-            <p className="modal-price">{t('stocks.pricePerShare')}: ${formatMoney(trade.price)}</p>
+            <div className="tm-head">
+              <div className={`tm-side ${trade.action}`}>{trade.action === 'buy' ? t('common.buy') : t('common.sell')}</div>
+              <div className="tm-asset">
+                <b>{trade.symbol}</b>
+                <span>{trade.name}</span>
+              </div>
+              <div className="tm-price">
+                <b>${formatMoney(trade.price)}</b>
+                <span className={(trade.changePercent || 0) >= 0 ? 'up' : 'down'}>
+                  {(trade.changePercent || 0) >= 0 ? '+' : ''}{(trade.changePercent || 0).toFixed(2)}%
+                </span>
+              </div>
+            </div>
 
             <div className="modal-account-row">
               <div className="modal-account-item">
@@ -323,21 +334,15 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
               </div>
               <div className="modal-account-item">
                 <span>{t('stocks.owned')}</span>
-                <b>{heldFor(trade.symbol)?.quantity || 0} {t('common.shares')}</b>
+                <b>{formatQty(heldFor(trade.symbol)?.quantity || 0)} {t('common.shares')}</b>
               </div>
-            </div>
-
-            <div className="modal-quantity">
-              <label>{t('common.quantity')}:</label>
-              <input
-                type="number" min="1" step="1" value={qty} autoFocus
-                onChange={e => setQty(e.target.value)}
-              />
             </div>
 
             <TradeBreakdown
               market="stock" symbol={trade.symbol} action={trade.action}
-              quantity={qty} balance={balance} onQuote={setQuote}
+              quantity={qty} onQuantityChange={setQty}
+              balance={balance} held={heldFor(trade.symbol)?.quantity || 0}
+              onQuote={setQuote}
             />
 
             <div className="modal-buttons">

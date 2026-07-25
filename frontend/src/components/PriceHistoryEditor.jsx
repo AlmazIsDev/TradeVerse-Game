@@ -39,9 +39,12 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setData(await adminListPriceHistory(market, symbol, {
+      const res = await adminListPriceHistory(market, symbol, {
         q: search || undefined, skip: page * PAGE_SIZE, limit: PAGE_SIZE, sort, order,
-      }))
+      })
+      // Пустой каркас на случай устаревшего бэкенда: без него модалка падала
+      // целиком вместо того, чтобы показать «истории нет».
+      setData({ items: res?.items ?? [], total: res?.total ?? 0, asset: res?.asset ?? {} })
     } catch (err) {
       toast(err.message, 'error')
     } finally {

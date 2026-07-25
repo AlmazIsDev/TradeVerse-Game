@@ -2,6 +2,7 @@
 backend/__pycache__/
 node_modules
 .claude/
+graphify-out/
 
 # Секреты
 backend/.env

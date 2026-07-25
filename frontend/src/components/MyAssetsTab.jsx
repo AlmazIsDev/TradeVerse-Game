@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchMyAssets, collectAsset, upgradeAsset, sellAsset, fetchCompany,
-  transferAssetToCompany, listPropertyForRent, cancelRent, tuneCar,
+  transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
+  collectAllAssets,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
+import MediaExposeModal from './MediaExposeModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
-  TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
-  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown,
+  TrendingUp, Users, Wallet, Building2, KeyRound, X, Gauge, LayoutGrid, Wrench, Package,
+  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -56,7 +59,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [busyId, setBusyId] = useState(null)
-  const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)   // asset
   const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [tuneModal, setTuneModal] = useState(null)   // car asset
@@ -66,12 +68,18 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [materialsInfo, setMaterialsInfo] = useState(null)     // { unitPrice, boostPerUnit, boostCap }
   const [materialsQty, setMaterialsQty] = useState('10')
   const [studios, setStudios] = useState([])                   // IT-студии игрока (см. cityroof.py mystudios)
-  const [studioMaterialsModal, setStudioMaterialsModal] = useState(null)   // studio entry
-  const [studioMaterialsQty, setStudioMaterialsQty] = useState('10')
+  // IT-студия: единая закупка комплектующих (материалы дохода + расходники студии).
+  const [suppliesModal, setSuppliesModal] = useState(null)     // { asset, studio }
+  const [suppliesBizQty, setSuppliesBizQty] = useState('10')   // материалы буста дохода
+  const [suppliesStudioQty, setSuppliesStudioQty] = useState('10') // расходники студии
   const [orderModal, setOrderModal] = useState(null)            // { mode, businessId }
   const [cityMap, setCityMap] = useState(null)
   const [orderBusy, setOrderBusy] = useState(false)
   const [menuOpenId, setMenuOpenId] = useState(null)             // id актива с открытым меню «Взаимодействие»
+  const [collectingAll, setCollectingAll] = useState(false)
+  const [giftModal, setGiftModal] = useState(null)               // актив, передаваемый игроку
+  const [giftName, setGiftName] = useState('')
+  const [mediaModal, setMediaModal] = useState(false)            // разоблачение в СМИ (актив «Медиахолдинг»)
   const menuRef = useRef(null)
 
   // Закрытие меню «Взаимодействие» по клику вне него.
@@ -132,20 +140,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     return () => window.removeEventListener('tv:realtime', onRealtime)
   }, [load, loadStudios])
 
-  const flash = (text, type = 'success') => {
-    setMsg({ text, type })
-    setTimeout(() => setMsg(null), 2400)
-  }
-
   const act = async (id, fn, okKey) => {
     setBusyId(id)
     try {
       const res = await fn(id)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t(okKey))
+      toast(t(okKey))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -155,18 +158,51 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const askAct = (id, fn, okKey, conf) =>
     setConfirm({ ...conf, onConfirm: () => act(id, fn, okKey) })
 
+  const collectAll = async () => {
+    setCollectingAll(true)
+    try {
+      const res = await collectAllAssets()
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      toast(res?.count > 0
+        ? t('myassets.collectedAll', { amount: formatMoney(res.collected), count: res.count })
+        : t('myassets.nothingToCollect'))
+      await load(true)
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setCollectingAll(false)
+    }
+  }
+
   const submitRent = async () => {
     if (!rentModal) return
     const minHours = Math.floor(Number(rentForm.minHours))
-    if (!(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
+    if (!(minHours >= 1)) { toast(t('rent.invalid'), 'error'); return }
     setBusyId(rentModal.id)
     try {
       await listPropertyForRent(rentModal.id, minHours)
-      flash(t('rent.listed'))
+      toast(t('rent.listed'))
       setRentModal(null)
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const submitGift = async () => {
+    if (!giftModal) return
+    const name = giftName.trim()
+    if (name.length < 2) { toast(t('gift.invalid'), 'error'); return }
+    setBusyId(giftModal.id)
+    try {
+      const res = await transferAssetToPlayer(giftModal.id, name)
+      toast(t('gift.sent', { name: res.toUsername || name }))
+      setGiftModal(null)
+      await load()
+    } catch (err) {
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -181,39 +217,63 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const submitMaterials = async () => {
     if (!materialsModal) return
     const qty = Math.floor(Number(materialsQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
     setBusyId(materialsModal.id)
     try {
       const res = await buyMaterials(materialsModal.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
+      toast(t('materials.bought'))
       setMaterialsModal(null)
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
   }
 
-  const openStudioMaterials = (studio) => {
-    setStudioMaterialsModal(studio)
-    setStudioMaterialsQty('10')
+  // IT-студия: единая закупка комплектующих. Открывает модалку с обоими
+  // видами закупки (материалы дохода бизнеса + расходники студии) — источник
+  // цен: fetchMaterialsPrice (доход) и studio.material (студия).
+  const openSupplies = async (asset) => {
+    const studio = studios.find(x => x.assetId === asset.id) || null
+    setSuppliesModal({ asset, studio })
+    setSuppliesBizQty('10')
+    setSuppliesStudioQty('10')
+    try { setMaterialsInfo(await fetchMaterialsPrice()) } catch { setMaterialsInfo(null) }
   }
 
-  const submitStudioMaterials = async () => {
-    if (!studioMaterialsModal) return
-    const qty = Math.floor(Number(studioMaterialsQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
-    setBusyId(studioMaterialsModal.assetId)
+  const submitSuppliesBiz = async () => {
+    if (!suppliesModal) return
+    const qty = Math.floor(Number(suppliesBizQty))
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
+    setBusyId(suppliesModal.asset.id)
     try {
-      const res = await buyStudioMaterials(studioMaterialsModal.assetId, qty)
+      const res = await buyMaterials(suppliesModal.asset.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
-      setStudioMaterialsModal(null)
-      await loadStudios()
+      toast(t('materials.bought'))
+      await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const submitSuppliesStudio = async () => {
+    if (!suppliesModal) return
+    const qty = Math.floor(Number(suppliesStudioQty))
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
+    setBusyId(suppliesModal.asset.id)
+    try {
+      const res = await buyStudioMaterials(suppliesModal.asset.id, qty)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      toast(t('materials.bought'))
+      await loadStudios()
+      // Обновляем состав студии в открытой модалке (кол-во расходников).
+      setSuppliesModal(m => m && { ...m, studio: res.studio ? { ...m.studio, ...res.studio } : m.studio })
+    } catch (err) {
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -234,11 +294,13 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await orderStudioJob(assetId, businessId, orderModal.mode)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('itstudio.ordered', { hours: res.readyInHours }))
+      toast(res.readyInMinutes != null
+        ? t('itstudio.orderedMinutes', { minutes: res.readyInMinutes })
+        : t('itstudio.ordered', { hours: res.readyInHours }))
       setOrderModal(null)
       await loadStudios()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setOrderBusy(false)
     }
@@ -251,10 +313,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await tuneCar(car.id, part)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('tune.done'))
+      toast(t('tune.done'))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -306,7 +368,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => setTuneModal(a),
       })
     }
-    if (a.type === 'business') {
+    if (a.type === 'business' && !a.slug?.startsWith('itstudio_')) {
       actions.push({
         key: 'materials', disabled: busy, icon: <Package size={15} />,
         label: t('materials.buy') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
@@ -318,10 +380,25 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       if (s?.pendingJob) {
         actions.push({ key: 'itstudio-pending', disabled: true, info: true, icon: <Package size={13} />, label: t('itstudio.pending') })
       } else {
-        actions.push({ key: 'itstudio-materials', disabled: busy, icon: <Package size={15} />, label: t('itstudio.buyMaterials'), onClick: () => openStudioMaterials(s || { assetId: a.id, name: a.name }) })
+        // IT-студия: единая закупка комплектующих объединяет материалы для
+        // буста дохода бизнеса и расходники для атак/защиты студии — оба
+        // эффекта сохраняются (см. openSupplies / suppliesModal).
+        actions.push({
+          key: 'itstudio-supplies', disabled: busy, icon: <Package size={15} />,
+          label: t('itstudio.buySupplies') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
+          onClick: () => openSupplies(a),
+        })
         actions.push({ key: 'itstudio-attack', disabled: busy, icon: <Swords size={15} />, label: t('itstudio.attack'), onClick: () => openOrder('attack') })
         actions.push({ key: 'itstudio-defense', disabled: busy, icon: <ShieldPlus size={15} />, label: t('itstudio.defense'), onClick: () => openOrder('defense') })
       }
+    }
+    // Медиахолдинг: заказ разоблачения в СМИ против компании-конкурента.
+    if (a.slug === 'media_holding') {
+      actions.push({
+        key: 'media-expose', disabled: busy, icon: <Newspaper size={15} />,
+        label: t('media.order'),
+        onClick: () => { setMediaModal(true); setMenuOpenId(null) },
+      })
     }
     if (isCompanyOwner) {
       actions.push({
@@ -329,7 +406,17 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) }),
       })
     }
-    if (a.type === 'realestate' || a.type === 'car' || a.type === 'business') {
+    // Передать актив другому игроку (только личный, не сдаётся).
+    if (!a.companyId && !a.rental) {
+      actions.push({
+        key: 'toPlayer', disabled: busy, icon: <Send size={15} />, label: t('gift.toPlayer'),
+        onClick: () => { setGiftModal(a); setGiftName('') },
+      })
+    }
+    // Аренда: недвижимость и авто всегда, из бизнесов — только Айти-Студия и
+    // Медиахолдинг (остальные бэкенд отклоняет, см. assets.py rent/list).
+    const rentableBusiness = a.slug?.startsWith('itstudio_') || a.slug === 'media_holding'
+    if (a.type === 'realestate' || a.type === 'car' || (a.type === 'business' && rentableBusiness)) {
       if (a.rental?.status === 'listed') {
         actions.push({
           key: 'rent-cancel', disabled: busy, icon: <KeyRound size={15} />, label: t('common.cancel'),
@@ -392,11 +479,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         })}
       </div>
 
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-        </div>
-      )}
 
       {!loading && !error && list.length > 0 && (
         <div className="asset-summary">
@@ -429,7 +511,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             const busy = busyId === a.id
             const isCar = a.type === 'car'
             return (
-              <div key={a.id} className={`asset-card owned ${isCar ? 'car-card' : ''}`}>
+              <div key={a.id} className={`asset-card owned ${isCar ? 'car-card' : ''} ${menuOpenId === a.id ? 'menu-open' : ''}`}>
                 <div className="asset-banner" style={{ background: RARITY_GRAD[a.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
                   <span className="asset-banner-emoji">{emojiFor(a)}</span>
                   <span className="asset-level">{t('myassets.level')} {a.level}</span>
@@ -446,17 +528,20 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   {a.type === 'business' && (
                     <>
                       <div className="asset-stat"><span><Users size={12} /> {t('market.employees')}</span><b>{a.employees}</b></div>
-                      <div className="asset-stat"><span>{t('myassets.upkeep')}</span><b className="down">${formatMoney(a.upkeepPerHour)}/ч</b></div>
+                      <div className="asset-stat"><span>{t('myassets.upkeep')}</span><b className="down">${formatMoney(a.upkeepPerHour)}{t('units.perHour')}</b></div>
                     </>
                   )}
                   {a.rooms != null && <div className="asset-stat"><span>{t('realestate.rooms')}</span><b>{a.rooms}</b></div>}
-                  {a.meta?.tax != null && <div className="asset-stat"><span>{t('myassets.tax')}</span><b className="down">${a.meta.tax}/ч</b></div>}
+                  {a.meta?.tax != null && <div className="asset-stat"><span>{t('myassets.tax')}</span><b className="down">${a.meta.tax}{t('units.perHour')}</b></div>}
                   {a.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{a.meta.prestige}</b></div>}
                   {isCar && <div className="asset-stat"><span><Gauge size={12} /> {t('car.condition')}</span><b className="up">{t(`car.cond_${Math.min(a.level, 3)}`, t('car.cond_1'))}</b></div>}
                 </div>
 
                 {!isCar && a.profitPerHour > 0 && (
                   <div className="asset-accrued"><Wallet size={14} /> {t('myassets.accrued')}: <b>${formatMoney(a.accrued)}</b></div>
+                )}
+                {isCar && (
+                  <div className="asset-hint" title={t('car.rentalOnlyHint')}><Info size={13} /> {t('car.rentalOnly')}</div>
                 )}
                 {renderRentalStatus(a)}
                 {renderStudio(a)}
@@ -511,6 +596,25 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         </div>
       )}
 
+      {giftModal && (
+        <div className="modal-overlay" onClick={() => setGiftModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setGiftModal(null)}><X size={18} /></button>
+            <h3><Send size={17} /> {t('gift.toPlayer')}: {t(`assetNames.${giftModal.slug}`, giftModal.name)}</h3>
+            <p className="modal-price">{t('gift.desc')}</p>
+            <div className="modal-quantity"><label>{t('gift.playerLabel')}:</label>
+              <input type="text" value={giftName} autoFocus maxLength={40}
+                placeholder={t('gift.playerPlaceholder')}
+                onChange={e => setGiftName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitGift() }} /></div>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={submitGift} disabled={busyId === giftModal.id || giftName.trim().length < 2}>{t('gift.send')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setGiftModal(null)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {materialsModal && (
         <div className="modal-overlay" onClick={() => setMaterialsModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -530,21 +634,39 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         </div>
       )}
 
-      {studioMaterialsModal && (
-        <div className="modal-overlay" onClick={() => setStudioMaterialsModal(null)}>
+      {suppliesModal && (
+        <div className="modal-overlay" onClick={() => setSuppliesModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setStudioMaterialsModal(null)}><X size={18} /></button>
-            <h3><Package size={17} /> {t('itstudio.buyMaterials')}: {studioMaterialsModal.name}</h3>
-            {studioMaterialsModal.material && (
-              <p className="modal-price">{studioMaterialsModal.material.name}: <strong>${formatMoney(studioMaterialsModal.material.unitCost)}</strong> / {t('common.quantity').toLowerCase()}</p>
+            <button className="crypto-modal-close" onClick={() => setSuppliesModal(null)}><X size={18} /></button>
+            <h3><Package size={17} /> {t('itstudio.buySupplies')}: {t(`assetNames.${suppliesModal.asset.slug}`, suppliesModal.asset.name)}</h3>
+
+            {/* Материалы для буста дохода бизнеса (см. assets.buy_materials). */}
+            <div className="supplies-section">
+              <h4 className="supplies-section-title">{t('materials.incomeSection')}</h4>
+              <p className="modal-price">{t('materials.desc', { boost: Math.round((materialsInfo?.boostPerUnit || 0) * 100), cap: Math.round((materialsInfo?.boostCap || 0) * 100), hours: materialsInfo?.durationHours || 0 })}</p>
+              <p className="modal-price">{t('materials.unitPrice')}: <strong>${formatMoney(materialsInfo?.unitPrice)}</strong></p>
+              <div className="modal-quantity"><label>{t('common.quantity')}:</label>
+                <input type="number" min="1" max="500" value={suppliesBizQty}
+                  onChange={e => setSuppliesBizQty(e.target.value)} /></div>
+              <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Math.floor(Number(suppliesBizQty)) || 0) * (materialsInfo?.unitPrice || 0))}</strong></p>
+              <button className="stock-btn buy-btn" onClick={submitSuppliesBiz} disabled={busyId === suppliesModal.asset.id || !materialsInfo}>{t('materials.buy')}</button>
+            </div>
+
+            {/* Расходники студии для атак/защиты (см. cityroof.buy_studio_materials). */}
+            {suppliesModal.studio?.material && (
+              <div className="supplies-section">
+                <h4 className="supplies-section-title">{t('itstudio.studioSection')}</h4>
+                <p className="modal-price">{suppliesModal.studio.material.name}: <strong>${formatMoney(suppliesModal.studio.material.unitCost)}</strong> / {t('common.quantity').toLowerCase()} · {t('itstudio.inStock')}: <b>{suppliesModal.studio.material.qty}</b></p>
+                <div className="modal-quantity"><label>{t('common.quantity')}:</label>
+                  <input type="number" min="1" max="500" value={suppliesStudioQty}
+                    onChange={e => setSuppliesStudioQty(e.target.value)} /></div>
+                <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Math.floor(Number(suppliesStudioQty)) || 0) * (suppliesModal.studio.material.unitCost || 0))}</strong></p>
+                <button className="stock-btn buy-btn" onClick={submitSuppliesStudio} disabled={busyId === suppliesModal.asset.id}>{t('itstudio.buySupplies')}</button>
+              </div>
             )}
-            <div className="modal-quantity"><label>{t('common.quantity')}:</label>
-              <input type="number" min="1" max="500" value={studioMaterialsQty} autoFocus
-                onChange={e => setStudioMaterialsQty(e.target.value)} /></div>
-            <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Math.floor(Number(studioMaterialsQty)) || 0) * (studioMaterialsModal.material?.unitCost || 0))}</strong></p>
+
             <div className="modal-buttons">
-              <button className="stock-btn buy-btn" onClick={submitStudioMaterials} disabled={busyId === studioMaterialsModal.assetId}>{t('itstudio.buyMaterials')}</button>
-              <button className="stock-btn cancel-btn" onClick={() => setStudioMaterialsModal(null)}>{t('common.cancel')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setSuppliesModal(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         </div>
@@ -558,6 +680,13 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
           busy={orderBusy}
           onSubmit={submitOrder}
           onClose={() => setOrderModal(null)}
+        />
+      )}
+
+      {mediaModal && (
+        <MediaExposeModal
+          onClose={() => setMediaModal(false)}
+          onBalanceChange={onBalanceChange}
         />
       )}
 
@@ -606,6 +735,17 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
         onCancel={() => setConfirm(null)}
       />
+
+      {/* Плавающая кнопка «Собрать всю прибыль» — фиксирована по экрану. */}
+      <button
+        className="collect-all-fab"
+        disabled={collectingAll || assets.every(a => (a.accrued || 0) <= 0)}
+        onClick={collectAll}
+        title={t('myassets.collectAll')}
+      >
+        <HandCoins size={18} />
+        <span>{collectingAll ? t('bank.processing') : t('myassets.collectAll')}</span>
+      </button>
     </div>
   )
 }

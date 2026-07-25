@@ -1,10 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { updateProfile, changePassword, uploadAvatar, deleteAvatar, toggleLeaderboardVisibility } from '../services/api'
+import { updateProfile, changePassword, uploadAvatar, deleteAvatar, toggleLeaderboardVisibility, updateBio, fetchMyStats } from '../services/api'
+import { getTheme, applyTheme } from '../utils/theme'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import {
   Settings as SettingsIcon, User, Lock, Globe,
-  Save, Trash2, Check, AlertTriangle, Upload,
+  Save, Trash2, Check, Upload, Moon, Award, BarChart3,
 } from 'lucide-react'
 
 // Итоговый размер аватара — сжимается на клиенте через canvas (cover-crop до
@@ -51,12 +53,6 @@ function formatDate(iso) {
 
 function SettingsPage({ user, onUserUpdate }) {
   const { t, i18n } = useTranslation()
-  const [msg, setMsg] = useState(null)
-  const flash = (text, type = 'success') => {
-    setMsg({ text, type })
-    setTimeout(() => setMsg(null), 2600)
-  }
-
   // ── Профиль (никнейм) ──────────────────────────────────────────────────────
   const [username, setUsername] = useState(user?.username || '')
   const [savingProfile, setSavingProfile] = useState(false)
@@ -69,13 +65,39 @@ function SettingsPage({ user, onUserUpdate }) {
     try {
       const res = await updateProfile({ username: trimmed })
       onUserUpdate?.({ username: res.username })
-      flash(t('settings.profileSaved'))
+      toast(t('settings.profileSaved'))
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setSavingProfile(false)
     }
   }
+
+  // ── Описание («о себе») ──────────────────────────────────────────────────────
+  const [bio, setBio] = useState(user?.bio || '')
+  const [savingBio, setSavingBio] = useState(false)
+  const bioChanged = (bio || '').trim() !== (user?.bio || '')
+
+  const saveBio = async () => {
+    setSavingBio(true)
+    try {
+      const res = await updateBio(bio.trim())
+      onUserUpdate?.({ bio: res.bio })
+      toast(t('settings.bioSaved'))
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSavingBio(false)
+    }
+  }
+
+  // ── Статистика + ачивки (профиль) ────────────────────────────────────────────
+  const [profile, setProfile] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetchMyStats().then(res => { if (alive) setProfile(res) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   // ── Видимость в таблице лидеров ──────────────────────────────────────────────
   const [hideFromLeaderboard, setHideFromLeaderboard] = useState(!!user?.hideFromLeaderboard)
@@ -88,7 +110,7 @@ function SettingsPage({ user, onUserUpdate }) {
       setHideFromLeaderboard(res.hideFromLeaderboard)
       onUserUpdate?.({ hideFromLeaderboard: res.hideFromLeaderboard })
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setSavingLbVisibility(false)
     }
@@ -99,18 +121,18 @@ function SettingsPage({ user, onUserUpdate }) {
   const [savingPwd, setSavingPwd] = useState(false)
 
   const savePassword = async () => {
-    if (!pwd.current || !pwd.next || !pwd.confirm) { flash(t('auth.fillAllFields'), 'error'); return }
-    if (pwd.next.length < 6) { flash(t('auth.passwordTooShort'), 'error'); return }
-    if (pwd.next !== pwd.confirm) { flash(t('auth.passwordsMismatch'), 'error'); return }
+    if (!pwd.current || !pwd.next || !pwd.confirm) { toast(t('auth.fillAllFields'), 'error'); return }
+    if (pwd.next.length < 6) { toast(t('auth.passwordTooShort'), 'error'); return }
+    if (pwd.next !== pwd.confirm) { toast(t('auth.passwordsMismatch'), 'error'); return }
     setSavingPwd(true)
     try {
       await changePassword({
         current_password: pwd.current, new_password: pwd.next, confirm_password: pwd.confirm,
       })
       setPwd({ current: '', next: '', confirm: '' })
-      flash(t('settings.passwordSaved'))
+      toast(t('settings.passwordSaved'))
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setSavingPwd(false)
     }
@@ -128,12 +150,12 @@ function SettingsPage({ user, onUserUpdate }) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (!file.type.startsWith('image/')) { flash(t('settings.avatarInvalidType'), 'error'); return }
+    if (!file.type.startsWith('image/')) { toast(t('settings.avatarInvalidType'), 'error'); return }
     try {
       const dataUrl = await readAndResizeImage(file)
       setStagedAvatar(dataUrl)
     } catch {
-      flash(t('settings.avatarInvalidType'), 'error')
+      toast(t('settings.avatarInvalidType'), 'error')
     }
   }
 
@@ -144,9 +166,9 @@ function SettingsPage({ user, onUserUpdate }) {
       const res = await uploadAvatar(stagedAvatar)
       onUserUpdate?.({ avatar: res.avatar })
       setStagedAvatar(null)
-      flash(t('settings.avatarSaved'))
+      toast(t('settings.avatarSaved'))
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setSavingAvatar(false)
     }
@@ -157,9 +179,9 @@ function SettingsPage({ user, onUserUpdate }) {
     try {
       await deleteAvatar()
       onUserUpdate?.({ avatar: null })
-      flash(t('settings.avatarRemoved'))
+      toast(t('settings.avatarRemoved'))
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setSavingAvatar(false)
       setConfirmRemove(false)
@@ -173,6 +195,12 @@ function SettingsPage({ user, onUserUpdate }) {
     localStorage.setItem('language', code)
   }
 
+  // ── Оформление (тёмная тема) ─────────────────────────────────────────────────
+  // Тема управляется атрибутом <html data-theme> через theme.js, чтобы весь слой
+  // токенов дизайн-системы переключался разом. Хранится локально.
+  const [theme, setTheme] = useState(getTheme())
+  const toggleDark = () => setTheme(applyTheme(theme === 'dark' ? 'light' : 'dark'))
+
   const currentAvatar = stagedAvatar || user?.avatar || null
   const initials = (user?.username || '?').slice(0, 2).toUpperCase()
   const since = formatDate(user?.created_at)
@@ -183,12 +211,6 @@ function SettingsPage({ user, onUserUpdate }) {
         <SettingsIcon size={22} className="icon" />
         <h2 className="tab-title">{t('nav.settings')}</h2>
       </div>
-
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-        </div>
-      )}
 
       <div className="settings-grid">
         {/* Профиль (аватар + никнейм + видимость в лидерборде) */}
@@ -247,16 +269,45 @@ function SettingsPage({ user, onUserUpdate }) {
             <Save size={15} /> {savingProfile ? t('bank.processing') : t('settings.saveProfile')}
           </button>
 
-          <label className="settings-toggle-row">
-            <input
-              type="checkbox"
-              checked={hideFromLeaderboard}
-              disabled={savingLbVisibility}
-              onChange={toggleLbVisibility}
-            />
-            <span>{t('settings.hideFromLeaderboard')}</span>
-          </label>
-          <p className="settings-hint">{t('settings.hideFromLeaderboardHint')}</p>
+          <div className="form-group">
+            <label>{t('settings.bio')}</label>
+            <div className="settings-bio-field">
+              <textarea
+                className="settings-bio-input"
+                value={bio}
+                onChange={e => setBio(e.target.value)}
+                placeholder={t('settings.bioPlaceholder')}
+                maxLength={280}
+                rows={3}
+              />
+              <span className="settings-bio-count">{(bio || '').length}/280</span>
+            </div>
+          </div>
+          <button
+            className="submit-btn settings-save-btn"
+            disabled={savingBio || !bioChanged}
+            onClick={saveBio}
+          >
+            <Save size={15} /> {savingBio ? t('bank.processing') : t('settings.saveBio')}
+          </button>
+
+          <div className="settings-toggle-block">
+            <label className={`settings-toggle-row ${user?.leaderboardLock ? 'disabled' : ''}`}>
+              <span className="settings-toggle-text">{t('settings.hideFromLeaderboard')}</span>
+              <span className="settings-switch">
+                <input
+                  type="checkbox"
+                  checked={hideFromLeaderboard}
+                  disabled={savingLbVisibility || !!user?.leaderboardLock}
+                  onChange={toggleLbVisibility}
+                />
+                <span className="settings-switch-track"><span className="settings-switch-thumb" /></span>
+              </span>
+            </label>
+            <p className="settings-hint">
+              {user?.leaderboardLock ? t('settings.leaderboardLocked') : t('settings.hideFromLeaderboardHint')}
+            </p>
+          </div>
         </div>
 
         {/* Пароль */}
@@ -304,6 +355,72 @@ function SettingsPage({ user, onUserUpdate }) {
                 <span className="settings-lang-label">{l.label}</span>
                 {i18n.language === l.code && <Check size={16} className="settings-lang-check" />}
               </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Оформление (тёмная тема) */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><Moon size={18} /></span>
+            <h3>{t('settings.appearanceTitle')}</h3>
+          </div>
+          <div className="settings-toggle-block settings-appearance-block">
+            <label className="settings-toggle-row">
+              <span className="settings-toggle-text">{t('settings.darkMode')}</span>
+              <span className="settings-switch">
+                <input
+                  type="checkbox"
+                  checked={theme === 'dark'}
+                  onChange={toggleDark}
+                />
+                <span className="settings-switch-track"><span className="settings-switch-thumb" /></span>
+              </span>
+            </label>
+            <p className="settings-hint">{t('settings.darkModeHint')}</p>
+          </div>
+        </div>
+
+        {/* Статистика игрока */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><BarChart3 size={18} /></span>
+            <h3>{t('settings.statsTitle')}</h3>
+          </div>
+          <div className="settings-stats-grid">
+            {[
+              ['netWorth', profile?.stats?.netWorth],
+              ['cash', profile?.stats?.cash],
+              ['stocks', profile?.stats?.stocks],
+              ['crypto', profile?.stats?.crypto],
+              ['assets', profile?.stats?.assets],
+              ['company', profile?.stats?.company],
+              ['warcoin', profile?.stats?.warcoin],
+              ['profit', profile?.stats?.profit],
+            ].map(([key, val]) => (
+              <div className="settings-stat" key={key}>
+                <span className="settings-stat-label">{t(`settings.stat.${key}`)}</span>
+                <span className={`settings-stat-value ${key === 'profit' && (val || 0) < 0 ? 'neg' : ''}`}>
+                  ${Number(val || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Достижения */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><Award size={18} /></span>
+            <h3>{t('settings.achievementsTitle')}</h3>
+          </div>
+          <div className="settings-achievements">
+            {(profile?.achievements || []).map(a => (
+              <div className={`settings-achievement ${a.reached ? 'reached' : ''}`} key={a.id}>
+                <Award size={16} />
+                <span>{t(`settings.achievement.${a.id}`)}</span>
+                {a.reached && <Check size={14} className="settings-achievement-check" />}
+              </div>
             ))}
           </div>
         </div>

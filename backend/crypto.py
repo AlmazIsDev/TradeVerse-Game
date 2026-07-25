@@ -8,15 +8,16 @@ from __future__ import annotations
 
 from typing import Optional
 
+import math
 import random
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_CRYPTO,
@@ -32,6 +33,11 @@ router = APIRouter(prefix="/api/crypto", tags=["crypto"])
 PRICE_REFRESH_SECONDS = 30
 # Комиссия сети за перевод криптовалюты (доля от суммы, «сгорает»)
 CRYPTO_FEE_RATE = 0.01
+
+# Торговая комиссия (спред) на сделки покупки/продажи. Небольшая, но делает
+# бессмысленным «дребезг» buy→sell ради микродвижений цены и придаёт глубину
+# экономике — быстрый оборот теперь стоит денег. Комиссия «сгорает».
+CRYPTO_TRADE_FEE_RATE = 0.005
 
 # ── Собственная экономика TradeVerse поверх реальных курсов ───────────────────
 # Реальная цена (CoinGecko/симуляция) — БАЗА. Действия игроков двигают монету
@@ -131,7 +137,12 @@ def _walk_price(coin: dict) -> dict:
     base = coin.get("base_price", coin["price"])
     vol = coin.get("volatility", 0.05)
     old = coin["price"]
-    new = old * (1 + random.gauss(0, vol))
+    # ponytail: добавляем случайный дрейф вместо чисто нулевого среднего —
+    # gauss(0, vol) симметричен и цена в среднем стоит на месте. Небольшой bias
+    # (доля vol) задаёт направление на этот тик, поэтому появляются тренды.
+    # Эвристика: дрейф ≤ половины волатильности, коридор [0.3x,3x] не даёт взрыва.
+    drift = random.uniform(-0.5, 0.5) * vol
+    new = old * (1 + drift + random.gauss(0, vol))
     new = max(base * 0.3, min(base * 3, new))
     change = ((new - old) / old * 100) if old else 0.0
     coin["price"] = round(new, 6)
@@ -155,7 +166,24 @@ def _format_coin(coin: dict) -> dict:
     coin.pop("updated_at", None)
     coin.pop("base_price", None)
     coin.pop("market_price", None)   # внутреннее поле «рыночной» цены
+    if coin.get("marketCap") is None:
+        price = coin.get("price") or 0
+        supply = coin.get("supply") or 0
+        coin["marketCap"] = round(price * supply)
     return coin
+
+
+async def _attach_company_logos(db: AsyncIOMotorDatabase, coins: list[dict]) -> None:
+    """Подставляет логотип компании в монеты без image (старые эмиссии)."""
+    cids = list({c.get("companyId") for c in coins if c.get("companyId") and not c.get("image")})
+    if not cids:
+        return
+    ids = [ObjectId(c) for c in cids if ObjectId.is_valid(c)]
+    logos = {str(c["_id"]): c.get("logo") async for c in
+             db.companies.find({"_id": {"$in": ids}}, {"logo": 1})}
+    for c in coins:
+        if not c.get("image") and logos.get(c.get("companyId")):
+            c["image"] = logos[c["companyId"]]
 
 
 async def _read_market(db: AsyncIOMotorDatabase) -> list[dict]:
@@ -175,6 +203,7 @@ async def _read_market(db: AsyncIOMotorDatabase) -> list[dict]:
         await ensure_coins_seeded(db)
 
     coins = [_format_coin(c) async for c in db.crypto_assets.find({})]
+    await _attach_company_logos(db, coins)
     coins.sort(key=lambda c: c.get("marketCap") or (c.get("price", 0) * c.get("supply", 0)), reverse=True)
     _MARKET_CACHE["ts"] = now
     _MARKET_CACHE["data"] = coins
@@ -207,11 +236,12 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
         await MarketDataService.ensure_backfill(db, "crypto", symbol, market_price, coin.get("volatility", 0.05))
         set_fields: dict = {}
 
-        if fresh_real:
-            # Свежая реальная цена — новая рыночная база.
-            market_price = float(coin.get("price", market_price))
-        elif mode == "sim":
-            # Симуляция: блуждает именно РЫНОЧНАЯ цена (реальные данные недоступны).
+        if coin.get("source") == "coingecko":
+            if fresh_real:
+                market_price = float(coin.get("price", market_price))
+        else:
+            # Блуждает market_price, а не display: иначе demand от сделок
+            # компаундится в базу каждый тик и цена уходит в экспоненту.
             updated = coin.get("updated_at")
             if isinstance(updated, datetime) and updated.tzinfo is None:
                 updated = updated.replace(tzinfo=timezone.utc)
@@ -254,16 +284,37 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
         await broadcast({"type": "market_update", "market": "crypto", "updates": updates})
 
 
-async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float):
+def _project_fill(coin: dict, side: str, total_usd: float) -> tuple[float, float]:
+    """Считает (fill_price, new_demand) БЕЗ записи в БД.
+
+    Используется, чтобы сделка исполнялась по цене, уже включающей собственный
+    price-impact (покупатель — по повышенной, продавец — по пониженной), но при
+    этом сдвиг цены фиксировался в БД только после успешного расчёта по балансу.
+    """
+    market_price = float(coin.get("market_price") or coin.get("price") or 1)
+    vol = float(coin.get("volume24h") or 0) or (market_price * float(coin.get("supply", 0) or 1) * 0.04) or 1.0
+    frac = min(IMPACT_CAP, IMPACT_K * (float(total_usd) / max(vol, 1.0)))
+    demand = float(coin.get("demand", 1.0))
+    demand *= (1 + frac) if side == "buy" else (1 - frac)
+    demand = max(DEMAND_MIN, min(DEMAND_MAX, demand))
+    return round(market_price * demand, 6), demand
+
+
+async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float) -> Optional[float]:
     """Сдвигает спрос (а значит и цену) монеты от сделки игрока.
 
     Покупка поднимает цену, продажа опускает — тем сильнее, чем крупнее сделка
     относительно суточного объёма. Реальная (market_price) цена не трогается —
     она остаётся базой; двигается только множитель спроса.
+
+    Возвращает новую отображаемую цену (после сдвига), чтобы сделка исполнялась
+    ПО ней: покупатель платит уже повышенную цену, продавец получает уже
+    пониженную. Иначе появлялся бы безрисковый арбитраж (buy по старой цене →
+    цена растёт → sell по новой), печатающий деньги циклом.
     """
     coin = await db.crypto_assets.find_one({"symbol": symbol})
     if not coin:
-        return
+        return None
     market_price = float(coin.get("market_price") or coin.get("price") or 1)
     vol = float(coin.get("volume24h") or 0) or (market_price * float(coin.get("supply", 0) or 1) * 0.04) or 1.0
     frac = min(IMPACT_CAP, IMPACT_K * (float(total_usd) / max(vol, 1.0)))
@@ -288,6 +339,7 @@ async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, 
             "price": display,
             "change24h": round(coin.get("change24h", 0.0) * 0.7 + change, 2),
         })
+    return display
 
 
 async def _price_of(db: AsyncIOMotorDatabase, symbol: str) -> Optional[float]:
@@ -298,6 +350,24 @@ async def _price_of(db: AsyncIOMotorDatabase, symbol: str) -> Optional[float]:
 def _wallet_address(user_id: str) -> str:
     """Детерминированный адрес кошелька на основе id пользователя."""
     return "TVX-" + user_id[-12:].upper()
+
+
+async def _credit_company_budget(db: AsyncIOMotorDatabase, coin: dict, amount: float):
+    """Перечисляет выручку/списывает выкуп по монете компании в бюджет эмитента.
+
+    Монеты с привязкой к компании (`companyId`) — инструмент привлечения капитала:
+    покупка на бирже пополняет бюджет, продажа выкупает у рынка из бюджета
+    (не уводя его в минус). Зеркалит stocks._credit_company_budget."""
+    cid = coin.get("companyId")
+    if not cid or not ObjectId.is_valid(cid):
+        return
+    if amount >= 0:
+        await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
+    else:
+        await db.companies.update_one(
+            {"_id": ObjectId(cid), "budget": {"$gte": round(-amount, 2)}},
+            {"$inc": {"budget": round(amount, 2)}},
+        )
 
 
 # ── Account ──────────────────────────────────────────────────────────────────
@@ -375,6 +445,69 @@ async def get_crypto_market(
 # ── Trade ────────────────────────────────────────────────────────────────────
 
 
+def _crypto_quote(coin: dict, action: str, quantity: float) -> dict:
+    """Расчёт сделки БЕЗ записи в БД — единый источник правды для /quote и модалки."""
+    ref_price = float(coin.get("price") or 0)
+    fill_price, _ = _project_fill(coin, action, quantity * ref_price)
+    cost = round(quantity * fill_price, 2)
+    fee = round(cost * CRYPTO_TRADE_FEE_RATE, 2)
+    return {
+        "price": ref_price,
+        "fillPrice": fill_price,
+        "cost": cost,
+        "fee": fee,
+        "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
+        "feeRate": CRYPTO_TRADE_FEE_RATE,
+    }
+
+
+def _max_affordable(coin: dict, balance: float) -> float:
+    """Максимальное количество, которое реально влезает в баланс.
+
+    Клиент это посчитать не может: price-impact зависит от объёма сделки, поэтому
+    любая фиксированная «скидка на комиссию» либо не дотягивает, либо перебирает —
+    кнопка МАКС предлагала сумму, которую тут же отклоняли по балансу. Стоимость
+    монотонна по количеству, так что берём дихотомию по той же формуле.
+    """
+    price = float(coin.get("price") or 0)
+    if price <= 0 or balance <= 0:
+        return 0.0
+    lo, hi = 0.0, balance / price          # без impact и комиссии — заведомо больше ответа
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if _crypto_quote(coin, "buy", mid)["total"] <= balance:
+            lo = mid
+        else:
+            hi = mid
+    # Округляем вниз: вверх вылезло бы за баланс, который мы только что подбирали.
+    return math.floor(lo * 1e8) / 1e8
+
+
+@router.get("/quote")
+async def quote_crypto(
+    symbol: str = Query(...),
+    action: str = Query("buy"),
+    quantity: float = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Предварительный расчёт сделки по той же формуле, что и /trade.
+
+    Модалка обязана показывать сумму с учётом price-impact и комиссии, иначе
+    покупка отклоняется по балансу, которого «визуально» хватало.
+    """
+    symbol = symbol.strip().upper()
+    action = action.lower()
+    if action not in ("buy", "sell"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action должно быть 'buy' или 'sell'")
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if coin is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+    q = _crypto_quote(coin, action, quantity)
+    q["maxAffordable"] = _max_affordable(coin, float(current_user.get("balance") or 0))
+    return q
+
+
 @router.post("/trade")
 async def trade_crypto(
     payload: CryptoTrade,
@@ -392,15 +525,31 @@ async def trade_crypto(
     symbol = payload.symbol.upper()
     qty = payload.quantity
 
-    price = await _price_of(db, symbol)
-    if price is None:
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if coin is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Монета не найдена")
 
+    # Размер сделки для расчёта impact считаем по текущей цене, но исполняем по
+    # цене, уже сдвинутой этим impact'ом (иначе появляется безрисковый арбитраж
+    # buy→sell на собственном движении цены). См. _project_fill / _apply_trade_impact.
+    ref_price = float(coin.get("price") or 0)
+    fill_price, _ = _project_fill(coin, payload.action, qty * ref_price)
+    price = fill_price
     total = round(qty * price, 2)
+    # Минимальный номинал: сделки, округляющиеся до 0.00, недопустимы — иначе
+    # покупка «бесплатных» монет крошечными порциями (qty*price < 0.005) минтит
+    # актив с нулевой стоимостью, который затем продаётся за реальный кэш.
+    if total <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Слишком маленький объём сделки",
+        )
     holding = await db.crypto_holdings.find_one({"userId": user_id, "symbol": symbol})
+    fee = round(total * CRYPTO_TRADE_FEE_RATE, 2)
 
     if payload.action == "buy":
-        new_balance = await adjust_balance(db, user_id, -total)
+        # Покупатель платит стоимость + комиссию.
+        new_balance = await adjust_balance(db, user_id, -round(total + fee, 2))
         if new_balance is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно средств")
         old_qty = holding.get("quantity", 0.0) if holding else 0.0
@@ -413,13 +562,16 @@ async def trade_crypto(
             upsert=True,
         )
         await record_transaction(
-            db, user_id, EXPENSE, total, CAT_CRYPTO,
+            db, user_id, EXPENSE, round(total + fee, 2), CAT_CRYPTO,
             f"Покупка {qty:g} {symbol}", symbol=symbol, price=price,
-            balance_after=new_balance, meta={"quantity": qty, "action": "buy"},
+            balance_after=new_balance, meta={"quantity": qty, "action": "buy", "fee": fee},
         )
-        await _apply_trade_impact(db, symbol, "buy", total)
+        await _apply_trade_impact(db, symbol, "buy", qty * ref_price)
+        # Монета компании: выручка от покупки на бирже пополняет бюджет эмитента
+        # (привлечение капитала). См. stocks._credit_company_budget — та же логика.
+        await _credit_company_budget(db, coin, total)
         return {"message": "Покупка выполнена", "symbol": symbol, "quantity": qty,
-                "price": price, "total": total, "balance": new_balance}
+                "price": price, "total": total, "fee": fee, "balance": new_balance}
 
     # sell
     if not holding or holding.get("quantity", 0.0) < qty:
@@ -432,15 +584,19 @@ async def trade_crypto(
             {"userId": user_id, "symbol": symbol},
             {"$set": {"quantity": remaining}},
         )
-    new_balance = await adjust_balance(db, user_id, total)
+    # Продавец получает стоимость за вычетом комиссии.
+    proceeds = round(total - fee, 2)
+    new_balance = await adjust_balance(db, user_id, proceeds)
     await record_transaction(
-        db, user_id, INCOME, total, CAT_CRYPTO,
+        db, user_id, INCOME, proceeds, CAT_CRYPTO,
         f"Продажа {qty:g} {symbol}", symbol=symbol, price=price,
-        balance_after=new_balance, meta={"quantity": qty, "action": "sell"},
+        balance_after=new_balance, meta={"quantity": qty, "action": "sell", "fee": fee},
     )
-    await _apply_trade_impact(db, symbol, "sell", total)
+    await _apply_trade_impact(db, symbol, "sell", qty * ref_price)
+    # Монета компании: рынок продаёт обратно эмитенту — выкуп из бюджета.
+    await _credit_company_budget(db, coin, -total)
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
-            "price": price, "total": total, "balance": new_balance}
+            "price": price, "total": total, "fee": fee, "balance": new_balance}
 
 
 # ── Wallet-to-wallet transfers ───────────────────────────────────────────────
@@ -494,17 +650,28 @@ async def transfer_crypto(
     if debited.get("quantity", 0) <= 1e-9:
         await db.crypto_holdings.delete_one({"_id": debited["_id"]})
 
-    # Зачисление получателю (пересчёт средней цены).
-    rec_h = await db.crypto_holdings.find_one({"userId": rec_id, "symbol": symbol})
-    old_qty = rec_h.get("quantity", 0.0) if rec_h else 0.0
-    old_avg = rec_h.get("avg_price", 0.0) if rec_h else 0.0
-    new_qty = round(old_qty + amount, 8)
-    new_avg = round((old_qty * old_avg + amount * price) / new_qty, 6) if new_qty else price
-    await db.crypto_holdings.update_one(
-        {"userId": rec_id, "symbol": symbol},
-        {"$set": {"quantity": new_qty, "avg_price": new_avg}},
-        upsert=True,
-    )
+    # Зачисление получателю (пересчёт средней цены). При любом сбое возвращаем
+    # монеты отправителю — иначе они «сгорают» (списаны, но не зачислены).
+    try:
+        rec_h = await db.crypto_holdings.find_one({"userId": rec_id, "symbol": symbol})
+        old_qty = rec_h.get("quantity", 0.0) if rec_h else 0.0
+        old_avg = rec_h.get("avg_price", 0.0) if rec_h else 0.0
+        new_qty = round(old_qty + amount, 8)
+        new_avg = round((old_qty * old_avg + amount * price) / new_qty, 6) if new_qty else price
+        await db.crypto_holdings.update_one(
+            {"userId": rec_id, "symbol": symbol},
+            {"$set": {"quantity": new_qty, "avg_price": new_avg}},
+            upsert=True,
+        )
+    except Exception:
+        # Компенсация отправителю (зеркально денежному переводу в economy.py).
+        await db.crypto_holdings.update_one(
+            {"userId": sender_id, "symbol": symbol},
+            {"$inc": {"quantity": total_debit},
+             "$setOnInsert": {"userId": sender_id, "symbol": symbol}},
+            upsert=True,
+        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Не удалось выполнить перевод")
 
     value = round(amount * price, 2)
     now = datetime.utcnow()
@@ -551,3 +718,105 @@ async def crypto_transfers(
             "timestamp": tr["ts"].isoformat() if isinstance(tr.get("ts"), datetime) else None,
         })
     return out
+
+
+# ── Admin: create / edit / delete coins ──────────────────────────────────────
+
+
+class CryptoAdminUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    marketCap: Optional[float] = None
+    volatility: Optional[float] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CryptoAdminCreate(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    volatility: float = 0.05
+    color: str = "#6366f1"
+    supply: Optional[float] = None
+    description: str = ""
+
+
+@router.patch("/admin/{symbol}")
+async def admin_update_coin(
+    symbol: str,
+    payload: CryptoAdminUpdate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Точечное редактирование монеты. marketCap задаёт supply = marketCap/price;
+    price дополнительно переустанавливает base_price (якорь коридора _walk_price)."""
+    symbol = symbol.upper()
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if not coin:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+
+    fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+    new_price = fields.get("price")
+    new_market_cap = fields.pop("marketCap", None)
+    if new_market_cap is not None:
+        price_for_supply = new_price if new_price is not None else float(coin.get("price", 0))
+        if price_for_supply > 0:
+            fields["supply"] = round(new_market_cap / price_for_supply)
+            fields["marketCap"] = round(new_market_cap, 2)
+    if new_price is not None:
+        fields["base_price"] = new_price
+    fields["updated_at"] = datetime.utcnow()
+
+    await db.crypto_assets.update_one({"symbol": symbol}, {"$set": fields})
+    _MARKET_CACHE["ts"] = None
+    updated = await db.crypto_assets.find_one({"symbol": symbol})
+    return _format_coin(updated)
+
+
+@router.post("/admin", status_code=status.HTTP_201_CREATED)
+async def admin_create_coin(
+    payload: CryptoAdminCreate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    symbol = payload.symbol.upper()
+    if await db.crypto_assets.find_one({"symbol": symbol}):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Монета '{symbol}' уже существует")
+    supply = payload.supply if payload.supply is not None else 0
+    doc = {
+        "symbol": symbol, "name": payload.name, "price": payload.price,
+        "base_price": payload.price, "volatility": payload.volatility,
+        "color": payload.color, "supply": supply, "description": payload.description,
+        "change24h": 0.0, "ath": payload.price, "atl": payload.price,
+        "volume24h": round(payload.price * supply * 0.04, 2),
+        "updated_at": datetime.utcnow(),
+    }
+    await db.crypto_assets.insert_one(doc)
+    await MarketDataService.ensure_backfill(db, "crypto", symbol, payload.price, payload.volatility)
+    _MARKET_CACHE["ts"] = None
+    created = await db.crypto_assets.find_one({"symbol": symbol})
+    return _format_coin(created)
+
+
+@router.delete("/admin/{symbol}")
+async def admin_delete_coin(
+    symbol: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Удаляет монету. ponytail: не каскадит crypto_holdings/price_history —
+    приемлемо для админ-инструмента удаления монеты, которую никто не держит."""
+    symbol = symbol.upper()
+    result = await db.crypto_assets.delete_one({"symbol": symbol})
+    if result.deleted_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+    _MARKET_CACHE["ts"] = None
+    return {"deleted": True}
+
+
+if __name__ == "__main__":
+    # marketCap -> supply recompute (единственная нетривиальная новая логика здесь).
+    price, market_cap = 100.0, 50_000_000.0
+    assert round(market_cap / price) == 500_000
+    print("crypto self-check OK")

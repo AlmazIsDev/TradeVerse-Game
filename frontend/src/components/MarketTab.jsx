@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchAssetMarket, buyAsset } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import { toast } from './Toast'
 import {
-  Home, Briefcase, Car, Search, AlertTriangle, Check, X,
-  TrendingUp, Coins, LayoutGrid,
+  Home, Briefcase, Car, Search, AlertTriangle, X,
+  TrendingUp, Coins, LayoutGrid, KeyRound,
 } from 'lucide-react'
 
 const CATEGORIES = [
@@ -44,7 +45,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   const [error, setError] = useState(null)
   const [confirm, setConfirm] = useState(null)   // item pending purchase
   const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState(null)
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 300)
@@ -79,14 +79,13 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   const doBuy = async () => {
     if (!confirm) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await buyAsset(confirm.slug)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('market.bought') })
-      setTimeout(() => { setConfirm(null); setFeedback(null) }, 800)
+      toast(t('market.bought'))
+      setTimeout(() => setConfirm(null), 800)
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -121,6 +120,13 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
+      {(category === 'all' || category === 'business') && (
+        <div className="market-rental-note">
+          <KeyRound size={16} />
+          <span>{t('market.rentalNote')}</span>
+        </div>
+      )}
+
       {loading && (
         <div className="asset-grid">
           {Array.from({ length: 6 }).map((_, i) => <div key={i} className="asset-card skeleton" style={{ height: 190 }} />)}
@@ -144,15 +150,19 @@ function MarketTab({ balance = 0, onBalanceChange }) {
             const rc = RARITY_COLOR[item.rarity] || 'var(--color-accent)'
             const affordable = balance >= item.price
             return (
-              <div key={item.slug} className={`asset-card ${item.type === 'car' ? 'car-card' : ''}`} style={{ borderTopColor: rc }}>
+              <div key={item.slug} className={`asset-card market-card ${item.type === 'car' ? 'car-card' : ''}`} style={{ borderTopColor: rc }}>
                 <div className="asset-banner" style={{ background: RARITY_GRAD[item.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
                   <span className="asset-banner-emoji">{ASSET_EMOJI[item.slug] || TYPE_EMOJI[item.type] || '📦'}</span>
                 </div>
-                <div className="asset-card-head">
-                  <span className="asset-name">{t(`assetNames.${item.slug}`, item.name)}</span>
-                  {item.rarity && <span className="asset-rarity" style={{ color: rc }}>{t(`realestate.rarities.${item.rarity}`, item.rarity)}</span>}
-                  {item.category && <span className="asset-rarity">{t(`business.categories.${item.category}`, item.category)}</span>}
-                </div>
+                <span className="market-card-name">{t(`assetNames.${item.slug}`, item.name)}</span>
+                {(item.rarity || item.category) && (
+                  <div className="market-card-meta">
+                    <span className="market-card-rarity" style={{ color: rc }}>
+                      {item.rarity ? t(`realestate.rarities.${item.rarity}`, item.rarity) : ''}
+                    </span>
+                    {item.category && <span className="market-card-cat">{t(`business.categories.${item.category}`, item.category)}</span>}
+                  </div>
+                )}
                 <div className="asset-stats">
                   {item.rooms != null && <div className="asset-stat"><span>{t('realestate.rooms')}</span><b>{item.rooms}</b></div>}
                   {item.employees > 0 && <div className="asset-stat"><span>{t('market.employees')}</span><b>{item.employees}</b></div>}
@@ -162,8 +172,8 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                   )}
                   {item.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{item.meta.prestige}</b></div>}
                 </div>
-                <div className="asset-price">
-                  <Coins size={14} /> ${formatMoney(item.price)}
+                <div className="market-card-price">
+                  <span className="mcp-value"><Coins size={16} /> ${formatMoney(item.price)}</span>
                   {item.trend != null && item.trend !== 0 && (
                     <span className={`asset-trend ${item.trend >= 0 ? 'up' : 'down'}`}>
                       {item.trend >= 0 ? '▲' : '▼'} {Math.abs(item.trend).toFixed(1)}%
@@ -172,7 +182,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                 </div>
                 <button
                   className="asset-buy-btn"
-                  onClick={() => { setConfirm(item); setFeedback(null) }}
+                  onClick={() => setConfirm(item)}
                   disabled={!affordable}
                 >
                   {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
@@ -189,12 +199,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
             <button className="crypto-modal-close" onClick={() => setConfirm(null)}><X size={18} /></button>
             <h3>{t('common.buy')}: {t(`assetNames.${confirm.slug}`, confirm.name)}</h3>
             <p className="modal-total">{t('common.total')}: <strong>${formatMoney(confirm.price)}</strong></p>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}
-                <span>{feedback.text}</span>
-              </div>
-            )}
             <div className="modal-buttons">
               <button className="stock-btn buy-btn" onClick={doBuy} disabled={busy}>
                 {busy ? t('bank.processing') : t('common.confirm')}

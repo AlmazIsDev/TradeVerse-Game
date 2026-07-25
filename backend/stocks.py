@@ -39,8 +39,15 @@ DEFAULT_STOCK_CONFIG = {
     "max_order_size_percent": 0.01,
 }
 
+# Абсолютный потолок размера одного ордера (акций). Дефолтная системная акция
+# (1 млрд выпуск × 1%) и так даёт 10 млн, но для акций с меньшим выпуском этот
+# потолок гарантирует, что игрок/бот может подать ордер до 10 млн (в пределах
+# доступного количества). Ботам с их 1 млн он не мешает.
+MAX_ORDER_SHARES = 10_000_000
+
 LISTING_FEE = 5000.0        # стоимость размещения пользовательской акции
 FOUNDER_SHARE_PCT = 0.2     # доля основателя при эмиссии
+TRADE_FEE_RATE = 0.005      # торговая комиссия (спред) на сделки — «сгорает»
 
 # ── Боты-покупатели ──────────────────────────────────────────────────────────
 # Заменяют реальный рыночный фид: на каждом тике планировщика с вероятностью
@@ -48,8 +55,13 @@ FOUNDER_SHARE_PCT = 0.2     # доля основателя при эмисси�
 # buy/sell-сделку, которая двигает цену той же формулой ΔP, что и игроки.
 BOT_USER_ID = "bot"
 BOT_TRADE_PROBABILITY = 0.4
-BOT_MIN_SHARES = 10
-BOT_MAX_ORDER_PERCENT = 0.003   # доля от total_shares за одну сделку бота
+BOT_MIN_SHARES = 1
+BOT_MAX_ORDER_SHARES = 1_000_000   # верхняя граница случайного объёма сделки бота
+# Планировщик тикает раз в 60с, но боты должны торговать ~каждые 10с. Поэтому за
+# один тик прогоняем несколько раундов ботов (60/10 = 6), не ускоряя остальные
+# фоновые задачи. Перед каждым раундом перечитываем акции — иначе условный
+# update по free_shares не совпадёт и сделки не «наложатся».
+BOT_ROUNDS_PER_TICK = 6
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -168,6 +180,7 @@ def _format_stock_v2(stock: dict) -> dict:
         "marketCap": round(price * total_shares, 2),
         "issuer": stock.get("issuer"),
         "issuerName": stock.get("issuer_name"),
+        "image": stock.get("logo"),
         "configOverrides": stock.get("config") or {},
         "updated_at": _iso(stock.get("updated_at")),
     }
@@ -187,6 +200,19 @@ async def _holdings_map(db: AsyncIOMotorDatabase, user_id: str) -> dict:
 # ── Read endpoints ───────────────────────────────────────────────────────────
 
 
+async def _attach_company_logos(db: AsyncIOMotorDatabase, stocks: list[dict]) -> None:
+    """Подставляет логотип компании в акции без сохранённого logo (старые эмиссии)."""
+    cids = list({s.get("companyId") for s in stocks if s.get("companyId") and not s.get("logo")})
+    if not cids:
+        return
+    ids = [ObjectId(c) for c in cids if ObjectId.is_valid(c)]
+    logos = {str(c["_id"]): c.get("logo") async for c in
+             db.companies.find({"_id": {"$in": ids}}, {"logo": 1})}
+    for s in stocks:
+        if not s.get("logo") and logos.get(s.get("companyId")):
+            s["logo"] = logos[s["companyId"]]
+
+
 @router.get("")
 async def list_stocks(
     current_user: dict = Depends(get_current_user),
@@ -199,6 +225,7 @@ async def list_stocks(
     страница открывается мгновенно (никаких сетевых запросов и бэкфилла).
     """
     stocks = await find_all_stocks(db)
+    await _attach_company_logos(db, stocks)
     holdings = await _holdings_map(db, str(current_user["_id"]))
     out = []
     for s in stocks:
@@ -229,8 +256,13 @@ async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
             continue
         free_shares = s.get("free_shares", total_shares)
 
-        max_qty = max(BOT_MIN_SHARES, int(total_shares * BOT_MAX_ORDER_PERCENT))
-        action = random.choice(["buy", "sell"])
+        max_qty = min(BOT_MAX_ORDER_SHARES, random.randint(1, 1_000_000))
+        # ponytail: случайный bias вместо фиксированных 50/50 — иначе покупки и
+        # продажи взаимно гасятся и цена стоит на месте. Каждый тик тянем свою
+        # вероятность покупки из [0.3, 0.7], поэтому возникают трендовые серии.
+        # Эвристика: диапазон подобран так, чтобы цена дрейфовала, но не взрывалась.
+        buy_prob = random.uniform(0.3, 0.7)
+        action = "buy" if random.random() < buy_prob else "sell"
 
         if action == "buy":
             qty = min(max_qty, free_shares)
@@ -273,18 +305,66 @@ async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
         })
 
 
+CATALOG_ANCHOR_PULL = 0.1   # доля сближения цены акции компании с фундаменталом за тик
+
+
+async def _revalue_company_stocks(db: AsyncIOMotorDatabase):
+    """Акции компаний (companyId != None) дрейфуют к «справедливой» цене =
+    капитал компании / выпуск. Это «как в жизни»: котировка следует за
+    фундаменталом, но между тиками свободно колеблется от сделок игроков/ботов.
+
+    За тик цена сдвигается на CATALOG_ANCHOR_PULL доли расстояния до якоря —
+    плавно, без телепортов. Компании без активной записи пропускаются."""
+    try:
+        from company import _company_capital
+    except Exception:
+        return
+    async for s in db.stocks.find({"companyId": {"$ne": None}}):
+        cid = s.get("companyId")
+        if not cid or not ObjectId.is_valid(cid):
+            continue
+        company = await db.companies.find_one({"_id": ObjectId(cid)})
+        if not company:
+            continue
+        cfg = _resolve_config(s)
+        total_shares = cfg["total_shares"]
+        if total_shares <= 0:
+            continue
+        capital = await _company_capital(db, company)
+        fair = max(0.01, round(capital / total_shares, 2))
+        price = float(s.get("price", 0.0))
+        if price <= 0:
+            continue
+        new_price = round(price + (fair - price) * CATALOG_ANCHOR_PULL, 2)
+        new_price = max(0.01, new_price)
+        if new_price == price:
+            continue
+        await db.stocks.update_one(
+            {"_id": s["_id"]},
+            {"$set": {
+                "price": new_price,
+                "change": round(new_price - price, 2),
+                "changePercent": round((new_price - price) / price * 100, 2) if price else 0.0,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+
+
 async def maintain_stock_market(db: AsyncIOMotorDatabase):
     """Фоновое обслуживание рынка акций (вызывается Scheduler'ом).
 
     Системные акции НЕ привязаны к реальным котировкам — цена двигается только
-    объёмом сделок (игроки + боты), как и у пользовательских эмиссий. Здесь же
-    делаем одноразовый бэкфилл истории и пишем периодические снимки — всё, что
-    раньше выполнялось на каждом запросе списка.
+    объёмом сделок (игроки + боты), как и у пользовательских эмиссий. Акции
+    компаний дополнительно дрейфуют к капиталу (см. _revalue_company_stocks).
+    Здесь же делаем одноразовый бэкфилл истории и пишем периодические снимки.
     """
     stocks = await find_all_stocks(db)
     if not stocks:
         return
-    await _run_bots(db, stocks)
+    # Несколько раундов ботов за тик ≈ торговля каждые 10с (см. BOT_ROUNDS_PER_TICK).
+    for _ in range(BOT_ROUNDS_PER_TICK):
+        await _run_bots(db, await find_all_stocks(db))
+    await _revalue_company_stocks(db)
     updates = []
     for s in await find_all_stocks(db):
         old_price = float(s.get("price", 0))
@@ -409,6 +489,96 @@ async def get_events(
 # ── Trade ────────────────────────────────────────────────────────────────────
 
 
+async def _credit_company_budget(db, stock: dict, amount: float):
+    """Перечисляет выручку/списывает выкуп по бирже в бюджет компании-эмитента.
+
+    Акции с привязкой к компании (`companyId`) — инструмент привлечения капитала:
+    покупка на бирже пополняет бюджет (amount>0), продажа выкупает у рынка из
+    бюджета (amount<0, но не уводит бюджет в минус)."""
+    cid = stock.get("companyId")
+    if not cid or not ObjectId.is_valid(cid):
+        return
+    if amount >= 0:
+        await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
+    else:
+        # Выкуп у продавца: не даём бюджету уйти в минус (условный $inc).
+        await db.companies.update_one(
+            {"_id": ObjectId(cid), "budget": {"$gte": round(-amount, 2)}},
+            {"$inc": {"budget": round(amount, 2)}},
+        )
+
+
+def _quote_stock(stock: dict, action: str, quantity: int) -> dict:
+    """Считает цену исполнения, стоимость и комиссию БЕЗ записи в БД.
+
+    Единый источник правды для /trade и /quote: без него модалка показывала бы
+    qty*price, а списывалось бы больше (impact + комиссия), и покупка падала с
+    «Недостаточно средств» при внешне достаточном балансе.
+    """
+    cfg = _resolve_config(stock)
+    total_shares = cfg["total_shares"]
+    price = float(stock["price"])
+    delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
+    fill_price = round(price + delta, 2) if action == "buy" else round(max(0.01, price - delta), 2)
+    cost = round(fill_price * quantity, 2)
+    fee = round(cost * TRADE_FEE_RATE, 2)
+    return {
+        "price": price,
+        "fillPrice": fill_price,
+        "cost": cost,
+        "fee": fee,
+        "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
+        "feeRate": TRADE_FEE_RATE,
+    }
+
+
+def _max_affordable_shares(stock: dict, balance: float) -> int:
+    """Сколько акций реально влезает в баланс с учётом impact и комиссии.
+
+    Клиент этого посчитать не может: impact растёт с размером ордера, поэтому
+    фиксированная «скидка на комиссию» либо не дотягивает, либо перебирает —
+    кнопка МАКС предлагала объём, который тут же отклоняли по балансу.
+    """
+    price = float(stock.get("price") or 0)
+    if price <= 0 or balance <= 0:
+        return 0
+    lo, hi = 0, int(balance / price) + 1     # без impact и комиссии — заведомо больше ответа
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _quote_stock(stock, "buy", mid)["total"] <= balance:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+@router.get("/quote")
+async def quote_stock(
+    symbol: str = Query(...),
+    action: str = Query("buy"),
+    quantity: int = Query(1, ge=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Предварительный расчёт сделки: сколько реально спишется/придёт."""
+    symbol = symbol.strip().upper()
+    action = action.lower()
+    if action not in ("buy", "sell"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action должно быть 'buy' или 'sell'")
+    stock = await db.stocks.find_one({"symbol": symbol})
+    if not stock:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Акция '{symbol}' не найдена")
+    q = _quote_stock(stock, action, quantity)
+    q["maxOrder"] = MAX_ORDER_SHARES
+    free = stock.get("free_shares", _resolve_config(stock)["total_shares"])
+    q["freeShares"] = free
+    q["maxAffordable"] = min(
+        _max_affordable_shares(stock, float(current_user.get("balance") or 0)),
+        int(free), MAX_ORDER_SHARES,
+    )
+    return q
+
+
 @router.post("/trade")
 async def trade_stock(
     trade: StockTradeRequest,
@@ -427,7 +597,6 @@ async def trade_stock(
     cfg = _resolve_config(stock)
     total_shares = cfg["total_shares"]
     price = float(stock["price"])
-    cost = round(price * quantity, 2)
     user_id = str(current_user["_id"])
 
     if "free_shares" not in stock:
@@ -436,21 +605,30 @@ async def trade_stock(
             {"$set": {"free_shares": total_shares}},
         )
 
-    max_qty = int(total_shares * cfg["max_order_size_percent"])
-    if max_qty >= 1 and quantity > max_qty:
+    # Жёсткий потолок ордера — абсолютный (MAX_ORDER_SHARES), а не % от выпуска:
+    # процентный порог для мелких эмиссий давал крошечный лимит. Одна сделка —
+    # до 10 млн акций (в пределах доступного количества).
+    if quantity > MAX_ORDER_SHARES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Ордер превышает максимальный размер ({max_qty} акций)",
+            f"Ордер превышает максимальный размер ({MAX_ORDER_SHARES} акций)",
         )
 
-    delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
+    # Сделка исполняется по цене, уже сдвинутой собственным impact'ом: покупатель
+    # платит price+delta, продавец получает price-delta. Иначе — безрисковый
+    # арбитраж buy→sell на своём же движении цены (печать денег циклом).
+    q = _quote_stock(stock, action, quantity)
+    fill_price = q["fillPrice"]
+    cost = q["cost"]
+    fee = q["fee"]   # спред «сгорает»; делает churning невыгодным
 
     if action == "buy":
-        new_balance = await adjust_balance(db, user_id, -cost)
+        charge = round(cost + fee, 2)
+        new_balance = await adjust_balance(db, user_id, -charge)
         if new_balance is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
 
-        new_price = round(price + delta, 2)
+        new_price = fill_price
         updated_stock = await db.stocks.find_one_and_update(
             {"symbol": symbol, "free_shares": {"$gte": quantity}},
             {
@@ -465,7 +643,7 @@ async def trade_stock(
             return_document=True,
         )
         if not updated_stock:
-            await adjust_balance(db, user_id, cost)  # компенсация
+            await adjust_balance(db, user_id, charge)  # компенсация (включая комиссию)
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно свободных акций")
 
         await db.stock_holdings.update_one(
@@ -475,10 +653,13 @@ async def trade_stock(
             upsert=True,
         )
         await record_transaction(
-            db, user_id, EXPENSE, cost, CAT_TRADE,
-            f"Покупка {quantity} {symbol}", symbol=symbol, price=price,
-            balance_after=new_balance, meta={"quantity": quantity, "action": "buy"},
+            db, user_id, EXPENSE, charge, CAT_TRADE,
+            f"Покупка {quantity} {symbol}", symbol=symbol, price=fill_price,
+            balance_after=new_balance, meta={"quantity": quantity, "action": "buy", "fee": fee},
         )
+        # Акция компании: выручка от покупки на бирже идёт в БЮДЖЕТ компании
+        # (привлечение капитала). Деньги не «сгорают», а перетекают эмитенту.
+        await _credit_company_budget(db, stock, cost)
     else:  # sell
         updated_holding = await db.stock_holdings.find_one_and_update(
             {"userId": user_id, "symbol": symbol, "quantity": {"$gte": quantity}},
@@ -488,8 +669,9 @@ async def trade_stock(
         if not updated_holding:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно акций для продажи")
 
-        new_balance = await adjust_balance(db, user_id, cost)
-        new_price = round(max(0.01, price - delta), 2)
+        proceeds = round(cost - fee, 2)
+        new_balance = await adjust_balance(db, user_id, proceeds)
+        new_price = fill_price
         await db.stocks.update_one(
             {"symbol": symbol},
             {
@@ -503,10 +685,12 @@ async def trade_stock(
             },
         )
         await record_transaction(
-            db, user_id, INCOME, cost, CAT_TRADE,
-            f"Продажа {quantity} {symbol}", symbol=symbol, price=price,
-            balance_after=new_balance, meta={"quantity": quantity, "action": "sell"},
+            db, user_id, INCOME, proceeds, CAT_TRADE,
+            f"Продажа {quantity} {symbol}", symbol=symbol, price=fill_price,
+            balance_after=new_balance, meta={"quantity": quantity, "action": "sell", "fee": fee},
         )
+        # Акция компании: рынок продаёт обратно эмитенту — выкуп из бюджета.
+        await _credit_company_budget(db, stock, -cost)
 
     await db.stock_events.insert_one({
         "symbol": symbol,
@@ -533,8 +717,9 @@ async def trade_stock(
         "symbol": symbol,
         "action": action,
         "quantity": quantity,
-        "price": price,
+        "price": fill_price,
         "total": cost,
+        "fee": fee,
         "newPrice": new_price,
         "balance": new_balance,
     }
@@ -585,12 +770,22 @@ async def issue_stock(
         raise HTTPException(status.HTTP_409_CONFLICT, f"Тикер '{symbol}' уже занят")
 
     user_id = str(current_user["_id"])
-    new_balance = await adjust_balance(db, user_id, -LISTING_FEE)
-    if new_balance is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для листинга")
 
     founder_shares = int(payload.totalShares * FOUNDER_SHARE_PCT)
     free_shares = payload.totalShares - founder_shares
+    # Основатель ОПЛАЧИВАЕТ свои акции по цене размещения (не получает бесплатно).
+    # Иначе: бесплатные founder-акции → продажа за напечатанный кэш = money printer
+    # (продажа акций кредитует продавца без контрагента). Оплата делает каждую
+    # акцию обеспеченной реальными деньгами и естественно ограничивает абьюз
+    # гигантских эмиссий (2 млрд бесплатных акций стоили бы недостижимую сумму).
+    founder_cost = round(founder_shares * payload.price, 2)
+    total_charge = round(LISTING_FEE + founder_cost, 2)
+    new_balance = await adjust_balance(db, user_id, -total_charge)
+    if new_balance is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Недостаточно средств: листинг ${LISTING_FEE:,.0f} + доля основателя ${founder_cost:,.0f}",
+        )
 
     doc = {
         "symbol": symbol,
@@ -618,9 +813,10 @@ async def issue_stock(
         )
 
     await record_transaction(
-        db, user_id, EXPENSE, LISTING_FEE, CAT_TRADE,
+        db, user_id, EXPENSE, total_charge, CAT_TRADE,
         f"Листинг акции {symbol}", symbol=symbol, balance_after=new_balance,
-        meta={"action": "issue", "totalShares": payload.totalShares},
+        meta={"action": "issue", "totalShares": payload.totalShares,
+              "listingFee": LISTING_FEE, "founderCost": founder_cost},
     )
     return {"stock": _format_stock_v2(doc), "balance": new_balance, "founderShares": founder_shares}
 
@@ -682,4 +878,19 @@ async def get_stock_v2(
     stock = await find_stock_by_symbol(db, symbol)
     if not stock:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Акция '{symbol}' не найдена")
+    await _attach_company_logos(db, [stock])
     return _format_stock_v2(stock)
+
+
+if __name__ == "__main__":
+    # Мини-проверка новой математики объёмов/потолка (без БД, без сервера).
+    for _ in range(10_000):
+        qty = min(BOT_MAX_ORDER_SHARES, random.randint(1, 1_000_000))
+        assert 1 <= qty <= 1_000_000, qty
+        p = random.uniform(0.3, 0.7)
+        assert 0.3 <= p <= 0.7
+    # Потолок ордера пропускает до 10 млн и режет больше.
+    assert MAX_ORDER_SHARES == 10_000_000
+    assert 10_000_000 <= MAX_ORDER_SHARES         # ровно 10 млн проходит
+    assert not (10_000_001 <= MAX_ORDER_SHARES)   # 10 млн + 1 — отбой
+    print("stocks self-check OK")

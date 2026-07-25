@@ -17,6 +17,7 @@ from typing import Optional
 import logging
 import os
 import random
+import re
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -24,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from providers import CoinGeckoProvider
 
@@ -38,7 +39,7 @@ VALID_MARKETS = {MARKET_STOCK, MARKET_CRYPTO}
 
 # Кэширование: как часто обновлять цены из внешнего API (сек).
 REFRESH_INTERVAL_S = int(os.getenv("MARKET_REFRESH_SECONDS", "120"))
-CRYPTO_COUNT = int(os.getenv("MARKET_CRYPTO_COUNT", "50"))
+CRYPTO_COUNT = int(os.getenv("MARKET_CRYPTO_COUNT", "15"))
 
 _COIN_COLORS = ["#f7931a", "#627eea", "#22c55e", "#eab308", "#ec4899",
                 "#8b5cf6", "#06b6d4", "#64748b", "#f43f5e", "#10b981"]
@@ -73,6 +74,32 @@ def _aware(dt: datetime) -> datetime:
     return dt
 
 
+def _build_walk_docs(market: str, symbol: str, current_price: float, volatility: float = 0.03) -> list[dict]:
+    """Строит историю случайным блужданием назад во времени от текущей цены.
+
+    Год по дням + последние 3 суток плотнее (для интервалов 1h/24h). Чистая
+    функция — не трогает БД, используется и одноразовым бэкфиллом, и
+    принудительным regenerate.
+    """
+    symbol = symbol.upper()
+    now = _now()
+    docs: list[dict] = []
+
+    def walk_back(points: int, step: timedelta, price: float, vol: float):
+        seq = []
+        p = price
+        for i in range(points):
+            seq.append((now - step * i, round(max(current_price * 0.15, min(current_price * 6, p)), 6)))
+            p = p / (1 + random.gauss(0, vol))
+        return seq
+
+    for ts, p in walk_back(365, timedelta(days=1), current_price, volatility):
+        docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
+    for ts, p in walk_back(144, timedelta(minutes=30), current_price, volatility * 0.4):
+        docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
+    return docs
+
+
 class MarketDataService:
     """Единая точка работы с историей цен."""
 
@@ -97,25 +124,19 @@ class MarketDataService:
         symbol = symbol.upper()
         if await db.price_history.find_one({"market": market, "symbol": symbol}):
             return
-        now = _now()
-        docs: list[dict] = []
-
-        def walk_back(points: int, step: timedelta, price: float, vol: float):
-            """Случайное блуждание назад во времени от текущей цены."""
-            seq = []
-            p = price
-            for i in range(points):
-                seq.append((now - step * i, round(max(current_price * 0.15, min(current_price * 6, p)), 6)))
-                p = p / (1 + random.gauss(0, vol))
-            return seq
-
-        # Год по дням + последние 3 суток плотнее (для 1h/24h интервалов).
-        for ts, p in walk_back(365, timedelta(days=1), current_price, volatility):
-            docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
-        for ts, p in walk_back(144, timedelta(minutes=30), current_price, volatility * 0.4):
-            docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
+        docs = _build_walk_docs(market, symbol, current_price, volatility)
         if docs:
             await db.price_history.insert_many(docs)
+
+    @staticmethod
+    async def regenerate(db, market: str, symbol: str, current_price: float, volatility: float = 0.03) -> int:
+        """Принудительно пересоздаёт историю символа (сносит старую, строит заново)."""
+        symbol = symbol.upper()
+        await db.price_history.delete_many({"market": market, "symbol": symbol})
+        docs = _build_walk_docs(market, symbol, current_price, volatility)
+        if docs:
+            await db.price_history.insert_many(docs)
+        return len(docs)
 
     @staticmethod
     async def get_history(db, market: str, symbol: str, interval: str) -> dict:
@@ -229,6 +250,15 @@ class MarketDataService:
                     upsert=True,
                 )
                 await MarketDataService.record_snapshot(db, "crypto", m["symbol"], m["price"], force=True)
+            # Подчищаем API-монеты, выпавшие из топ-N (напр. после снижения лимита):
+            # только coingecko-источник, игровые/компанийные (без source) не трогаем.
+            keep = [m["symbol"] for m in markets]
+            stale = [c["symbol"] async for c in db.crypto_assets.find(
+                {"source": "coingecko", "symbol": {"$nin": keep}}, {"symbol": 1})]
+            if stale:
+                await db.crypto_assets.delete_many({"symbol": {"$in": stale}})
+                await db.price_history.delete_many({"market": "crypto", "symbol": {"$in": stale}})
+                logger.info("CoinGecko: удалено %d устаревших монет", len(stale))
             await MarketDataService._set_meta(db, "crypto", "live")
             logger.info("CoinGecko: обновлено %d монет", len(markets))
             return "live"
@@ -260,11 +290,11 @@ async def market_history(
 
 
 STOCK_META = {
-    "AAPL": {"sector": "Технологии", "description": "Apple Inc. — производитель потребительской электроники, ПО и услуг."},
-    "GOOGL": {"sector": "Технологии", "description": "Alphabet (Google) — поиск, реклама, облако и ИИ."},
-    "MSFT": {"sector": "Технологии", "description": "Microsoft — ПО, облако Azure, игровое подразделение."},
-    "TSLA": {"sector": "Автомобили / Энергетика", "description": "Tesla — электромобили и решения для хранения энергии."},
-    "NVDA": {"sector": "Полупроводники", "description": "NVIDIA — графические и ИИ-ускорители."},
+    "AAPL": {"sector": "Технологии", "sectorKey": "technology", "description": "Apple Inc. — производитель потребительской электроники, ПО и услуг."},
+    "GOOGL": {"sector": "Технологии", "sectorKey": "technology", "description": "Alphabet (Google) — поиск, реклама, облако и ИИ."},
+    "MSFT": {"sector": "Технологии", "sectorKey": "technology", "description": "Microsoft — ПО, облако Azure, игровое подразделение."},
+    "TSLA": {"sector": "Автомобили / Энергетика", "sectorKey": "auto_energy", "description": "Tesla — электромобили и решения для хранения энергии."},
+    "NVDA": {"sector": "Полупроводники", "sectorKey": "semiconductors", "description": "NVIDIA — графические и ИИ-ускорители."},
 }
 
 
@@ -305,11 +335,18 @@ async def market_asset(
             volume += (e.get("quantity", 0) or 0) * (e.get("priceAfter", price) or price)
         held = await db.stock_holdings.find_one({"userId": user_id, "symbol": symbol})
         meta = STOCK_META.get(symbol, {})
+        held_qty = held.get("quantity", 0) if held else 0
+        invested = float(held.get("invested", 0.0)) if held else 0.0
+        logo_img = stock.get("logo")
+        if not logo_img and stock.get("companyId") and ObjectId.is_valid(stock["companyId"]):
+            comp = await db.companies.find_one({"_id": ObjectId(stock["companyId"])}, {"logo": 1})
+            logo_img = comp.get("logo") if comp else None
         info = {
             "market": market, "symbol": symbol, "name": stock.get("name"),
-            "logo": symbol[:1], "color": "#6366f1",
+            "logo": symbol[:1], "image": logo_img, "color": "#6366f1",
             "source": stock.get("source", "sim"),
             "sector": meta.get("sector") or ("Пользовательская эмиссия" if stock.get("issuer") else "—"),
+            "sectorKey": meta.get("sectorKey") or ("user_emission" if stock.get("issuer") else None),
             "description": stock.get("description") or meta.get("description") or "",
             "issuerName": stock.get("issuer_name"),
             "price": price,
@@ -320,6 +357,8 @@ async def market_asset(
             "totalShares": total_shares,
             "freeShares": stock.get("free_shares", total_shares),
             "heldQuantity": held.get("quantity", 0) if held else 0,
+            "avgPrice": round(invested / held_qty, 4) if held_qty else 0.0,
+            "invested": round(invested, 2),
         }
     else:  # crypto
         coin = await db.crypto_assets.find_one({"symbol": symbol})
@@ -328,11 +367,16 @@ async def market_asset(
         price = float(coin.get("price", 0))
         supply = coin.get("supply", 0)
         held = await db.crypto_holdings.find_one({"userId": user_id, "symbol": symbol})
+        coin_img = coin.get("image")
+        if not coin_img and coin.get("companyId") and ObjectId.is_valid(coin["companyId"]):
+            comp = await db.companies.find_one({"_id": ObjectId(coin["companyId"])}, {"logo": 1})
+            coin_img = comp.get("logo") if comp else None
         info = {
             "market": market, "symbol": symbol, "name": coin.get("name"),
-            "logo": symbol[:2], "image": coin.get("image"), "color": coin.get("color", "#6366f1"),
+            "logo": symbol[:2], "image": coin_img, "color": coin.get("color", "#6366f1"),
             "source": coin.get("source", "sim"),
             "sector": "Криптовалюта",
+            "sectorKey": "crypto",
             "description": coin.get("description") or "",
             "price": price,
             "change": 0.0,
@@ -343,6 +387,10 @@ async def market_asset(
             "ath": coin.get("ath", stats.get("ath")),
             "atl": coin.get("atl", stats.get("atl")),
             "heldQuantity": held.get("quantity", 0.0) if held else 0.0,
+            "avgPrice": round(float(held.get("avg_price", 0.0)), 6) if held else 0.0,
+            "invested": round(
+                float(held.get("avg_price", 0.0)) * float(held.get("quantity", 0.0)), 2
+            ) if held else 0.0,
         }
 
     info["stats"] = stats
@@ -390,3 +438,158 @@ async def toggle_favorite(
         {"userId": user_id, "market": payload.market, "symbol": symbol, "created_at": _now()}
     )
     return {"favorite": True}
+
+
+# ── Admin: point-edit + regenerate price history ────────────────────────────────
+
+
+class PricePointBody(BaseModel):
+    market: str
+    symbol: str
+    price: float
+    ts: Optional[datetime] = None
+
+
+class PricePointUpdate(BaseModel):
+    price: Optional[float] = None
+    ts: Optional[datetime] = None
+
+
+class RegenerateBody(BaseModel):
+    market: str
+    symbol: str
+    price: Optional[float] = None
+    volatility: Optional[float] = None
+
+
+def _format_point(doc: dict) -> dict:
+    return {"id": str(doc["_id"]), "ts": _aware(doc["ts"]).isoformat(), "price": doc["price"]}
+
+
+# Точки истории у одного символа — десятки тысяч, поэтому список только страницами.
+PH_SORT_FIELDS = {"ts", "price"}
+# Формат совпадает с тем, что рисует редактор, — иначе поиск «по тому, что написано»
+# не находил бы введённую дату.
+PH_TS_FORMAT = "%Y-%m-%d %H:%M"
+
+
+@router.get("/admin/price-history")
+async def admin_list_price_history(
+    market: str = Query(...),
+    symbol: str = Query(...),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    q: str = Query(None),
+    sort: str = Query("ts"),
+    order: int = Query(-1),
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный рынок")
+    symbol = symbol.upper()
+    query: dict = {"market": market, "symbol": symbol}
+    if q:
+        rx = re.escape(q)
+        query["$expr"] = {"$or": [
+            {"$regexMatch": {"input": {"$dateToString": {"date": "$ts", "format": PH_TS_FORMAT}}, "regex": rx}},
+            {"$regexMatch": {"input": {"$toString": "$price"}, "regex": rx}},
+        ]}
+    sort_key = sort if sort in PH_SORT_FIELDS else "ts"
+    direction = 1 if order >= 0 else -1
+    rows = [r async for r in db.price_history.find(query)
+            .sort([(sort_key, direction), ("_id", direction)])
+            .skip(skip).limit(limit)]
+    total = await db.price_history.count_documents(query)
+    # Дефолты для пересоздания — чтобы админ видел, из каких значений оно пойдёт.
+    coll = db.stocks if market == MARKET_STOCK else db.crypto_assets
+    asset = await coll.find_one({"symbol": symbol}, {"price": 1, "volatility": 1})
+    return {
+        "items": [_format_point(r) for r in rows],
+        "total": total,
+        "asset": {
+            "price": float(asset.get("price", 0)) if asset else None,
+            "volatility": float(asset.get("volatility", 0.03)) if asset else None,
+        },
+    }
+
+
+@router.post("/admin/price-history", status_code=status.HTTP_201_CREATED)
+async def admin_add_price_point(
+    payload: PricePointBody,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if payload.market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный рынок")
+    doc = {
+        "market": payload.market, "symbol": payload.symbol.upper(),
+        "price": round(payload.price, 6), "ts": _aware(payload.ts) if payload.ts else _now(),
+    }
+    result = await db.price_history.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _format_point(doc)
+
+
+@router.patch("/admin/price-history/{point_id}")
+async def admin_update_price_point(
+    point_id: str,
+    payload: PricePointUpdate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    fields = payload.model_dump(exclude_unset=True)
+    if "price" in fields and fields["price"] is not None:
+        fields["price"] = round(fields["price"], 6)
+    if "ts" in fields and fields["ts"] is not None:
+        fields["ts"] = _aware(fields["ts"])
+    if not fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Пустое тело запроса")
+    result = await db.price_history.update_one({"_id": ObjectId(point_id)}, {"$set": fields})
+    if result.matched_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Точка истории не найдена")
+    doc = await db.price_history.find_one({"_id": ObjectId(point_id)})
+    return _format_point(doc)
+
+
+@router.delete("/admin/price-history/{point_id}")
+async def admin_delete_price_point(
+    point_id: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    result = await db.price_history.delete_one({"_id": ObjectId(point_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Точка истории не найдена")
+    return {"deleted": True}
+
+
+@router.post("/admin/price-history/regenerate")
+async def admin_regenerate_price_history(
+    payload: RegenerateBody,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    if payload.market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный рынок")
+    symbol = payload.symbol.upper()
+    coll = db.stocks if payload.market == MARKET_STOCK else db.crypto_assets
+    asset = await coll.find_one({"symbol": symbol})
+    if not asset:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
+    price = payload.price if payload.price is not None else float(asset.get("price", 0))
+    volatility = payload.volatility if payload.volatility is not None else float(asset.get("volatility", 0.03))
+    points = await MarketDataService.regenerate(db, payload.market, symbol, price, volatility)
+    return {"regenerated": True, "points": points, "price": price, "volatility": volatility}
+
+
+if __name__ == "__main__":
+    docs = _build_walk_docs("stock", "test", 100.0, 0.03)
+    assert len(docs) == 365 + 144, len(docs)
+    for d in docs:
+        assert 100.0 * 0.15 <= d["price"] <= 100.0 * 6, d["price"]
+        assert d["symbol"] == "TEST"
+    daily_leg = docs[:365]
+    assert daily_leg[0]["ts"] > daily_leg[-1]["ts"]
+    assert (daily_leg[0]["ts"] - daily_leg[-1]["ts"]).days == 364
+    print("market_data self-check OK")

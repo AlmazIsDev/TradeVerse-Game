@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import logging
 import random
+import re
 from bson import ObjectId
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from typing import Optional
 
@@ -43,8 +46,15 @@ from econ import router as econ_router
 from market_events import router as events_router
 from shop import router as shop_router
 from mining import router as mining_router
+from admin_db import router as admin_db_router
+from media import router as media_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
+
+import assets as assets_module
+import mining as mining_module
+import company as company_module
+import cityroof as cityroof_module
 
 from database import (
     get_db,
@@ -54,7 +64,6 @@ from database import (
     find_config_by_key,
     upsert_config,
     find_leaderboard,
-    find_all_transactions,
     delete_transaction,
     delete_stock_by_symbol,
     find_all_users,
@@ -121,6 +130,7 @@ async def lifespan(app: FastAPI):
     await db.refresh_tokens.create_index("token_hash", unique=True)
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
     await init_db()
+    await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
     start_scheduler()   # единый фоновый планировщик всех систем
     yield
     await stop_scheduler()
@@ -155,6 +165,8 @@ app.include_router(econ_router)
 app.include_router(events_router)
 app.include_router(shop_router)
 app.include_router(mining_router)
+app.include_router(admin_db_router)
+app.include_router(media_router)
 app.include_router(ws_router)
 
 
@@ -329,7 +341,9 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "card_visible": current_user.get("card_visible", True),
         "crypto_account_opened": bool(current_user.get("crypto_account_opened", False)),
         "avatar": current_user.get("avatar"),
-        "hideFromLeaderboard": bool(current_user.get("hideFromLeaderboard", False)),
+        "bio": current_user.get("bio", ""),
+        "hideFromLeaderboard": bool(current_user.get("hidden_from_leaderboard", False)),
+        "leaderboardLock": bool(current_user.get("leaderboard_lock", False)),
         "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
     }
 
@@ -446,8 +460,12 @@ _LB_CACHE: dict = {"ts": None, "entries": None}
 _LB_CACHE_TTL_S = 12
 
 
-async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
-    """Полный обсчёт капитала всех игроков (наличные + акции + крипта + активы + компания + WC)."""
+async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Optional[dict] = None) -> list[dict]:
+    """Полный обсчёт капитала всех игроков (наличные + акции + крипта + активы + компания + WC).
+
+    user_query переопределяет фильтр по users — например {"_id": oid} для одного
+    игрока (в т.ч. скрытого из таблицы лидеров, для его собственной статистики).
+    """
     # Карты текущих цен.
     stock_prices: dict[str, float] = {}
     async for s in db.stocks.find({}, {"symbol": 1, "price": 1}):
@@ -487,10 +505,22 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
         if oid:
             company_val[oid] = company_val.get(oid, 0.0) + _asset_value(a)
 
+    # Прибыль за период: реализованный чистый доход (income − expense) за 7 дней
+    # из реестра операций. Раньше profit = net_worth − STARTING_BALANCE считался
+    # «с момента регистрации» и был бессмысленным для давних игроков.
+    # ponytail: скользящее окно 7д по ledger'у; для «за день/месяц» — параметризовать окно.
+    period_net: dict[str, float] = {}
+    since = datetime.utcnow() - timedelta(days=7)
+    async for row in db.transactions.aggregate([
+        {"$match": {"timestamp": {"$gte": since}}},
+        {"$group": {"_id": {"u": "$userId", "d": "$direction"}, "sum": {"$sum": "$amount"}}},
+    ]):
+        uid = row["_id"]["u"]
+        signed = row["sum"] if row["_id"]["d"] == "income" else -row["sum"]
+        period_net[uid] = period_net.get(uid, 0.0) + signed
+
     entries = []
-    async for u in db.users.find({}):
-        if u.get("hideFromLeaderboard"):
-            continue
+    async for u in db.users.find(user_query if user_query is not None else {"hidden_from_leaderboard": {"$ne": True}}):
         uid = str(u["_id"])
         cash = float(u.get("balance", STARTING_BALANCE))
         stocks_value = round(stock_val.get(uid, 0.0), 2)
@@ -510,7 +540,10 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
             "company": company_value,
             "warcoin": warcoin_value,
             "netWorth": net_worth,
-            "profit": round(net_worth - STARTING_BALANCE, 2),
+            # profit = реализованная прибыль за 7 дней (см. period_net выше).
+            # profitAllTime сохранён для профиля/ачивок как «рост с регистрации».
+            "profit": round(period_net.get(uid, 0.0), 2),
+            "profitAllTime": round(net_worth - STARTING_BALANCE, 2),
         })
     return entries
 
@@ -525,6 +558,7 @@ async def get_leaderboard(
 
     net worth = наличные + акции + крипта + активы + компания + WarCoin.
     Сортировки: networth | profit | cash | stocks | crypto | assets | company.
+    profit — реализованная прибыль за 7 дней (не «с регистрации»).
     Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
     """
     sort_field = _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
@@ -544,6 +578,107 @@ async def get_leaderboard(
     for rank, entry in enumerate(ranked, start=1):
         out.append({**entry, "rank": rank})
     return out
+
+
+@app.get("/api/leaderboard/companies")
+async def get_company_leaderboard(
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Рейтинг компаний по собственной стоимости (бюджет + активы компании).
+
+    Отдельный от игрового рейтинг: ценит саму компанию, а не капитал владельца.
+    ponytail: два скана коллекций без кэша — вызывается редко; кэш добавить, если станет горячим.
+    """
+    def _asset_value(a: dict) -> float:
+        return a.get("price", 0) * (1 + 0.35 * (a.get("level", 1) - 1))
+
+    comps: dict[str, dict] = {}
+    async for c in db.companies.find({}):
+        cid = str(c["_id"])
+        comps[cid] = {
+            "companyId": cid,
+            "name": c.get("name", "—"),
+            "logo": c.get("logo", ""),
+            "ownerId": c.get("ownerId"),
+            "budget": round(float(c.get("budget", 0.0)), 2),
+            "assets": 0.0,
+        }
+    async for a in db.user_assets.find({"companyId": {"$ne": None}}):
+        c = comps.get(a.get("companyId"))
+        if c:
+            c["assets"] += _asset_value(a)
+
+    for c in comps.values():
+        c["assets"] = round(c["assets"], 2)
+        c["value"] = round(c["budget"] + c["assets"], 2)
+
+    ranked = sorted(comps.values(), key=lambda c: c["value"], reverse=True)[:limit]
+    return [{**c, "rank": i} for i, c in enumerate(ranked, start=1)]
+
+
+@app.get("/api/user/stats")
+async def get_my_stats(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Личная статистика игрока для профиля (тот же обсчёт, что и в таблице лидеров).
+
+    Работает и для скрытых из таблицы лидеров — фильтр по своему _id, а не по
+    флагу видимости. Ачивки выводятся из уже посчитанных цифр, без новых механик.
+    """
+    entries = await _compute_leaderboard_entries(db, {"_id": current_user["_id"]})
+    stats = entries[0] if entries else {
+        "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
+        "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
+    }
+    # ponytail: ачивки — производные пороги от текущих цифр, не отдельная система прогресса.
+    achievements = [
+        {"id": "networth_1m", "reached": stats["netWorth"] >= 1_000_000},
+        {"id": "in_profit", "reached": stats["profit"] > 0},
+        {"id": "diversified", "reached": sum(1 for k in ("stocks", "crypto", "assets", "company") if stats.get(k, 0) > 0) >= 3},
+        {"id": "company_owner", "reached": stats.get("company", 0) > 0},
+    ]
+    return {"stats": stats, "achievements": achievements}
+
+
+@app.get("/api/user/{user_id}/profile")
+async def get_public_profile(
+    user_id: str,
+    _user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Публичная карточка игрока (никнейм, аватар, «о себе», капитал, ачивки).
+
+    Показывает только агрегированные цифры — те же, что видны в таблице лидеров.
+    Работает и для скрытых из лидерборда: скрытие убирает из общего списка, но
+    не запрещает открыть профиль по прямой ссылке из состава компании/крыши.
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    entries = await _compute_leaderboard_entries(db, {"_id": user["_id"]})
+    stats = entries[0] if entries else {
+        "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
+        "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
+    }
+    achievements = [
+        {"id": "networth_1m", "reached": stats["netWorth"] >= 1_000_000},
+        {"id": "in_profit", "reached": stats["profit"] > 0},
+        {"id": "diversified", "reached": sum(1 for k in ("stocks", "crypto", "assets", "company") if stats.get(k, 0) > 0) >= 3},
+        {"id": "company_owner", "reached": stats.get("company", 0) > 0},
+    ]
+    return {
+        "userId": str(user["_id"]),
+        "username": user.get("username", "—"),
+        "avatar": user.get("avatar"),
+        "bio": user.get("bio") or "",
+        "createdAt": user.get("created_at"),
+        "stats": stats,
+        "achievements": achievements,
+    }
 
 
 # ── Admin Endpoints ──────────────────────────────────────────────────────────
@@ -675,14 +810,147 @@ async def admin_delete_user(
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}
 
 
-@app.get("/api/admin/transactions")
-async def admin_get_all_transactions(
-    limit: int = Query(200, ge=1, le=500),
+@app.get("/api/admin/users/{user_id}/property")
+async def admin_get_user_property(
+    user_id: str,
     _admin=Depends(require_admin),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    transactions = await find_all_transactions(db, limit)
-    return [_format_transaction(t) for t in transactions]
+    """Полный список имущества игрока для админ-панели: активы, майнинг-фермы,
+    компания (если владелец) и бизнесы «Крыши города» (если владелец)."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    existing = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not existing:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+
+    assets = [assets_module._serialize(a) async for a in db.user_assets.find({"userId": user_id})]
+
+    farms = []
+    async for f in db.mining_farms.find({"userId": user_id}):
+        farms.append(await mining_module._serialize_with_stats(db, f, user_id))
+
+    company_doc = await db.companies.find_one({"ownerId": user_id})
+    company = await company_module._serialize(db, company_doc, user_id) if company_doc else None
+
+    businesses = [
+        cityroof_module._serialize_business(b, user_id)
+        async for b in db.cityroof_businesses.find({"ownerId": user_id})
+    ]
+
+    return {
+        "assets": assets,
+        "farms": farms,
+        "company": company,
+        "businesses": businesses,
+    }
+
+
+TX_SORT_FIELDS = {"timestamp", "direction", "label", "category", "username", "amount", "balanceAfter"}
+
+
+@app.get("/api/admin/transactions")
+async def admin_get_all_transactions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    q: str = Query(None),
+    field: str = Query(None),
+    kind: str = Query("all"),
+    sort: str = Query("timestamp"),
+    order: int = Query(-1),
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Единый поток операций реестра и сделок ботов.
+
+    Фильтрация/сортировка/пагинация выполняются в БД через $unionWith, иначе
+    клиент видел бы только последние N записей и искал бы лишь внутри них.
+    """
+    # Пользователей единицы — карту имён дешевле развернуть в $switch, чем делать $lookup.
+    names = {str(u["_id"]): u.get("username", "") async for u in db.users.find({}, {"username": 1})}
+    username_expr = {"$switch": {
+        "branches": [{"case": {"$eq": [{"$toString": "$userId"}, uid]}, "then": name}
+                     for uid, name in names.items() if name],
+        "default": {"$toString": {"$ifNull": ["$userId", ""]}},
+    }} if names else {"$toString": {"$ifNull": ["$userId", ""]}}
+
+    ledger_stage = [{"$project": {
+        "source": "user",
+        "direction": {"$ifNull": ["$direction", {"$cond": [{"$eq": ["$type", "sell"]}, "income", "expense"]}]},
+        "category": {"$ifNull": ["$category", {"$cond": [{"$ifNull": ["$symbol", False]}, "trade", "system"]}]},
+        "label": {"$ifNull": ["$label", {"$ifNull": ["$symbol", ""]}]},
+        "username": username_expr,
+        "amount": {"$ifNull": ["$amount", 0]},
+        "balanceAfter": "$balance_after",
+        "timestamp": 1,
+    }}]
+    # У ботов сумма — это quantity * priceAfter, отдельного поля amount нет.
+    bot_stage = [
+        {"$match": {"userId": "bot"}},
+        {"$project": {
+            "source": "bot",
+            "direction": {"$cond": [{"$eq": ["$type", "sell"]}, "income", "expense"]},
+            "category": "trade",
+            "label": {"$trim": {"input": {"$concat": [{"$toUpper": {"$ifNull": ["$type", ""]}}, " ", {"$ifNull": ["$symbol", ""]}]}}},
+            "username": "BOT",
+            "amount": {"$multiply": [{"$ifNull": ["$quantity", 0]}, {"$ifNull": ["$priceAfter", 0]}]},
+            "balanceAfter": None,
+            "timestamp": 1,
+        }},
+    ]
+
+    # Глобальный топ-K лежит внутри объединения пер-веточных топ-K, поэтому
+    # сортировку с лимитом проталкиваем в каждую ветку: так работают индексы
+    # по timestamp и запрос идёт ~0.2с вместо ~3с на полном union.
+    take = skip + limit + 1  # +1 — зонд следующей страницы вместо дорогого $count
+    sort_key = sort if sort in TX_SORT_FIELDS else "timestamp"
+    sort_stage = {"$sort": {sort_key: 1 if order >= 0 else -1, "_id": 1}}
+
+    match: dict = {}
+    if kind in ("income", "expense"):
+        match["direction"] = kind
+    if q:
+        rx = {"$regex": re.escape(q), "$options": "i"}
+        if field in TX_SORT_FIELDS:
+            # Через $toString, иначе точечный поиск по числам и датам
+            # («Сумма: 100», «timestamp: 2026-07») не находил бы ничего.
+            match["$expr"] = {"$regexMatch": {
+                "input": {"$toString": {"$ifNull": [f"${field}", ""]}},
+                "regex": re.escape(q), "options": "i",
+            }}
+        else:
+            match["$or"] = [{"label": rx}, {"category": rx}, {"username": rx}]
+
+    def branch(stages: list) -> list:
+        # Глобальный топ-K лежит внутри объединения пер-веточных топ-K, поэтому
+        # сортировку с лимитом можно протолкнуть в каждую ветку.
+        out = list(stages)
+        if match:
+            out.append({"$match": match})
+        out += [sort_stage, {"$limit": take}]
+        return out
+
+    def fast_branch(stages: list) -> list:
+        # Быстрый путь дефолтного вида: сортируем ДО $project, тогда сортировка
+        # видит сырое поле timestamp и опирается на индекс (~0.6с вместо ~2с).
+        head = stages[:-1]  # для ботов это {"$match": {"userId": "bot"}}
+        return head + [sort_stage, {"$limit": take}, stages[-1]]
+
+    pick = fast_branch if (not match and sort_key == "timestamp") else branch
+    # Для kind="bot" реестр не нужен — отсекаем его сразу, чтобы не гонять 77k зря.
+    pipeline: list = [{"$match": {"_id": None}}] if kind == "bot" else pick(ledger_stage)
+    pipeline.append({"$unionWith": {"coll": "stock_events", "pipeline": pick(bot_stage)}})
+    pipeline += [sort_stage, {"$skip": skip}, {"$limit": limit + 1}]
+
+    rows = await db.transactions.aggregate(pipeline, allowDiskUse=True).to_list(limit + 1)
+    has_more = len(rows) > limit
+    items = []
+    for d in rows[:limit]:
+        d["id"] = str(d.pop("_id", ""))
+        ts = d.get("timestamp")
+        d["timestamp"] = ts.isoformat() if isinstance(ts, datetime) else (ts or "")
+        items.append(d)
+    return {"items": items, "has_more": has_more}
 
 
 @app.delete("/api/admin/transactions/{tx_id}")
@@ -724,18 +992,6 @@ def _format_stock(stock: dict) -> dict:
     }
 
 
-def _format_transaction(tx: dict) -> dict:
-    return {
-        "id": tx.get("id", ""),
-        "userId": tx["userId"],
-        "type": tx["type"],
-        "symbol": tx["symbol"],
-        "amount": tx["amount"],
-        "price": tx["price"],
-        "timestamp": _serialize_datetime(tx.get("timestamp")),
-    }
-
-
 def _format_config(config: dict) -> dict:
     return {
         "key": config["key"],
@@ -764,6 +1020,26 @@ def _serialize_datetime(dt: Optional[datetime]) -> str:
 
 
 if __name__ == "__main__":
+    import sys
+
+    if "--selfcheck" in sys.argv:
+        # Профит = чистый доход (income − expense) за окно, а не «с регистрации».
+        def _period_net(rows: list[dict]) -> float:
+            net = 0.0
+            for r in rows:
+                net += r["amount"] if r["direction"] == "income" else -r["amount"]
+            return round(net, 2)
+
+        assert _period_net([
+            {"direction": "income", "amount": 500.0},
+            {"direction": "expense", "amount": 200.0},
+            {"direction": "income", "amount": 50.0},
+        ]) == 350.0
+        assert _period_net([]) == 0.0
+        assert _period_net([{"direction": "expense", "amount": 100.0}]) == -100.0
+        print("leaderboard profit self-check OK")
+        sys.exit(0)
+
     import uvicorn
 
     uvicorn.run("main:app", host="0.0.0.0", port=20301, reload=True)

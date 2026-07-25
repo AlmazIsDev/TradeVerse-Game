@@ -4,20 +4,24 @@ import {
   fetchMarketAsset, fetchMarketHistory, toggleFavorite, tradeStock, tradeCrypto,
 } from '../services/api'
 import PriceChart from './PriceChart'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
+import TradeBreakdown from './TradeBreakdown'
+import { parseQty } from '../utils/qty'
 import { computeAnalytics } from '../utils/assetAnalytics'
+import { toast } from './Toast'
 import {
   ArrowLeft, Star, TrendingUp, TrendingDown, CandlestickChart, LineChart,
-  AlertTriangle, Check, X, Activity, Gauge, Wallet, Gift, Sparkles, Flame, ShieldCheck,
+  AlertTriangle, X, Activity, Gauge, Wallet, Gift, Sparkles, Flame, ShieldCheck,
+  BarChart3, Droplet,
 } from 'lucide-react'
 
 const INTERVALS = ['1h', '24h', '7d', '1m', '3m', '6m', '1y', 'all']
 
-function fmtNum(n, digits = 2) {
+function fmtNum(n, digits = 2, t) {
   if (n == null) return '—'
-  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + ' млрд'
-  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + ' млн'
-  return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: digits })
+  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + ' ' + (t ? t('units.billion') : 'B')
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + ' ' + (t ? t('units.million') : 'M')
+  return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits })
 }
 
 function Change({ value }) {
@@ -41,9 +45,9 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   const [chartLoading, setChartLoading] = useState(false)
   const [error, setError] = useState(null)
   const [trade, setTrade] = useState(null)   // 'buy' | 'sell'
-  const [qty, setQty] = useState('1')
+  const [qty, setQty] = useState('')
   const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState(null)
+  const [quote, setQuote] = useState(null)
 
   const loadAsset = useCallback(async () => {
     try {
@@ -76,7 +80,10 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
       const data = event.detail
       const marketType = market === 'stock' ? 'stock' : 'crypto'
       if (data.type === 'price_tick' && data.market === marketType && data.symbol === symbol) {
-        setAsset(prev => prev ? { ...prev, price: data.price, changePercent: data.changePercent } : prev)
+        // Акции шлют changePercent, крипта — change24h. Берём то, что пришло,
+        // иначе бейдж изменения мигал бы «—» на каждой сделке по монете.
+        const pct = data.changePercent ?? data.change24h
+        setAsset(prev => prev ? { ...prev, price: data.price, changePercent: pct } : prev)
       }
     }
     
@@ -91,21 +98,25 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
     } catch { /* ignore */ }
   }
 
+  // Котировка сделки: реальную сумму (с price-impact и комиссией) считает
+  // бэкенд той же формулой, что и исполнение — иначе модалка обещает одну
+  // цену, а списывается другая, и покупка падает с «Недостаточно средств».
   const doTrade = async () => {
-    const q = market === 'stock' ? Math.floor(Number(qty)) : Number(qty)
-    if (!(q > 0)) { setFeedback({ type: 'error', text: t('bank.invalidAmount') }); return }
+    const q = parseQty(qty, market)
+    if (!(q > 0)) { toast(t('bank.invalidAmount'), 'error'); return }
     setBusy(true)
-    setFeedback(null)
     try {
       const fn = market === 'stock' ? tradeStock : tradeCrypto
       const res = await fn(symbol, trade, q)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('stocks.tradeSuccess') })
+      // Иначе прежнее количество переоценивается по уже уменьшенному балансу
+      // и сразу после «успешно» выскакивает «не хватает средств».
+      setQty('')
+      toast(t('stocks.tradeSuccess'))
       await Promise.all([loadAsset(), loadHistory(timeframe)])
       onTraded?.()
-      setTimeout(() => setTrade(null), 700)
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -132,14 +143,31 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
   const changes = asset.stats?.changes || {}
   const held = asset.heldQuantity || 0
-  const digits = market === 'crypto' ? 4 : 0
 
   const a = computeAnalytics(asset, history, market)
   const positionValue = held * asset.price
+  const avgPrice = asset.avgPrice || 0
+  const invested = asset.invested || 0
+  const unrealizedPnl = held > 0 && invested > 0 ? positionValue - invested : null
+  const pnlPercent = unrealizedPnl != null && invested > 0 ? (unrealizedPnl / invested) * 100 : null
   const estProfit = positionValue * (a.expectedReturn / 100)
   const estDividend = market === 'stock' ? positionValue * (a.dividendYield / 100) : 0
   const riskLabel = { low: t('asset.riskLow'), medium: t('asset.riskMedium'), high: t('asset.riskHigh') }[a.risk]
   const recLabel = { buy: t('asset.recBuy'), hold: t('asset.recHold'), sell: t('asset.recSell') }[a.recommendation]
+  const liquidityLabel = a.liquidity
+    ? { high: t('asset.liquidityHigh'), medium: t('asset.liquidityMedium'), low: t('asset.liquidityLow') }[a.liquidity]
+    : null
+
+  // Обоснование рекомендации — чтобы бейдж не выглядел гаданием. Перегрев/
+  // перепроданность идут первыми: именно они переопределяют трендовый сигнал.
+  const recReasons = [
+    ...(a.overheated ? [t('asset.whyOverheated', { value: a.rangePos })] : []),
+    ...(a.oversold ? [t('asset.whyOversold', { value: a.rangePos })] : []),
+    t('asset.whyMomentum', { value: a.momentum >= 0 ? `+${a.momentum.toFixed(1)}` : a.momentum.toFixed(1) }),
+    ...(a.rangePos != null && !a.overheated && !a.oversold ? [t('asset.whyRangePos', { value: a.rangePos })] : []),
+    t('asset.whyVolatility', { value: a.volatility }),
+    ...(a.drawdown != null && a.drawdown < -1 ? [t('asset.whyDrawdown', { value: Math.abs(a.drawdown) })] : []),
+  ]
 
   return (
     <div className="asset-detail">
@@ -161,7 +189,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <Star size={16} fill={asset.isFavorite ? '#fbbf24' : 'none'} />
             </button>
           </div>
-          <div className="ad-sector">{asset.sector}{asset.issuerName ? ` · ${asset.issuerName}` : ''}</div>
+          <div className="ad-sector">{asset.sectorKey ? t(`sectors.${asset.sectorKey}`, asset.sector) : asset.sector}{asset.issuerName ? ` · ${asset.issuerName}` : ''}</div>
         </div>
         <div className="ad-price-block">
           <span className="ad-price">${formatMoney(asset.price)}</span>
@@ -178,14 +206,14 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <div className="ad-stat"><span>{t('asset.change7d')}</span><Change value={changes['7d']} /></div>
             <div className="ad-stat"><span>{t('asset.change1m')}</span><Change value={changes['1m']} /></div>
             <div className="ad-stat"><span>{t('asset.change1y')}</span><Change value={changes['1y']} /></div>
-            <div className="ad-stat"><span>{t('asset.marketCap')}</span><b>${fmtNum(asset.marketCap)}</b></div>
-            <div className="ad-stat"><span>{t('asset.volume')}</span><b>${fmtNum(asset.volume24h)}</b></div>
-            {market === 'stock' && <div className="ad-stat"><span>{t('asset.shares')}</span><b>{fmtNum(asset.totalShares, 0)}</b></div>}
-            {market === 'stock' && <div className="ad-stat"><span>{t('common.freeShares')}</span><b>{fmtNum(asset.freeShares, 0)}</b></div>}
-            {market === 'crypto' && <div className="ad-stat"><span>{t('asset.supply')}</span><b>{fmtNum(asset.supply, 0)}</b></div>}
+            <div className="ad-stat"><span>{t('asset.marketCap')}</span><b>${fmtNum(asset.marketCap, 2, t)}</b></div>
+            <div className="ad-stat"><span>{t('asset.volume')}</span><b>${fmtNum(asset.volume24h, 2, t)}</b></div>
+            {market === 'stock' && <div className="ad-stat"><span>{t('asset.shares')}</span><b>{fmtNum(asset.totalShares, 0, t)}</b></div>}
+            {market === 'stock' && <div className="ad-stat"><span>{t('common.freeShares')}</span><b>{fmtNum(asset.freeShares, 0, t)}</b></div>}
+            {market === 'crypto' && <div className="ad-stat"><span>{t('asset.supply')}</span><b>{fmtNum(asset.supply, 0, t)}</b></div>}
             {market === 'crypto' && <div className="ad-stat"><span>{t('asset.ath')}</span><b>${formatMoney(asset.ath)}</b></div>}
             {market === 'crypto' && <div className="ad-stat"><span>{t('asset.atl')}</span><b>${formatMoney(asset.atl)}</b></div>}
-            {held > 0 && <div className="ad-stat"><span>{t('stocks.owned')}</span><b className="up">{fmtNum(held, digits)}</b></div>}
+            {held > 0 && <div className="ad-stat"><span>{t('stocks.owned')}</span><b className="up">{formatQty(held)}</b></div>}
           </div>
 
           {asset.description && <p className="ad-description">{asset.description}</p>}
@@ -210,7 +238,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
                 candles={history.candles}
                 line={history.line}
                 type={chartType}
-                color={asset.color || '#6366f1'}
+                color={asset.color || '#0071e3'}
                 height={340}
               />
             </div>
@@ -219,8 +247,8 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
           {/* Действия */}
           <div className="ad-actions">
-            <button className="ad-buy" onClick={() => { setTrade('buy'); setQty('1'); setFeedback(null) }}>{t('common.buy')}</button>
-            <button className="ad-sell" onClick={() => { setTrade('sell'); setQty('1'); setFeedback(null) }} disabled={held <= 0}>{t('common.sell')}</button>
+            <button className="ad-buy" onClick={() => { setTrade('buy'); setQty('') }}>{t('common.buy')}</button>
+            <button className="ad-sell" onClick={() => { setTrade('sell'); setQty('') }} disabled={held <= 0}>{t('common.sell')}</button>
             <button className={`ad-fav-btn ${asset.isFavorite ? 'active' : ''}`} onClick={doFavorite}>
               <Star size={16} fill={asset.isFavorite ? '#fbbf24' : 'none'} /> {t('asset.favorite')}
             </button>
@@ -239,6 +267,12 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${a.probUp}%` }} /></div>
               <span className="cf-prob-label"><b className="up">{a.probUp}%</b> {t('asset.probUp')}</span>
             </div>
+            <div className="ad-why">
+              <span className="ad-why-title">{t('asset.recWhy')}</span>
+              <ul className="ad-why-list">
+                {recReasons.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            </div>
           </div>
 
           {/* Прогноз */}
@@ -246,7 +280,9 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <span className="ad-info-title"><Activity size={15} /> {t('asset.forecast')}</span>
             <div className="ad-metric-row"><span>{t('asset.trend')}</span><b className={a.up ? 'up' : 'down'}>{a.up ? t('asset.trendUp') : t('asset.trendDown')}</b></div>
             <div className="ad-metric-row"><span>{t('asset.expectedReturn')}</span><b className={a.expectedReturn >= 0 ? 'up' : 'down'}>{a.expectedReturn >= 0 ? '+' : ''}{a.expectedReturn}%</b></div>
-            <div className="ad-metric-row"><span>{t('asset.volatility')}</span><b>{a.volatility}%</b></div>
+            <div className="ad-metric-row"><span>{t('asset.trendStrength')}</span><b>{a.trendStrength}%</b></div>
+            <div className="ad-meter"><div className={`ad-meter-fill ${a.up ? 'up' : 'down'}`} style={{ width: `${a.trendStrength}%` }} /></div>
+            <div className="ad-metric-row"><span>{t('asset.riskReward')}</span><b className={a.riskReward >= 0 ? 'up' : 'down'}>{a.riskReward >= 0 ? '+' : ''}{a.riskReward}</b></div>
           </div>
 
           {/* Изменение цены */}
@@ -258,28 +294,63 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             {a.c1y != null && <div className="ad-metric-row"><span>{t('asset.change1y')}</span><Change value={a.c1y} /></div>}
           </div>
 
-          {/* Моя позиция */}
+          {/* Диапазон цены за выбранный период — «дорого или дёшево сейчас» */}
+          {a.rangePos != null && (
+            <div className="ad-info-card">
+              <span className="ad-info-title"><BarChart3 size={15} /> {t('asset.periodRange')}</span>
+              <div className="ad-range">
+                <div className="ad-range-track">
+                  <div className="ad-range-marker" style={{ left: `${a.rangePos}%` }} />
+                </div>
+                <div className="ad-range-ends">
+                  <span>${formatMoney(a.periodLow)}</span>
+                  <span>${formatMoney(a.periodHigh)}</span>
+                </div>
+              </div>
+              <p className="ad-info-hint">{t('asset.rangeHint')}: <b>{a.rangePos}%</b></p>
+              {a.drawdown != null && (
+                <div className="ad-metric-row"><span>{t('asset.drawdown')}</span><b className={a.drawdown < 0 ? 'down' : 'up'}>{a.drawdown}%</b></div>
+              )}
+            </div>
+          )}
+
+          {/* Моя позиция — реальный P&L по средней цене входа */}
           <div className="ad-info-card">
             <span className="ad-info-title"><Wallet size={15} /> {t('asset.myPosition')}</span>
             {held > 0 ? (
               <>
-                <div className="ad-metric-row"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits)}</b></div>
+                <div className="ad-metric-row"><span>{t('stocks.owned')}</span><b>{formatQty(held)}</b></div>
                 <div className="ad-metric-row"><span>{t('asset.positionValue')}</span><b className="accent">${formatMoney(positionValue)}</b></div>
+                {avgPrice > 0 && (
+                  <div className="ad-metric-row"><span>{t('asset.avgPrice')}</span><b>${formatMoney(avgPrice)}</b></div>
+                )}
+                {invested > 0 && (
+                  <div className="ad-metric-row"><span>{t('asset.invested')}</span><b>${formatMoney(invested)}</b></div>
+                )}
+                {unrealizedPnl != null && (
+                  <div className="ad-pnl">
+                    <span>{t('asset.unrealizedPnl')}</span>
+                    <b className={unrealizedPnl >= 0 ? 'up' : 'down'}>
+                      {unrealizedPnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(unrealizedPnl))}
+                      <em>{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</em>
+                    </b>
+                  </div>
+                )}
                 <div className="ad-metric-row"><span>{t('asset.estProfit')}</span><b className={estProfit >= 0 ? 'up' : 'down'}>{estProfit >= 0 ? '+' : '−'}${formatMoney(Math.abs(estProfit))}</b></div>
               </>
-            ) : <p className="ad-info-empty">{t('crypto.noAssets')}</p>}
+            ) : <p className="ad-info-empty">{t('asset.noPositionHint')}</p>}
           </div>
 
           {/* Прогноз дивидендов — только акции */}
           {market === 'stock' && (
             <div className="ad-info-card">
               <span className="ad-info-title"><Gift size={15} /> {t('asset.dividendForecast')}</span>
-              <div className="ad-metric-row"><span>{t('stocks.perShare')}</span><b>{a.dividendYield}% / год</b></div>
+              <div className="ad-metric-row"><span>{t('stocks.perShare')}</span><b>{a.dividendYield}%{t('units.perYear')}</b></div>
               <div className="ad-metric-row"><span>{t('asset.estAnnualDividend')}</span><b className="up">${formatMoney(estDividend)}</b></div>
             </div>
           )}
 
-          {/* Риск / волатильность / популярность */}
+          {/* Риск / волатильность / ликвидность / популярность */}
           <div className="ad-info-card">
             <span className="ad-info-title"><Gauge size={15} /> {t('asset.risk')}</span>
             <div className="ad-metric-row">
@@ -287,38 +358,66 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <span className={`ad-risk-badge ${a.risk}`}>{riskLabel}</span>
             </div>
             <div className="ad-metric-row"><span><Flame size={13} /> {t('asset.volatility')}</span><b>{a.volatility}%</b></div>
+            {liquidityLabel && (
+              <>
+                <div className="ad-metric-row">
+                  <span><Droplet size={13} /> {t('asset.liquidity')}</span>
+                  <span className={`ad-risk-badge ${a.liquidity === 'high' ? 'low' : a.liquidity === 'medium' ? 'medium' : 'high'}`}>{liquidityLabel}</span>
+                </div>
+                <p className="ad-info-hint">{t('asset.liquidityHint', { value: a.turnover })}</p>
+              </>
+            )}
             <div className="ad-metric-row"><span>{t('asset.popularity')}</span><b>{a.popularity}%</b></div>
             <div className="ad-pop-bar"><div className="ad-pop-fill" style={{ width: `${a.popularity}%` }} /></div>
           </div>
-
-          {/* История сделок */}
-          <div className="ad-info-card">
-            <span className="ad-info-title">{t('asset.history')}</span>
-            <TransactionsPanel category={market === 'crypto' ? 'crypto' : 'trade'} />
-          </div>
         </div>
+      </div>
+
+      {/* История сделок — на всю ширину под графиком, иначе не помещается в колонке */}
+      <div className="ad-info-card ad-history-card">
+        <span className="ad-info-title"><Activity size={15} /> {t('asset.history')}</span>
+        <TransactionsPanel category={market === 'crypto' ? 'crypto' : 'trade'} />
       </div>
 
       {/* Модалка сделки */}
       {trade && (
         <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content trade-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
-            <h3>{trade === 'buy' ? t('common.buy') : t('common.sell')} {asset.symbol}</h3>
-            <p className="modal-price">{t('stocks.pricePerShare')}: ${formatMoney(asset.price)}</p>
-            <div className="modal-quantity">
-              <label>{t('common.quantity')}:</label>
-              <input type="number" min={market === 'crypto' ? '0' : '1'} step={market === 'crypto' ? 'any' : '1'} value={qty} autoFocus
-                onChange={e => setQty(e.target.value)} />
-            </div>
-            <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Number(qty) || 0) * asset.price)}</strong></p>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
+
+            <div className="tm-head">
+              <div className={`tm-side ${trade}`}>{trade === 'buy' ? t('common.buy') : t('common.sell')}</div>
+              <div className="tm-asset">
+                <b>{asset.symbol}</b>
+                <span>{asset.name}</span>
               </div>
-            )}
+              <div className="tm-price">
+                <b>${formatMoney(asset.price)}</b>
+                <span className={(asset.changePercent || 0) >= 0 ? 'up' : 'down'}>
+                  {(asset.changePercent || 0) >= 0 ? '+' : ''}{(asset.changePercent || 0).toFixed(2)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Поле количества и разбивка сделки: цена исполнения ≠ котировке,
+                потому что крупный ордер сам двигает цену, а максимум для кнопок
+                долей считает бэкенд — на клиенте impact не воспроизвести. */}
+            <TradeBreakdown
+              market={market} symbol={symbol} action={trade}
+              quantity={qty} onQuantityChange={setQty}
+              balance={balance} held={held} onQuote={setQuote}
+            />
+
+            <div className="modal-account-row">
+              <div className="modal-account-item"><span>{t('crypto.cashBalance')}</span><b>${formatMoney(balance)}</b></div>
+              <div className="modal-account-item"><span>{t('stocks.owned')}</span><b>{formatQty(held)}</b></div>
+            </div>
             <div className="modal-buttons">
-              <button className={`stock-btn ${trade === 'buy' ? 'buy-btn' : 'sell-btn'}`} onClick={doTrade} disabled={busy}>
+              <button
+                className={`stock-btn ${trade === 'buy' ? 'buy-btn' : 'sell-btn'}`}
+                onClick={doTrade}
+                disabled={busy || (trade === 'buy' && !!quote && quote.total > balance)}
+              >
                 {busy ? t('bank.processing') : t('common.confirm')}
               </button>
               <button className="stock-btn cancel-btn" onClick={() => setTrade(null)} disabled={busy}>{t('common.cancel')}</button>

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Самодостаточный canvas-график (без внешних зависимостей).
@@ -8,12 +9,16 @@ import { useRef, useEffect, useCallback } from 'react'
  * props: candles [{t,o,h,l,c}], line [{t,p}], type 'line'|'candle',
  *        color, height, up, down
  */
-function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1', height = 340, up = '#22c55e', down = '#ef4444' }) {
+function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3', height = 340, up = '#34c759', down = '#ff3b30' }) {
+  const { t: translate } = useTranslation()
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
   const view = useRef({ start: 0, count: 0 })
   const hover = useRef(-1)
   const drag = useRef(null)
+  // Подпись «нет данных» читаем из ref внутри canvas-draw, чтобы не тянуть t в его зависимости.
+  const noDataLabel = useRef('')
+  noDataLabel.current = translate('chart.noData')
 
   const data = type === 'candle' ? candles : line
   const len = data.length
@@ -45,15 +50,26 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, W, H)
 
+    // Хром графика (сетка, оси, кроссхэйр, подсказка) зависит от темы —
+    // canvas не видит CSS-переменные, поэтому подбираем палитру по data-theme.
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+    const C = dark ? {
+      grid: 'rgba(255,255,255,0.08)', axis: '#8e8e93', crosshair: 'rgba(255,255,255,0.28)',
+      tipBg: 'rgba(28,28,30,0.94)', tipBorder: 'rgba(255,255,255,0.14)', tipText: '#f5f5f7', tipSub: '#8e8e93',
+    } : {
+      grid: 'rgba(0,0,0,0.07)', axis: '#86868b', crosshair: 'rgba(0,0,0,0.22)',
+      tipBg: 'rgba(255,255,255,0.94)', tipBorder: 'rgba(0,0,0,0.10)', tipText: '#1d1d1f', tipSub: '#86868b',
+    }
+
     const padL = 10, padR = 62, padT = 14, padB = 24
     const plotW = W - padL - padR
     const plotH = H - padT - padB
 
     if (len < 2) {
-      ctx.fillStyle = '#64748b'
-      ctx.font = '13px Inter, sans-serif'
+      ctx.fillStyle = C.axis
+      ctx.font = '13px -apple-system, Inter, sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText('Недостаточно данных', W / 2, H / 2)
+      ctx.fillText(noDataLabel.current, W / 2, H / 2)
       return
     }
 
@@ -75,12 +91,15 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     const range = max - min || 1
 
     const xAt = (i) => padL + (count === 1 ? plotW / 2 : (i / (count - 1)) * plotW)
+    // Свечи центрируем в равных слотах, иначе крайние свечи наполовину срезаются
+    // паддингом (правая уходит под подписи оси цены).
+    const xCandle = (i) => padL + (i + 0.5) * (plotW / count)
     const yAt = (p) => padT + (1 - (p - min) / range) * plotH
 
     // Сетка + ось цены
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-    ctx.fillStyle = '#64748b'
-    ctx.font = '11px Inter, sans-serif'
+    ctx.strokeStyle = C.grid
+    ctx.fillStyle = C.axis
+    ctx.font = '11px -apple-system, Inter, sans-serif'
     ctx.lineWidth = 1
     ctx.textAlign = 'left'
     const gridN = 5
@@ -92,25 +111,29 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     }
     // Ось времени
     ctx.textAlign = 'center'
+    const xTick = type === 'candle' ? xCandle : xAt
     const ticks = Math.min(5, count)
     for (let g = 0; g < ticks; g++) {
       const i = Math.round((g / Math.max(1, ticks - 1)) * (count - 1))
-      const x = xAt(i)
+      const x = xTick(i)
       ctx.fillText(fmtTime(vis[i].t), Math.min(Math.max(x, 28), padL + plotW - 28), H - 7)
     }
 
     if (type === 'candle') {
-      const cw = Math.max(1, (plotW / count) * 0.6)
+      const cw = Math.max(1, Math.round((plotW / count) * 0.7))
       for (let i = 0; i < count; i++) {
         const d = vis[i]
-        const x = xAt(i)
+        // Пиксельное выравнивание: дробные координаты на canvas дают размытый
+        // фитиль и «исчезающее» тело у доджи (o==c). Округляем к device-px.
+        const x = Math.round(xCandle(i)) + 0.5
         const bull = d.c >= d.o
         ctx.strokeStyle = bull ? up : down
         ctx.fillStyle = bull ? up : down
-        ctx.beginPath(); ctx.moveTo(x, yAt(d.h)); ctx.lineTo(x, yAt(d.l)); ctx.stroke()
-        const yo = yAt(d.o), yc = yAt(d.c)
+        ctx.beginPath(); ctx.moveTo(x, Math.round(yAt(d.h))); ctx.lineTo(x, Math.round(yAt(d.l))); ctx.stroke()
+        const yo = Math.round(yAt(d.o)), yc = Math.round(yAt(d.c))
         const top = Math.min(yo, yc)
-        ctx.fillRect(x - cw / 2, top, cw, Math.max(1, Math.abs(yc - yo)))
+        const bx = Math.round(x - cw / 2)
+        ctx.fillRect(bx, top, cw, Math.max(1, Math.abs(yc - yo)))
       }
     } else {
       // Заливка-градиент под линией
@@ -139,9 +162,9 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     const h = hover.current
     if (h >= 0 && h < count) {
       const d = vis[h]
-      const x = xAt(h)
+      const x = type === 'candle' ? xCandle(h) : xAt(h)
       const py = type === 'candle' ? yAt(d.c) : yAt(d.p)
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+      ctx.strokeStyle = C.crosshair
       ctx.setLineDash([4, 4])
       ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(padL + plotW, py); ctx.stroke()
@@ -153,19 +176,19 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
         ? `O ${fmtPrice(d.o)} H ${fmtPrice(d.h)} L ${fmtPrice(d.l)} C ${fmtPrice(d.c)}`
         : `$${fmtPrice(d.p)}`
       const timeLabel = fmtTime(d.t)
-      ctx.font = '11px Inter, sans-serif'
+      ctx.font = '11px -apple-system, Inter, sans-serif'
       const tw = Math.max(ctx.measureText(label).width, ctx.measureText(timeLabel).width) + 16
       let bx = x + 10
       if (bx + tw > padL + plotW) bx = x - tw - 10
-      ctx.fillStyle = 'rgba(15,17,23,0.92)'
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.fillStyle = C.tipBg
+      ctx.strokeStyle = C.tipBorder
       ctx.beginPath()
-      ctx.roundRect(bx, padT + 6, tw, 38, 6)
+      ctx.roundRect(bx, padT + 6, tw, 38, 8)
       ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#f1f5f9'
+      ctx.fillStyle = C.tipText
       ctx.textAlign = 'left'
       ctx.fillText(label, bx + 8, padT + 22)
-      ctx.fillStyle = '#94a3b8'
+      ctx.fillStyle = C.tipSub
       ctx.fillText(timeLabel, bx + 8, padT + 37)
     }
   }, [data, len, type, color, height, up, down])
@@ -184,6 +207,13 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     return () => ro.disconnect()
   }, [draw])
 
+  // Перерисовка при смене темы — хром графика зависит от data-theme.
+  useEffect(() => {
+    const onTheme = () => draw()
+    window.addEventListener('tv:theme', onTheme)
+    return () => window.removeEventListener('tv:theme', onTheme)
+  }, [draw])
+
   const idxFromEvent = (e) => {
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
@@ -192,7 +222,8 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     const plotW = W - padL - padR
     const { count } = view.current
     const rel = (e.clientX - rect.left - padL) / plotW
-    return Math.max(0, Math.min(count - 1, Math.round(rel * (count - 1))))
+    const raw = type === 'candle' ? rel * count - 0.5 : rel * (count - 1)
+    return Math.max(0, Math.min(count - 1, Math.round(raw)))
   }
 
   const onMove = (e) => {
@@ -212,7 +243,7 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
   const onLeave = () => { hover.current = -1; drag.current = null; draw() }
   const onDown = (e) => { drag.current = { x: e.clientX, start: view.current.start } }
   const onUp = () => { drag.current = null }
-  const onWheel = (e) => {
+  const onWheel = useCallback((e) => {
     e.preventDefault()
     const { start, count } = view.current
     const center = hover.current >= 0 ? start + hover.current : start + count / 2
@@ -223,7 +254,16 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
     newStart = Math.max(0, Math.min(len - newCount, newStart))
     view.current = { start: newStart, count: newCount }
     draw()
-  }
+  }, [len, draw])
+
+  // React onWheel — пассивный слушатель, поэтому preventDefault() не работает и
+  // страница прокручивается при зуме. Вешаем вручную с { passive: false }.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', onWheel)
+  }, [onWheel])
 
   return (
     <div className="price-chart-wrap" ref={wrapRef}>
@@ -234,7 +274,6 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#6366f1',
         onMouseLeave={onLeave}
         onMouseDown={onDown}
         onMouseUp={onUp}
-        onWheel={onWheel}
       />
     </div>
   )

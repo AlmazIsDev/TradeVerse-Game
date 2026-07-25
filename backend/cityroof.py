@@ -189,6 +189,24 @@ class ItStudioMaterialsBuy(BaseModel):
         return int(v)
 
 
+class AdminBusinessUpdate(BaseModel):
+    """Правки бизнеса администратором — без ограничений, действующих на игрока."""
+    name: Optional[str] = None
+    reward: Optional[int] = None
+    protection_level: Optional[int] = None
+
+    @field_validator("protection_level")
+    @classmethod
+    def protection_level_ok(cls, v):
+        if v is not None and (v < 0 or v > PROTECTION_MAX):
+            raise ValueError(f"Уровень защиты 0..{PROTECTION_MAX}")
+        return v
+
+
+class AdminTransferBody(BaseModel):
+    toUsername: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -285,6 +303,19 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
     if state.get("week") == current:
         return
 
+    season_no = state.get("season", 1)
+    # Атомарно «захватываем» переход недели: продвигаем week/season условным
+    # апдейтом по прочитанному week. Параллельные вызовы /map при смене недели
+    # прочитают один week, но апдейт сработает лишь у одного — остальные выйдут.
+    # Иначе победитель получал бы награду (WINNER_REWARD_WC) несколько раз, а
+    # карта сбрасывалась бы дублями (гонка).
+    claim = await db.cityroof_state.update_one(
+        {"key": "current", "week": state.get("week")},
+        {"$set": {"week": current, "season": season_no + 1}},
+    )
+    if claim.modified_count == 0:
+        return  # переход уже выполнен параллельным запросом
+
     # Определяем победителя прошлого сезона — у кого больше всего бизнесов.
     counts: dict[str, dict] = {}
     async for b in db.cityroof_businesses.find({"ownerId": {"$ne": None}}):
@@ -294,7 +325,6 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
     standings = sorted(counts.values(), key=lambda x: x["count"], reverse=True)
     winner = standings[0] if standings else None
 
-    season_no = state.get("season", 1)
     await db.cityroof_seasons.insert_one({
         "season": season_no,
         "week": state.get("week"),
@@ -322,10 +352,6 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
             }},
         )
     await db.cityroof_sessions.delete_many({})
-    await db.cityroof_state.update_one(
-        {"key": "current"},
-        {"$set": {"week": current, "season": season_no + 1}},
-    )
 
 
 def _event_active() -> bool:
@@ -413,7 +439,9 @@ def _success_chance(tier: str, level: int, op_type: str, shield_active: bool) ->
     chance = base + _level_bonus(level)
     if op_type == "attack" and shield_active:
         chance -= ITSTUDIO_CONFIG["shield_penalty"]
-    return round(max(0.05, min(0.95, chance)), 4)
+    # Премиум-студия («имба») может пробивать даже щит — потолок шанса выше.
+    cap = cfg.get("success_cap", 0.95)
+    return round(max(0.05, min(cap, chance)), 4)
 
 
 def studio_progress(tier: Optional[str], xp: int, materials: dict) -> Optional[dict]:
@@ -675,6 +703,9 @@ async def order_itstudio(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "У бизнеса нет владельца")
         if business.get("ownerId") == user_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя заказать атаку на свой бизнес")
+        # Атака снижает уровень защиты — если защиты уже нет, снижать нечего.
+        if business.get("protection_level", 0) <= 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "У бизнеса нет защиты — снижать нечего")
     else:
         if business.get("ownerId") != user_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Можно защищать только свой бизнес")
@@ -711,14 +742,34 @@ async def order_itstudio(
     shield_active = op_type == "attack" and _shield_view(business) is not None
     chance = _success_chance(tier, level, op_type, shield_active)
     success = random.random() < chance
-    reduction = _roll_itstudio_reduction() if (op_type == "attack" and success) else None
-    hours = round(random.uniform(ITSTUDIO_CONFIG["min_hours"], ITSTUDIO_CONFIG["max_hours"]), 2)
+
+    # Премиум-студия («имба»): операция за 5–45 минут вместо часов; успешная
+    # атака сносит ВСЮ защиту цели за раз (full_break), а не 1–5 уровней.
+    min_min = cfg.get("min_minutes")
+    max_min = cfg.get("max_minutes")
+    if min_min is not None and max_min is not None:
+        minutes = round(random.uniform(min_min, max_min), 1)
+        ready_at = _now() + timedelta(minutes=minutes)
+        ready_in_hours = round(minutes / 60.0, 3)
+    else:
+        minutes = None
+        hours = round(random.uniform(ITSTUDIO_CONFIG["min_hours"], ITSTUDIO_CONFIG["max_hours"]), 2)
+        ready_at = _now() + timedelta(hours=hours)
+        ready_in_hours = hours
+
+    if op_type == "attack" and success:
+        if cfg.get("full_break"):
+            reduction = int(business.get("protection_level", 0))   # снос всей защиты
+        else:
+            reduction = _roll_itstudio_reduction()
+    else:
+        reduction = None
 
     job = {
-        "orderedBy": user_id, "studioAssetId": asset_id, "type": op_type,
+        "orderedBy": user_id, "studioAssetId": asset_id, "type": op_type, "tier": tier,
         "businessId": payload.businessId, "businessName": business.get("name"),
         "success": success, "reduction": reduction, "cost": cost,
-        "status": "pending", "created_at": _now(), "ready_at": _now() + timedelta(hours=hours),
+        "status": "pending", "created_at": _now(), "ready_at": ready_at,
     }
     result = await db.cityroof_itstudio_jobs.insert_one(job)
     label = "атаку" if op_type == "attack" else "защиту"
@@ -727,7 +778,8 @@ async def order_itstudio(
         f"Заказ IT-студии ({label}): {business.get('name')}", balance_after=new_balance,
         meta={"businessId": payload.businessId, "assetId": asset_id, "type": op_type},
     )
-    return {"ok": True, "jobId": str(result.inserted_id), "cost": cost, "readyInHours": hours, "balance": new_balance}
+    return {"ok": True, "jobId": str(result.inserted_id), "cost": cost,
+            "readyInHours": ready_in_hours, "readyInMinutes": minutes, "balance": new_balance}
 
 
 @router.get("/itstudio/jobs")
@@ -771,9 +823,13 @@ async def sweep_itstudio_jobs(db: AsyncIOMotorDatabase):
                 elif business.get("ownerId") == j.get("orderedBy"):
                     # Цель могла сменить владельца (захват) с момента заказа —
                     # щит ставим, только если бизнес всё ещё принадлежит заказчику.
+                    # Премиум-студия ставит усиленный и более длительный щит.
+                    tier_cfg = ITSTUDIO_CONFIG["tiers"].get(j.get("tier"), {})
+                    shield_value = tier_cfg.get("shield_bonus_on_success", ITSTUDIO_CONFIG["shield_bonus_on_success"])
+                    shield_hours = tier_cfg.get("shield_duration_hours", ITSTUDIO_CONFIG["shield_duration_hours"])
                     shield = {
-                        "value": ITSTUDIO_CONFIG["shield_bonus_on_success"],
-                        "expires_at": now + timedelta(hours=ITSTUDIO_CONFIG["shield_duration_hours"]),
+                        "value": shield_value,
+                        "expires_at": now + timedelta(hours=shield_hours),
                     }
                     await db.cityroof_businesses.update_one(
                         {"_id": business["_id"]}, {"$set": {"shield": shield}},
@@ -827,10 +883,12 @@ async def sweep_itstudio_jobs(db: AsyncIOMotorDatabase):
                     )
             else:
                 if applied:
+                    tier_cfg = ITSTUDIO_CONFIG["tiers"].get(j.get("tier"), {})
+                    shield_hours = tier_cfg.get("shield_duration_hours", ITSTUDIO_CONFIG["shield_duration_hours"])
                     await push_notification(
                         db, j["orderedBy"], "itstudio",
                         "Защита установлена",
-                        f"IT-студия усилила защиту «{business.get('name')}» на {ITSTUDIO_CONFIG['shield_duration_hours']:.0f}ч.",
+                        f"IT-студия усилила защиту «{business.get('name')}» на {shield_hours:.0f}ч.",
                         data={"businessId": j["businessId"], "success": True},
                     )
                 elif success:
@@ -1120,3 +1178,108 @@ async def admin_close_season(
         from ws import broadcast
         await broadcast({"type": "cityroof_season_closed"})
     return {"message": "Сезон закрыт"}
+
+
+# ── Admin: управление бизнесами ───────────────────────────────────────────────
+
+
+async def _load_any_business(db: AsyncIOMotorDatabase, business_id: str) -> dict:
+    if not ObjectId.is_valid(business_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID бизнеса")
+    business = await db.cityroof_businesses.find_one({"_id": ObjectId(business_id)})
+    if not business:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Бизнес не найден")
+    return business
+
+
+@router.patch("/admin/businesses/{business_id}")
+async def admin_update_business(
+    business_id: str,
+    payload: AdminBusinessUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    business = await _load_any_business(db, business_id)
+    update_fields = payload.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+    if "protection_level" in update_fields:
+        update_fields.update(_make_secret(update_fields["protection_level"]))
+        await db.cityroof_sessions.delete_many({"businessId": business_id})
+    await db.cityroof_businesses.update_one({"_id": business["_id"]}, {"$set": update_fields})
+    updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated, "")})
+    return {"business": _serialize_business(updated, business.get("ownerId") or "")}
+
+
+@router.post("/admin/businesses/{business_id}/vacate")
+async def admin_vacate_business(
+    business_id: str,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Освободить бизнес: снять владельца и защиту (слот на карте не удаляется)."""
+    business = await _load_any_business(db, business_id)
+    old_owner_id = business.get("ownerId")
+    new_secret = _make_secret(0)
+    await db.cityroof_businesses.update_one(
+        {"_id": business["_id"]},
+        {"$set": {
+            "ownerId": None, "ownerName": None, "ownerColor": None,
+            "protection_level": 0, "last_captured": None, "last_collected": None,
+            **new_secret,
+        }},
+    )
+    await db.cityroof_sessions.delete_many({"businessId": business_id})
+    updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated, "")})
+    if old_owner_id:
+        await push_notification(
+            db, old_owner_id, "cityroof", "Бизнес изъят администратором",
+            f"Бизнес «{business.get('name')}» изъят администратором.",
+            data={"businessId": business_id},
+        )
+    return {"message": f"Бизнес «{business.get('name')}» освобождён"}
+
+
+@router.post("/admin/businesses/{business_id}/transfer")
+async def admin_transfer_business(
+    business_id: str,
+    payload: AdminTransferBody,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Передать бизнес другому игроку (защита и КД дохода сохраняются)."""
+    business = await _load_any_business(db, business_id)
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    old_owner_id = business.get("ownerId")
+    await db.cityroof_businesses.update_one(
+        {"_id": business["_id"]},
+        {"$set": {
+            "ownerId": new_owner_id,
+            "ownerName": target.get("username"),
+            "ownerColor": _color_for(new_owner_id),
+            "last_captured": _now(),
+        }},
+    )
+    await db.cityroof_sessions.delete_many({"businessId": business_id})
+    updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated, "")})
+    if old_owner_id:
+        await push_notification(
+            db, old_owner_id, "cityroof", "Бизнес передан",
+            f"Бизнес «{business.get('name')}» передан другому игроку администратором.",
+            data={"businessId": business_id},
+        )
+    await push_notification(
+        db, new_owner_id, "cityroof", "Вы получили бизнес",
+        f"Администратор передал вам бизнес «{business.get('name')}».",
+        data={"businessId": business_id},
+    )
+    return {"business": _serialize_business(updated, new_owner_id)}

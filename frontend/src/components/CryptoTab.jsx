@@ -4,45 +4,16 @@ import {
   fetchCryptoAccount, fetchCryptoMarket, openCryptoAccount, tradeCrypto,
   transferCrypto, fetchCryptoTransfers,
 } from '../services/api'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
+import TradeBreakdown from './TradeBreakdown'
+import { parseQty } from '../utils/qty'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
-  ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X, Send, Search, Activity,
+  ArrowUpRight, ArrowDownLeft, PlusCircle, X, Send, Search, Activity,
 } from 'lucide-react'
 import AssetDetail from './AssetDetail'
+import { toast } from './Toast'
 import ConfirmDialog from './ConfirmDialog'
-
-// Состояния для анимации обновления цен
-const priceAnimationTimers = new Map()
-function usePriceAnimation() {
-  const [animatingSymbols, setAnimatingSymbols] = useState(new Set())
-  
-  const triggerAnimation = useCallback((symbol, up) => {
-    // Очищаем предыдущий таймер для этого символа
-    if (priceAnimationTimers.has(symbol)) {
-      clearTimeout(priceAnimationTimers.get(symbol))
-    }
-    
-    setAnimatingSymbols(prev => new Set(prev).add(symbol))
-    
-    const timer = setTimeout(() => {
-      setAnimatingSymbols(prev => {
-        const next = new Set(prev)
-        next.delete(symbol)
-        return next
-      })
-      priceAnimationTimers.delete(symbol)
-    }, 500)
-    
-    priceAnimationTimers.set(symbol, timer)
-  }, [])
-  
-  return { animatingSymbols, triggerAnimation }
-}
-
-function formatCoin(n) {
-  return Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 6 })
-}
 
 // Простой прогноз по существующим рыночным данным.
 function forecast(coin) {
@@ -55,7 +26,7 @@ function forecast(coin) {
   return { change, vol: Math.round(vol * 10) / 10, probUp, up: change >= 0 }
 }
 
-function CryptoTab({ balance = 0, onBalanceChange }) {
+function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
   const [account, setAccount] = useState(null)
   const [market, setMarket] = useState([])
@@ -64,20 +35,19 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
   const [copied, setCopied] = useState(false)
   const [trade, setTrade] = useState(null)
   const [qty, setQty] = useState('')
-  const [feedback, setFeedback] = useState(null)
+  const [quote, setQuote] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [detailSymbol, setDetailSymbol] = useState(null)
   const [transfer, setTransfer] = useState({ recipient: '', symbol: '', amount: '' })
-  const [transferMsg, setTransferMsg] = useState(null)
   const [transferBusy, setTransferBusy] = useState(false)
   const [confirmTransfer, setConfirmTransfer] = useState(null)   // { recipient, symbol, amount }
   const [transfers, setTransfers] = useState([])
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('cap')   // cap | gainers | losers
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const acc = await fetchCryptoAccount()
       setAccount(acc)
@@ -87,9 +57,11 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
         setTransfers(trs)
       }
     } catch {
-      setAccount({ opened: false, holdings: [] })
+      // Не сбрасываем в онбординг при фоновом обновлении: сетевой сбой не должен
+      // выглядеть как «счёт исчез». Показываем create-экран только на первой загрузке.
+      setAccount(prev => prev ?? { opened: false, holdings: [] })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
@@ -138,53 +110,55 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
     } catch { /* ignore */ }
   }
 
-  const openTrade = (coin, action) => { setTrade({ ...coin, action }); setQty(''); setFeedback(null) }
+  const openTrade = (coin, action) => { setTrade({ ...coin, action }); setQty('') }
   const holdingFor = (symbol) => account?.holdings?.find(h => h.symbol === symbol)
 
   const confirmTrade = async () => {
     if (!trade) return
-    const q = parseFloat(qty)
-    if (!Number.isFinite(q) || q <= 0) { setFeedback({ type: 'error', text: t('bank.invalidAmount') }); return }
-    const cost = q * trade.price
-    if (trade.action === 'buy' && cost > balance) { setFeedback({ type: 'error', text: t('crypto.insufficientFunds') }); return }
+    const q = parseQty(qty, 'crypto')
+    if (!(q > 0)) { toast(t('bank.invalidAmount'), 'error'); return }
+    const cost = quote ? quote.total : q * trade.price
+    if (trade.action === 'buy' && cost > balance) { toast(t('crypto.insufficientFunds'), 'error'); return }
     const held = holdingFor(trade.symbol)
-    if (trade.action === 'sell' && (!held || held.quantity < q)) { setFeedback({ type: 'error', text: t('crypto.insufficientCoins') }); return }
+    if (trade.action === 'sell' && (!held || held.quantity < q)) { toast(t('crypto.insufficientCoins'), 'error'); return }
     setBusy(true)
     try {
       const res = await tradeCrypto(trade.symbol, trade.action, q)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('crypto.tradeSuccess') })
+      // Иначе прежнее количество переоценивается по уже уменьшенному балансу
+      // и сразу после «успешно» выскакивает «не хватает средств».
+      setQty('')
+      toast(t('crypto.tradeSuccess'))
       setRefreshKey(k => k + 1)
-      await load()
+      await load(true)
       setTimeout(() => setTrade(null), 700)
     } catch (err) {
       const msg = err.message || ''
       let text = msg
       if (msg.includes('Недостаточно средств')) text = t('crypto.insufficientFunds')
       else if (msg.includes('Недостаточно монет')) text = t('crypto.insufficientCoins')
-      setFeedback({ type: 'error', text })
+      toast(text, 'error')
     } finally { setBusy(false) }
   }
 
   const handleTransfer = (e) => {
     e?.preventDefault?.()
     const amt = parseFloat(transfer.amount)
-    if (!transfer.recipient.trim() || !transfer.symbol || !(amt > 0)) { setTransferMsg({ type: 'error', text: t('cryptoTransfer.invalid') }); return }
+    if (!transfer.recipient.trim() || !transfer.symbol || !(amt > 0)) { toast(t('cryptoTransfer.invalid'), 'error'); return }
     const held = account?.holdings?.find(h => h.symbol === transfer.symbol)
-    if (!held || held.quantity < amt * 1.01) { setTransferMsg({ type: 'error', text: t('crypto.insufficientCoins') }); return }
-    setTransferMsg(null)
+    if (!held || held.quantity < amt * 1.01) { toast(t('crypto.insufficientCoins'), 'error'); return }
     setConfirmTransfer({ recipient: transfer.recipient.trim(), symbol: transfer.symbol, amount: amt })
   }
 
   const doTransfer = async () => {
     if (!confirmTransfer) return
-    setTransferBusy(true); setTransferMsg(null)
+    setTransferBusy(true)
     try {
       const res = await transferCrypto(confirmTransfer.recipient, confirmTransfer.symbol, confirmTransfer.amount)
-      setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: confirmTransfer.amount, symbol: res.symbol, recipient: res.recipient }) })
+      toast(t('cryptoTransfer.sent', { amount: confirmTransfer.amount, symbol: res.symbol, recipient: res.recipient }))
       setTransfer({ recipient: '', symbol: '', amount: '' })
-      setRefreshKey(k => k + 1); await load()
-    } catch (err) { setTransferMsg({ type: 'error', text: err.message }) }
+      setRefreshKey(k => k + 1); await load(true)
+    } catch (err) { toast(err.message, 'error') }
     finally { setTransferBusy(false); setConfirmTransfer(null) }
   }
 
@@ -209,8 +183,8 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
   if (detailSymbol) {
     return (
       <AssetDetail market="crypto" symbol={detailSymbol}
-        onBack={() => { setDetailSymbol(null); load() }}
-        balance={balance} onBalanceChange={onBalanceChange} onTraded={load} />
+        onBack={() => { setDetailSymbol(null); load(true) }}
+        balance={balance} onBalanceChange={onBalanceChange} onTraded={() => load(true)} />
     )
   }
 
@@ -232,7 +206,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
 
   const coinLogo = (c) => c?.image
     ? <img className="crypto-coin-img" src={c.image} alt={c.symbol} />
-    : <span className="crypto-coin-badge" style={{ background: c?.color || '#6366f1' }}>{(c?.symbol || '?').slice(0, 2)}</span>
+    : <span className="crypto-coin-badge" style={{ background: c?.color || '#0071e3' }}>{(c?.symbol || '?').slice(0, 2)}</span>
 
   const forecastCoins = (account.holdings?.length ? account.holdings.map(h => marketMap[h.symbol]).filter(Boolean) : marketView).slice(0, 4)
 
@@ -263,7 +237,10 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
                   <div key={coin.symbol} className="crypto-coin clickable" onClick={() => setDetailSymbol(coin.symbol)}>
                     {coinLogo(coin)}
                     <div className="crypto-coin-info">
-                      <span className="crypto-coin-symbol">{coin.symbol}</span>
+                      <span className="crypto-coin-symbol">
+                        {coin.symbol}
+                        {coin.issuer && coin.issuer === currentUserId && <span className="stock-issued-badge">{t('crypto.ownCoin')}</span>}
+                      </span>
                       <span className="crypto-coin-name">{coin.name}</span>
                     </div>
                     <div className="crypto-coin-price">
@@ -312,7 +289,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
                       {coinLogo({ ...mk, symbol: h.symbol, color: h.color })}
                       <div className="crypto-holding-info">
                         <span className="crypto-holding-symbol">{h.symbol}</span>
-                        <span className="crypto-holding-qty">{formatCoin(h.quantity)}</span>
+                        <span className="crypto-holding-qty">{formatQty(h.quantity)}</span>
                       </div>
                       <div className="crypto-holding-values">
                         <span className="crypto-holding-value">{formatMoney(h.value)} $</span>
@@ -333,24 +310,19 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
               <input placeholder={t('cryptoTransfer.recipient')} value={transfer.recipient} onChange={e => setTransfer({ ...transfer, recipient: e.target.value })} />
               <select value={transfer.symbol} onChange={e => setTransfer({ ...transfer, symbol: e.target.value })}>
                 <option value="">{t('cryptoTransfer.selectCoin')}</option>
-                {(account?.holdings || []).map(h => <option key={h.symbol} value={h.symbol}>{h.symbol} · {formatCoin(h.quantity)}</option>)}
+                {(account?.holdings || []).map(h => <option key={h.symbol} value={h.symbol}>{h.symbol} · {formatQty(h.quantity)}</option>)}
               </select>
               <input type="number" min="0" step="any" placeholder={t('cryptoTransfer.amount')} value={transfer.amount} onChange={e => setTransfer({ ...transfer, amount: e.target.value })} />
               <button className="crypto-open-btn" type="submit" disabled={transferBusy}><Send size={15} /> {transferBusy ? t('bank.processing') : t('cryptoTransfer.send')}</button>
             </form>
             <p className="crypto-transfer-fee">{t('cryptoTransfer.fee')}</p>
-            {transferMsg && (
-              <div className={`transfer-feedback ${transferMsg.type}`}>
-                {transferMsg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{transferMsg.text}</span>
-              </div>
-            )}
             {transfers.length > 0 && (
               <div className="crypto-transfer-history">
                 {transfers.map(tr => (
                   <div key={tr.id} className={`crypto-transfer-row ${tr.direction}`}>
                     <span className="ctr-dir">{tr.direction === 'out' ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}</span>
                     <span className="ctr-main">{tr.direction === 'out' ? t('cryptoTransfer.to') : t('cryptoTransfer.from')} <b>{tr.counterparty}</b></span>
-                    <span className={`ctr-amount ${tr.direction}`}>{tr.direction === 'out' ? '−' : '+'}{formatCoin(tr.amount)} {tr.symbol}</span>
+                    <span className={`ctr-amount ${tr.direction}`}>{tr.direction === 'out' ? '−' : '+'}{formatQty(tr.amount)} {tr.symbol}</span>
                   </div>
                 ))}
               </div>
@@ -388,21 +360,36 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
 
       {trade && (
         <div className="crypto-modal-overlay" onClick={() => !busy && setTrade(null)}>
-          <div className="crypto-modal" onClick={e => e.stopPropagation()}>
+          <div className="crypto-modal trade-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
-            <h3>{trade.action === 'buy' ? t('common.buy') : t('common.sell')} {trade.symbol}</h3>
-            <p className="crypto-modal-price">{formatMoney(trade.price)} $ / {trade.symbol}</p>
-            <label className="transfer-field">
-              <span>{t('common.quantity')}</span>
-              <input type="number" min="0" step="any" value={qty} autoFocus onChange={e => setQty(e.target.value)} placeholder="0.00" />
-            </label>
-            <div className="crypto-modal-total">{t('common.total')}: <strong>{formatMoney((parseFloat(qty) || 0) * trade.price)} $</strong></div>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
+            <div className="tm-head">
+              <div className={`tm-side ${trade.action}`}>{trade.action === 'buy' ? t('common.buy') : t('common.sell')}</div>
+              <div className="tm-asset">
+                <b>{trade.symbol}</b>
+                <span>{trade.name}</span>
               </div>
-            )}
-            <button className={`crypto-confirm ${trade.action}`} onClick={confirmTrade} disabled={busy}>
+              <div className="tm-price">
+                <b>${formatMoney(trade.price)}</b>
+                <span className={(trade.change24h || 0) >= 0 ? 'up' : 'down'}>
+                  {(trade.change24h || 0) >= 0 ? '+' : ''}{(trade.change24h || 0).toFixed(2)}%
+                </span>
+              </div>
+            </div>
+            <TradeBreakdown
+              market="crypto" symbol={trade.symbol} action={trade.action}
+              quantity={qty} onQuantityChange={setQty}
+              balance={balance} held={holdingFor(trade.symbol)?.quantity || 0}
+              onQuote={setQuote}
+            />
+            <div className="modal-account-row">
+              <div className="modal-account-item"><span>{t('crypto.cashBalance')}</span><b>${formatMoney(balance)}</b></div>
+              <div className="modal-account-item"><span>{t('stocks.owned')}</span><b>{formatQty(holdingFor(trade.symbol)?.quantity || 0)}</b></div>
+            </div>
+            <button
+              className={`crypto-confirm ${trade.action}`}
+              onClick={confirmTrade}
+              disabled={busy || (trade.action === 'buy' && !!quote && quote.total > balance)}
+            >
               {busy ? t('bank.processing') : trade.action === 'buy' ? t('common.buy') : t('common.sell')}
             </button>
           </div>
@@ -413,7 +400,7 @@ function CryptoTab({ balance = 0, onBalanceChange }) {
         open={!!confirmTransfer}
         busy={transferBusy}
         title={t('cryptoTransfer.title', 'Перевод криптовалюты')}
-        message={confirmTransfer ? t('confirm.cryptoTransfer', { amount: formatCoin(confirmTransfer.amount), symbol: confirmTransfer.symbol, recipient: confirmTransfer.recipient }) : ''}
+        message={confirmTransfer ? t('confirm.cryptoTransfer', { amount: formatQty(confirmTransfer.amount), symbol: confirmTransfer.symbol, recipient: confirmTransfer.recipient }) : ''}
         confirmLabel={t('cryptoTransfer.send', 'Отправить')}
         onConfirm={doTransfer}
         onCancel={() => setConfirmTransfer(null)}

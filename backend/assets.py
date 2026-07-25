@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_REALESTATE, CAT_BUSINESS,
@@ -57,6 +57,23 @@ RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
 RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
 RENT_MAX_HOURS = 720     # максимальный срок аренды (30 суток)
 RENTABLE_TYPES = {"realestate", "car", "business"}
+# Среди бизнесов в аренду сдаются только те, у кого есть полезная для арендатора
+# механика: IT-студия (заказы «Крыши города», cityroof.py) и Медиахолдинг
+# (разоблачения в СМИ, media.py). Остальные бизнесы (шаурмечная, кофейня, завод…)
+# сдавать нельзя — арендовать в них нечего, кроме голого дохода.
+RENTABLE_BUSINESS_SLUGS = {"media_holding"}   # + любые itstudio_* (по префиксу slug)
+
+
+def _is_rentable(asset: dict) -> bool:
+    """Можно ли выставить актив в аренду. Недвижимость и авто — всегда; бизнесы —
+    только IT-студия и Медиахолдинг (см. RENTABLE_BUSINESS_SLUGS)."""
+    atype = asset.get("type")
+    if atype not in RENTABLE_TYPES:
+        return False
+    if atype == TYPE_BUSINESS:
+        slug = asset.get("slug") or ""
+        return slug.startswith("itstudio_") or slug in RENTABLE_BUSINESS_SLUGS
+    return True
 
 # ── Экономика аренды ─────────────────────────────────────────────────────────
 # У каждого актива — своя суточная ставка аренды: она НЕ одинакова для всего
@@ -140,6 +157,10 @@ CATALOG = [
      "price": 1800000, "income_per_hour": 9200, "upkeep_per_hour": 3200, "employees": 50},
     {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office", "rarity": "legendary",
      "price": 750000, "income_per_hour": 4600, "upkeep_per_hour": 1500, "employees": 40},
+    # Медиахолдинг — открывает заказ разоблачений в СМИ (см. media.py): владелец
+    # может ударить по доходам бизнесов конкурента и цене его акции.
+    {"slug": "media_holding", "type": TYPE_BUSINESS, "name": "Медиахолдинг", "category": "media", "rarity": "legendary",
+     "price": 1200000, "income_per_hour": 6200, "upkeep_per_hour": 2100, "employees": 45},
     # Автомобили: престиж (без дохода), учитываются в капитале, но сдаются в аренду
     {"slug": "citycar", "type": TYPE_CAR, "name": "Городской хэтчбек", "rarity": "common",
      "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 5}},
@@ -299,6 +320,31 @@ class MaterialsBuy(BaseModel):
         return int(v)
 
 
+class AdminAssetUpdate(BaseModel):
+    """Правки актива администратором — без ограничений, действующих на игрока."""
+    level: Optional[int] = None
+    price: Optional[float] = None
+    income_per_hour: Optional[float] = None
+    upkeep_per_hour: Optional[float] = None
+
+
+class AdminTransferBody(BaseModel):
+    toUsername: str
+
+
+class TransferToPlayer(BaseModel):
+    """Передача личного актива другому игроку по нику."""
+    toUsername: str
+
+    @field_validator("toUsername")
+    @classmethod
+    def name_ok(cls, v):
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Укажите ник игрока")
+        return v[:40]
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -328,6 +374,10 @@ def _materials_boost(asset: dict) -> float:
 
 
 def _income_per_hour(asset: dict) -> float:
+    # Авто не приносят почасового пассивного дохода — только аренда (см. _is_rentable).
+    # Их «уровень» не качается через upgrade, прогресс идёт через тюнинг/престиж.
+    if asset.get("type") == TYPE_CAR:
+        return 0.0
     base = asset.get("income_per_hour", 0)
     level = asset.get("level", 1)
     value = base * (1 + 0.25 * (level - 1))
@@ -354,7 +404,7 @@ def _rent_daily_rate(asset: dict) -> float:
     реже и роскошнее объект, тем выше именно % доходности, а не только сумма.
     RARITY_RENT_FLOOR — лишь подстраховка от вырожденно низких значений, а не
     основной регулятор (как было раньше с плоским полом в $2000 для всех)."""
-    if asset.get("type") not in RENTABLE_TYPES:
+    if not _is_rentable(asset):
         return 0.0
     rarity = _rent_rarity(asset)
     pct = RARITY_RENT_PCT[rarity]
@@ -371,7 +421,7 @@ def _rent_rate_per_hour(asset: dict) -> float:
 def _rent_total(asset: dict, hours: int) -> float:
     """Итоговая стоимость аренды за срок — линейно от часов, единая формула для
     клиента (превью) и сервера (авторитетный пересчёт при выставлении объявления)."""
-    if asset.get("type") not in RENTABLE_TYPES:
+    if not _is_rentable(asset):
         return 0.0
     return round(_rent_daily_rate(asset) * hours / 24, 2)
 
@@ -511,11 +561,18 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
 # ── Активы компании (реальный источник дохода) ───────────────────────────────
 
 
-async def company_income_per_hour(db: AsyncIOMotorDatabase, company_id: str) -> float:
-    """Чистый доход компании в час от принадлежащих ей активов."""
+async def company_income_per_hour(db: AsyncIOMotorDatabase, company_id: str,
+                                  media_factor: float = 1.0) -> float:
+    """Чистый доход компании в час от принадлежащих ей активов.
+
+    ``media_factor`` — репутационный множитель СМИ владельца: применяется только
+    к доходной части бизнесов (расходы/содержание и небизнес-активы не трогаем)."""
     total = 0.0
     async for a in db.user_assets.find({"companyId": company_id}):
-        total += (_income_per_hour(a) - _upkeep_per_hour(a))
+        income = _income_per_hour(a)
+        if media_factor != 1.0 and a.get("type") == TYPE_BUSINESS:
+            income = round(income * media_factor, 2)
+        total += (income - _upkeep_per_hour(a))
     return round(total, 2)
 
 
@@ -738,25 +795,17 @@ async def collect_income(
     """Собрать накопленный доход (за вычетом расходов на содержание)."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    amount = _accrued(asset)
-    # Экономические коэффициенты (админ): множитель доходов.
+    # Актив, переданный в компанию, приносит доход в бюджет компании (отдельный
+    # last_tick). Личный сбор по нему запрещён — иначе один актив платит дважды
+    # (владельцу лично И в бюджет компании).
+    if asset.get("companyId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Актив принадлежит компании — доход идёт в бюджет компании")
     econ = await get_econ(db)
-    amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
-    # Влияние активных мировых событий на доход.
-    try:
-        from market_events import event_shifts
-        amount = round(amount * (await event_shifts(db)).get("income", 1.0), 2)
-    except Exception:
-        pass
-    # Бонус зданий «Крыши города»: +% к доходу с бизнеса/недвижимости.
-    try:
-        from cityroof import player_city_effect
-        city_bonus = await player_city_effect(db, user_id, "asset_income")
-        if city_bonus:
-            amount = round(amount * (1 + city_bonus), 2)
-    except Exception:
-        pass
-    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": {"last_collected": _now()}})
+    event_income = await _event_income_shift(db)
+    city_bonus = await _city_asset_bonus(db, user_id)
+    media_factor = await _media_income_factor(db, user_id)
+    amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
     new_balance = await adjust_balance(db, user_id, amount)
@@ -769,6 +818,99 @@ async def collect_income(
     return {"collected": amount, "balance": new_balance}
 
 
+async def _event_income_shift(db) -> float:
+    try:
+        from market_events import event_shifts
+        return (await event_shifts(db)).get("income", 1.0)
+    except Exception:
+        return 1.0
+
+
+async def _city_asset_bonus(db, user_id: str) -> float:
+    try:
+        from cityroof import player_city_effect
+        return await player_city_effect(db, user_id, "asset_income")
+    except Exception:
+        return 0.0
+
+
+async def _media_income_factor(db, user_id: str) -> float:
+    """Репутационный множитель СМИ для бизнесов игрока (1.0 — нет эффектов)."""
+    try:
+        from media import active_owner_income_factor
+        return await active_owner_income_factor(db, user_id)
+    except Exception:
+        return 1.0
+
+
+async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
+                                event_income: float, city_bonus: float,
+                                media_factor: float = 1.0) -> float:
+    """Считает и применяет (обнуляет КД) доход одного актива, возвращает сумму.
+    Множители (econ/событие/город/СМИ) передаются готовыми, чтобы при массовом
+    сборе не пересчитывать их на каждый актив.
+
+    ``media_factor`` — репутационный множитель СМИ (media.py): применяется только
+    к бизнесам владельца (недвижимость/авто не затрагиваются разоблачением).
+
+    Присвоение накопления атомарно: last_collected сбрасывается условным
+    апдейтом по ТОМУ ЖЕ значению, что было прочитано. Если два параллельных
+    запроса читают один last_collected, апдейт сработает лишь у одного —
+    второй получит 0 (иначе доход дублировался бы, TOCTOU)."""
+    seen = asset.get("last_collected")
+    matched = await db.user_assets.update_one(
+        {"_id": asset["_id"], "last_collected": seen},
+        {"$set": {"last_collected": _now()}},
+    )
+    if matched.modified_count == 0:
+        return 0.0  # накопление уже присвоено параллельным запросом
+    amount = _accrued(asset)
+    amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
+    amount = round(amount * event_income, 2)
+    if city_bonus:
+        amount = round(amount * (1 + city_bonus), 2)
+    if media_factor != 1.0 and asset.get("type") == TYPE_BUSINESS:
+        amount = round(amount * media_factor, 2)
+    return amount
+
+
+@router.post("/collect-all")
+async def collect_all_income(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Собрать накопленный доход со всех личных активов игрока разом."""
+    user_id = str(current_user["_id"])
+    econ = await get_econ(db)
+    event_income = await _event_income_shift(db)
+    city_bonus = await _city_asset_bonus(db, user_id)
+    media_factor = await _media_income_factor(db, user_id)
+
+    total = 0.0
+    count = 0
+    async for asset in db.user_assets.find({"userId": user_id, "companyId": None}):
+        if asset.get("income_per_hour", 0) <= 0:
+            continue
+        amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
+        if amount <= 0:
+            continue
+        new_balance = await adjust_balance(db, user_id, amount)
+        cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
+        await record_transaction(
+            db, user_id, INCOME, amount, cat,
+            f"Доход: {asset['name']}", balance_after=new_balance,
+            meta={"slug": asset.get("slug"), "assetId": str(asset["_id"])},
+        )
+        total = round(total + amount, 2)
+        count += 1
+
+    balance = current_user.get("balance", 0.0)
+    if count:
+        u = await db.users.find_one({"_id": ObjectId(user_id)}, {"balance": 1})
+        balance = (u or {}).get("balance", balance)
+    return {"collected": round(total, 2), "count": count, "balance": balance}
+
+
 @router.post("/{asset_id}/upgrade")
 async def upgrade_asset(
     asset_id: str,
@@ -778,6 +920,11 @@ async def upgrade_asset(
     """Улучшить актив: повышает стоимость и доход."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
+    # Авто не улучшаются через уровень — у них нет почасового дохода, а стоимость
+    # растят тюнингом деталей (см. /tune). Поэтому уровень авто всегда 1.
+    if asset.get("type") == TYPE_CAR:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
     cost = _upgrade_cost(asset)
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
@@ -843,7 +990,15 @@ async def sell_asset(
     """Продать актив обратно (70% текущей стоимости) + невыбранный доход."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    payout = round(_current_value(asset) * SELL_RATE + _accrued(asset), 2)
+    # Стоимость продажи учитывает тот же рыночный множитель, что и покупка —
+    # иначе при mult<0.7 возникает арбитраж (купил за 0.5×base, продал за
+    # 0.7×base). Множитель применяется к базовой стоимости экземпляра; тюнинг
+    # (tuning_value) и накопленный доход к рынку не привязаны.
+    await _ensure_asset_market(db)
+    mult = await _asset_mult(db, asset.get("slug"))
+    base_value = round(_current_value(asset) - asset.get("tuning_value", 0.0), 2)
+    market_value = round(base_value * mult + asset.get("tuning_value", 0.0), 2)
+    payout = round(market_value * SELL_RATE + _accrued(asset), 2)
     await db.user_assets.delete_one({"_id": asset["_id"]})
     new_balance = await adjust_balance(db, user_id, payout)
     cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
@@ -880,6 +1035,44 @@ async def transfer_to_company(
     return {"ok": True, "asset": _serialize(updated)}
 
 
+@router.post("/{asset_id}/transfer-to-player")
+async def transfer_to_player(
+    asset_id: str,
+    payload: TransferToPlayer,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Подарить личный актив другому игроку по нику. Актив уходит целиком
+    (со всеми улучшениями/материалами) — доход по нему начнёт получать новый
+    владелец. Нельзя передавать активы, отданные компании или сдаваемые."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("companyId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Актив принадлежит компании — сначала верните его себе")
+    if asset.get("rental"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Актив сдаётся или ждёт арендатора — снимите с аренды")
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    if new_owner_id == user_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя передать актив самому себе")
+    # Копим доход у прежнего владельца обнуляется — новый владелец начинает с чистого КД.
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"userId": new_owner_id, "companyId": None, "rental": None, "last_collected": _now()}},
+    )
+    try:
+        from ws import push_to_user
+        await push_to_user(user_id, {"type": "asset_update", "assetId": asset_id})
+        await push_to_user(new_owner_id, {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"ok": True, "toUsername": payload.toUsername}
+
+
 @router.post("/{asset_id}/rent/list")
 async def rent_list(
     asset_id: str,
@@ -897,8 +1090,9 @@ async def rent_list(
     """
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    if asset.get("type") not in RENTABLE_TYPES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сдавать можно только недвижимость, авто и бизнесы")
+    if not _is_rentable(asset):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Сдавать можно недвижимость, авто, а из бизнесов — только IT-студию и Медиахолдинг")
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
     # Итоговая цена всегда пересчитывается сервером из срока — клиентской цене не доверяем.
@@ -996,6 +1190,82 @@ async def buy_materials(
     return {"asset": _serialize(updated), "balance": new_balance, "unitPrice": unit_price, "total": total}
 
 
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+
+async def _load_any(db: AsyncIOMotorDatabase, asset_id: str) -> dict:
+    if not ObjectId.is_valid(asset_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID актива")
+    asset = await db.user_assets.find_one({"_id": ObjectId(asset_id)})
+    if not asset:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
+    return asset
+
+
+@router.patch("/admin/{asset_id}")
+async def admin_update_asset(
+    asset_id: str,
+    payload: AdminAssetUpdate,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    asset = await _load_any(db, asset_id)
+    update_fields = payload.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+    await db.user_assets.update_one({"_id": asset["_id"]}, {"$set": update_fields})
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(asset["userId"], {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"asset": _serialize(updated)}
+
+
+@router.delete("/admin/{asset_id}")
+async def admin_delete_asset(
+    asset_id: str,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    asset = await _load_any(db, asset_id)
+    await db.user_assets.delete_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(asset["userId"], {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"message": f"Актив «{asset.get('name')}» удалён"}
+
+
+@router.post("/admin/{asset_id}/transfer")
+async def admin_transfer_asset(
+    asset_id: str,
+    payload: AdminTransferBody,
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    asset = await _load_any(db, asset_id)
+    target = await db.users.find_one({"username": payload.toUsername})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    new_owner_id = str(target["_id"])
+    old_owner_id = asset["userId"]
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"userId": new_owner_id, "companyId": None, "rental": None}},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(old_owner_id, {"type": "asset_update", "assetId": asset_id})
+        await push_to_user(new_owner_id, {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"asset": _serialize(updated)}
+
+
 # ── Aggregate value (для лидерборда/капитала) ────────────────────────────────
 
 
@@ -1018,7 +1288,6 @@ if __name__ == "__main__":
     # 1 час не должен стоить столько же, сколько 30 суток.
     assert _rent_total(demo_asset, 1) < _rent_total(demo_asset, RENT_MAX_HOURS)
 
-    # «Хорошая» недвижимость (rare, напр. Вилла за $160k) должна приносить
     # примерно $6000/сутки только за счёт аренды — таков ориентир баланса
     # (окупаемость ~27 суток).
     villa = {"type": "realestate", "price": 160000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
@@ -1043,13 +1312,28 @@ if __name__ == "__main__":
 
     # Бизнесы и авто тоже сдаются в аренду — у каждого своя ставка через rarity,
     # добавленную в каталог (не одинаковый коэффициент для всего имущества).
-    business_asset = {"type": "business", "price": 60000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
-    assert _rent_daily_rate(business_asset) > 0
-    car_asset = {"type": "car", "price": 150000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
+    # НО из бизнесов сдаются только IT-студия и Медиахолдинг (у остальных нет
+    # полезной арендатору механики), поэтому у бизнеса важен slug.
+    studio_biz = CATALOG_BY_SLUG["itstudio_basic"] | {"level": 1, "tuning_value": 0.0}
+    media_biz = CATALOG_BY_SLUG["media_holding"] | {"level": 1, "tuning_value": 0.0}
+    plain_biz = CATALOG_BY_SLUG["coffee"] | {"level": 1, "tuning_value": 0.0}
+    assert _is_rentable(studio_biz) and _rent_daily_rate(studio_biz) > 0
+    assert _is_rentable(media_biz) and _rent_daily_rate(media_biz) > 0
+    # Обычный бизнес (кофейня) сдавать нельзя — ставка 0.
+    assert not _is_rentable(plain_biz)
+    assert _rent_daily_rate(plain_biz) == 0.0
+    car_asset = CATALOG_BY_SLUG["super"] | {"level": 1, "tuning_value": 0.0}
+    assert _is_rentable(car_asset)
     assert _rent_daily_rate(car_asset) > 0
+    # Авто НЕ приносят почасового дохода — только аренда (даже если в данные
+    # просочилась ненулевая ставка income_per_hour).
+    assert _income_per_hour(CATALOG_BY_SLUG["super"] | {"income_per_hour": 999}) == 0.0
+    # Недвижимость по-прежнему сдаётся без всяких slug-ограничений.
+    assert _is_rentable({"type": "realestate", "slug": "studio"})
 
     non_rentable = {"type": "crypto", "price": 40000, "rarity": "rare", "level": 1}
     assert _rent_rate_per_hour(non_rentable) == 0.0
+    assert not _is_rentable(non_rentable)
 
     print("assets.py rent formula: OK")
     print(f"  studio(common,$5k)   = ${studio_rate}/сутки")

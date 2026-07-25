@@ -135,8 +135,13 @@ async def query_transactions(
     sort: str = "date_desc",
     skip: int = 0,
     limit: int = 20,
+    meta_filter: Optional[dict] = None,
 ) -> dict:
     """Фильтрация / поиск / сортировка / пагинация истории операций.
+
+    ``meta_filter`` — доп. точечные условия по вложенным полям meta (например
+    ``{"companyId": cid}`` → ключ ``meta.companyId``), чтобы историю можно было
+    сузить до конкретной сущности, а не только по категории.
 
     Возвращает {items, total, skip, limit}.
     """
@@ -145,6 +150,9 @@ async def query_transactions(
         query["direction"] = direction
     if category:
         query["category"] = category
+    if meta_filter:
+        for k, v in meta_filter.items():
+            query[f"meta.{k}"] = v
     if search:
         rx = {"$regex": search, "$options": "i"}
         query["$or"] = [
@@ -173,16 +181,37 @@ async def query_transactions(
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
-async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str) -> dict:
-    """Аналитика за последние 7 дней: доход, расход, изменение капитала,
-    число операций и посуточный ряд для графика.
+async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str, period: str = "week") -> dict:
+    """Аналитика за период: доход, расход, изменение капитала, число операций
+    и посуточный ряд для графика. period: today|yesterday|week|month|all.
     """
     now = datetime.utcnow()
-    start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Посуточные корзины (индекс 0 = 6 дней назад ... 6 = сегодня)
+    # Диапазон дней по периоду (start — начало первого дня корзины).
+    if period == "today":
+        start, span_days = today0, 1
+    elif period == "yesterday":
+        start, span_days = today0 - timedelta(days=1), 1
+    elif period == "month":
+        start, span_days = today0 - timedelta(days=29), 30
+    elif period == "all":
+        first = await db.transactions.find({"userId": str(user_id)}).sort("timestamp", 1).limit(1).to_list(1)
+        first_ts = first[0].get("timestamp") if first else None
+        if isinstance(first_ts, datetime):
+            start = first_ts.replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            start = today0
+        span_days = (today0 - start).days + 1
+    else:  # week (по умолчанию)
+        start, span_days = today0 - timedelta(days=6), 7
+
+    # Верхняя граница выборки: для «вчера» отсекаем сегодняшние транзакции.
+    end = start + timedelta(days=span_days)
+
+    # Посуточные корзины (индекс 0 = start ... span_days-1 = последний день)
     days = []
-    for i in range(7):
+    for i in range(span_days):
         d = start + timedelta(days=i)
         days.append({
             "date": d.strftime("%Y-%m-%d"),
@@ -197,14 +226,14 @@ async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str) -> dict:
 
     cursor = db.transactions.find({
         "userId": str(user_id),
-        "timestamp": {"$gte": start},
+        "timestamp": {"$gte": start, "$lt": end},
     })
     async for doc in cursor:
         ts = doc.get("timestamp")
         if not isinstance(ts, datetime):
             continue
         idx = (ts.replace(hour=0, minute=0, second=0, microsecond=0) - start).days
-        if idx < 0 or idx > 6:
+        if idx < 0 or idx >= span_days:
             continue
         amount = float(doc.get("amount", 0.0))
         direction = doc.get("direction")
@@ -228,4 +257,5 @@ async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str) -> dict:
         "net": round(total_income - total_expense, 2),
         "operations": operations,
         "days": days,
+        "period": period,
     }

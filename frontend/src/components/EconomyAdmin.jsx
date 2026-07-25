@@ -5,9 +5,10 @@ import {
   fetchEconomyEvents, startEconomyEvent, stopEconomyEvent,
 } from '../services/api'
 import { formatCompact } from './TransactionsPanel'
+import { toast } from './Toast'
 import {
   DollarSign, Users, Home, Briefcase, Car, Building2, Coins, LineChart,
-  Activity, Save, Check, AlertTriangle, Wallet, Zap, Square,
+  Activity, Save, Wallet, Zap, Square,
 } from 'lucide-react'
 
 const CONFIG_FIELDS = [
@@ -27,7 +28,6 @@ function EconomyAdmin() {
   const [events, setEvents] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -39,7 +39,7 @@ function EconomyAdmin() {
       setConfig(c)
       setEvents(e)
     } catch (err) {
-      setMsg({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -50,7 +50,7 @@ function EconomyAdmin() {
       await fn()
       setEvents(await fetchEconomyEvents())
     } catch (err) {
-      setMsg({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     }
   }
 
@@ -74,15 +74,14 @@ function EconomyAdmin() {
 
   const save = async () => {
     setSaving(true)
-    setMsg(null)
     try {
       const payload = {}
       CONFIG_FIELDS.forEach(f => { payload[f.key] = Number(config[f.key]) })
       const updated = await updateEconomyConfig(payload)
       setConfig(updated)
-      setMsg({ type: 'success', text: t('econ.saved') })
+      toast(t('econ.saved'))
     } catch (err) {
-      setMsg({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setSaving(false)
     }
@@ -108,12 +107,6 @@ function EconomyAdmin() {
 
   return (
     <div className="econ-admin">
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-        </div>
-      )}
-
       <h3 className="econ-title"><Activity size={16} /> {t('econ.analytics')}</h3>
       <div className="econ-grid">
         {stats.map((s, i) => {
@@ -152,7 +145,7 @@ function EconomyAdmin() {
               {events.active.map(ev => (
                 <div key={ev.id} className="econ-event active">
                   <span className="econ-event-icon">{ev.icon}</span>
-                  <div className="econ-event-info"><b>{ev.name}</b><span>{t('econ.eventActive')}</span></div>
+                  <div className="econ-event-info"><b>{ev.name}</b>{ev.desc && <small>{ev.desc}</small>}<span>{t('econ.eventActive')}</span></div>
                   <button className="asset-act sell" onClick={() => runEvent(() => stopEconomyEvent(ev.id))}>
                     <Square size={13} /> {t('econ.stop')}
                   </button>
@@ -162,7 +155,7 @@ function EconomyAdmin() {
           )}
           <div className="econ-event-types">
             {events.types.map(ty => (
-              <button key={ty.type} className="econ-event-type" onClick={() => runEvent(() => startEconomyEvent(ty.type))}>
+              <button key={ty.type} className="econ-event-type" title={ty.desc || ''} onClick={() => runEvent(() => startEconomyEvent(ty.type))}>
                 <span>{ty.icon}</span> {ty.name}
               </button>
             ))}

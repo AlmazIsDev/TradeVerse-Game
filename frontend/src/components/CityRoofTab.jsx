@@ -7,8 +7,10 @@ import {
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
+import PlayerProfileModal from './PlayerProfileModal'
+import { toast } from './Toast'
 import {
-  Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
+  Castle, Coins, Shield, Swords, X, Crown, Lock, PlusCircle,
   Gift, Zap, ShieldPlus, Clock,
 } from 'lucide-react'
 
@@ -18,6 +20,25 @@ function formatCountdown(sec) {
   const m = Math.floor(s / 60)
   const r = s % 60
   return `${m}:${String(r).padStart(2, '0')}`
+}
+
+// Таймер автосбора одного бонуса. Владеет собственным 1-секундным тиком, чтобы
+// обратный отсчёт не заставлял перерисовываться всю вкладку (карта + все
+// карточки) каждую секунду — ре-рендерится только этот маленький лист.
+function BonusCountdown({ anchor, readyInSec }) {
+  const { t } = useTranslation()
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const elapsed = (Date.now() - anchor) / 1000
+  const remaining = Math.max(0, (readyInSec ?? 0) - elapsed)
+  return (
+    <span className="cbonus-timer">
+      {remaining > 0 ? t('cityroof.nextIncome', { time: formatCountdown(remaining) }) : t('cityroof.incomeReady')}
+    </span>
+  )
 }
 
 // Эффекты-скидки показываются со знаком «-» (снижают стоимость), остальные — «+»
@@ -34,20 +55,23 @@ const BUILDING_EMOJI = {
   stadium: '🏟️', airport: '✈️', hotel: '🏨', tower: '🏢', studio: '🎬', refinery: '🛢️',
 }
 
+// Названия зданий приходят с бэкенда по-русски (cityroof.py CITY_BUILDINGS);
+// локализуем по стабильному slug, оставляя серверное имя запасным вариантом.
+const buildingName = (t, slug, fallback) => t(`cityroof.buildings.${slug}`, fallback || slug)
+
 function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
   const [map, setMap] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)      // business
+  const [profileId, setProfileId] = useState(null)
   const [session, setSession] = useState(null)        // { sessionId, length, symbolRange, ... }
   const [guess, setGuess] = useState([])
   const [attempts, setAttempts] = useState([])        // [{ guess, exact, present }]
-  const [feedback, setFeedback] = useState(null)
   const [busy, setBusy] = useState(false)
   const [buyModal, setBuyModal] = useState(false)
   const [buyAmount, setBuyAmount] = useState('10')
   const [bonuses, setBonuses] = useState(null)
-  const [clockTick, setClockTick] = useState(0)     // тикает раз в секунду для обратного отсчёта автосбора
   const bonusAnchors = useRef({})     // slug -> момент (мс), от которого считаем локальный отсчёт readyInSec
   const [itStudioJobs, setItStudioJobs] = useState([])
   const [studios, setStudios] = useState([])          // собственные IT-студии игрока
@@ -76,11 +100,11 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   useEffect(() => { load() }, [load])
 
   // Доход зачисляется автоматически на сервере (Scheduler). Периодически
-  // подтягиваем актуальное состояние КД по каждому зданию + тикаем таймер.
+  // подтягиваем актуальное состояние КД по каждому зданию. Посекундный отсчёт
+  // живёт в <BonusCountdown> — отдельном листе, чтобы не ре-рендерить вкладку.
   useEffect(() => {
     const refresh = setInterval(load, 30000)
-    const clock = setInterval(() => setClockTick(t => t + 1), 1000)
-    return () => { clearInterval(refresh); clearInterval(clock) }
+    return () => clearInterval(refresh)
   }, [load])
 
   // Живые обновления карты (захват/защита чужими игроками) и точечный сброс
@@ -114,7 +138,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       } else if (data.type === 'cityroof_season_closed') {
         setSelected(null)
         setSession(null)
-        setFeedback(null)
         load()
       } else if (data.type === 'notification' && data.notification?.type === 'itstudio') {
         // Заказ IT-студии завершился (см. backend/cityroof.py sweep_itstudio_jobs).
@@ -133,7 +156,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
     setSession(null)
     setGuess([])
     setAttempts([])
-    setFeedback(null)
   }
 
   const closeModal = () => {
@@ -147,7 +169,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const startAttack = async () => {
     if (!selected) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await attackBusiness(selected.id)
       setSession(res)
@@ -155,7 +176,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       setAttempts([])
       setMap(m => ({ ...m, warcoin: { ...m.warcoin, balance: res.warcoin } }))
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -173,30 +194,26 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const submitGuess = async () => {
     if (!session) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await guessCombination(session.sessionId, guess)
       if (res.solved) {
-        setFeedback({
-          type: 'success',
-          text: res.capturedIncome > 0
-            ? t('cityroof.capturedWithIncome', { amount: res.capturedIncome.toLocaleString('ru-RU') })
-            : t('cityroof.captured'),
-        })
+        toast(res.capturedIncome > 0
+          ? t('cityroof.capturedWithIncome', { amount: res.capturedIncome.toLocaleString('ru-RU') })
+          : t('cityroof.captured'))
         setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
         setSession(null)
         await load()
         setTimeout(() => setSelected(null), 1200)
       } else if (res.exhausted) {
         setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
-        setFeedback({ type: 'error', text: t('cityroof.exhausted') })
+        toast(t('cityroof.exhausted'), 'error')
         setSession(null)
       } else {
         setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
-        setFeedback({ type: 'info', text: t('cityroof.tryAgain', { attempts: res.attempts, max: res.maxAttempts }) })
+        toast(t('cityroof.tryAgain', { attempts: res.attempts, max: res.maxAttempts }), 'info')
       }
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -205,15 +222,14 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const doProtect = async (level) => {
     if (!selected) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await protectBusiness(selected.id, level)
       setMap(m => ({ ...m, warcoin: { ...m.warcoin, balance: res.warcoin } }))
       setSelected(res.business)
-      setFeedback({ type: 'success', text: t('cityroof.protected', { level }) })
+      toast(t('cityroof.protected', { level }))
       await load()
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -247,12 +263,15 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
     try {
       const res = await orderStudioJob(assetId, businessId, orderModal.mode)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('itstudio.ordered', { hours: res.readyInHours }) })
+      const okText = res.readyInMinutes != null
+        ? t('itstudio.orderedMinutes', { minutes: res.readyInMinutes })
+        : t('itstudio.ordered', { hours: res.readyInHours })
+      toast(okText)
       setOrderModal(null)
       setItStudioJobs(await fetchItStudioJobs())
       setStudios(await fetchMyStudios())
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setOrderBusy(false)
     }
@@ -268,7 +287,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       setMap(m => ({ ...m, warcoin: { ...m.warcoin, balance: res.warcoin } }))
       setBuyModal(false)
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -315,23 +334,19 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
           <div className="cbonus-list">
             {bonuses.bonuses.map(b => {
               const anchor = bonusAnchors.current[b.slug] ?? Date.now()
-              const elapsed = (Date.now() - anchor) / 1000
-              const remaining = Math.max(0, (b.readyInSec ?? 0) - elapsed)
               const pctSign = DISCOUNT_EFFECTS.has(b.effect) ? '-' : '+'
               return (
                 <div key={b.slug} className="cbonus-item">
                   <span className="cbonus-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
                   <div className="cbonus-body">
                     <div className="cbonus-top">
-                      <span className="cbonus-name">{b.name}</span>
+                      <span className="cbonus-name">{buildingName(t, b.slug, b.name)}</span>
                       <span className="cbonus-daily">+{(b.amount ?? b.daily).toLocaleString('ru-RU')} $</span>
                     </div>
                     <span className="cbonus-effect">
                       {t(`cityroof.effects.${b.effect}`, b.effect)}{b.mult ? ` ${pctSign}${Math.round(b.mult * 100)}%` : ''}
                     </span>
-                    <span className="cbonus-timer">
-                      {remaining > 0 ? t('cityroof.nextIncome', { time: formatCountdown(remaining) }) : t('cityroof.incomeReady')}
-                    </span>
+                    <BonusCountdown anchor={anchor} readyInSec={b.readyInSec} />
                   </div>
                 </div>
               )
@@ -340,26 +355,34 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       )}
 
-      {/* Карта */}
+      {/* Карта — реальное изображение города с интерактивными зданиями поверх */}
       <div className="cityroof-map">
-        {map?.businesses?.map(b => (
-          <button
-            key={b.id}
-            className={`city-cell ${b.isMine ? 'mine' : ''} ${b.ownerId ? 'owned' : 'free'}`}
-            style={b.ownerColor ? { borderColor: b.ownerColor, boxShadow: `0 0 0 1px ${b.ownerColor}55` } : undefined}
-            onClick={() => openBusiness(b)}
-          >
-            <span className="city-cell-emoji">{BUILDING_EMOJI[b.slug] || '🏢'}</span>
-            <span className="city-cell-name">{b.name}</span>
-            <span className="city-cell-reward"><Coins size={11} /> {b.reward}</span>
-            <span className="city-cell-owner" style={b.ownerColor ? { color: b.ownerColor } : undefined}>
-              {b.isMine ? t('cityroof.yours') : (b.ownerName || t('cityroof.free'))}
-            </span>
-            {b.protectionLevel > 0 && (
-              <span className="city-cell-shield"><Shield size={11} /> {b.protectionLevel}</span>
-            )}
-          </button>
-        ))}
+        <img className="cityroof-map-img" src="/city.webp" alt="" aria-hidden="true" draggable="false" />
+        <div className="cityroof-map-grid">
+          {map?.businesses?.map(b => (
+            <button
+              key={b.id}
+              className={`city-tile ${b.isMine ? 'mine' : ''} ${b.ownerId ? 'owned' : 'free'}`}
+              style={{
+                left: `${(b.x ?? 0) * 25}%`,
+                top: `${(b.y ?? 0) * (100 / 3)}%`,
+                ...(b.ownerColor ? { '--tile-color': b.ownerColor } : {}),
+              }}
+              onClick={() => openBusiness(b)}
+            >
+              <span className="city-tile-info">
+                <span className="city-tile-name">{buildingName(t, b.slug, b.name)}</span>
+                <span className="city-tile-reward"><Coins size={11} /> {b.reward}</span>
+                <span className="city-tile-owner">
+                  {b.isMine ? t('cityroof.yours') : (b.ownerName || t('cityroof.free'))}
+                </span>
+              </span>
+              {b.protectionLevel > 0 && (
+                <span className="city-tile-shield"><Shield size={11} /> {b.protectionLevel}</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Модалка бизнеса */}
@@ -367,19 +390,16 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content cityroof-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={closeModal}><X size={18} /></button>
-            <h3>{selected.name}</h3>
+            <h3>{buildingName(t, selected.slug, selected.name)}</h3>
             <p className="modal-price">
               <Coins size={14} /> {t('cityroof.reward')}: {selected.reward} ·
-              {' '}{selected.ownerName ? t('cityroof.owner', { name: selected.isMine ? t('cityroof.yours') : selected.ownerName }) : t('cityroof.free')}
+              {' '}{selected.ownerName
+                ? selected.isMine
+                  ? t('cityroof.owner', { name: t('cityroof.yours') })
+                  : <>{t('cityroof.ownerLabel', 'Владелец')}: <span className="player-link" onClick={() => setProfileId(selected.ownerId)}>{selected.ownerName}</span></>
+                : t('cityroof.free')}
               {selected.protectionLevel > 0 && <> · <Shield size={12} /> {selected.protectionLevel}</>}
             </p>
-
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type === 'info' ? '' : feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : feedback.type === 'error' ? <AlertTriangle size={16} /> : <Swords size={16} />}
-                <span>{feedback.text}</span>
-              </div>
-            )}
 
             {/* Владелец — защита (WC) + IT-студия */}
             {selected.isMine && (
@@ -412,7 +432,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 onClick={() => setConfirm({
                   danger: true,
                   title: t('cityroof.attack', { cost: map?.attackCost ?? 10 }),
-                  message: t('confirm.attack', { name: selected.name, cost: map?.attackCost ?? 10 }),
+                  message: t('confirm.attack', { name: buildingName(t, selected.slug, selected.name), cost: map?.attackCost ?? 10 }),
                   onConfirm: startAttack,
                 })}>
                 <Swords size={16} /> {busy ? t('bank.processing') : t('cityroof.attack', { cost: map?.attackCost ?? 10 })}
@@ -500,6 +520,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
         onCancel={() => setConfirm(null)}
       />
+      {profileId && <PlayerProfileModal userId={profileId} onClose={() => setProfileId(null)} />}
     </div>
   )
 }

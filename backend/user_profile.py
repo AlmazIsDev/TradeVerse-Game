@@ -17,7 +17,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from auth import get_current_user, hash_password, verify_password
 from database import get_db
-from schemas import ProfileUpdate, PasswordChangeRequest, AvatarUpdate
+from schemas import ProfileUpdate, PasswordChangeRequest, AvatarUpdate, BioUpdate
 
 logger = logging.getLogger("tradeverse.profile")
 
@@ -43,6 +43,17 @@ async def update_profile(
     await db.users.update_one({"_id": user_id}, {"$set": {"username": new_username}})
     logger.info("User %s renamed to '%s'", str(user_id), new_username)
     return {"username": new_username}
+
+
+@router.patch("/bio")
+async def update_bio(
+    payload: BioUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Обновить описание профиля («о себе») — уже провалидировано схемой."""
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"bio": payload.bio}})
+    return {"bio": payload.bio}
 
 
 @router.post("/password")
@@ -89,7 +100,14 @@ async def toggle_leaderboard_visibility(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Переключает участие в публичной таблице лидеров (см. GET /api/leaderboard)."""
-    new_hidden = not current_user.get("hideFromLeaderboard", False)
-    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"hideFromLeaderboard": new_hidden}})
+    """Переключает участие в публичной таблице лидеров (см. GET /api/leaderboard).
+
+    Хранится в едином поле `hidden_from_leaderboard` — том же, что читают
+    таблица лидеров (main.py) и админ-панель, поэтому обе системы всегда
+    видят одно значение. В ответе — camelCase `hideFromLeaderboard` для фронта.
+    """
+    if current_user.get("leaderboard_lock"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Изменение этой настройки запрещено администратором")
+    new_hidden = not current_user.get("hidden_from_leaderboard", False)
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"hidden_from_leaderboard": new_hidden}})
     return {"hideFromLeaderboard": new_hidden}

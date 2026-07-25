@@ -2080,7 +2080,7 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .tv-toast-stack {
   position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 10px; align-items: center;
-  z-index: 500; pointer-events: none; width: max-content; max-width: min(92vw, 440px);
+  z-index: 2000; pointer-events: none; width: max-content; max-width: min(92vw, 440px);
 }
 .tv-toast {
   pointer-events: auto;

@@ -8,8 +8,9 @@ import {
   adminUpdateBusiness, adminVacateBusiness, adminTransferBusiness,
 } from '../services/api'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import {
-  X, Package, Cpu, Briefcase, Building2, Edit3, Trash2, ArrowLeftRight, Save, Check, AlertTriangle,
+  X, Package, Cpu, Briefcase, Building2, Edit3, Trash2, ArrowLeftRight, Save,
 } from 'lucide-react'
 
 const TABS = [
@@ -31,14 +32,11 @@ function UserPropertyModal({ username, userId, onClose }) {
   const [tab, setTab] = useState('assets')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [msg, setMsg] = useState(null)
   const [editing, setEditing] = useState(null) // { kind, id, form }
   const [transferring, setTransferring] = useState(null) // { kind, id, name }
   const [transferTo, setTransferTo] = useState('')
   const [confirmTarget, setConfirmTarget] = useState(null) // { kind, id, name }
   const [busy, setBusy] = useState(false)
-
-  const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2600) }
 
   const load = async () => {
     setLoading(true)
@@ -46,7 +44,7 @@ function UserPropertyModal({ username, userId, onClose }) {
       const res = await adminFetchUserProperty(userId)
       setData(res)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -114,10 +112,10 @@ function UserPropertyModal({ username, userId, onClose }) {
         })
       }
       setEditing(null)
-      flash(t('admin.property.saved'))
+      toast(t('admin.property.saved'))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -133,10 +131,10 @@ function UserPropertyModal({ username, userId, onClose }) {
       else if (kind === 'company') await adminDeleteCompany(id)
       else if (kind === 'businesses') await adminVacateBusiness(id)
       setConfirmTarget(null)
-      flash(t('admin.property.deleted'))
+      toast(t('admin.property.deleted'))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -153,10 +151,10 @@ function UserPropertyModal({ username, userId, onClose }) {
       else if (kind === 'businesses') await adminTransferBusiness(id, transferTo.trim())
       setTransferring(null)
       setTransferTo('')
-      flash(t('admin.property.transferred'))
+      toast(t('admin.property.transferred'))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -197,12 +195,6 @@ function UserPropertyModal({ username, userId, onClose }) {
             )
           })}
         </div>
-
-        {msg && (
-          <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-            {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-          </div>
-        )}
 
         {loading && <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>}
 

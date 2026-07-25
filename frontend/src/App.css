@@ -2274,16 +2274,6 @@ body {
   color: var(--color-text-primary);
 }
 
-.admin-message {
-  margin: var(--spacing-md) var(--spacing-xl);
-  padding: var(--spacing-md);
-  background: rgba(0, 113, 227, 0.12);
-  border: 1px solid rgba(0, 113, 227, 0.25);
-  border-radius: var(--radius-md);
-  color: var(--color-accent-hover);
-  font-size: 14px;
-}
-
 .admin-tabs {
   display: flex;
   gap: var(--spacing-xs);

@@ -11,6 +11,7 @@ import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPan
 import CompanyAssetsPanel from './CompanyAssetsPanel'
 import PlayerProfileModal from './PlayerProfileModal'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
   ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
@@ -57,7 +58,6 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [foundingFee, setFoundingFee] = useState(10000)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [profileId, setProfileId] = useState(null)
 
@@ -113,22 +113,17 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     }
   }, [load])
 
-  const flash = (text, type = 'success') => {
-    setMsg({ text, type })
-    setTimeout(() => setMsg(null), 2600)
-  }
-
   const run = async (fn, okKey, after) => {
     setBusy(true)
     try {
       const res = await fn()
       if (res?.balance != null) onBalanceChange?.(res.balance)
       if (res?.company !== undefined) setData(res.company)
-      if (okKey) flash(t(okKey))
+      if (okKey) toast(t(okKey))
       setRefreshKey(k => k + 1)
       after?.(res)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -147,10 +142,10 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const doApply = async (id) => {
     try {
       await applyToCompany(id)
-      flash(t('company.applied'))
+      toast(t('company.applied'))
       await loadCompanies()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     }
   }
 
@@ -166,12 +161,12 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     const file = e.target.files?.[0]
     e.target.value = ''   // позволяем выбрать тот же файл повторно
     if (!file) return
-    if (!file.type.startsWith('image/')) { flash(t('settings.avatarInvalid'), 'error'); return }
+    if (!file.type.startsWith('image/')) { toast(t('settings.avatarInvalid'), 'error'); return }
     try {
       const dataUrl = await readAndResizeImage(file)
       setSettingsModal(m => m && { ...m, logo: dataUrl })
     } catch {
-      flash(t('settings.avatarInvalid'), 'error')
+      toast(t('settings.avatarInvalid'), 'error')
     }
   }
 
@@ -186,10 +181,10 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         visibleInSearch: settingsModal.visibleInSearch,
       })
       if (res?.company) setData(res.company)
-      flash(t('company.settingsSaved'))
+      toast(t('company.settingsSaved'))
       setSettingsModal(null)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -202,9 +197,9 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       setConfirmDisband(false)
       setSettingsModal(null)
       setData(null)
-      flash(t('company.disbanded'))
+      toast(t('company.disbanded'))
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -216,9 +211,9 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       await leaveCompany()
       setConfirmLeave(false)
       setData(null)
-      flash(t('company.left'))
+      toast(t('company.left'))
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -227,17 +222,17 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const doIpo = async () => {
     const totalShares = Math.floor(Number(ipoModal.totalShares))
     if (!ipoModal.symbol.trim() || !(totalShares >= 1000)) {
-      flash(t('company.ipo.invalid'), 'error'); return
+      toast(t('company.ipo.invalid'), 'error'); return
     }
     setBusy(true)
     try {
       const res = await companyIpo({ symbol: ipoModal.symbol.trim().toUpperCase(), totalShares })
       if (res?.company) setData(res.company)
-      flash(t('company.ipo.placed', { symbol: res.symbol, price: formatMoney(res.price) }))
+      toast(t('company.ipo.placed', { symbol: res.symbol, price: formatMoney(res.price) }))
       setIpoModal(null)
       setRefreshKey(k => k + 1)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -245,16 +240,16 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
 
   const doDividend = async () => {
     const per = Number(dividendModal.perShare)
-    if (!(per > 0)) { flash(t('company.ipo.dividendInvalid'), 'error'); return }
+    if (!(per > 0)) { toast(t('company.ipo.dividendInvalid'), 'error'); return }
     setBusy(true)
     try {
       const res = await companyDividend(per)
       if (res?.company) setData(res.company)
-      flash(t('company.ipo.dividendPaid', { total: formatMoney(res.paid), holders: res.holders }))
+      toast(t('company.ipo.dividendPaid', { total: formatMoney(res.paid), holders: res.holders }))
       setDividendModal(null)
       setRefreshKey(k => k + 1)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -263,7 +258,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const doIssueCrypto = async () => {
     const supply = Math.floor(Number(cryptoModal.supply))
     if (!cryptoModal.symbol.trim() || !(supply >= 10000)) {
-      flash(t('company.crypto.invalid'), 'error'); return
+      toast(t('company.crypto.invalid'), 'error'); return
     }
     setBusy(true)
     try {
@@ -272,11 +267,11 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         name: cryptoModal.name.trim() || undefined,
       })
       if (res?.company) setData(res.company)
-      flash(t('company.crypto.issued', { symbol: res.symbol, price: formatMoney(res.price) }))
+      toast(t('company.crypto.issued', { symbol: res.symbol, price: formatMoney(res.price) }))
       setCryptoModal(null)
       setRefreshKey(k => k + 1)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -288,11 +283,11 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
     try {
       const res = kind === 'crypto' ? await companyRecallCrypto() : await companyRecallStock()
       if (res?.company) setData(res.company)
-      flash(t(kind === 'crypto' ? 'company.crypto.recalled' : 'company.ipo.recalled'))
+      toast(t(kind === 'crypto' ? 'company.crypto.recalled' : 'company.ipo.recalled'))
       setConfirmRecall(null)
       setRefreshKey(k => k + 1)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -316,9 +311,6 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
           <div className="crypto-onboard-icon"><Building2 size={56} /></div>
           <h3>{t('company.createTitle')}</h3>
           <p>{t('company.createDesc', { fee: formatMoney(foundingFee) })}</p>
-          {msg && (
-            <div className={`transfer-feedback ${msg.type}`}><AlertTriangle size={16} /><span>{msg.text}</span></div>
-          )}
           <input
             className="company-name-input"
             value={newName}
@@ -402,12 +394,6 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         <div className="transfer-feedback success" style={{ marginBottom: 'var(--spacing-md)' }}>
           <Check size={16} />
           <span>{t('company.reputationBoost', { pct: Math.round((data.reputationFactor - 1) * 100) })}</span>
-        </div>
-      )}
-
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
         </div>
       )}
 

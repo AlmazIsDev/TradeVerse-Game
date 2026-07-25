@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { createTransfer, fetchWeeklyAnalytics, fetchCryptoAccount } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import AnalyticsChart from './AnalyticsChart'
+import { toast } from './Toast'
 import {
-  Send, History, User, DollarSign, MessageSquare, CheckCircle, AlertTriangle,
+  Send, History, User, DollarSign, MessageSquare,
   LayoutGrid, BarChart3, Coins, TrendingUp, TrendingDown, Wallet, ArrowRight,
 } from 'lucide-react'
 
@@ -15,7 +16,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [feedback, setFeedback] = useState(null)
   const [localBalance, setLocalBalance] = useState(balance)
   const [refreshKey, setRefreshKey] = useState(0)
   const [analytics, setAnalytics] = useState(null)
@@ -38,16 +38,15 @@ function BankTab({ balance = 0, onBalanceChange }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setFeedback(null)
     const parsedAmount = parseFloat(amount)
-    if (!recipient.trim()) { setFeedback({ type: 'error', text: t('bank.recipientNotFound') }); return }
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) { setFeedback({ type: 'error', text: t('bank.invalidAmount') }); return }
-    if (parsedAmount > localBalance) { setFeedback({ type: 'error', text: t('bank.insufficientFunds') }); return }
+    if (!recipient.trim()) { toast(t('bank.recipientNotFound'), 'error'); return }
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
+    if (parsedAmount > localBalance) { toast(t('bank.insufficientFunds'), 'error'); return }
 
     setSubmitting(true)
     try {
       const result = await createTransfer({ recipient: recipient.trim(), amount: parsedAmount, note: note.trim() || undefined })
-      setFeedback({ type: 'success', text: t('bank.transferSuccess', { amount: formatMoney(result.amount), recipient: result.recipient }) })
+      toast(t('bank.transferSuccess', { amount: formatMoney(result.amount), recipient: result.recipient }))
       setLocalBalance(result.balance)
       onBalanceChange?.(result.balance)
       setRecipient(''); setAmount(''); setNote('')
@@ -58,7 +57,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
       if (msg.includes('самому себе')) text = t('bank.selfTransfer')
       else if (msg.includes('не найден')) text = t('bank.recipientNotFound')
       else if (msg.includes('Недостаточно')) text = t('bank.insufficientFunds')
-      setFeedback({ type: 'error', text })
+      toast(text, 'error')
     } finally {
       setSubmitting(false)
     }
@@ -150,12 +149,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
               <span><MessageSquare size={14} /> {t('bank.note')}</span>
               <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder={t('bank.notePlaceholder')} maxLength={120} />
             </label>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-                <span>{feedback.text}</span>
-              </div>
-            )}
             <button type="submit" className="transfer-submit" disabled={submitting}>
               {submitting ? t('bank.processing') : <><Send size={16} /> {t('bank.sendMoney')}</>}
             </button>

@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import AssetDetail from './AssetDetail'
+import { toast } from './Toast'
 import {
-  TrendingUp, TrendingDown, Briefcase, AlertTriangle, Check, X, Gift,
+  TrendingUp, TrendingDown, Briefcase, AlertTriangle, X, Gift,
   Search, Activity, ArrowDownLeft, ArrowUpRight,
 } from 'lucide-react'
 
@@ -26,7 +27,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [error, setError] = useState(null)
   const [trade, setTrade] = useState(null)     // { ...stock, action }
   const [qty, setQty] = useState('1')
-  const [feedback, setFeedback] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [dividend, setDividend] = useState(null)   // stock being paid dividends
@@ -52,7 +52,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const openTrade = (stock, action) => {
     setTrade({ ...stock, action })
     setQty('1')
-    setFeedback(null)
   }
 
   const heldFor = (symbol) => portfolio.find(p => p.symbol === symbol)
@@ -61,23 +60,23 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     if (!trade) return
     const q = Math.floor(Number(qty))
     if (!Number.isFinite(q) || q < 1) {
-      setFeedback({ type: 'error', text: t('bank.invalidAmount') })
+      toast(t('bank.invalidAmount'), 'error')
       return
     }
     if (trade.action === 'buy' && q * trade.price > balance) {
-      setFeedback({ type: 'error', text: t('stocks.insufficientFunds') })
+      toast(t('stocks.insufficientFunds'), 'error')
       return
     }
     const held = heldFor(trade.symbol)
     if (trade.action === 'sell' && (!held || held.quantity < q)) {
-      setFeedback({ type: 'error', text: t('stocks.insufficientShares') })
+      toast(t('stocks.insufficientShares'), 'error')
       return
     }
     setBusy(true)
     try {
       const res = await tradeStock(trade.symbol, trade.action, q)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('stocks.tradeSuccess') })
+      toast(t('stocks.tradeSuccess'))
       setRefreshKey(k => k + 1)
       await load()
       // Окно НЕ закрываем автоматически — игрок видит обновлённый баланс и
@@ -89,7 +88,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
         return fresh ? { ...fresh, action: prev.action } : prev
       })
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message || t('common.error') })
+      toast(err.message || t('common.error'), 'error')
     } finally {
       setBusy(false)
     }
@@ -103,12 +102,12 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     try {
       const res = await payDividend(dividend.symbol, per)
       if (res.balance != null) onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('stocks.dividendPaid', { total: formatMoney(res.paid), holders: res.holders }) })
+      toast(t('stocks.dividendPaid', { total: formatMoney(res.paid), holders: res.holders }))
       setDividend(null)
       setPerShare('')
       setRefreshKey(k => k + 1)
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -179,12 +178,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
         <div className="leaderboard-title-row"><Briefcase size={22} className="icon" /><h2 className="tab-title">{t('stocks.title')}</h2></div>
       </div>
 
-      {feedback && !trade && !dividend && (
-        <div className={`transfer-feedback ${feedback.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
-        </div>
-      )}
-
       <div className="crypto-layout">
         {/* ЛЕВО: рынок акций */}
         <div className="crypto-col-main">
@@ -229,7 +222,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                         <button className="crypto-sell" onClick={(e) => { e.stopPropagation(); openTrade(stock, 'sell') }} disabled={!owned}><ArrowUpRight size={14} /> {t('common.sell')}</button>
                         {stock.issuer && stock.issuer === currentUserId && (
                           <button className="stock-btn dividend-btn" title={t('stocks.payDividend')}
-                            onClick={(e) => { e.stopPropagation(); setDividend(stock); setPerShare(''); setFeedback(null) }}>
+                            onClick={(e) => { e.stopPropagation(); setDividend(stock); setPerShare('') }}>
                             <Gift size={14} />
                           </button>
                         )}
@@ -345,13 +338,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
             </p>
             <div className="crypto-modal-fee">{t('trade.fee', { pct: 0.5 })}: ${formatMoney((Math.floor(Number(qty)) || 0) * trade.price * 0.005)}</div>
 
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}
-                <span>{feedback.text}</span>
-              </div>
-            )}
-
             <div className="modal-buttons">
               <button
                 className={`stock-btn ${trade.action === 'buy' ? 'buy-btn' : 'sell-btn'}`}
@@ -379,11 +365,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
               <input type="number" min="0" step="0.01" value={perShare} autoFocus
                 onChange={e => setPerShare(e.target.value)} />
             </div>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
-              </div>
-            )}
             <div className="modal-buttons">
               <button className="stock-btn buy-btn" onClick={doDividend} disabled={busy || !(Number(perShare) > 0)}>
                 {busy ? t('bank.processing') : t('common.confirm')}

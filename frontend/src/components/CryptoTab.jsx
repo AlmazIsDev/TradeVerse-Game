@@ -7,9 +7,10 @@ import {
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
-  ArrowUpRight, ArrowDownLeft, AlertTriangle, PlusCircle, X, Send, Search, Activity,
+  ArrowUpRight, ArrowDownLeft, PlusCircle, X, Send, Search, Activity,
 } from 'lucide-react'
 import AssetDetail from './AssetDetail'
+import { toast } from './Toast'
 import ConfirmDialog from './ConfirmDialog'
 
 function formatCoin(n) {
@@ -36,12 +37,10 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [copied, setCopied] = useState(false)
   const [trade, setTrade] = useState(null)
   const [qty, setQty] = useState('')
-  const [feedback, setFeedback] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [detailSymbol, setDetailSymbol] = useState(null)
   const [transfer, setTransfer] = useState({ recipient: '', symbol: '', amount: '' })
-  const [transferMsg, setTransferMsg] = useState(null)
   const [transferBusy, setTransferBusy] = useState(false)
   const [confirmTransfer, setConfirmTransfer] = useState(null)   // { recipient, symbol, amount }
   const [transfers, setTransfers] = useState([])
@@ -112,22 +111,22 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
     } catch { /* ignore */ }
   }
 
-  const openTrade = (coin, action) => { setTrade({ ...coin, action }); setQty(''); setFeedback(null) }
+  const openTrade = (coin, action) => { setTrade({ ...coin, action }); setQty('') }
   const holdingFor = (symbol) => account?.holdings?.find(h => h.symbol === symbol)
 
   const confirmTrade = async () => {
     if (!trade) return
     const q = parseFloat(qty)
-    if (!Number.isFinite(q) || q <= 0) { setFeedback({ type: 'error', text: t('bank.invalidAmount') }); return }
+    if (!Number.isFinite(q) || q <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
     const cost = q * trade.price
-    if (trade.action === 'buy' && cost > balance) { setFeedback({ type: 'error', text: t('crypto.insufficientFunds') }); return }
+    if (trade.action === 'buy' && cost > balance) { toast(t('crypto.insufficientFunds'), 'error'); return }
     const held = holdingFor(trade.symbol)
-    if (trade.action === 'sell' && (!held || held.quantity < q)) { setFeedback({ type: 'error', text: t('crypto.insufficientCoins') }); return }
+    if (trade.action === 'sell' && (!held || held.quantity < q)) { toast(t('crypto.insufficientCoins'), 'error'); return }
     setBusy(true)
     try {
       const res = await tradeCrypto(trade.symbol, trade.action, q)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('crypto.tradeSuccess') })
+      toast(t('crypto.tradeSuccess'))
       setRefreshKey(k => k + 1)
       await load(true)
       setTimeout(() => setTrade(null), 700)
@@ -136,29 +135,28 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
       let text = msg
       if (msg.includes('Недостаточно средств')) text = t('crypto.insufficientFunds')
       else if (msg.includes('Недостаточно монет')) text = t('crypto.insufficientCoins')
-      setFeedback({ type: 'error', text })
+      toast(text, 'error')
     } finally { setBusy(false) }
   }
 
   const handleTransfer = (e) => {
     e?.preventDefault?.()
     const amt = parseFloat(transfer.amount)
-    if (!transfer.recipient.trim() || !transfer.symbol || !(amt > 0)) { setTransferMsg({ type: 'error', text: t('cryptoTransfer.invalid') }); return }
+    if (!transfer.recipient.trim() || !transfer.symbol || !(amt > 0)) { toast(t('cryptoTransfer.invalid'), 'error'); return }
     const held = account?.holdings?.find(h => h.symbol === transfer.symbol)
-    if (!held || held.quantity < amt * 1.01) { setTransferMsg({ type: 'error', text: t('crypto.insufficientCoins') }); return }
-    setTransferMsg(null)
+    if (!held || held.quantity < amt * 1.01) { toast(t('crypto.insufficientCoins'), 'error'); return }
     setConfirmTransfer({ recipient: transfer.recipient.trim(), symbol: transfer.symbol, amount: amt })
   }
 
   const doTransfer = async () => {
     if (!confirmTransfer) return
-    setTransferBusy(true); setTransferMsg(null)
+    setTransferBusy(true)
     try {
       const res = await transferCrypto(confirmTransfer.recipient, confirmTransfer.symbol, confirmTransfer.amount)
-      setTransferMsg({ type: 'success', text: t('cryptoTransfer.sent', { amount: confirmTransfer.amount, symbol: res.symbol, recipient: res.recipient }) })
+      toast(t('cryptoTransfer.sent', { amount: confirmTransfer.amount, symbol: res.symbol, recipient: res.recipient }))
       setTransfer({ recipient: '', symbol: '', amount: '' })
       setRefreshKey(k => k + 1); await load(true)
-    } catch (err) { setTransferMsg({ type: 'error', text: err.message }) }
+    } catch (err) { toast(err.message, 'error') }
     finally { setTransferBusy(false); setConfirmTransfer(null) }
   }
 
@@ -316,11 +314,6 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
               <button className="crypto-open-btn" type="submit" disabled={transferBusy}><Send size={15} /> {transferBusy ? t('bank.processing') : t('cryptoTransfer.send')}</button>
             </form>
             <p className="crypto-transfer-fee">{t('cryptoTransfer.fee')}</p>
-            {transferMsg && (
-              <div className={`transfer-feedback ${transferMsg.type}`}>
-                {transferMsg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{transferMsg.text}</span>
-              </div>
-            )}
             {transfers.length > 0 && (
               <div className="crypto-transfer-history">
                 {transfers.map(tr => (
@@ -375,11 +368,6 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
             </label>
             <div className="crypto-modal-total">{t('common.total')}: <strong>{formatMoney((parseFloat(qty) || 0) * trade.price)} $</strong></div>
             <div className="crypto-modal-fee">{t('trade.fee', { pct: 0.5 })}: {formatMoney((parseFloat(qty) || 0) * trade.price * 0.005)} $</div>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
-              </div>
-            )}
             <button className={`crypto-confirm ${trade.action}`} onClick={confirmTrade} disabled={busy}>
               {busy ? t('bank.processing') : trade.action === 'buy' ? t('common.buy') : t('common.sell')}
             </button>

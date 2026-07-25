@@ -9,9 +9,10 @@ import {
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
-  Plus, X, AlertTriangle, Check, Bot, TrendingUp, HardDrive, Server, Cpu,
+  Plus, X, AlertTriangle, Bot, TrendingUp, HardDrive, Server, Cpu,
 } from 'lucide-react'
 
 // Категории компонентов: обязательные помечены req; multi — можно несколько.
@@ -63,7 +64,6 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
   const [cartQty, setCartQty] = useState({}) // `${cat}::${modelKey}` -> сколько ставить оптом (gpu/fan)
@@ -81,7 +81,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
       setParts(p)
       setActiveId(prev => (prev && f.some(x => x.id === prev)) ? prev : (f[0]?.id ?? null))
     } catch (err) {
-      setMsg({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -97,18 +97,17 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     return () => { window.removeEventListener('tv:realtime', onRt); clearInterval(id) }
   }, [load])
 
-  const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2400) }
 
   const run = async (fn, okKey) => {
     setBusy(true)
     try {
       const res = await fn()
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      if (okKey) flash(t(okKey))
+      if (okKey) toast(t(okKey))
       await load()
       return res
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -120,9 +119,9 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     setBusy(true)
     try {
       const res = await installComponentsBatch(farm.id, hwIds.map(hwId => ({ category: cat, hwId })))
-      if (res?.error) flash(res.error, 'error')
+      if (res?.error) toast(res.error, 'error')
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
       await load()
@@ -135,7 +134,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     try {
       for (const hwId of hwIds) await uninstallComponent(farm.id, hwId)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
       await load()
@@ -171,11 +170,6 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     return (
       <div className="mining-tab">
         <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
-        {msg && (
-          <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-            {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-          </div>
-        )}
         <div className="crypto-onboard mining-onboard">
           <div className="crypto-onboard-icon"><Server size={56} /></div>
           <h3>{t('mining.onboardTitle')}</h3>
@@ -210,11 +204,6 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     <div className="mining-tab">
       <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
 
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-        </div>
-      )}
 
       {/* Селектор ферм + добавление новой */}
       <div className="mining-farm-tabs">

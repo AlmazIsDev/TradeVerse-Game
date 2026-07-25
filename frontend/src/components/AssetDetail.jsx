@@ -6,9 +6,10 @@ import {
 import PriceChart from './PriceChart'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import { computeAnalytics } from '../utils/assetAnalytics'
+import { toast } from './Toast'
 import {
   ArrowLeft, Star, TrendingUp, TrendingDown, CandlestickChart, LineChart,
-  AlertTriangle, Check, X, Activity, Gauge, Wallet, Gift, Sparkles, Flame, ShieldCheck,
+  AlertTriangle, X, Activity, Gauge, Wallet, Gift, Sparkles, Flame, ShieldCheck,
 } from 'lucide-react'
 
 const INTERVALS = ['1h', '24h', '7d', '1m', '3m', '6m', '1y', 'all']
@@ -43,7 +44,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   const [trade, setTrade] = useState(null)   // 'buy' | 'sell'
   const [qty, setQty] = useState('1')
   const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState(null)
 
   const loadAsset = useCallback(async () => {
     try {
@@ -96,18 +96,17 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
   const doTrade = async () => {
     const q = market === 'stock' ? Math.floor(Number(qty)) : Number(qty)
-    if (!(q > 0)) { setFeedback({ type: 'error', text: t('bank.invalidAmount') }); return }
+    if (!(q > 0)) { toast(t('bank.invalidAmount'), 'error'); return }
     setBusy(true)
-    setFeedback(null)
     try {
       const fn = market === 'stock' ? tradeStock : tradeCrypto
       const res = await fn(symbol, trade, q)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('stocks.tradeSuccess') })
+      toast(t('stocks.tradeSuccess'))
       await Promise.all([loadAsset(), loadHistory(timeframe)])
       onTraded?.()
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -221,8 +220,8 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
           {/* Действия */}
           <div className="ad-actions">
-            <button className="ad-buy" onClick={() => { setTrade('buy'); setQty('1'); setFeedback(null) }}>{t('common.buy')}</button>
-            <button className="ad-sell" onClick={() => { setTrade('sell'); setQty('1'); setFeedback(null) }} disabled={held <= 0}>{t('common.sell')}</button>
+            <button className="ad-buy" onClick={() => { setTrade('buy'); setQty('1') }}>{t('common.buy')}</button>
+            <button className="ad-sell" onClick={() => { setTrade('sell'); setQty('1') }} disabled={held <= 0}>{t('common.sell')}</button>
             <button className={`ad-fav-btn ${asset.isFavorite ? 'active' : ''}`} onClick={doFavorite}>
               <Star size={16} fill={asset.isFavorite ? '#fbbf24' : 'none'} /> {t('asset.favorite')}
             </button>
@@ -318,11 +317,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <div className="modal-account-item"><span>{t('crypto.cashBalance')}</span><b>${formatMoney(balance)}</b></div>
               <div className="modal-account-item"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits, t)}</b></div>
             </div>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{feedback.text}</span>
-              </div>
-            )}
             <div className="modal-buttons">
               <button className={`stock-btn ${trade === 'buy' ? 'buy-btn' : 'sell-btn'}`} onClick={doTrade} disabled={busy}>
                 {busy ? t('bank.processing') : t('common.confirm')}

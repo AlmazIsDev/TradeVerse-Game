@@ -15,6 +15,7 @@ import {
   Database, Coins, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
+import { toast } from './Toast'
 
 function Tooltip({ text }) {
   const [show, setShow] = useState(false)
@@ -106,7 +107,6 @@ function AdminPanel({ user, onClose }) {
   const [newStock, setNewStock] = useState({ symbol: '', name: '', price: '', change: '0', changePercent: '0' })
   const [showAddForm, setShowAddForm] = useState(false)
   const [newConfig, setNewConfig] = useState({ key: '', value: '' })
-  const [message, setMessage] = useState(null)
 
   // Состояние для редактирования пользователя
   const [editingUser, setEditingUser] = useState(null)
@@ -167,7 +167,7 @@ function AdminPanel({ user, onClose }) {
       order: dbOrder,
     })
       .then(setDbDocs)
-      .catch(err => showMessage(t('admin.error') + ': ' + err.message))
+      .catch(err => toast(t('admin.error') + ': ' + err.message, 'error'))
   }, [dbActiveCollection, dbSearch, dbPage, dbSort, dbOrder])
 
   // Живое обновление списка пользователей (только для админов — см. push_to_admins
@@ -231,15 +231,10 @@ function AdminPanel({ user, onClose }) {
         setConfigItems(items)
       }
     } catch (err) {
-      showMessage(t('admin.loadError') + ': ' + err.message)
+      toast(t('admin.loadError') + ': ' + err.message, 'error')
     } finally {
       setLoading(false)
     }
-  }
-
-  const showMessage = (text) => {
-    setMessage(text)
-    setTimeout(() => setMessage(null), 3000)
   }
 
   // ── Валидация формы редактирования пользователя ────────────────────────────
@@ -315,10 +310,10 @@ function AdminPanel({ user, onClose }) {
     try {
       await adminUpdateUser(editingUser, payload)
       setEditingUser(null)
-      showMessage(t('admin.userUpdated'))
+      toast(t('admin.userUpdated'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -326,10 +321,10 @@ function AdminPanel({ user, onClose }) {
     if (!confirm(t('admin.deleteUserConfirm', { username }))) return
     try {
       await adminDeleteUser(userId)
-      showMessage(t('admin.userDeleted', { username }))
+      toast(t('admin.userDeleted', { username }))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -337,7 +332,7 @@ function AdminPanel({ user, onClose }) {
 
   const handleAddStock = async () => {
     if (!newStock.symbol || !newStock.name || !newStock.price) {
-      showMessage(t('admin.fillAllFields'))
+      toast(t('admin.fillAllFields'), 'error')
       return
     }
     try {
@@ -352,10 +347,10 @@ function AdminPanel({ user, onClose }) {
         }),
       })
       setNewStock({ symbol: '', name: '', price: '', change: '0', changePercent: '0' })
-      showMessage(t('admin.stockAdded'))
+      toast(t('admin.stockAdded'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -372,10 +367,10 @@ function AdminPanel({ user, onClose }) {
         }),
       })
       setEditingStock(null)
-      showMessage(t('admin.stockUpdated'))
+      toast(t('admin.stockUpdated'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -383,10 +378,10 @@ function AdminPanel({ user, onClose }) {
     if (!confirm(t('admin.deleteStockConfirm', { symbol }))) return
     try {
       await request(`/api/stocks/${symbol}`, { method: 'DELETE' })
-      showMessage(t('admin.stockDeleted', { symbol }))
+      toast(t('admin.stockDeleted', { symbol }))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -394,16 +389,16 @@ function AdminPanel({ user, onClose }) {
     if (!confirm(t('admin.deleteTransactionConfirm'))) return
     try {
       await request(`/api/admin/transactions/${txId}`, { method: 'DELETE' })
-      showMessage(t('admin.transactionDeleted'))
+      toast(t('admin.transactionDeleted'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
   const handleSaveConfig = async () => {
     if (!newConfig.key || !newConfig.value) {
-      showMessage(t('admin.fillKeyAndValue'))
+      toast(t('admin.fillKeyAndValue'), 'error')
       return
     }
     try {
@@ -412,10 +407,10 @@ function AdminPanel({ user, onClose }) {
         body: JSON.stringify({ key: newConfig.key, value: newConfig.value }),
       })
       setNewConfig({ key: '', value: '' })
-      showMessage(t('admin.configUpdated'))
+      toast(t('admin.configUpdated'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -444,10 +439,10 @@ function AdminPanel({ user, onClose }) {
     try {
       await updateStockConfig(editingStockConfig, payload)
       setEditingStockConfig(null)
-      showMessage(t('admin.configUpdated'))
+      toast(t('admin.configUpdated'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -490,10 +485,10 @@ function AdminPanel({ user, onClose }) {
         await adminCreateDocument(dbActiveCollection, parsed)
       }
       setDbEditingDoc(null)
-      showMessage(t('admin.database.saved'))
+      toast(t('admin.database.saved'))
       await reloadDbDocs()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -502,10 +497,10 @@ function AdminPanel({ user, onClose }) {
     if (!confirm(t('admin.database.deleteConfirm'))) return
     try {
       await adminDeleteDocument(dbActiveCollection, id)
-      showMessage(t('admin.database.deleted'))
+      toast(t('admin.database.deleted'))
       await reloadDbDocs()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -534,16 +529,16 @@ function AdminPanel({ user, onClose }) {
     try {
       await adminUpdateCoin(editingCoin, payload)
       setEditingCoin(null)
-      showMessage(t('admin.crypto.saved'))
+      toast(t('admin.crypto.saved'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
   const handleAddCoin = async () => {
     if (!newCoin.symbol || !newCoin.name || !newCoin.price) {
-      showMessage(t('admin.fillAllFields'))
+      toast(t('admin.fillAllFields'), 'error')
       return
     }
     try {
@@ -558,10 +553,10 @@ function AdminPanel({ user, onClose }) {
       })
       setNewCoin({ symbol: '', name: '', price: '', volatility: '0.05', color: '#6366f1', supply: '', description: '' })
       setShowAddCoinForm(false)
-      showMessage(t('admin.crypto.added'))
+      toast(t('admin.crypto.added'))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -569,10 +564,10 @@ function AdminPanel({ user, onClose }) {
     if (!confirm(t('admin.crypto.deleteConfirm', { symbol }))) return
     try {
       await adminDeleteCoin(symbol)
-      showMessage(t('admin.crypto.deleted', { symbol }))
+      toast(t('admin.crypto.deleted', { symbol }))
       loadData()
     } catch (err) {
-      showMessage(t('admin.error') + ': ' + err.message)
+      toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
 
@@ -596,7 +591,6 @@ function AdminPanel({ user, onClose }) {
         </button>
       </div>
 
-      {message && <div className="admin-message">{message}</div>}
 
       <div className="admin-body">
         <aside className="admin-sidebar">

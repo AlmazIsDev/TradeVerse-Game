@@ -8,8 +8,9 @@ import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import PlayerProfileModal from './PlayerProfileModal'
+import { toast } from './Toast'
 import {
-  Castle, Coins, Shield, Swords, X, Check, AlertTriangle, Crown, Lock, PlusCircle,
+  Castle, Coins, Shield, Swords, X, Crown, Lock, PlusCircle,
   Gift, Zap, ShieldPlus, Clock,
 } from 'lucide-react'
 
@@ -67,7 +68,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [session, setSession] = useState(null)        // { sessionId, length, symbolRange, ... }
   const [guess, setGuess] = useState([])
   const [attempts, setAttempts] = useState([])        // [{ guess, exact, present }]
-  const [feedback, setFeedback] = useState(null)
   const [busy, setBusy] = useState(false)
   const [buyModal, setBuyModal] = useState(false)
   const [buyAmount, setBuyAmount] = useState('10')
@@ -138,7 +138,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       } else if (data.type === 'cityroof_season_closed') {
         setSelected(null)
         setSession(null)
-        setFeedback(null)
         load()
       } else if (data.type === 'notification' && data.notification?.type === 'itstudio') {
         // Заказ IT-студии завершился (см. backend/cityroof.py sweep_itstudio_jobs).
@@ -157,7 +156,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
     setSession(null)
     setGuess([])
     setAttempts([])
-    setFeedback(null)
   }
 
   const closeModal = () => {
@@ -171,7 +169,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const startAttack = async () => {
     if (!selected) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await attackBusiness(selected.id)
       setSession(res)
@@ -179,7 +176,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       setAttempts([])
       setMap(m => ({ ...m, warcoin: { ...m.warcoin, balance: res.warcoin } }))
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -197,30 +194,26 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const submitGuess = async () => {
     if (!session) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await guessCombination(session.sessionId, guess)
       if (res.solved) {
-        setFeedback({
-          type: 'success',
-          text: res.capturedIncome > 0
-            ? t('cityroof.capturedWithIncome', { amount: res.capturedIncome.toLocaleString('ru-RU') })
-            : t('cityroof.captured'),
-        })
+        toast(res.capturedIncome > 0
+          ? t('cityroof.capturedWithIncome', { amount: res.capturedIncome.toLocaleString('ru-RU') })
+          : t('cityroof.captured'))
         setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
         setSession(null)
         await load()
         setTimeout(() => setSelected(null), 1200)
       } else if (res.exhausted) {
         setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
-        setFeedback({ type: 'error', text: t('cityroof.exhausted') })
+        toast(t('cityroof.exhausted'), 'error')
         setSession(null)
       } else {
         setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
-        setFeedback({ type: 'info', text: t('cityroof.tryAgain', { attempts: res.attempts, max: res.maxAttempts }) })
+        toast(t('cityroof.tryAgain', { attempts: res.attempts, max: res.maxAttempts }), 'info')
       }
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -229,15 +222,14 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const doProtect = async (level) => {
     if (!selected) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await protectBusiness(selected.id, level)
       setMap(m => ({ ...m, warcoin: { ...m.warcoin, balance: res.warcoin } }))
       setSelected(res.business)
-      setFeedback({ type: 'success', text: t('cityroof.protected', { level }) })
+      toast(t('cityroof.protected', { level }))
       await load()
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -274,12 +266,12 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       const okText = res.readyInMinutes != null
         ? t('itstudio.orderedMinutes', { minutes: res.readyInMinutes })
         : t('itstudio.ordered', { hours: res.readyInHours })
-      setFeedback({ type: 'success', text: okText })
+      toast(okText)
       setOrderModal(null)
       setItStudioJobs(await fetchItStudioJobs())
       setStudios(await fetchMyStudios())
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setOrderBusy(false)
     }
@@ -295,7 +287,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       setMap(m => ({ ...m, warcoin: { ...m.warcoin, balance: res.warcoin } }))
       setBuyModal(false)
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -408,13 +400,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 : t('cityroof.free')}
               {selected.protectionLevel > 0 && <> · <Shield size={12} /> {selected.protectionLevel}</>}
             </p>
-
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type === 'info' ? '' : feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : feedback.type === 'error' ? <AlertTriangle size={16} /> : <Swords size={16} />}
-                <span>{feedback.text}</span>
-              </div>
-            )}
 
             {/* Владелец — защита (WC) + IT-студия */}
             {selected.isMine && (

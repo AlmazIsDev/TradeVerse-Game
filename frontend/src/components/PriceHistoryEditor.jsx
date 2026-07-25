@@ -5,6 +5,7 @@ import {
   adminListPriceHistory, adminAddPricePoint, adminUpdatePricePoint,
   adminDeletePricePoint, adminRegeneratePriceHistory,
 } from '../services/api'
+import { toast } from './Toast'
 
 function PriceHistoryEditor({ market, symbol, onClose }) {
   const { t } = useTranslation()
@@ -15,16 +16,14 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
   const [newPrice, setNewPrice] = useState('')
   const [regenPrice, setRegenPrice] = useState('')
   const [regenVolatility, setRegenVolatility] = useState('')
-  const [error, setError] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await adminListPriceHistory(market, symbol)
       setPoints(data)
-      setError(null)
     } catch (err) {
-      setError(err.message)
+      toast(err.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -43,7 +42,7 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
       setEditingId(null)
       await load()
     } catch (err) {
-      setError(err.message)
+      toast(err.message, 'error')
     }
   }
 
@@ -53,7 +52,7 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
       await adminDeletePricePoint(id)
       await load()
     } catch (err) {
-      setError(err.message)
+      toast(err.message, 'error')
     }
   }
 
@@ -64,7 +63,7 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
       setNewPrice('')
       await load()
     } catch (err) {
-      setError(err.message)
+      toast(err.message, 'error')
     }
   }
 
@@ -77,7 +76,7 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
       await adminRegeneratePriceHistory(payload)
       await load()
     } catch (err) {
-      setError(err.message)
+      toast(err.message, 'error')
     }
   }
 
@@ -88,8 +87,6 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
           <h3>{t('admin.priceHistory.title')}: {symbol}</h3>
           <button className="admin-btn" onClick={onClose}><X size={16} /></button>
         </div>
-
-        {error && <div className="admin-message">{error}</div>}
 
         <div className="price-history-regenerate">
           <input

@@ -472,6 +472,19 @@ export async function adminGetDocument(name, docId) {
   return request(`/api/admin/db/collections/${encodeURIComponent(name)}/${encodeURIComponent(docId)}`)
 }
 
+export async function adminListTransactions(opts = {}) {
+  const params = new URLSearchParams()
+  const { q, field, kind, skip, limit, sort, order } = opts
+  if (q) params.set('q', q)
+  if (field) params.set('field', field)
+  if (kind) params.set('kind', kind)
+  if (skip != null) params.set('skip', skip)
+  if (limit != null) params.set('limit', limit)
+  if (sort) params.set('sort', sort)
+  if (order != null) params.set('order', order)
+  return request(`/api/admin/transactions?${params.toString()}`)
+}
+
 export async function adminCreateDocument(name, doc) {
   return request(`/api/admin/db/collections/${encodeURIComponent(name)}`, {
     method: 'POST',
@@ -649,12 +662,6 @@ export async function updateStockConfig(symbol, configData) {
     method: 'PATCH',
     body: JSON.stringify(configData),
   })
-}
-
-export async function fetchBotOrders(limit = 100) {
-  const params = new URLSearchParams()
-  if (limit) params.set('limit', limit)
-  return request(`/api/v2/stocks/bot-orders?${params.toString()}`)
 }
 
 export async function payDividend(symbol, perShare) {

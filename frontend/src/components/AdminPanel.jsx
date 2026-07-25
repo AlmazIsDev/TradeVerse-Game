@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig, fetchBotOrders,
+  fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig,
   adminListCollections, adminListDocuments, adminCreateDocument, adminUpdateDocument, adminDeleteDocument,
+  adminListTransactions,
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
 } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
@@ -63,6 +64,7 @@ function DbDocPreview({ doc, refs = {} }) {
   )
 }
 const DB_PAGE_SIZE = 50
+const TX_PAGE_SIZE = 50
 
 // Поля транзакций: сортировка + точечный поиск вида "Категория: cityroof".
 const TX_FIELDS = [
@@ -100,12 +102,14 @@ function AdminPanel({ user, onClose }) {
   const [stocks, setStocks] = useState([])
   const [stocksV2, setStocksV2] = useState([])
   const [users, setUsers] = useState([])
-  const [transactions, setTransactions] = useState([])
-  const [botOrders, setBotOrders] = useState([])
+  const [transactions, setTransactions] = useState({ items: [], has_more: false })
   const [txFilter, setTxFilter] = useState('all') // 'all' | 'income' | 'expense' | 'bot'
-  const [txSearch, setTxSearch] = useState('')
+  const [txSearch, setTxSearch] = useState('')       // дебаунсенное значение, уходит на сервер
+  const [txSearchInput, setTxSearchInput] = useState('') // сырой ввод
   const [txSort, setTxSort] = useState('timestamp')
   const [txOrder, setTxOrder] = useState(-1) // 1 asc / -1 desc
+  const [txPage, setTxPage] = useState(0)    // 0-based
+  const [txNonce, setTxNonce] = useState(0)  // ручное обновление (кнопка/удаление)
   const [configItems, setConfigItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingStock, setEditingStock] = useState(null)
@@ -170,6 +174,38 @@ function AdminPanel({ user, onClose }) {
     return () => clearTimeout(id)
   }, [dbSearchInput])
 
+  // Точечный поиск: "поле: значение" (напр. «Категория: cityroof», "username: admin").
+  // Поле распознаём и по имени, и по локализованной подписи; иначе — свободный поиск.
+  const parseTxSearch = (raw) => {
+    const s = raw.trim()
+    const m = s.match(/^([^:]+):\s*(.*)$/)
+    if (!m) return { q: s, field: undefined }
+    const key = m[1].trim().toLowerCase()
+    const f = TX_FIELDS.find(x => x.key.toLowerCase() === key || t(x.i18n, x.fallback).toLowerCase() === key)
+    return f ? { q: m[2].trim(), field: f.key } : { q: s, field: undefined }
+  }
+
+  // Сброс на первую страницу при смене фильтра, поиска или сортировки.
+  useEffect(() => { setTxPage(0) }, [txFilter, txSearch, txSort, txOrder])
+
+  // Дебаунс: regex-поиск идёт по 180k записям, не дёргаем сервер на каждый символ.
+  useEffect(() => {
+    const id = setTimeout(() => setTxSearch(txSearchInput.trim()), 400)
+    return () => clearTimeout(id)
+  }, [txSearchInput])
+
+  useEffect(() => {
+    if (activeSection !== 'transactions') return
+    const { q, field } = parseTxSearch(txSearch)
+    adminListTransactions({
+      q: q || undefined, field, kind: txFilter,
+      skip: txPage * TX_PAGE_SIZE, limit: TX_PAGE_SIZE,
+      sort: txSort, order: txOrder,
+    })
+      .then(setTransactions)
+      .catch(err => toast(t('admin.loadError') + ': ' + err.message, 'error'))
+  }, [activeSection, txFilter, txSearch, txSort, txOrder, txPage, txNonce])
+
   useEffect(() => {
     if (activeSection !== 'database' || !dbActiveCollection) return
     adminListDocuments(dbActiveCollection, {
@@ -210,14 +246,7 @@ function AdminPanel({ user, onClose }) {
         const data = await request('/api/admin/users')
         setUsers(data)
       } else if (activeSection === 'transactions') {
-        const data = await request('/api/admin/transactions')
-        setTransactions(data)
-        try {
-          const botData = await fetchBotOrders(100)
-          setBotOrders(botData)
-        } catch (e) {
-          console.error('Failed to load bot orders:', e)
-        }
+        // Транзакции грузит отдельный effect (по фильтру/поиску/сортировке/странице).
       } else if (activeSection === 'database') {
         if (dbCollections.length === 0) {
           const cols = await adminListCollections()
@@ -403,7 +432,7 @@ function AdminPanel({ user, onClose }) {
     try {
       await request(`/api/admin/transactions/${txId}`, { method: 'DELETE' })
       toast(t('admin.transactionDeleted'))
-      loadData()
+      setTxNonce(n => n + 1)
     } catch (err) {
       toast(t('admin.error') + ': ' + err.message, 'error')
     }
@@ -1143,59 +1172,16 @@ function AdminPanel({ user, onClose }) {
             return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`
           }
           const fmtMoney = (v) => `$${Math.abs(Number(v) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          // Единый поток: операции реестра + сделки ботов. У реестра есть направление
-          // (income/expense), категория и человекочитаемый label — их и показываем.
-          const allTx = [
-            ...transactions.map(tx => ({
-              key: `u-${tx.id}`, id: tx.id, source: 'user',
-              direction: tx.direction, category: tx.category || '—',
-              label: tx.label || tx.symbol || '—', username: tx.username || tx.userId || '—',
-              amount: tx.amount, balanceAfter: tx.balance_after, timestamp: tx.timestamp,
-            })),
-            ...botOrders.map(tx => ({
-              key: `b-${tx.id}`, id: tx.id, source: 'bot',
-              direction: tx.type === 'sell' ? 'income' : 'expense', category: 'trade',
-              label: `${(tx.type || '').toUpperCase()} ${tx.symbol || ''}`.trim(), username: 'BOT',
-              amount: (Number(tx.quantity) || 0) * (Number(tx.pricePerShare) || 0),
-              balanceAfter: null, timestamp: tx.timestamp,
-            })),
-          ]
-          const q = txSearch.trim().toLowerCase()
-          // Точечный поиск: "поле: значение" (напр. "Категория: cityroof",
-          // "username: admin"). Поле ищем и по имени, и по локализованной подписи.
-          const m = q.match(/^([^:]+):\s*(.*)$/)
-          const fieldKey = m && (TX_FIELDS.find(f =>
-            f.key.toLowerCase() === m[1].trim() ||
-            t(f.i18n, f.fallback).toLowerCase() === m[1].trim()
-          )?.key)
-          const needle = m ? m[2].trim() : q
-          const match = (tx) => {
-            if (!needle) return true
-            if (fieldKey) return String(tx[fieldKey] ?? '').toLowerCase().includes(needle)
-            return [tx.label, tx.category, tx.username].some(s => (s || '').toLowerCase().includes(needle))
-          }
-          const filtered = allTx.filter(tx => {
-            if (txFilter === 'bot' && tx.source !== 'bot') return false
-            if (txFilter === 'income' && tx.direction !== 'income') return false
-            if (txFilter === 'expense' && tx.direction !== 'expense') return false
-            return match(tx)
-          }).sort((a, b) => {
-            const av = a[txSort], bv = b[txSort]
-            if (av == null && bv == null) return 0
-            if (av == null) return 1   // пустые всегда в конце, независимо от направления
-            if (bv == null) return -1
-            const cmp = txSort === 'timestamp'
-              ? new Date(av) - new Date(bv)
-              : (typeof av === 'number' && typeof bv === 'number'
-                ? av - bv
-                : String(av).localeCompare(String(bv), 'ru'))
-            return cmp * txOrder
-          })
+          // Единый поток операций реестра и сделок ботов приходит уже отфильтрованным,
+          // отсортированным и постранично — иначе искать можно было бы только внутри
+          // последних N записей (см. /api/admin/transactions).
+          const rows = transactions.items
+          const hasNext = !!transactions.has_more
           return (
             <>
               <div className="tx-filter-bar">
                 <div className="tx-search"><Search size={15} className="tx-search-icon" />
-                  <input value={txSearch} onChange={e => setTxSearch(e.target.value)} placeholder={t('admin.searchTx', 'Поиск по операции, категории, игроку...')} /></div>
+                  <input value={txSearchInput} onChange={e => setTxSearchInput(e.target.value)} placeholder={t('admin.searchTx', 'Поиск по операции, категории, игроку...')} /></div>
                 <div className="tx-chips">
                   {['all', 'income', 'expense', 'bot'].map(f => (
                     <button key={f} className={`tx-chip ${txFilter === f ? 'active' : ''}`} onClick={() => setTxFilter(f)}>
@@ -1210,10 +1196,9 @@ function AdminPanel({ user, onClose }) {
                   title={txOrder >= 0 ? t('admin.database.sortAsc') : t('admin.database.sortDesc')}>
                   {txOrder >= 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
-                <button className="admin-btn" onClick={loadData} title={t('admin.refresh')}>
+                <button className="admin-btn" onClick={() => setTxNonce(n => n + 1)} title={t('admin.refresh')}>
                   <RefreshCw size={14} />
                 </button>
-                <span className="admin-count">{filtered.length} / {allTx.length}</span>
               </div>
               <div className="admin-tx-table tx-cols-6">
                 <div className="admin-tx-row admin-tx-head">
@@ -1226,14 +1211,14 @@ function AdminPanel({ user, onClose }) {
                   <span>{t('admin.txTime', 'Время')}</span>
                   <span></span>
                 </div>
-                {filtered.map(tx => {
+                {rows.map(tx => {
                   const income = tx.direction === 'income'
                   return (
-                    <div key={tx.key} className={`admin-tx-row ${tx.source === 'bot' ? 'bot' : ''}`}>
+                    <div key={`${tx.source}-${tx.id}`} className={`admin-tx-row ${tx.source === 'bot' ? 'bot' : ''}`}>
                       <span><span className={`tx-type ${income ? 'income' : 'expense'}`}>{income ? t('admin.txIn', 'Доход') : t('admin.txOut', 'Расход')}</span></span>
-                      <span><strong>{tx.label}</strong></span>
-                      <span><span className="tx-cat">{tx.category}</span></span>
-                      <span className="tx-user">{tx.username}</span>
+                      <span><strong>{tx.label || '—'}</strong></span>
+                      <span><span className="tx-cat">{tx.category || '—'}</span></span>
+                      <span className="tx-user">{tx.username || '—'}</span>
                       <span className={`tx-num tx-amount ${income ? 'income' : 'expense'}`}>{income ? '+' : '−'}{fmtMoney(tx.amount)}</span>
                       <span className="tx-num tx-balance">{tx.balanceAfter != null ? fmtMoney(tx.balanceAfter) : '—'}</span>
                       <span className="tx-time">{fmtTs(tx.timestamp)}</span>
@@ -1245,8 +1230,19 @@ function AdminPanel({ user, onClose }) {
                     </div>
                   )
                 })}
-                {filtered.length === 0 && <p className="empty-state">{t('admin.noTransactions')}</p>}
+                {rows.length === 0 && <p className="empty-state">{t('admin.noTransactions')}</p>}
               </div>
+              {(txPage > 0 || hasNext) && (
+                <div className="admin-toolbar db-pagination">
+                  <button className="admin-btn" disabled={txPage === 0} onClick={() => setTxPage(p => Math.max(0, p - 1))}>
+                    <ChevronLeft size={14} />
+                  </button>
+                  <span className="admin-count">{txPage + 1}</span>
+                  <button className="admin-btn" disabled={!hasNext} onClick={() => setTxPage(p => p + 1)}>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
             </>
           )
         })()}

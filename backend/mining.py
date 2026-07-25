@@ -51,7 +51,7 @@ FEE = 0.01
 # ── Экономика "доля от синтетической сложности сети" (см. design-спеку) ──
 DIFF_EXP = 1.5              # сложность монеты растёт быстрее цены — самобалансировка выбора
 DIFF_SCALE = 600.0          # калибрует градиент выбора монеты: слабая ферма тянется к дешёвым, сильная — к дорогим
-EMISSION = 52.0             # монето-USD-эквивалент/час при share=1.0; калибровано так, чтобы потолок дохода перекрывал электричество на всех тирах (маржа 45-85%)
+EMISSION = 135.0            # монето-USD-эквивалент/час при share=1.0; калибровано по окупаемости топовой фермы (~$5M / 21 день)
 LIVE_WEIGHT = 0.05          # вклад живых игроков в сложность — второстепенный сигнал (~5 игроков), не механизм
 
 # ── Эффективность компонентов (все клэмпятся в [EFF_FLOOR, 1.0]) ──
@@ -159,14 +159,19 @@ def _farm_hashrate(farm: dict) -> float:
 def _farm_hw_profile(farm: dict) -> dict:
     """Сводка параметров фермы для выбора монеты и расчёта эффективности."""
     comp = farm.get("components", {})
+
+    def spec(role: str, key: str, default=0):
+        # Снятый компонент хранится как None (см. uninstall_component) — не {}.
+        return (comp.get(role) or {}).get("specs", {}).get(key, default)
+
     return {
         "hashrate": _farm_hashrate(farm),
         "gpu_count": len(comp.get("gpus", [])),
-        "cores": comp.get("cpu", {}).get("specs", {}).get("cores", 0),
-        "ram_gb": comp.get("ram", {}).get("specs", {}).get("gb", 0),
-        "ssd_gb": comp.get("ssd", {}).get("specs", {}).get("gb", 0),
-        "net_speed": comp.get("network", {}).get("specs", {}).get("speed", 0),
-        "ups_backup": comp.get("ups", {}).get("specs", {}).get("backup", 0),
+        "cores": spec("cpu", "cores"),
+        "ram_gb": spec("ram", "gb"),
+        "ssd_gb": spec("ssd", "gb"),
+        "net_speed": spec("network", "speed"),
+        "ups_backup": spec("ups", "backup"),
     }
 
 
@@ -262,11 +267,11 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
 
     hashrate = _farm_hashrate(farm)
     gpu_power = sum(g.get("specs", {}).get("power", 0) for g in gpus) * overclock
-    cpu_power = comp.get("cpu", {}).get("specs", {}).get("power", 0)
-    mb_power = comp.get("motherboard", {}).get("specs", {}).get("power", 0)
+    cpu_power = (comp.get("cpu") or {}).get("specs", {}).get("power", 0)
+    mb_power = (comp.get("motherboard") or {}).get("specs", {}).get("power", 0)
     total_power = round(gpu_power + cpu_power + mb_power + BASE_POWER_W, 1)
 
-    cooling_cap = comp.get("cooling", {}).get("specs", {}).get("cooling", 0) + sum(f.get("specs", {}).get("cooling", 0) for f in fans)
+    cooling_cap = (comp.get("cooling") or {}).get("specs", {}).get("cooling", 0) + sum(f.get("specs", {}).get("cooling", 0) for f in fans)
     manager = farm.get("manager") or {"type": "player", "level": 0}
     ai_level = manager.get("level", 0) if manager.get("type") == "ai" else 0
     cool_bonus = min(0.5, ai_level * 0.06)
@@ -291,6 +296,7 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     temp_wear = max(0.0, (temperature - 60) / 100.0)
     wear_per_h = round(0.3 + overclock_excess * 2 + temp_wear * 3, 4)
 
+    ups_coverage = min(1.0, profile["ups_backup"] / total_power) if total_power > 0 else 1.0
     profit_per_h = round(revenue_per_h - electricity_per_h - salary_per_h, 2)
     return {
         "hashrate": hashrate, "power": total_power, "temperature": temperature,
@@ -300,6 +306,7 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
         "wearPerHour": wear_per_h, "gpuCount": gpu_count,
         "overheating": temperature >= OVERHEAT_TEMP,
         "upsProtected": profile["ups_backup"] >= total_power,
+        "upsCoverage": round(ups_coverage, 3),
         "efficiency": {"gpu": round(gpu_eff, 3), "ram": round(ram_eff, 3),
                        "ssd": round(ssd_eff, 3), "network": round(net_eff, 3)},
     }
@@ -977,14 +984,17 @@ async def tick_all(db: AsyncIOMotorDatabase):
         city = await _city_bonus(db, user_id)
         stats = _compute(farm, market, ec, em, city, live_hashrate_on_coin=live_on_coin)
 
-        # ИБП: шанс просадки питания за тик; без достаточного резерва — тик
-        # без выручки и доп. износ (UPS — gate, не постоянный множитель).
+        # ИБП: шанс просадки питания за тик. Резерв покрывает долю мощности —
+        # выручка и доп. износ режутся пропорционально непокрытой части.
         extra_wear = 0.0
-        if random.random() < BROWNOUT_CHANCE and not stats.get("upsProtected", False):
-            stats = dict(stats)
-            stats["revenuePerHour"] = 0.0
-            stats["profitPerHour"] = round(-stats["electricityPerHour"] - stats["salaryPerHour"], 2)
-            extra_wear = UPS_WEAR_PENALTY
+        if random.random() < BROWNOUT_CHANCE:
+            coverage = stats.get("upsCoverage", 0.0)
+            if coverage < 1.0:
+                stats = dict(stats)
+                stats["revenuePerHour"] = round(stats["revenuePerHour"] * coverage, 2)
+                stats["profitPerHour"] = round(
+                    stats["revenuePerHour"] - stats["electricityPerHour"] - stats["salaryPerHour"], 2)
+                extra_wear = UPS_WEAR_PENALTY * (1.0 - coverage)
 
         revenue = round(stats["revenuePerHour"] * elapsed_h, 2)
         electricity = round(stats["electricityPerHour"] * elapsed_h, 2)
@@ -1225,6 +1235,24 @@ if __name__ == "__main__":
     assert _test_stats["upsProtected"] is False            # нет установленного ИБП → backup=0
     assert _test_stats["revenuePerHour"] > 0
     assert _test_stats["gpuCount"] == 8
+
+    # ── Снятый компонент хранится как None (см. uninstall_component) — не должен ронять расчёт ──
+    _none_farm = {"components": dict(_test_farm["components"], cpu=None, ram=None, ups=None,
+                                     network=None, cooling=None, motherboard=None),
+                  "overclock": 1.0, "condition": 100.0, "coin": "ORB"}
+    _none_profile = _farm_hw_profile(_none_farm)
+    assert _none_profile["cores"] == 0 and _none_profile["ram_gb"] == 0 and _none_profile["ups_backup"] == 0
+    assert _compute(_none_farm, _test_market, energy_cost=0.12)["power"] > 0
+
+    # ── ИБП защищает пропорционально резерву (частичное покрытие, не «всё или ничего») ──
+    def _cov(backup):
+        _f = {"components": dict(_test_farm["components"],
+                                 ups={"specs": {"backup": backup, "power": 10}}),
+              "overclock": 1.0, "condition": 100.0, "coin": "ORB"}
+        return _compute(_f, _test_market, energy_cost=0.12)["upsCoverage"]
+    assert _cov(0) == 0.0                      # нет ИБП — нулевое покрытие
+    assert 0.0 < _cov(1000) < 1.0              # маленький ИБП — частичная защита
+    assert _cov(1_000_000) == 1.0              # резерв с запасом — полное покрытие, не >1
 
     # ── Эффективность компонентов: клэмп на границах [EFF_FLOOR, 1.0] ──
     assert _gpu_efficiency(8, 8) == 1.0                  # 8 ядер кормят 8 GPU — полная эффективность

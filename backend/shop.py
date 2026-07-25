@@ -180,12 +180,14 @@ def _build_catalog() -> list[dict]:
             "specs": {"cooling": cap, "power": watts}, "base_price": round(cap * 1.5, 2),
         })
 
-    # ИБП.
-    for i, w in enumerate((1000, 2000, 3500, 6000)):
+    # ИБП. Промышленные модели (от 20 kVA) нужны, чтобы прикрыть многокиловаттные
+    # стойки — иначе защита топовой фермы недостижима в принципе.
+    for i, w in enumerate((1000, 2000, 3500, 6000, 20000, 50000, 100000, 200000)):
         items.append({
-            "id": f"ups-{w}", "category": "ups", "name": f"ИБП {w}VA",
+            "id": f"ups-{w}", "category": "ups",
+            "name": (f"Промышленный ИБП {w // 1000} kVA" if w >= 20000 else f"ИБП {w}VA"),
             "color": _tier_color(i),
-            "specs": {"backup": w, "power": 10}, "base_price": round(w * 1.1, 2),
+            "specs": {"backup": w, "power": 10 + w // 2000}, "base_price": round(w * 1.1, 2),
         })
 
     # Сетевое оборудование.

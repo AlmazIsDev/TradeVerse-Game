@@ -266,7 +266,9 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             ))}
             {farm.components?.ups && (
               <span className={`mining-eff-badge ${s.upsProtected ? 'ok' : 'warn'}`}>
-                {t('mining.upsStatus')}: {s.upsProtected ? t('mining.upsOk') : t('mining.upsWeak')}
+                {t('mining.upsStatus')}: {s.upsProtected
+                  ? t('mining.upsOk')
+                  : `${t('mining.upsWeak')} ${Math.round((s.upsCoverage ?? 0) * 100)}%`}
               </span>
             )}
           </div>

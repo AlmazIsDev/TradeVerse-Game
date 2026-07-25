@@ -897,7 +897,7 @@
     "stockUpdated": "Акция обновлена",
     "stockDeleted": "Акция удалена",
     "transactionDeleted": "Транзакция удалена",
-    "searchTx": "Поиск по операции, категории, игроку...",
+    "searchTx": "Поиск: текст или «Категория: cityroof»",
     "txType": "Тип",
     "txSymbol": "Тикер",
     "txQty": "Кол-во",

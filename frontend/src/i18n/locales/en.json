@@ -911,7 +911,7 @@
     "stockUpdated": "Stock updated",
     "stockDeleted": "Stock deleted",
     "transactionDeleted": "Transaction deleted",
-    "searchTx": "Search by operation, category, player...",
+    "searchTx": "Search: text or \"Category: cityroof\"",
     "txType": "Type",
     "txSymbol": "Ticker",
     "txQty": "Qty",

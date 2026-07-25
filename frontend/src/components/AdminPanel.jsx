@@ -64,6 +64,17 @@ function DbDocPreview({ doc, refs = {} }) {
 }
 const DB_PAGE_SIZE = 50
 
+// Поля транзакций: сортировка + точечный поиск вида "Категория: cityroof".
+const TX_FIELDS = [
+  { key: 'timestamp', i18n: 'admin.txTime', fallback: 'Время' },
+  { key: 'direction', i18n: 'admin.txDirection', fallback: 'Операция' },
+  { key: 'label', i18n: 'admin.txLabel', fallback: 'Описание' },
+  { key: 'category', i18n: 'admin.txCategory', fallback: 'Категория' },
+  { key: 'username', i18n: 'admin.txUser', fallback: 'Игрок' },
+  { key: 'amount', i18n: 'admin.txAmount', fallback: 'Сумма' },
+  { key: 'balanceAfter', i18n: 'admin.txBalance', fallback: 'Баланс после' },
+]
+
 function AdminPanel({ user, onClose }) {
   const { t } = useTranslation()
 
@@ -91,8 +102,10 @@ function AdminPanel({ user, onClose }) {
   const [users, setUsers] = useState([])
   const [transactions, setTransactions] = useState([])
   const [botOrders, setBotOrders] = useState([])
-  const [txFilter, setTxFilter] = useState('all') // 'all' | 'buy' | 'sell' | 'bot'
+  const [txFilter, setTxFilter] = useState('all') // 'all' | 'income' | 'expense' | 'bot'
   const [txSearch, setTxSearch] = useState('')
+  const [txSort, setTxSort] = useState('timestamp')
+  const [txOrder, setTxOrder] = useState(-1) // 1 asc / -1 desc
   const [configItems, setConfigItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingStock, setEditingStock] = useState(null)
@@ -1148,12 +1161,35 @@ function AdminPanel({ user, onClose }) {
             })),
           ]
           const q = txSearch.trim().toLowerCase()
-          const match = (tx) => !q || [tx.label, tx.category, tx.username].some(s => (s || '').toLowerCase().includes(q))
+          // Точечный поиск: "поле: значение" (напр. "Категория: cityroof",
+          // "username: admin"). Поле ищем и по имени, и по локализованной подписи.
+          const m = q.match(/^([^:]+):\s*(.*)$/)
+          const fieldKey = m && (TX_FIELDS.find(f =>
+            f.key.toLowerCase() === m[1].trim() ||
+            t(f.i18n, f.fallback).toLowerCase() === m[1].trim()
+          )?.key)
+          const needle = m ? m[2].trim() : q
+          const match = (tx) => {
+            if (!needle) return true
+            if (fieldKey) return String(tx[fieldKey] ?? '').toLowerCase().includes(needle)
+            return [tx.label, tx.category, tx.username].some(s => (s || '').toLowerCase().includes(needle))
+          }
           const filtered = allTx.filter(tx => {
             if (txFilter === 'bot' && tx.source !== 'bot') return false
             if (txFilter === 'income' && tx.direction !== 'income') return false
             if (txFilter === 'expense' && tx.direction !== 'expense') return false
             return match(tx)
+          }).sort((a, b) => {
+            const av = a[txSort], bv = b[txSort]
+            if (av == null && bv == null) return 0
+            if (av == null) return 1   // пустые всегда в конце, независимо от направления
+            if (bv == null) return -1
+            const cmp = txSort === 'timestamp'
+              ? new Date(av) - new Date(bv)
+              : (typeof av === 'number' && typeof bv === 'number'
+                ? av - bv
+                : String(av).localeCompare(String(bv), 'ru'))
+            return cmp * txOrder
           })
           return (
             <>
@@ -1167,6 +1203,13 @@ function AdminPanel({ user, onClose }) {
                     </button>
                   ))}
                 </div>
+                <select className="admin-input tx-sort-select" value={txSort} onChange={e => setTxSort(e.target.value)}>
+                  {TX_FIELDS.map(f => <option key={f.key} value={f.key}>{t(f.i18n, f.fallback)}</option>)}
+                </select>
+                <button className="admin-btn" onClick={() => setTxOrder(o => -o)}
+                  title={txOrder >= 0 ? t('admin.database.sortAsc') : t('admin.database.sortDesc')}>
+                  {txOrder >= 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
                 <button className="admin-btn" onClick={loadData} title={t('admin.refresh')}>
                   <RefreshCw size={14} />
                 </button>

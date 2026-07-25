@@ -12,7 +12,7 @@ import random
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
@@ -442,6 +442,40 @@ async def get_crypto_market(
 
 
 # ── Trade ────────────────────────────────────────────────────────────────────
+
+
+@router.get("/quote")
+async def quote_crypto(
+    symbol: str = Query(...),
+    action: str = Query("buy"),
+    quantity: float = Query(0, ge=0),
+    _user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Предварительный расчёт сделки по той же формуле, что и /trade.
+
+    Модалка обязана показывать сумму с учётом price-impact и комиссии, иначе
+    покупка отклоняется по балансу, которого «визуально» хватало.
+    """
+    symbol = symbol.strip().upper()
+    action = action.lower()
+    if action not in ("buy", "sell"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action должно быть 'buy' или 'sell'")
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if coin is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+    ref_price = float(coin.get("price") or 0)
+    fill_price, _ = _project_fill(coin, action, quantity * ref_price)
+    cost = round(quantity * fill_price, 2)
+    fee = round(cost * CRYPTO_TRADE_FEE_RATE, 2)
+    return {
+        "price": ref_price,
+        "fillPrice": fill_price,
+        "cost": cost,
+        "fee": fee,
+        "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
+        "feeRate": CRYPTO_TRADE_FEE_RATE,
+    }
 
 
 @router.post("/trade")

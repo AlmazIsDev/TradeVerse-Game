@@ -335,6 +335,8 @@ async def market_asset(
             volume += (e.get("quantity", 0) or 0) * (e.get("priceAfter", price) or price)
         held = await db.stock_holdings.find_one({"userId": user_id, "symbol": symbol})
         meta = STOCK_META.get(symbol, {})
+        held_qty = held.get("quantity", 0) if held else 0
+        invested = float(held.get("invested", 0.0)) if held else 0.0
         logo_img = stock.get("logo")
         if not logo_img and stock.get("companyId") and ObjectId.is_valid(stock["companyId"]):
             comp = await db.companies.find_one({"_id": ObjectId(stock["companyId"])}, {"logo": 1})
@@ -355,6 +357,8 @@ async def market_asset(
             "totalShares": total_shares,
             "freeShares": stock.get("free_shares", total_shares),
             "heldQuantity": held.get("quantity", 0) if held else 0,
+            "avgPrice": round(invested / held_qty, 4) if held_qty else 0.0,
+            "invested": round(invested, 2),
         }
     else:  # crypto
         coin = await db.crypto_assets.find_one({"symbol": symbol})
@@ -383,6 +387,10 @@ async def market_asset(
             "ath": coin.get("ath", stats.get("ath")),
             "atl": coin.get("atl", stats.get("atl")),
             "heldQuantity": held.get("quantity", 0.0) if held else 0.0,
+            "avgPrice": round(float(held.get("avg_price", 0.0)), 6) if held else 0.0,
+            "invested": round(
+                float(held.get("avg_price", 0.0)) * float(held.get("quantity", 0.0)), 2
+            ) if held else 0.0,
         }
 
     info["stats"] = stats

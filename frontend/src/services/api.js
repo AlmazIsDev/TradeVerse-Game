@@ -594,6 +594,11 @@ export async function tradeCrypto(symbol, action, quantity) {
   })
 }
 
+export async function quoteCrypto(symbol, action, quantity) {
+  const qs = new URLSearchParams({ symbol, action, quantity: String(quantity) })
+  return request(`/api/crypto/quote?${qs}`)
+}
+
 export async function transferCrypto(recipient, symbol, amount) {
   return request('/api/crypto/transfer', {
     method: 'POST',
@@ -638,6 +643,11 @@ export async function tradeStock(symbol, action, quantity) {
     method: 'POST',
     body: JSON.stringify({ symbol, action, quantity }),
   })
+}
+
+export async function quoteStock(symbol, action, quantity) {
+  const qs = new URLSearchParams({ symbol, action, quantity: String(quantity) })
+  return request(`/api/v2/stocks/quote?${qs}`)
 }
 
 export async function fetchPortfolio() {

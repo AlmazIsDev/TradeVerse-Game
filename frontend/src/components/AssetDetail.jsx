@@ -5,11 +5,13 @@ import {
 } from '../services/api'
 import PriceChart from './PriceChart'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TradeBreakdown from './TradeBreakdown'
 import { computeAnalytics } from '../utils/assetAnalytics'
 import { toast } from './Toast'
 import {
   ArrowLeft, Star, TrendingUp, TrendingDown, CandlestickChart, LineChart,
   AlertTriangle, X, Activity, Gauge, Wallet, Gift, Sparkles, Flame, ShieldCheck,
+  BarChart3, Droplet,
 } from 'lucide-react'
 
 const INTERVALS = ['1h', '24h', '7d', '1m', '3m', '6m', '1y', 'all']
@@ -44,6 +46,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   const [trade, setTrade] = useState(null)   // 'buy' | 'sell'
   const [qty, setQty] = useState('1')
   const [busy, setBusy] = useState(false)
+  const [quote, setQuote] = useState(null)
 
   const loadAsset = useCallback(async () => {
     try {
@@ -94,6 +97,9 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
     } catch { /* ignore */ }
   }
 
+  // Котировка сделки: реальную сумму (с price-impact и комиссией) считает
+  // бэкенд той же формулой, что и исполнение — иначе модалка обещает одну
+  // цену, а списывается другая, и покупка падает с «Недостаточно средств».
   const doTrade = async () => {
     const q = market === 'stock' ? Math.floor(Number(qty)) : Number(qty)
     if (!(q > 0)) { toast(t('bank.invalidAmount'), 'error'); return }
@@ -137,10 +143,28 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
   const a = computeAnalytics(asset, history, market)
   const positionValue = held * asset.price
+  const avgPrice = asset.avgPrice || 0
+  const invested = asset.invested || 0
+  const unrealizedPnl = held > 0 && invested > 0 ? positionValue - invested : null
+  const pnlPercent = unrealizedPnl != null && invested > 0 ? (unrealizedPnl / invested) * 100 : null
   const estProfit = positionValue * (a.expectedReturn / 100)
   const estDividend = market === 'stock' ? positionValue * (a.dividendYield / 100) : 0
   const riskLabel = { low: t('asset.riskLow'), medium: t('asset.riskMedium'), high: t('asset.riskHigh') }[a.risk]
   const recLabel = { buy: t('asset.recBuy'), hold: t('asset.recHold'), sell: t('asset.recSell') }[a.recommendation]
+  const liquidityLabel = a.liquidity
+    ? { high: t('asset.liquidityHigh'), medium: t('asset.liquidityMedium'), low: t('asset.liquidityLow') }[a.liquidity]
+    : null
+
+  // Обоснование рекомендации — чтобы бейдж не выглядел гаданием. Перегрев/
+  // перепроданность идут первыми: именно они переопределяют трендовый сигнал.
+  const recReasons = [
+    ...(a.overheated ? [t('asset.whyOverheated', { value: a.rangePos })] : []),
+    ...(a.oversold ? [t('asset.whyOversold', { value: a.rangePos })] : []),
+    t('asset.whyMomentum', { value: a.momentum >= 0 ? `+${a.momentum.toFixed(1)}` : a.momentum.toFixed(1) }),
+    ...(a.rangePos != null && !a.overheated && !a.oversold ? [t('asset.whyRangePos', { value: a.rangePos })] : []),
+    t('asset.whyVolatility', { value: a.volatility }),
+    ...(a.drawdown != null && a.drawdown < -1 ? [t('asset.whyDrawdown', { value: Math.abs(a.drawdown) })] : []),
+  ]
 
   return (
     <div className="asset-detail">
@@ -240,6 +264,12 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${a.probUp}%` }} /></div>
               <span className="cf-prob-label"><b className="up">{a.probUp}%</b> {t('asset.probUp')}</span>
             </div>
+            <div className="ad-why">
+              <span className="ad-why-title">{t('asset.recWhy')}</span>
+              <ul className="ad-why-list">
+                {recReasons.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            </div>
           </div>
 
           {/* Прогноз */}
@@ -247,7 +277,9 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <span className="ad-info-title"><Activity size={15} /> {t('asset.forecast')}</span>
             <div className="ad-metric-row"><span>{t('asset.trend')}</span><b className={a.up ? 'up' : 'down'}>{a.up ? t('asset.trendUp') : t('asset.trendDown')}</b></div>
             <div className="ad-metric-row"><span>{t('asset.expectedReturn')}</span><b className={a.expectedReturn >= 0 ? 'up' : 'down'}>{a.expectedReturn >= 0 ? '+' : ''}{a.expectedReturn}%</b></div>
-            <div className="ad-metric-row"><span>{t('asset.volatility')}</span><b>{a.volatility}%</b></div>
+            <div className="ad-metric-row"><span>{t('asset.trendStrength')}</span><b>{a.trendStrength}%</b></div>
+            <div className="ad-meter"><div className={`ad-meter-fill ${a.up ? 'up' : 'down'}`} style={{ width: `${a.trendStrength}%` }} /></div>
+            <div className="ad-metric-row"><span>{t('asset.riskReward')}</span><b className={a.riskReward >= 0 ? 'up' : 'down'}>{a.riskReward >= 0 ? '+' : ''}{a.riskReward}</b></div>
           </div>
 
           {/* Изменение цены */}
@@ -259,16 +291,51 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             {a.c1y != null && <div className="ad-metric-row"><span>{t('asset.change1y')}</span><Change value={a.c1y} /></div>}
           </div>
 
-          {/* Моя позиция */}
+          {/* Диапазон цены за выбранный период — «дорого или дёшево сейчас» */}
+          {a.rangePos != null && (
+            <div className="ad-info-card">
+              <span className="ad-info-title"><BarChart3 size={15} /> {t('asset.periodRange')}</span>
+              <div className="ad-range">
+                <div className="ad-range-track">
+                  <div className="ad-range-marker" style={{ left: `${a.rangePos}%` }} />
+                </div>
+                <div className="ad-range-ends">
+                  <span>${formatMoney(a.periodLow)}</span>
+                  <span>${formatMoney(a.periodHigh)}</span>
+                </div>
+              </div>
+              <p className="ad-info-hint">{t('asset.rangeHint')}: <b>{a.rangePos}%</b></p>
+              {a.drawdown != null && (
+                <div className="ad-metric-row"><span>{t('asset.drawdown')}</span><b className={a.drawdown < 0 ? 'down' : 'up'}>{a.drawdown}%</b></div>
+              )}
+            </div>
+          )}
+
+          {/* Моя позиция — реальный P&L по средней цене входа */}
           <div className="ad-info-card">
             <span className="ad-info-title"><Wallet size={15} /> {t('asset.myPosition')}</span>
             {held > 0 ? (
               <>
                 <div className="ad-metric-row"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits, t)}</b></div>
                 <div className="ad-metric-row"><span>{t('asset.positionValue')}</span><b className="accent">${formatMoney(positionValue)}</b></div>
+                {avgPrice > 0 && (
+                  <div className="ad-metric-row"><span>{t('asset.avgPrice')}</span><b>${formatMoney(avgPrice)}</b></div>
+                )}
+                {invested > 0 && (
+                  <div className="ad-metric-row"><span>{t('asset.invested')}</span><b>${formatMoney(invested)}</b></div>
+                )}
+                {unrealizedPnl != null && (
+                  <div className="ad-pnl">
+                    <span>{t('asset.unrealizedPnl')}</span>
+                    <b className={unrealizedPnl >= 0 ? 'up' : 'down'}>
+                      {unrealizedPnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(unrealizedPnl))}
+                      <em>{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</em>
+                    </b>
+                  </div>
+                )}
                 <div className="ad-metric-row"><span>{t('asset.estProfit')}</span><b className={estProfit >= 0 ? 'up' : 'down'}>{estProfit >= 0 ? '+' : '−'}${formatMoney(Math.abs(estProfit))}</b></div>
               </>
-            ) : <p className="ad-info-empty">{t('crypto.noAssets')}</p>}
+            ) : <p className="ad-info-empty">{t('asset.noPositionHint')}</p>}
           </div>
 
           {/* Прогноз дивидендов — только акции */}
@@ -280,7 +347,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             </div>
           )}
 
-          {/* Риск / волатильность / популярность */}
+          {/* Риск / волатильность / ликвидность / популярность */}
           <div className="ad-info-card">
             <span className="ad-info-title"><Gauge size={15} /> {t('asset.risk')}</span>
             <div className="ad-metric-row">
@@ -288,16 +355,25 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <span className={`ad-risk-badge ${a.risk}`}>{riskLabel}</span>
             </div>
             <div className="ad-metric-row"><span><Flame size={13} /> {t('asset.volatility')}</span><b>{a.volatility}%</b></div>
+            {liquidityLabel && (
+              <>
+                <div className="ad-metric-row">
+                  <span><Droplet size={13} /> {t('asset.liquidity')}</span>
+                  <span className={`ad-risk-badge ${a.liquidity === 'high' ? 'low' : a.liquidity === 'medium' ? 'medium' : 'high'}`}>{liquidityLabel}</span>
+                </div>
+                <p className="ad-info-hint">{t('asset.liquidityHint', { value: a.turnover })}</p>
+              </>
+            )}
             <div className="ad-metric-row"><span>{t('asset.popularity')}</span><b>{a.popularity}%</b></div>
             <div className="ad-pop-bar"><div className="ad-pop-fill" style={{ width: `${a.popularity}%` }} /></div>
           </div>
-
-          {/* История сделок */}
-          <div className="ad-info-card">
-            <span className="ad-info-title">{t('asset.history')}</span>
-            <TransactionsPanel category={market === 'crypto' ? 'crypto' : 'trade'} />
-          </div>
         </div>
+      </div>
+
+      {/* История сделок — на всю ширину под графиком, иначе не помещается в колонке */}
+      <div className="ad-info-card ad-history-card">
+        <span className="ad-info-title"><Activity size={15} /> {t('asset.history')}</span>
+        <TransactionsPanel category={market === 'crypto' ? 'crypto' : 'trade'} />
       </div>
 
       {/* Модалка сделки */}
@@ -312,13 +388,24 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               <input type="number" min={market === 'crypto' ? '0' : '1'} step={market === 'crypto' ? 'any' : '1'} value={qty} autoFocus
                 onChange={e => setQty(e.target.value)} />
             </div>
-            <p className="modal-total">{t('common.total')}: <strong>${formatMoney((Number(qty) || 0) * asset.price)}</strong></p>
+
+            {/* Разбивка сделки по данным бэкенда: цена исполнения ≠ котировке,
+                потому что крупный ордер сам двигает цену. */}
+            <TradeBreakdown
+              market={market} symbol={symbol} action={trade}
+              quantity={qty} balance={balance} onQuote={setQuote}
+            />
+
             <div className="modal-account-row">
               <div className="modal-account-item"><span>{t('crypto.cashBalance')}</span><b>${formatMoney(balance)}</b></div>
               <div className="modal-account-item"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits, t)}</b></div>
             </div>
             <div className="modal-buttons">
-              <button className={`stock-btn ${trade === 'buy' ? 'buy-btn' : 'sell-btn'}`} onClick={doTrade} disabled={busy}>
+              <button
+                className={`stock-btn ${trade === 'buy' ? 'buy-btn' : 'sell-btn'}`}
+                onClick={doTrade}
+                disabled={busy || (trade === 'buy' && !!quote && quote.total > balance)}
+              >
                 {busy ? t('bank.processing') : t('common.confirm')}
               </button>
               <button className="stock-btn cancel-btn" onClick={() => setTrade(null)} disabled={busy}>{t('common.cancel')}</button>

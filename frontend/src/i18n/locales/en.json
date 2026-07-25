@@ -292,7 +292,34 @@
     "trend": "Trend",
     "trendUp": "Up",
     "trendDown": "Down",
-    "history": "Transaction history"
+    "history": "Transaction history",
+    "recWhy": "Why",
+    "whyMomentum": "Price momentum {{value}}%",
+    "whyVolatility": "Volatility {{value}}%",
+    "whyTrend": "Horizons agree {{value}}%",
+    "whyOverheated": "Overheated: price near range high ({{value}}%)",
+    "whyOversold": "Oversold: price near range low ({{value}}%)",
+    "whyRangePos": "Within range: {{value}}%",
+    "whyDrawdown": "Down {{value}}% from high",
+    "periodRange": "Period range",
+    "rangeLow": "Low",
+    "rangeHigh": "High",
+    "rangeHint": "Current price within range",
+    "drawdown": "Drawdown from ATH",
+    "liquidity": "Liquidity",
+    "liquidityHigh": "High",
+    "liquidityMedium": "Medium",
+    "liquidityLow": "Low",
+    "liquidityHint": "Daily turnover {{value}}% of market cap",
+    "trendStrength": "Trend strength",
+    "riskReward": "Return / risk",
+    "avgPrice": "Average entry price",
+    "invested": "Invested",
+    "unrealizedPnl": "Unrealized P&L",
+    "breakEven": "Break-even",
+    "noPositionHint": "Buy this asset to track profit",
+    "scaleLow": "Low",
+    "scaleHigh": "High"
   },
   "leaderboard": {
     "player": "Player",
@@ -1319,7 +1346,13 @@
     }
   },
   "trade": {
-    "fee": "Fee ({{pct}}%)"
+    "feeLabel": "Fee",
+    "fillPrice": "Fill price",
+    "priceImpact": "Price impact",
+    "subtotal": "Subtotal",
+    "youPay": "You pay",
+    "youGet": "You receive",
+    "notEnough": "Short by ${{amount}}"
   },
   "gift": {
     "toPlayer": "Transfer to player",

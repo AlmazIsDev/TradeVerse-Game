@@ -292,7 +292,34 @@
     "trend": "Тренд",
     "trendUp": "Рост",
     "trendDown": "Падение",
-    "history": "История операций"
+    "history": "История операций",
+    "recWhy": "Почему",
+    "whyMomentum": "Импульс цены {{value}}%",
+    "whyVolatility": "Волатильность {{value}}%",
+    "whyTrend": "Горизонты согласованы на {{value}}%",
+    "whyOverheated": "Перегрет: цена у максимума диапазона ({{value}}%)",
+    "whyOversold": "Перепродан: цена у минимума диапазона ({{value}}%)",
+    "whyRangePos": "Внутри диапазона: {{value}}%",
+    "whyDrawdown": "Ниже максимума на {{value}}%",
+    "periodRange": "Диапазон за период",
+    "rangeLow": "Минимум",
+    "rangeHigh": "Максимум",
+    "rangeHint": "Текущая цена внутри диапазона",
+    "drawdown": "Просадка от ATH",
+    "liquidity": "Ликвидность",
+    "liquidityHigh": "Высокая",
+    "liquidityMedium": "Средняя",
+    "liquidityLow": "Низкая",
+    "liquidityHint": "Оборот {{value}}% от капитализации за сутки",
+    "trendStrength": "Сила тренда",
+    "riskReward": "Доходность / риск",
+    "avgPrice": "Средняя цена входа",
+    "invested": "Вложено",
+    "unrealizedPnl": "Нереализованная прибыль",
+    "breakEven": "Точка безубыточности",
+    "noPositionHint": "Купите актив, чтобы отслеживать прибыль",
+    "scaleLow": "Низко",
+    "scaleHigh": "Высоко"
   },
   "leaderboard": {
     "player": "Игрок",
@@ -1319,7 +1346,13 @@
     }
   },
   "trade": {
-    "fee": "Комиссия ({{pct}}%)"
+    "feeLabel": "Комиссия",
+    "fillPrice": "Цена исполнения",
+    "priceImpact": "Влияние на цену",
+    "subtotal": "Стоимость",
+    "youPay": "К оплате",
+    "youGet": "К зачислению",
+    "notEnough": "Не хватает ${{amount}}"
   },
   "gift": {
     "toPlayer": "Передать игроку",

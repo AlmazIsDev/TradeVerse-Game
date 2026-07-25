@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TradeBreakdown from './TradeBreakdown'
 import AssetDetail from './AssetDetail'
 import { toast } from './Toast'
 import {
@@ -27,6 +28,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [error, setError] = useState(null)
   const [trade, setTrade] = useState(null)     // { ...stock, action }
   const [qty, setQty] = useState('1')
+  const [quote, setQuote] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [dividend, setDividend] = useState(null)   // stock being paid dividends
@@ -333,16 +335,16 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
               />
             </div>
 
-            <p className="modal-total">
-              {t('common.total')}: <strong>${formatMoney((Math.floor(Number(qty)) || 0) * trade.price)}</strong>
-            </p>
-            <div className="crypto-modal-fee">{t('trade.fee', { pct: 0.5 })}: ${formatMoney((Math.floor(Number(qty)) || 0) * trade.price * 0.005)}</div>
+            <TradeBreakdown
+              market="stock" symbol={trade.symbol} action={trade.action}
+              quantity={qty} balance={balance} onQuote={setQuote}
+            />
 
             <div className="modal-buttons">
               <button
                 className={`stock-btn ${trade.action === 'buy' ? 'buy-btn' : 'sell-btn'}`}
                 onClick={confirmTrade}
-                disabled={busy}
+                disabled={busy || (trade.action === 'buy' && !!quote && quote.total > balance)}
               >
                 {busy ? t('bank.processing') : t('common.confirm')}
               </button>

@@ -508,6 +508,52 @@ async def _credit_company_budget(db, stock: dict, amount: float):
         )
 
 
+def _quote_stock(stock: dict, action: str, quantity: int) -> dict:
+    """Считает цену исполнения, стоимость и комиссию БЕЗ записи в БД.
+
+    Единый источник правды для /trade и /quote: без него модалка показывала бы
+    qty*price, а списывалось бы больше (impact + комиссия), и покупка падала с
+    «Недостаточно средств» при внешне достаточном балансе.
+    """
+    cfg = _resolve_config(stock)
+    total_shares = cfg["total_shares"]
+    price = float(stock["price"])
+    delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
+    fill_price = round(price + delta, 2) if action == "buy" else round(max(0.01, price - delta), 2)
+    cost = round(fill_price * quantity, 2)
+    fee = round(cost * TRADE_FEE_RATE, 2)
+    return {
+        "price": price,
+        "fillPrice": fill_price,
+        "cost": cost,
+        "fee": fee,
+        "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
+        "feeRate": TRADE_FEE_RATE,
+    }
+
+
+@router.get("/quote")
+async def quote_stock(
+    symbol: str = Query(...),
+    action: str = Query("buy"),
+    quantity: int = Query(1, ge=0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Предварительный расчёт сделки: сколько реально спишется/придёт."""
+    symbol = symbol.strip().upper()
+    action = action.lower()
+    if action not in ("buy", "sell"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action должно быть 'buy' или 'sell'")
+    stock = await db.stocks.find_one({"symbol": symbol})
+    if not stock:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Акция '{symbol}' не найдена")
+    q = _quote_stock(stock, action, quantity)
+    q["maxOrder"] = MAX_ORDER_SHARES
+    q["freeShares"] = stock.get("free_shares", _resolve_config(stock)["total_shares"])
+    return q
+
+
 @router.post("/trade")
 async def trade_stock(
     trade: StockTradeRequest,
@@ -543,16 +589,13 @@ async def trade_stock(
             f"Ордер превышает максимальный размер ({MAX_ORDER_SHARES} акций)",
         )
 
-    delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
     # Сделка исполняется по цене, уже сдвинутой собственным impact'ом: покупатель
     # платит price+delta, продавец получает price-delta. Иначе — безрисковый
     # арбитраж buy→sell на своём же движении цены (печать денег циклом).
-    if action == "buy":
-        fill_price = round(price + delta, 2)
-    else:
-        fill_price = round(max(0.01, price - delta), 2)
-    cost = round(fill_price * quantity, 2)
-    fee = round(cost * TRADE_FEE_RATE, 2)   # спред «сгорает»; делает churning невыгодным
+    q = _quote_stock(stock, action, quantity)
+    fill_price = q["fillPrice"]
+    cost = q["cost"]
+    fee = q["fee"]   # спред «сгорает»; делает churning невыгодным
 
     if action == "buy":
         charge = round(cost + fee, 2)

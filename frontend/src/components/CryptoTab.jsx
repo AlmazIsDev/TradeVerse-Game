@@ -5,6 +5,7 @@ import {
   transferCrypto, fetchCryptoTransfers,
 } from '../services/api'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TradeBreakdown from './TradeBreakdown'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
   ArrowUpRight, ArrowDownLeft, PlusCircle, X, Send, Search, Activity,
@@ -37,6 +38,7 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [copied, setCopied] = useState(false)
   const [trade, setTrade] = useState(null)
   const [qty, setQty] = useState('')
+  const [quote, setQuote] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [detailSymbol, setDetailSymbol] = useState(null)
@@ -118,7 +120,7 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
     if (!trade) return
     const q = parseFloat(qty)
     if (!Number.isFinite(q) || q <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-    const cost = q * trade.price
+    const cost = quote ? quote.total : q * trade.price
     if (trade.action === 'buy' && cost > balance) { toast(t('crypto.insufficientFunds'), 'error'); return }
     const held = holdingFor(trade.symbol)
     if (trade.action === 'sell' && (!held || held.quantity < q)) { toast(t('crypto.insufficientCoins'), 'error'); return }
@@ -366,9 +368,15 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
               <span>{t('common.quantity')}</span>
               <input type="number" min="0" step="any" value={qty} autoFocus onChange={e => setQty(e.target.value)} placeholder="0.00" />
             </label>
-            <div className="crypto-modal-total">{t('common.total')}: <strong>{formatMoney((parseFloat(qty) || 0) * trade.price)} $</strong></div>
-            <div className="crypto-modal-fee">{t('trade.fee', { pct: 0.5 })}: {formatMoney((parseFloat(qty) || 0) * trade.price * 0.005)} $</div>
-            <button className={`crypto-confirm ${trade.action}`} onClick={confirmTrade} disabled={busy}>
+            <TradeBreakdown
+              market="crypto" symbol={trade.symbol} action={trade.action}
+              quantity={qty} balance={balance} onQuote={setQuote}
+            />
+            <button
+              className={`crypto-confirm ${trade.action}`}
+              onClick={confirmTrade}
+              disabled={busy || (trade.action === 'buy' && !!quote && quote.total > balance)}
+            >
               {busy ? t('bank.processing') : trade.action === 'buy' ? t('common.buy') : t('common.sell')}
             </button>
           </div>

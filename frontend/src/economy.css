@@ -1746,6 +1746,72 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 
 .ad-info-card .tx-list { max-height: 240px; overflow-y: auto; }
 
+/* Разбивка сделки в модалке покупки/продажи */
+.trade-breakdown {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: var(--spacing-md) 0; padding: 10px 12px;
+  background: var(--color-bg-tertiary); border-radius: var(--radius-md);
+  transition: opacity .2s ease;
+}
+.trade-breakdown.loading { opacity: .5; }
+.tb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--color-text-secondary); }
+.tb-row b { font-size: 13px; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.tb-row b.up { color: var(--color-success); }
+.tb-row b.down { color: var(--color-danger); }
+.tb-total { border-top: 1px solid var(--hairline); padding-top: 7px; margin-top: 1px; }
+.tb-total span { font-weight: 600; color: var(--color-text-primary); }
+.tb-total strong { font-size: 17px; font-weight: 800; color: var(--color-accent-hover); font-variant-numeric: tabular-nums; }
+.trade-warning {
+  display: flex; align-items: center; gap: 7px; margin-bottom: var(--spacing-sm);
+  padding: 8px 11px; border-radius: var(--radius-md); font-size: 12.5px; font-weight: 600;
+  color: #ffd7d3; background: rgba(255, 59, 48, 0.14); border: 1px solid rgba(255, 59, 48, 0.3);
+}
+.trade-warning svg { flex-shrink: 0; color: #ff6961; }
+
+/* Обоснование рекомендации */
+.ad-why { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 2px; }
+.ad-why-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-secondary); }
+.ad-why-list { list-style: none; margin: 5px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.ad-why-list li { position: relative; padding-left: 13px; font-size: 11.5px; line-height: 1.45; color: var(--color-text-secondary); }
+.ad-why-list li::before { content: ''; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--color-accent); }
+
+/* Универсальная шкала-индикатор внутри карточек */
+.ad-meter { height: 6px; border-radius: 3px; background: rgba(128, 128, 128, 0.18); overflow: hidden; }
+.ad-meter-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+.ad-meter-fill.up { background: linear-gradient(90deg, #34c759, #248a3d); }
+.ad-meter-fill.down { background: linear-gradient(90deg, #ff6961, #ff3b30); }
+
+.ad-info-hint { font-size: 11px; line-height: 1.4; color: var(--color-text-secondary); }
+.ad-info-hint b { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+
+/* Диапазон цены за период с маркером текущей цены */
+.ad-range { display: flex; flex-direction: column; gap: 5px; }
+.ad-range-track {
+  position: relative; height: 6px; border-radius: 3px;
+  background: linear-gradient(90deg, #34c759, #ffb340, #ff3b30);
+}
+.ad-range-marker {
+  position: absolute; top: 50%; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--color-text-primary); transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--color-bg-secondary); transition: left .4s ease;
+}
+.ad-range-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Нереализованная прибыль — выделенная строка, главный показатель позиции */
+.ad-pnl {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-bg-tertiary);
+  font-size: 12.5px; color: var(--color-text-secondary);
+}
+.ad-pnl b { display: flex; flex-direction: column; align-items: flex-end; font-size: 15px; font-variant-numeric: tabular-nums; }
+.ad-pnl b.up { color: var(--color-success); }
+.ad-pnl b.down { color: var(--color-danger); }
+.ad-pnl b em { font-style: normal; font-size: 11px; opacity: .85; }
+
+/* История сделок вынесена под две колонки — там место есть, скролл не нужен */
+.ad-history-card { margin-top: var(--spacing-lg); }
+.ad-history-card .tx-list { max-height: none; overflow-y: visible; }
+
 /* ===================== АВТО: компактные действия + тюнинг ===================== */
 .asset-actions.compact { gap: 6px; }
 .asset-actions.compact .asset-act { padding: 7px 10px; font-size: 12px; flex: 1 1 auto; }

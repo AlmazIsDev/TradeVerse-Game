@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchLeaderboard, fetchCompanyLeaderboard } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
+import PlayerProfileModal from './PlayerProfileModal'
 import { Trophy, AlertTriangle, Crown, Medal, Building2 } from 'lucide-react'
 
 const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company']
@@ -29,6 +30,7 @@ function LeaderboardTab({ currentUserId }) {
   const [sort, setSort] = useState('networth')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [profileId, setProfileId] = useState(null)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -135,7 +137,7 @@ function LeaderboardTab({ currentUserId }) {
                   )}
                   <span style={{ minWidth: 0 }}>
                     <span className="lb-name">
-                      {entry.username}
+                      <span className="player-link" onClick={() => setProfileId(entry.userId)}>{entry.username}</span>
                       {isMe && <span className="lb-you">{t('leaderboard.you')}</span>}
                     </span>
                     <span className="lb-breakdown">
@@ -194,6 +196,7 @@ function LeaderboardTab({ currentUserId }) {
           ))}
         </div>
       )}
+      {profileId && <PlayerProfileModal userId={profileId} onClose={() => setProfileId(null)} />}
     </div>
   )
 }

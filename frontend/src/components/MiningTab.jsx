@@ -2,20 +2,22 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchFarms, fetchMiningMarket, fetchMiningParts, createFarm, deleteFarm, installComponent,
+  installComponentsBatch,
   uninstallComponent, startMining, stopMining, setFarmCoin, setOverclock,
   repairFarm, farmManager,
 } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
-  Plus, X, AlertTriangle, Check, Bot, TrendingUp, HardDrive, Server, Cpu,
+  Plus, X, AlertTriangle, Bot, TrendingUp, HardDrive, Server, Cpu,
 } from 'lucide-react'
 
 // Категории компонентов: обязательные помечены req; multi — можно несколько.
 const CATS = [
-  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true },
+  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true, multi: true },
   { cat: 'ram', req: true }, { cat: 'ssd', req: true }, { cat: 'cooling', req: true },
   { cat: 'gpu', req: true, multi: true }, { cat: 'fan', multi: true },
   { cat: 'case' }, { cat: 'rack' }, { cat: 'ups' }, { cat: 'network' },
@@ -62,10 +64,10 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
   const [activeId, setActiveId] = useState(null)
   const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
-  const [installQty, setInstallQty] = useState({}) // cat -> сколько ставить оптом (gpu/fan)
+  const [cartQty, setCartQty] = useState({}) // `${cat}::${modelKey}` -> сколько ставить оптом (gpu/fan)
+  const [openAdd, setOpenAdd] = useState({}) // `${farmId}::${cat}` -> раскрыт ли выбор детали (иначе зелёная «+»)
 
   const load = useCallback(async () => {
     try {
@@ -79,7 +81,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
       setParts(p)
       setActiveId(prev => (prev && f.some(x => x.id === prev)) ? prev : (f[0]?.id ?? null))
     } catch (err) {
-      setMsg({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -95,31 +97,44 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     return () => { window.removeEventListener('tv:realtime', onRt); clearInterval(id) }
   }, [load])
 
-  const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2400) }
 
   const run = async (fn, okKey) => {
     setBusy(true)
     try {
       const res = await fn()
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      if (okKey) flash(t(okKey))
+      if (okKey) toast(t(okKey))
       await load()
       return res
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
   }
 
-  // Массовая установка одинаковых деталей (GPU/вентиляторы): ставим по одной,
-  // но не больше свободной ёмкости и наличия. Сервер валидирует каждую.
+  // Массовая установка одинаковых деталей (GPU/вентиляторы): один batch-запрос,
+  // сервер валидирует и ставит каждую по очереди.
   const installMany = async (cat, hwIds) => {
     setBusy(true)
     try {
-      for (const hwId of hwIds) await installComponent(farm.id, cat, hwId)
+      const res = await installComponentsBatch(farm.id, hwIds.map(hwId => ({ category: cat, hwId })))
+      if (res?.error) toast(res.error, 'error')
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
+    } finally {
+      setBusy(false)
+      await load()
+    }
+  }
+
+  // Массовое снятие одинаковых деталей: снимаем по одной (сервер валидирует каждую).
+  const removeMany = async (hwIds) => {
+    setBusy(true)
+    try {
+      for (const hwId of hwIds) await uninstallComponent(farm.id, hwId)
+    } catch (err) {
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
       await load()
@@ -155,11 +170,6 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     return (
       <div className="mining-tab">
         <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
-        {msg && (
-          <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-            {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-          </div>
-        )}
         <div className="crypto-onboard mining-onboard">
           <div className="crypto-onboard-icon"><Server size={56} /></div>
           <h3>{t('mining.onboardTitle')}</h3>
@@ -194,11 +204,6 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     <div className="mining-tab">
       <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
 
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-        </div>
-      )}
 
       {/* Селектор ферм + добавление новой */}
       <div className="mining-farm-tabs">
@@ -242,6 +247,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
 
         {/* Мониторинг — только для собранной фермы (иначе показатели не считаются). */}
         {assembled ? (
+          <>
           <div className="mining-stat-cards">
             <div className="msc"><Activity size={16} /><span>{t('mining.hashrate')}</span><b>{formatCompact(s.hashrate)} H/s</b></div>
             <div className="msc"><Zap size={16} /><span>{t('mining.power')}</span><b>{formatCompact(s.power)} W</b></div>
@@ -252,6 +258,21 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             <div className="msc"><TrendingUp size={16} /><span>{t('mining.profitHr')}</span><b className={s.profitPerHour >= 0 ? 'up' : 'down'}>${formatMoney(s.profitPerHour)}</b></div>
             <div className="msc"><HardDrive size={16} /><span>{t('mining.earned')}</span><b>${formatCompact(farm.totalEarned)}</b></div>
           </div>
+          <div className="mining-eff-row">
+            {['gpu', 'ram', 'ssd', 'network'].map(k => (
+              <span key={k} className={`mining-eff-badge ${(s.efficiency?.[k] ?? 1) < 0.5 ? 'low' : ''}`}>
+                {t(`mining.eff.${k}`)}: {Math.round((s.efficiency?.[k] ?? 1) * 100)}%
+              </span>
+            ))}
+            {farm.components?.ups && (
+              <span className={`mining-eff-badge ${s.upsProtected ? 'ok' : 'warn'}`}>
+                {t('mining.upsStatus')}: {s.upsProtected
+                  ? t('mining.upsOk')
+                  : `${t('mining.upsWeak')} ${Math.round((s.upsCoverage ?? 0) * 100)}%`}
+              </span>
+            )}
+          </div>
+          </>
         ) : (
           <div className="mining-not-assembled">
             <Cpu size={18} /> {t('mining.notAssembled')}
@@ -319,8 +340,9 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <h4><Cpu size={16} /> {t('mining.assembly')}</h4>
           <div className="mining-slots">
             {CATS.map(({ cat, req, multi }) => {
+              const multiKey = cat === 'gpu' ? 'gpus' : cat === 'fan' ? 'fans' : 'psus'
               const installed = multi
-                ? (cat === 'gpu' ? farm.components?.gpus : farm.components?.fans) || []
+                ? (farm.components?.[multiKey]) || []
                 : (farm.components?.[cat] ? [farm.components[cat]] : [])
               const avail = parts[cat] || []
               // Корпус и стойка — взаимоисключающие способы размещения (см.
@@ -329,7 +351,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
               const blockedByAlt = altPlacement && farm.components?.[altPlacement]
               // Ёмкость размещения: сколько ещё компонентов этой роли влезет
               // (сервер валидирует повторно — см. install_component).
-              const capLeft = multi ? (farm.capacity?.[cat === 'gpu' ? 'gpu' : 'fan'] ?? null) : null
+              const capLeft = multi ? (farm.capacity?.[cat] ?? null) : null
               const capFull = capLeft != null && capLeft <= 0
               const canAdd = (multi || installed.length === 0) && !blockedByAlt && !capFull
               // Группируем одинаковые детали (по имени+специфике), чтобы не плодить
@@ -352,48 +374,87 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                   {groups.map(g => (
                     <div key={g.key} className="mslot-item">
                       <span>{g.label}{g.items.length > 1 && <b className="mslot-item-qty"> ×{g.items.length}</b>}</span>
-                      <button className="mslot-rm" disabled={busy}
-                        title={g.items.length > 1 ? t('mining.removeOne') : ''}
-                        onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
+                      <span className="mslot-item-actions">
+                        {multi && g.items.length > 1 && (
+                          <button className="mslot-rm mslot-rm-all" disabled={busy}
+                            title={t('mining.removeAll', 'Удалить все')}
+                            onClick={() => removeMany(g.items.map(it => it.hwId))}>
+                            <X size={12} />{g.items.length}
+                          </button>
+                        )}
+                        <button className="mslot-rm" disabled={busy}
+                          title={g.items.length > 1 ? t('mining.removeOne') : ''}
+                          onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
+                      </span>
                     </div>
                   ))}
                   {blockedByAlt ? (
                     <span className="mslot-empty">{t('mining.placementTaken', { other: t(`mining.comp.${altPlacement}`, altPlacement) })}</span>
                   ) : capFull ? (
                     <span className="mslot-empty">{t('mining.capacityFull')}</span>
-                  ) : canAdd && (
+                  ) : canAdd && (() => {
+                    const addKey = `${farm.id}::${cat}`
+                    if (!openAdd[addKey]) {
+                      return (
+                        <button className="mslot-add-badge" disabled={busy}
+                          title={t('mining.addComponent', 'Добавить')}
+                          onClick={() => setOpenAdd(o => ({ ...o, [addKey]: true }))}>
+                          <Plus size={14} /> {t('mining.addComponent', 'Добавить')}
+                        </button>
+                      )
+                    }
+                    return (
                     avail.length > 0 ? (
-                      <div className="mslot-pick-row">
-                        <select className="mslot-pick" disabled={busy} value=""
-                          onChange={e => {
-                            if (!e.target.value) return
-                            const picked = avail.find(p => p.hwId === e.target.value)
-                            if (multi) {
-                              // Оптом: ставим N одинаковых деталей (тот же товар),
-                              // ограничивая свободной ёмкостью и наличием.
-                              const want = Math.max(1, Math.min(installQty[cat] || 1, capLeft ?? Infinity))
-                              const key = hwName(picked, t) + partSpec(cat, picked.specs, t)
-                              const ids = avail.filter(p => hwName(p, t) + partSpec(cat, p.specs, t) === key).slice(0, want).map(p => p.hwId)
-                              installMany(cat, ids.length ? ids : [picked.hwId])
-                            } else {
-                              run(() => installComponent(farm.id, cat, e.target.value))
+                      multi ? (
+                        <div className="mslot-cart">
+                          {(() => {
+                            // Группируем доступные детали по модели (имя+спека), чтобы
+                            // показать одну строку на модель с полем количества.
+                            const availGroups = []
+                            for (const p of avail) {
+                              const key = hwName(p, t) + partSpec(cat, p.specs, t)
+                              const g = availGroups.find(x => x.key === key)
+                              if (g) g.items.push(p)
+                              else availGroups.push({ key, label: hwName(p, t), spec: partSpec(cat, p.specs, t), items: [p] })
                             }
-                          }}>
+                            return availGroups.map(g => {
+                              const qtyKey = `${cat}::${g.key}`
+                              const maxQty = Math.min(g.items.length, capLeft ?? Infinity)
+                              const qty = cartQty[qtyKey] ?? 1
+                              return (
+                                <div key={g.key} className="mslot-cart-row">
+                                  <span className="mslot-cart-label">{g.label}{g.spec}</span>
+                                  <span className="mslot-cart-stock" title={t('mining.inStock', 'В наличии')}>{g.items.length}</span>
+                                  <input className="mslot-cart-qty" inputMode="numeric" disabled={busy}
+                                    value={qty}
+                                    onChange={e => {
+                                      const v = parseInt(e.target.value, 10)
+                                      setCartQty(q => ({ ...q, [qtyKey]: isNaN(v) ? 1 : Math.max(1, Math.min(maxQty, v)) }))
+                                    }} />
+                                  <button className="mslot-cart-btn" disabled={busy}
+                                    onClick={() => {
+                                      const want = Math.max(1, Math.min(cartQty[qtyKey] ?? 1, maxQty))
+                                      installMany(cat, g.items.slice(0, want).map(p => p.hwId))
+                                    }}>
+                                    {t('mining.install', 'Поставить')}
+                                  </button>
+                                </div>
+                              )
+                            })
+                          })()}
+                        </div>
+                      ) : (
+                        <select className="mslot-pick" disabled={busy} value=""
+                          onChange={e => { if (e.target.value) run(() => installComponent(farm.id, cat, e.target.value)) }}>
                           <option value="">{t('mining.pickPart')}</option>
                           {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>)}
                         </select>
-                        {multi && (
-                          <span className="mslot-qty">
-                            <input type="number" min="1" max={capLeft ?? 999} disabled={busy}
-                              value={installQty[cat] || 1}
-                              onChange={e => setInstallQty(q => ({ ...q, [cat]: Math.max(1, Math.min(capLeft ?? 999, parseInt(e.target.value, 10) || 1)) }))} />
-                          </span>
-                        )}
-                      </div>
+                      )
                     ) : (
                       <span className="mslot-empty">{t('mining.noParts')}</span>
                     )
-                  )}
+                    )
+                  })()}
                 </div>
               )
             })}

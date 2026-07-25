@@ -1163,6 +1163,7 @@ async def company_ipo(
         "issuer": user_id,
         "issuer_name": current_user.get("username"),
         "companyId": cid,
+        "logo": company.get("logo"),
         "config": {"total_shares": payload.totalShares},
         "free_shares": free_shares,
         "updated_at": _now(),
@@ -1321,6 +1322,7 @@ async def company_issue_crypto(
         "issuer": user_id,
         "issuer_name": current_user.get("username"),
         "companyId": cid,
+        "image": company.get("logo"),
         "source": "company",
         "updated_at": _now(),
     }

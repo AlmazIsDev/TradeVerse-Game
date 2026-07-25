@@ -4,8 +4,9 @@ import {
   fetchMediaStatus, fetchMediaTargets, fetchMediaFeed, orderExpose,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import { toast } from './Toast'
 import {
-  Newspaper, Megaphone, AlertTriangle, Check, X, Target, TrendingDown, TrendingUp,
+  Newspaper, Megaphone, X, Target, TrendingDown, TrendingUp,
   Building2, User, Clock,
 } from 'lucide-react'
 
@@ -23,13 +24,7 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
   const [feed, setFeed] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
   const [form, setForm] = useState({ targetType: 'company', targetId: '', budget: '' })
-
-  const flash = (text, type = 'success') => {
-    setMsg({ text, type })
-    setTimeout(() => setMsg(null), 4000)
-  }
 
   const load = useCallback(async () => {
     try {
@@ -39,7 +34,7 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
       setTargets(tg && tg.companies ? tg : { companies: [], players: [] })
       setFeed(fd)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -71,17 +66,17 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
 
   const submit = async () => {
     const budget = Number(form.budget)
-    if (!form.targetId) { flash(t(form.targetType === 'company' ? 'media.pickCompany' : 'media.pickPlayer'), 'error'); return }
-    if (!(budget >= (status?.minBudget || 0))) { flash(t('media.budgetTooLow', { min: formatMoney(status?.minBudget || 0) }), 'error'); return }
+    if (!form.targetId) { toast(t(form.targetType === 'company' ? 'media.pickCompany' : 'media.pickPlayer'), 'error'); return }
+    if (!(budget >= (status?.minBudget || 0))) { toast(t('media.budgetTooLow', { min: formatMoney(status?.minBudget || 0) }), 'error'); return }
     setBusy(true)
     try {
       const res = await orderExpose({ targetType: form.targetType, targetId: form.targetId, budget })
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('media.resultPending', { minutes: res.prepMinutes }), 'success')
+      toast(t('media.resultPending', { minutes: res.prepMinutes }), 'success')
       setForm({ ...form, targetId: '', budget: '' })
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -109,12 +104,6 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
               prepMin: status?.prepMinMinutes,
               prepMax: status?.prepMaxMinutes,
             })}</p>
-
-            {msg && (
-              <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-                {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-              </div>
-            )}
 
             {/* Тип цели: компания или игрок */}
             <div className="media-type-toggle">

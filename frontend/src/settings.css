@@ -264,19 +264,45 @@
 
 
 /* Профиль: описание «о себе» */
+.settings-bio-field { position: relative; }
+
 .settings-bio-input {
   width: 100%;
+  box-sizing: border-box;
   resize: vertical;
-  min-height: 64px;
-  font-family: inherit;
+  min-height: 84px;
+  padding: var(--spacing-md);
+  padding-bottom: 26px;
+  background: var(--fill-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-family: var(--font-primary);
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-bio-input::placeholder { color: #a1a1a6; }
+
+.settings-bio-input:focus {
+  border-color: var(--color-accent);
+  background: rgba(0, 113, 227, 0.05);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
 }
 
 .settings-bio-count {
-  display: block;
-  text-align: right;
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-tertiary, #86868b);
-  margin-top: 4px;
+  background: var(--fill-soft);
+  padding: 1px 6px;
+  border-radius: 999px;
+  pointer-events: none;
 }
 
 /* Профиль: статистика */
@@ -338,3 +364,117 @@
   margin-left: auto;
   color: var(--color-accent);
 }
+
+/* ── Публичная карточка игрока (PlayerProfileModal) ───────────────────────── */
+.player-profile-modal {
+  max-width: 460px;
+  width: 100%;
+}
+
+.pp-loading, .pp-error {
+  padding: var(--spacing-xl, 32px) var(--spacing-md);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+.pp-error { color: var(--color-danger, #ff3b30); }
+
+.pp-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: var(--spacing-md) 0 var(--spacing-lg, 20px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.pp-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover, #0071e3));
+  color: #fff;
+  font-size: 30px;
+  font-weight: 600;
+}
+.pp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.pp-name {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.pp-bio {
+  margin: 0;
+  max-width: 90%;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pp-section { padding: var(--spacing-md) 0 0; }
+
+.pp-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--spacing-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.pp-section-title svg { color: var(--color-accent); }
+
+.pp-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-sm);
+}
+
+.pp-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--fill-soft, rgba(0, 0, 0, 0.03));
+  border-radius: var(--radius-md, 10px);
+}
+.pp-stat-label { font-size: 11px; color: var(--color-text-tertiary, #86868b); }
+.pp-stat-value { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
+.pp-stat-value.neg { color: var(--color-danger, #ff3b30); }
+
+.pp-achievements { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+
+.pp-achievement {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md, 10px);
+  font-size: 13px;
+  color: var(--color-text-tertiary, #86868b);
+  opacity: 0.6;
+}
+.pp-achievement.reached {
+  opacity: 1;
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
+  background: rgba(0, 113, 227, 0.08);
+}
+.pp-achievement-check { margin-left: auto; color: var(--color-accent); }
+
+/* Кликабельные ники, открывающие профиль (Telegram-стиль). */
+.player-link {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.player-link:hover { color: var(--color-accent); text-decoration: underline; }

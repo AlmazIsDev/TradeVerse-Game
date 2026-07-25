@@ -12,11 +12,11 @@ import random
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_CRYPTO,
@@ -165,7 +165,24 @@ def _format_coin(coin: dict) -> dict:
     coin.pop("updated_at", None)
     coin.pop("base_price", None)
     coin.pop("market_price", None)   # внутреннее поле «рыночной» цены
+    if coin.get("marketCap") is None:
+        price = coin.get("price") or 0
+        supply = coin.get("supply") or 0
+        coin["marketCap"] = round(price * supply)
     return coin
+
+
+async def _attach_company_logos(db: AsyncIOMotorDatabase, coins: list[dict]) -> None:
+    """Подставляет логотип компании в монеты без image (старые эмиссии)."""
+    cids = list({c.get("companyId") for c in coins if c.get("companyId") and not c.get("image")})
+    if not cids:
+        return
+    ids = [ObjectId(c) for c in cids if ObjectId.is_valid(c)]
+    logos = {str(c["_id"]): c.get("logo") async for c in
+             db.companies.find({"_id": {"$in": ids}}, {"logo": 1})}
+    for c in coins:
+        if not c.get("image") and logos.get(c.get("companyId")):
+            c["image"] = logos[c["companyId"]]
 
 
 async def _read_market(db: AsyncIOMotorDatabase) -> list[dict]:
@@ -185,6 +202,7 @@ async def _read_market(db: AsyncIOMotorDatabase) -> list[dict]:
         await ensure_coins_seeded(db)
 
     coins = [_format_coin(c) async for c in db.crypto_assets.find({})]
+    await _attach_company_logos(db, coins)
     coins.sort(key=lambda c: c.get("marketCap") or (c.get("price", 0) * c.get("supply", 0)), reverse=True)
     _MARKET_CACHE["ts"] = now
     _MARKET_CACHE["data"] = coins
@@ -217,11 +235,12 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
         await MarketDataService.ensure_backfill(db, "crypto", symbol, market_price, coin.get("volatility", 0.05))
         set_fields: dict = {}
 
-        if fresh_real:
-            # Свежая реальная цена — новая рыночная база.
-            market_price = float(coin.get("price", market_price))
-        elif mode == "sim":
-            # Симуляция: блуждает именно РЫНОЧНАЯ цена (реальные данные недоступны).
+        if coin.get("source") == "coingecko":
+            if fresh_real:
+                market_price = float(coin.get("price", market_price))
+        else:
+            # Блуждает market_price, а не display: иначе demand от сделок
+            # компаундится в базу каждый тик и цена уходит в экспоненту.
             updated = coin.get("updated_at")
             if isinstance(updated, datetime) and updated.tzinfo is None:
                 updated = updated.replace(tzinfo=timezone.utc)
@@ -423,6 +442,40 @@ async def get_crypto_market(
 
 
 # ── Trade ────────────────────────────────────────────────────────────────────
+
+
+@router.get("/quote")
+async def quote_crypto(
+    symbol: str = Query(...),
+    action: str = Query("buy"),
+    quantity: float = Query(0, ge=0),
+    _user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Предварительный расчёт сделки по той же формуле, что и /trade.
+
+    Модалка обязана показывать сумму с учётом price-impact и комиссии, иначе
+    покупка отклоняется по балансу, которого «визуально» хватало.
+    """
+    symbol = symbol.strip().upper()
+    action = action.lower()
+    if action not in ("buy", "sell"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action должно быть 'buy' или 'sell'")
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if coin is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+    ref_price = float(coin.get("price") or 0)
+    fill_price, _ = _project_fill(coin, action, quantity * ref_price)
+    cost = round(quantity * fill_price, 2)
+    fee = round(cost * CRYPTO_TRADE_FEE_RATE, 2)
+    return {
+        "price": ref_price,
+        "fillPrice": fill_price,
+        "cost": cost,
+        "fee": fee,
+        "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
+        "feeRate": CRYPTO_TRADE_FEE_RATE,
+    }
 
 
 @router.post("/trade")
@@ -635,3 +688,105 @@ async def crypto_transfers(
             "timestamp": tr["ts"].isoformat() if isinstance(tr.get("ts"), datetime) else None,
         })
     return out
+
+
+# ── Admin: create / edit / delete coins ──────────────────────────────────────
+
+
+class CryptoAdminUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    marketCap: Optional[float] = None
+    volatility: Optional[float] = None
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CryptoAdminCreate(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    volatility: float = 0.05
+    color: str = "#6366f1"
+    supply: Optional[float] = None
+    description: str = ""
+
+
+@router.patch("/admin/{symbol}")
+async def admin_update_coin(
+    symbol: str,
+    payload: CryptoAdminUpdate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Точечное редактирование монеты. marketCap задаёт supply = marketCap/price;
+    price дополнительно переустанавливает base_price (якорь коридора _walk_price)."""
+    symbol = symbol.upper()
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if not coin:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+
+    fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+    new_price = fields.get("price")
+    new_market_cap = fields.pop("marketCap", None)
+    if new_market_cap is not None:
+        price_for_supply = new_price if new_price is not None else float(coin.get("price", 0))
+        if price_for_supply > 0:
+            fields["supply"] = round(new_market_cap / price_for_supply)
+            fields["marketCap"] = round(new_market_cap, 2)
+    if new_price is not None:
+        fields["base_price"] = new_price
+    fields["updated_at"] = datetime.utcnow()
+
+    await db.crypto_assets.update_one({"symbol": symbol}, {"$set": fields})
+    _MARKET_CACHE["ts"] = None
+    updated = await db.crypto_assets.find_one({"symbol": symbol})
+    return _format_coin(updated)
+
+
+@router.post("/admin", status_code=status.HTTP_201_CREATED)
+async def admin_create_coin(
+    payload: CryptoAdminCreate,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    symbol = payload.symbol.upper()
+    if await db.crypto_assets.find_one({"symbol": symbol}):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Монета '{symbol}' уже существует")
+    supply = payload.supply if payload.supply is not None else 0
+    doc = {
+        "symbol": symbol, "name": payload.name, "price": payload.price,
+        "base_price": payload.price, "volatility": payload.volatility,
+        "color": payload.color, "supply": supply, "description": payload.description,
+        "change24h": 0.0, "ath": payload.price, "atl": payload.price,
+        "volume24h": round(payload.price * supply * 0.04, 2),
+        "updated_at": datetime.utcnow(),
+    }
+    await db.crypto_assets.insert_one(doc)
+    await MarketDataService.ensure_backfill(db, "crypto", symbol, payload.price, payload.volatility)
+    _MARKET_CACHE["ts"] = None
+    created = await db.crypto_assets.find_one({"symbol": symbol})
+    return _format_coin(created)
+
+
+@router.delete("/admin/{symbol}")
+async def admin_delete_coin(
+    symbol: str,
+    _admin: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Удаляет монету. ponytail: не каскадит crypto_holdings/price_history —
+    приемлемо для админ-инструмента удаления монеты, которую никто не держит."""
+    symbol = symbol.upper()
+    result = await db.crypto_assets.delete_one({"symbol": symbol})
+    if result.deleted_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
+    _MARKET_CACHE["ts"] = None
+    return {"deleted": True}
+
+
+if __name__ == "__main__":
+    # marketCap -> supply recompute (единственная нетривиальная новая логика здесь).
+    price, market_cap = 100.0, 50_000_000.0
+    assert round(market_cap / price) == 500_000
+    print("crypto self-check OK")

@@ -6,10 +6,11 @@ import {
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
 import {
-  LayoutGrid, Home, Car, Briefcase, KeyRound, X, Check, AlertTriangle, TrendingUp, Users,
+  LayoutGrid, Home, Car, Briefcase, KeyRound, X, TrendingUp, Users,
   ArrowUpCircle, Package, Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Newspaper,
 } from 'lucide-react'
 
@@ -53,7 +54,6 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
   const { t } = useTranslation()
   const [tab, setTab] = useState('all')
   const [busyId, setBusyId] = useState(null)
-  const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)
   const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [confirm, setConfirm] = useState(null)                  // { title, message, danger, onConfirm }
@@ -71,7 +71,6 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
   const [mediaModal, setMediaModal] = useState(false)           // разоблачение в СМИ (актив «Медиахолдинг»)
   const menuRef = useRef(null)
 
-  const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2400) }
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
   const list = tab === 'all' ? assets : assets.filter(a => a.type === tab)
 
@@ -98,9 +97,9 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
     try {
       const res = await fn(id)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t(okKey))
+      toast(t(okKey))
       await refreshAll()
-    } catch (err) { flash(err.message, 'error') } finally { setBusyId(null) }
+    } catch (err) { toast(err.message, 'error') } finally { setBusyId(null) }
   }
   const askAct = (id, fn, okKey, conf) => setConfirm({ ...conf, onConfirm: () => act(id, fn, okKey) })
 
@@ -109,14 +108,14 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
   const submitRent = async () => {
     if (!rentModal) return
     const minHours = Math.floor(Number(rentForm.minHours))
-    if (!(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
+    if (!(minHours >= 1)) { toast(t('rent.invalid'), 'error'); return }
     setBusyId(rentModal.id)
     try {
       await listPropertyForRent(rentModal.id, minHours)
-      flash(t('rent.listed'))
+      toast(t('rent.listed'))
       setRentModal(null)
       await refreshAll()
-    } catch (err) { flash(err.message, 'error') } finally { setBusyId(null) }
+    } catch (err) { toast(err.message, 'error') } finally { setBusyId(null) }
   }
 
   const openMaterials = async (asset) => {
@@ -127,15 +126,15 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
   const submitMaterials = async () => {
     if (!materialsModal) return
     const qty = Math.floor(Number(materialsQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
     setBusyId(materialsModal.id)
     try {
       const res = await buyMaterials(materialsModal.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
+      toast(t('materials.bought'))
       setMaterialsModal(null)
       await refreshAll()
-    } catch (err) { flash(err.message, 'error') } finally { setBusyId(null) }
+    } catch (err) { toast(err.message, 'error') } finally { setBusyId(null) }
   }
 
   const openSupplies = async (asset) => {
@@ -148,28 +147,28 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
   const submitSuppliesBiz = async () => {
     if (!suppliesModal) return
     const qty = Math.floor(Number(suppliesBizQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
     setBusyId(suppliesModal.asset.id)
     try {
       const res = await buyMaterials(suppliesModal.asset.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
+      toast(t('materials.bought'))
       await refreshAll()
-    } catch (err) { flash(err.message, 'error') } finally { setBusyId(null) }
+    } catch (err) { toast(err.message, 'error') } finally { setBusyId(null) }
   }
 
   const submitSuppliesStudio = async () => {
     if (!suppliesModal) return
     const qty = Math.floor(Number(suppliesStudioQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
     setBusyId(suppliesModal.asset.id)
     try {
       const res = await buyStudioMaterials(suppliesModal.asset.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
+      toast(t('materials.bought'))
       loadStudios()
       setSuppliesModal(m => m && { ...m, studio: res.studio ? { ...m.studio, ...res.studio } : m.studio })
-    } catch (err) { flash(err.message, 'error') } finally { setBusyId(null) }
+    } catch (err) { toast(err.message, 'error') } finally { setBusyId(null) }
   }
 
   const openOrder = async (mode) => {
@@ -183,12 +182,12 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
     try {
       const res = await orderStudioJob(assetId, businessId, orderModal.mode)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(res.readyInMinutes != null
+      toast(res.readyInMinutes != null
         ? t('itstudio.orderedMinutes', { minutes: res.readyInMinutes })
         : t('itstudio.ordered', { hours: res.readyInHours }))
       setOrderModal(null)
       await refreshAll()
-    } catch (err) { flash(err.message, 'error') } finally { setOrderBusy(false) }
+    } catch (err) { toast(err.message, 'error') } finally { setOrderBusy(false) }
   }
 
   // Действия меню «Взаимодействие» для актива компании (только для владельца).
@@ -289,11 +288,6 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
           })}
         </div>
 
-        {msg && (
-          <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-            {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-          </div>
-        )}
 
         <p className="company-note">{t('company.rentNote')}</p>
 

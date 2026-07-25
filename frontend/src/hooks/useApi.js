@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import i18n from '../i18n'
 
 export function useApi(apiFunction, immediate = true) {
   const [data, setData] = useState(null)
@@ -13,7 +14,7 @@ export function useApi(apiFunction, immediate = true) {
       setData(result)
       return result
     } catch (err) {
-      const message = err.message || 'Произошла ошибка при загрузке данных'
+      const message = err.message || i18n.t('errors.loadFailed')
       setError(message)
       throw err
     } finally {
@@ -49,7 +50,7 @@ export function useApiOnMount(apiFunction, deps = []) {
       })
       .catch(err => {
         if (!cancelled) {
-          setError(err.message || 'Произошла ошибка при загрузке данных')
+          setError(err.message || i18n.t('errors.loadFailed'))
           setLoading(false)
         }
       })

@@ -1746,6 +1746,72 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 
 .ad-info-card .tx-list { max-height: 240px; overflow-y: auto; }
 
+/* Разбивка сделки в модалке покупки/продажи */
+.trade-breakdown {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: var(--spacing-md) 0; padding: 10px 12px;
+  background: var(--color-bg-tertiary); border-radius: var(--radius-md);
+  transition: opacity .2s ease;
+}
+.trade-breakdown.loading { opacity: .5; }
+.tb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--color-text-secondary); }
+.tb-row b { font-size: 13px; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.tb-row b.up { color: var(--color-success); }
+.tb-row b.down { color: var(--color-danger); }
+.tb-total { border-top: 1px solid var(--hairline); padding-top: 7px; margin-top: 1px; }
+.tb-total span { font-weight: 600; color: var(--color-text-primary); }
+.tb-total strong { font-size: 17px; font-weight: 800; color: var(--color-accent-hover); font-variant-numeric: tabular-nums; }
+.trade-warning {
+  display: flex; align-items: center; gap: 7px; margin-bottom: var(--spacing-sm);
+  padding: 8px 11px; border-radius: var(--radius-md); font-size: 12.5px; font-weight: 600;
+  color: #ffd7d3; background: rgba(255, 59, 48, 0.14); border: 1px solid rgba(255, 59, 48, 0.3);
+}
+.trade-warning svg { flex-shrink: 0; color: #ff6961; }
+
+/* Обоснование рекомендации */
+.ad-why { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 2px; }
+.ad-why-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-secondary); }
+.ad-why-list { list-style: none; margin: 5px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.ad-why-list li { position: relative; padding-left: 13px; font-size: 11.5px; line-height: 1.45; color: var(--color-text-secondary); }
+.ad-why-list li::before { content: ''; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--color-accent); }
+
+/* Универсальная шкала-индикатор внутри карточек */
+.ad-meter { height: 6px; border-radius: 3px; background: rgba(128, 128, 128, 0.18); overflow: hidden; }
+.ad-meter-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+.ad-meter-fill.up { background: linear-gradient(90deg, #34c759, #248a3d); }
+.ad-meter-fill.down { background: linear-gradient(90deg, #ff6961, #ff3b30); }
+
+.ad-info-hint { font-size: 11px; line-height: 1.4; color: var(--color-text-secondary); }
+.ad-info-hint b { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+
+/* Диапазон цены за период с маркером текущей цены */
+.ad-range { display: flex; flex-direction: column; gap: 5px; }
+.ad-range-track {
+  position: relative; height: 6px; border-radius: 3px;
+  background: linear-gradient(90deg, #34c759, #ffb340, #ff3b30);
+}
+.ad-range-marker {
+  position: absolute; top: 50%; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--color-text-primary); transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--color-bg-secondary); transition: left .4s ease;
+}
+.ad-range-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Нереализованная прибыль — выделенная строка, главный показатель позиции */
+.ad-pnl {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-bg-tertiary);
+  font-size: 12.5px; color: var(--color-text-secondary);
+}
+.ad-pnl b { display: flex; flex-direction: column; align-items: flex-end; font-size: 15px; font-variant-numeric: tabular-nums; }
+.ad-pnl b.up { color: var(--color-success); }
+.ad-pnl b.down { color: var(--color-danger); }
+.ad-pnl b em { font-style: normal; font-size: 11px; opacity: .85; }
+
+/* История сделок вынесена под две колонки — там место есть, скролл не нужен */
+.ad-history-card { margin-top: var(--spacing-lg); }
+.ad-history-card .tx-list { max-height: none; overflow-y: visible; }
+
 /* ===================== АВТО: компактные действия + тюнинг ===================== */
 .asset-actions.compact { gap: 6px; }
 .asset-actions.compact .asset-act { padding: 7px 10px; font-size: 12px; flex: 1 1 auto; }
@@ -1884,6 +1950,11 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .msc b { font-size: 17px; color: var(--color-text-primary); }
 .msc b.up { color: var(--color-success); } .msc b.down { color: var(--color-danger); }
 .msc b.ok { color: var(--color-success); } .msc b.warn { color: #ff9f0a; } .msc b.crit { color: var(--color-danger); }
+.mining-eff-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 var(--spacing-md); }
+.mining-eff-badge { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: var(--color-bg-tertiary); border: 1px solid var(--hairline); color: var(--color-text-secondary); }
+.mining-eff-badge.low { color: var(--color-danger); border-color: rgba(255, 59, 48, 0.35); }
+.mining-eff-badge.ok { color: var(--color-success); border-color: rgba(52, 199, 89, 0.35); }
+.mining-eff-badge.warn { color: #ff9f0a; border-color: rgba(255, 159, 10, 0.35); }
 
 .mining-panel-controls { display: flex; align-items: flex-end; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
 .mpc-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--color-text-secondary); }
@@ -1914,6 +1985,9 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .mslot-rm { border: none; background: transparent; color: var(--color-danger); cursor: pointer; padding: 0; }
 .mslot-pick { width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12px; background: var(--color-bg-secondary); border: 1px solid var(--hairline); border-radius: 6px; color: var(--color-text-primary); cursor: pointer; }
 .mslot-empty { display: block; margin-top: 6px; font-size: 11px; color: var(--color-text-secondary); }
+.mslot-add-badge { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: #fff; background: var(--color-success, #22c55e); border: none; border-radius: 6px; cursor: pointer; }
+.mslot-add-badge:hover:not(:disabled) { filter: brightness(1.08); }
+.mslot-add-badge:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ===========================================================================
    Realtime pop-up приглашений, ConfirmDialog, настройки компании, анимации
@@ -2072,7 +2146,7 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .tv-toast-stack {
   position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 10px; align-items: center;
-  z-index: 500; pointer-events: none; width: max-content; max-width: min(92vw, 440px);
+  z-index: 2000; pointer-events: none; width: max-content; max-width: min(92vw, 440px);
 }
 .tv-toast {
   pointer-events: auto;
@@ -2175,6 +2249,35 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 }
 .mslot-pick-row { display: flex; align-items: center; gap: 6px; }
 .mslot-pick-row .mslot-pick { flex: 1 1 auto; }
+
+/* ── Cart-style multi-component installer (GPU/fan) ─────────────────────── */
+.mslot-cart { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.mslot-cart-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 3px 5px;
+  padding: 5px 7px; background: var(--color-bg-secondary);
+  border: 1px solid var(--hairline); border-radius: 6px;
+}
+/* Label occupies full first line */
+.mslot-cart-label { flex: 0 0 100%; font-size: 11px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Stock badge, qty, button share the second line */
+.mslot-cart-stock {
+  flex-shrink: 0; font-size: 10px; font-weight: 600; color: var(--color-text-secondary);
+  background: var(--color-bg-tertiary); border-radius: 8px; padding: 1px 6px; min-width: 18px; text-align: center;
+}
+.mslot-cart-qty {
+  flex: 1 1 auto; min-width: 32px; max-width: 52px; padding: 3px 5px; font-size: 12px; text-align: center;
+  background: var(--color-bg-tertiary); border: 1px solid var(--hairline);
+  border-radius: 6px; color: var(--color-text-primary);
+}
+.mslot-cart-btn {
+  flex-shrink: 0; padding: 4px 10px; font-size: 11px; font-weight: 600;
+  background: var(--color-accent); color: #fff; border: none;
+  border-radius: 6px; cursor: pointer;
+}
+.mslot-cart-btn:hover:not(:disabled) { background: var(--color-accent-hover); }
+.mslot-cart-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mslot-item-actions { display: inline-flex; align-items: center; gap: 4px; }
+.mslot-rm-all { display: inline-flex; align-items: center; gap: 1px; font-size: 10px; font-weight: 700; }
 
 
 /* ===== FE3: Leaderboard + Market rental additions ===== */

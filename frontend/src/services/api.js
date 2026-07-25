@@ -1,3 +1,5 @@
+import i18n from '../i18n'
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const STORAGE_KEY = 'tradeverse_user'
@@ -172,7 +174,7 @@ async function refreshAccessToken() {
   const refreshToken = getRefreshToken()
   if (!refreshToken) {
     forceLogout()
-    throw new ApiError('Сессия истекла. Войдите заново.', 401)
+    throw new ApiError(i18n.t('errors.sessionExpired'), 401)
   }
 
   try {
@@ -184,7 +186,7 @@ async function refreshAccessToken() {
 
     if (!response.ok) {
       forceLogout()
-      throw new ApiError('Сессия истекла. Войдите заново.', 401)
+      throw new ApiError(i18n.t('errors.sessionExpired'), 401)
     }
 
     const data = await response.json()
@@ -195,7 +197,7 @@ async function refreshAccessToken() {
   } catch (err) {
     if (err instanceof ApiError) throw err
     forceLogout()
-    throw new ApiError('Не удалось обновить сессию.', 401)
+    throw new ApiError(i18n.t('errors.sessionRefreshFailed'), 401)
   }
 }
 
@@ -244,7 +246,7 @@ async function request(endpoint, options = {}) {
       if (!retryResponse.ok) {
         const errorText = await retryResponse.text().catch(() => '')
         throw new ApiError(
-          errorText || `Ошибка сервера: ${retryResponse.status}`,
+          errorText || i18n.t('errors.serverError', { status: retryResponse.status }),
           retryResponse.status
         )
       }
@@ -271,7 +273,7 @@ async function request(endpoint, options = {}) {
         } catch { /* тело не JSON — используем как есть */ }
       }
       throw new ApiError(
-        message || `Ошибка сервера: ${response.status}`,
+        message || i18n.t('errors.serverError', { status: response.status }),
         response.status
       )
     }
@@ -279,7 +281,7 @@ async function request(endpoint, options = {}) {
     return await response.json()
   } catch (error) {
     if (error instanceof ApiError) throw error
-    throw new ApiError('Не удалось подключиться к серверу. Проверьте подключение.', 0)
+    throw new ApiError(i18n.t('errors.networkError'), 0)
   }
 }
 
@@ -345,6 +347,11 @@ export async function toggleCardVisibility() {
 
 export async function fetchCurrentUser() {
   return request('/api/user/me')
+}
+
+/** Публичная карточка игрока по id (никнейм, аватар, «о себе», капитал, ачивки). */
+export async function fetchPlayerProfile(userId) {
+  return request(`/api/user/${encodeURIComponent(userId)}/profile`)
 }
 
 /** Сменить никнейм. */
@@ -443,6 +450,61 @@ export async function adminTransferFarm(farmId, toUsername) {
   })
 }
 
+// ── Admin: универсальный редактор БД ────────────────────────────────────────
+
+export async function adminListCollections() {
+  return request('/api/admin/db/collections')
+}
+
+export async function adminListDocuments(name, opts = {}) {
+  const params = new URLSearchParams()
+  const { q, skip, limit, sort, order } = opts
+  if (q) params.set('q', q)
+  if (skip != null) params.set('skip', skip)
+  if (limit != null) params.set('limit', limit)
+  if (sort) params.set('sort', sort)
+  if (order != null) params.set('order', order)
+  const query = params.toString()
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}${query ? `?${query}` : ''}`)
+}
+
+export async function adminGetDocument(name, docId) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}/${encodeURIComponent(docId)}`)
+}
+
+export async function adminListTransactions(opts = {}) {
+  const params = new URLSearchParams()
+  const { q, field, kind, skip, limit, sort, order } = opts
+  if (q) params.set('q', q)
+  if (field) params.set('field', field)
+  if (kind) params.set('kind', kind)
+  if (skip != null) params.set('skip', skip)
+  if (limit != null) params.set('limit', limit)
+  if (sort) params.set('sort', sort)
+  if (order != null) params.set('order', order)
+  return request(`/api/admin/transactions?${params.toString()}`)
+}
+
+export async function adminCreateDocument(name, doc) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}`, {
+    method: 'POST',
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function adminUpdateDocument(name, docId, doc) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}/${encodeURIComponent(docId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(doc),
+  })
+}
+
+export async function adminDeleteDocument(name, docId) {
+  return request(`/api/admin/db/collections/${encodeURIComponent(name)}/${encodeURIComponent(docId)}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function adminUpdateCompany(companyId, data) {
   return request(`/api/company/admin/${encodeURIComponent(companyId)}`, {
     method: 'PATCH',
@@ -532,6 +594,11 @@ export async function tradeCrypto(symbol, action, quantity) {
   })
 }
 
+export async function quoteCrypto(symbol, action, quantity) {
+  const qs = new URLSearchParams({ symbol, action, quantity: String(quantity) })
+  return request(`/api/crypto/quote?${qs}`)
+}
+
 export async function transferCrypto(recipient, symbol, amount) {
   return request('/api/crypto/transfer', {
     method: 'POST',
@@ -541,6 +608,24 @@ export async function transferCrypto(recipient, symbol, amount) {
 
 export async function fetchCryptoTransfers(limit = 30) {
   return request(`/api/crypto/transfers?limit=${limit}`)
+}
+
+export async function adminUpdateCoin(symbol, data) {
+  return request(`/api/crypto/admin/${encodeURIComponent(symbol)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminCreateCoin(data) {
+  return request('/api/crypto/admin', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminDeleteCoin(symbol) {
+  return request(`/api/crypto/admin/${encodeURIComponent(symbol)}`, { method: 'DELETE' })
 }
 
 // ── Stock Trading API ─────────────────────────────────────────────────────────
@@ -558,6 +643,11 @@ export async function tradeStock(symbol, action, quantity) {
     method: 'POST',
     body: JSON.stringify({ symbol, action, quantity }),
   })
+}
+
+export async function quoteStock(symbol, action, quantity) {
+  const qs = new URLSearchParams({ symbol, action, quantity: String(quantity) })
+  return request(`/api/v2/stocks/quote?${qs}`)
 }
 
 export async function fetchPortfolio() {
@@ -582,12 +672,6 @@ export async function updateStockConfig(symbol, configData) {
     method: 'PATCH',
     body: JSON.stringify(configData),
   })
-}
-
-export async function fetchBotOrders(limit = 100) {
-  const params = new URLSearchParams()
-  if (limit) params.set('limit', limit)
-  return request(`/api/v2/stocks/bot-orders?${params.toString()}`)
 }
 
 export async function payDividend(symbol, perShare) {
@@ -693,6 +777,36 @@ export async function fetchMarketAsset(market, symbol) {
 
 export async function fetchMarketHistory(market, symbol, interval = '7d') {
   return request(`/api/market/history?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`)
+}
+
+export async function adminListPriceHistory(market, symbol, opts = {}) {
+  const params = new URLSearchParams({ market, symbol })
+  const { q, skip, limit, sort, order } = opts
+  if (q) params.set('q', q)
+  if (skip != null) params.set('skip', skip)
+  if (limit != null) params.set('limit', limit)
+  if (sort) params.set('sort', sort)
+  if (order != null) params.set('order', order)
+  return request(`/api/admin/price-history?${params.toString()}`)
+}
+
+export async function adminAddPricePoint(data) {
+  return request('/api/admin/price-history', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function adminUpdatePricePoint(pointId, data) {
+  return request(`/api/admin/price-history/${encodeURIComponent(pointId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function adminDeletePricePoint(pointId) {
+  return request(`/api/admin/price-history/${encodeURIComponent(pointId)}`, { method: 'DELETE' })
+}
+
+export async function adminRegeneratePriceHistory(data) {
+  return request('/api/admin/price-history/regenerate', { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function fetchFavorites() {
@@ -915,6 +1029,7 @@ export async function fetchMiningParts() { return request('/api/mining/parts') }
 export async function createFarm(name) { return request('/api/mining/farms', { method: 'POST', body: JSON.stringify({ name }) }) }
 export async function deleteFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
 export async function installComponent(id, category, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category, hwId }) }) }
+export async function installComponentsBatch(id, items) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install-batch`, { method: 'POST', body: JSON.stringify({ items }) }) }
 export async function uninstallComponent(id, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/uninstall`, { method: 'POST', body: JSON.stringify({ hwId }) }) }
 export async function startMining(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/start`, { method: 'POST' }) }
 export async function stopMining(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/stop`, { method: 'POST' }) }

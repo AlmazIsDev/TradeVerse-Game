@@ -9,11 +9,12 @@ import {
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
+import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
-  TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
+  TrendingUp, Users, Wallet, Building2, KeyRound, X, Gauge, LayoutGrid, Wrench, Package,
   Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info,
 } from 'lucide-react'
 
@@ -58,7 +59,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [busyId, setBusyId] = useState(null)
-  const [msg, setMsg] = useState(null)
   const [rentModal, setRentModal] = useState(null)   // asset
   const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [tuneModal, setTuneModal] = useState(null)   // car asset
@@ -140,20 +140,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     return () => window.removeEventListener('tv:realtime', onRealtime)
   }, [load, loadStudios])
 
-  const flash = (text, type = 'success') => {
-    setMsg({ text, type })
-    setTimeout(() => setMsg(null), 2400)
-  }
-
   const act = async (id, fn, okKey) => {
     setBusyId(id)
     try {
       const res = await fn(id)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t(okKey))
+      toast(t(okKey))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -168,12 +163,12 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await collectAllAssets()
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(res?.count > 0
+      toast(res?.count > 0
         ? t('myassets.collectedAll', { amount: formatMoney(res.collected), count: res.count })
         : t('myassets.nothingToCollect'))
       await load(true)
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setCollectingAll(false)
     }
@@ -182,15 +177,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const submitRent = async () => {
     if (!rentModal) return
     const minHours = Math.floor(Number(rentForm.minHours))
-    if (!(minHours >= 1)) { flash(t('rent.invalid'), 'error'); return }
+    if (!(minHours >= 1)) { toast(t('rent.invalid'), 'error'); return }
     setBusyId(rentModal.id)
     try {
       await listPropertyForRent(rentModal.id, minHours)
-      flash(t('rent.listed'))
+      toast(t('rent.listed'))
       setRentModal(null)
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -199,15 +194,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const submitGift = async () => {
     if (!giftModal) return
     const name = giftName.trim()
-    if (name.length < 2) { flash(t('gift.invalid'), 'error'); return }
+    if (name.length < 2) { toast(t('gift.invalid'), 'error'); return }
     setBusyId(giftModal.id)
     try {
       const res = await transferAssetToPlayer(giftModal.id, name)
-      flash(t('gift.sent', { name: res.toUsername || name }))
+      toast(t('gift.sent', { name: res.toUsername || name }))
       setGiftModal(null)
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -222,16 +217,16 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const submitMaterials = async () => {
     if (!materialsModal) return
     const qty = Math.floor(Number(materialsQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
     setBusyId(materialsModal.id)
     try {
       const res = await buyMaterials(materialsModal.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
+      toast(t('materials.bought'))
       setMaterialsModal(null)
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -251,15 +246,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const submitSuppliesBiz = async () => {
     if (!suppliesModal) return
     const qty = Math.floor(Number(suppliesBizQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
     setBusyId(suppliesModal.asset.id)
     try {
       const res = await buyMaterials(suppliesModal.asset.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
+      toast(t('materials.bought'))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -268,17 +263,17 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const submitSuppliesStudio = async () => {
     if (!suppliesModal) return
     const qty = Math.floor(Number(suppliesStudioQty))
-    if (!(qty > 0)) { flash(t('materials.invalid'), 'error'); return }
+    if (!(qty > 0)) { toast(t('materials.invalid'), 'error'); return }
     setBusyId(suppliesModal.asset.id)
     try {
       const res = await buyStudioMaterials(suppliesModal.asset.id, qty)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('materials.bought'))
+      toast(t('materials.bought'))
       await loadStudios()
       // Обновляем состав студии в открытой модалке (кол-во расходников).
       setSuppliesModal(m => m && { ...m, studio: res.studio ? { ...m.studio, ...res.studio } : m.studio })
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -299,13 +294,13 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await orderStudioJob(assetId, businessId, orderModal.mode)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(res.readyInMinutes != null
+      toast(res.readyInMinutes != null
         ? t('itstudio.orderedMinutes', { minutes: res.readyInMinutes })
         : t('itstudio.ordered', { hours: res.readyInHours }))
       setOrderModal(null)
       await loadStudios()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setOrderBusy(false)
     }
@@ -318,10 +313,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await tuneCar(car.id, part)
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      flash(t('tune.done'))
+      toast(t('tune.done'))
       await load()
     } catch (err) {
-      flash(err.message, 'error')
+      toast(err.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -484,11 +479,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         })}
       </div>
 
-      {msg && (
-        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
-          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
-        </div>
-      )}
 
       {!loading && !error && list.length > 0 && (
         <div className="asset-summary">

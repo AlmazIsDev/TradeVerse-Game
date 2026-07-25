@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchAssetMarket, buyAsset } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import { toast } from './Toast'
 import {
-  Home, Briefcase, Car, Search, AlertTriangle, Check, X,
+  Home, Briefcase, Car, Search, AlertTriangle, X,
   TrendingUp, Coins, LayoutGrid, KeyRound,
 } from 'lucide-react'
 
@@ -44,7 +45,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   const [error, setError] = useState(null)
   const [confirm, setConfirm] = useState(null)   // item pending purchase
   const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState(null)
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 300)
@@ -79,14 +79,13 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   const doBuy = async () => {
     if (!confirm) return
     setBusy(true)
-    setFeedback(null)
     try {
       const res = await buyAsset(confirm.slug)
       onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('market.bought') })
-      setTimeout(() => { setConfirm(null); setFeedback(null) }, 800)
+      toast(t('market.bought'))
+      setTimeout(() => setConfirm(null), 800)
     } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
+      toast(err.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -183,7 +182,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                 </div>
                 <button
                   className="asset-buy-btn"
-                  onClick={() => { setConfirm(item); setFeedback(null) }}
+                  onClick={() => setConfirm(item)}
                   disabled={!affordable}
                 >
                   {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
@@ -200,12 +199,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
             <button className="crypto-modal-close" onClick={() => setConfirm(null)}><X size={18} /></button>
             <h3>{t('common.buy')}: {t(`assetNames.${confirm.slug}`, confirm.name)}</h3>
             <p className="modal-total">{t('common.total')}: <strong>${formatMoney(confirm.price)}</strong></p>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}
-                <span>{feedback.text}</span>
-              </div>
-            )}
             <div className="modal-buttons">
               <button className="stock-btn buy-btn" onClick={doBuy} disabled={busy}>
                 {busy ? t('bank.processing') : t('common.confirm')}

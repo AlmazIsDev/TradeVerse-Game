@@ -1352,7 +1352,10 @@
     "subtotal": "Subtotal",
     "youPay": "You pay",
     "youGet": "You receive",
-    "notEnough": "Short by ${{amount}}"
+    "notEnough": "Short by ${{amount}}",
+    "max": "MAX",
+    "available": "Available",
+    "affordable": "You can afford"
   },
   "gift": {
     "toPlayer": "Transfer to player",

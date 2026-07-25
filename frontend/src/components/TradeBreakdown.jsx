@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { quoteStock, quoteCrypto } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { AlertTriangle } from 'lucide-react'
+import { parseQty } from '../utils/qty'
 
 /**
  * Разбивка сделки по котировке бэкенда.
@@ -20,7 +21,7 @@ function TradeBreakdown({ market, symbol, action, quantity, balance = 0, onQuote
   const [quote, setQuote] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  const qty = market === 'stock' ? Math.floor(Number(quantity)) : Number(quantity)
+  const qty = parseQty(quantity, market)
 
   useEffect(() => {
     if (!symbol || !action || !(qty > 0)) {
@@ -51,13 +52,15 @@ function TradeBreakdown({ market, symbol, action, quantity, balance = 0, onQuote
   const isBuy = action === 'buy'
   const impact = quote ? quote.fillPrice - quote.price : 0
   const short = isBuy && quote ? quote.total - balance : 0
+  // Без котировки печатаем прочерк, а не «$0,00»: ноль читается как реальная сумма.
+  const money = v => (quote ? `$${formatMoney(v)}` : '—')
 
   return (
     <>
       <div className={`trade-breakdown ${loading ? 'loading' : ''}`}>
         <div className="tb-row">
           <span>{t('trade.fillPrice')}</span>
-          <b>${formatMoney(quote?.fillPrice ?? 0)}</b>
+          <b>{money(quote?.fillPrice)}</b>
         </div>
         {quote && Math.abs(impact) > 0.004 && (
           <div className="tb-row">
@@ -69,15 +72,15 @@ function TradeBreakdown({ market, symbol, action, quantity, balance = 0, onQuote
         )}
         <div className="tb-row">
           <span>{t('trade.subtotal')}</span>
-          <b>${formatMoney(quote?.cost ?? 0)}</b>
+          <b>{money(quote?.cost)}</b>
         </div>
         <div className="tb-row">
           <span>{t('trade.feeLabel')}{quote ? ` (${(quote.feeRate * 100).toFixed(1)}%)` : ''}</span>
-          <b>{isBuy ? '+' : '−'}${formatMoney(quote?.fee ?? 0)}</b>
+          <b>{quote ? `${isBuy ? '+' : '−'}$${formatMoney(quote.fee)}` : '—'}</b>
         </div>
         <div className="tb-row tb-total">
           <span>{isBuy ? t('trade.youPay') : t('trade.youGet')}</span>
-          <strong>${formatMoney(quote?.total ?? 0)}</strong>
+          <strong>{money(quote?.total)}</strong>
         </div>
       </div>
       {short > 0 && (

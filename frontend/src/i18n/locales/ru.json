@@ -1352,7 +1352,10 @@
     "subtotal": "Стоимость",
     "youPay": "К оплате",
     "youGet": "К зачислению",
-    "notEnough": "Не хватает ${{amount}}"
+    "notEnough": "Не хватает ${{amount}}",
+    "max": "МАКС",
+    "available": "Доступно",
+    "affordable": "Хватит на"
   },
   "gift": {
     "toPlayer": "Передать игроку",

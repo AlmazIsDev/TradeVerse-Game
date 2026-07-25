@@ -4,8 +4,9 @@ import {
   fetchMarketAsset, fetchMarketHistory, toggleFavorite, tradeStock, tradeCrypto,
 } from '../services/api'
 import PriceChart from './PriceChart'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
+import { parseQty, quantizeQty } from '../utils/qty'
 import { computeAnalytics } from '../utils/assetAnalytics'
 import { toast } from './Toast'
 import {
@@ -44,7 +45,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   const [chartLoading, setChartLoading] = useState(false)
   const [error, setError] = useState(null)
   const [trade, setTrade] = useState(null)   // 'buy' | 'sell'
-  const [qty, setQty] = useState('1')
+  const [qty, setQty] = useState('')
   const [busy, setBusy] = useState(false)
   const [quote, setQuote] = useState(null)
 
@@ -101,7 +102,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   // бэкенд той же формулой, что и исполнение — иначе модалка обещает одну
   // цену, а списывается другая, и покупка падает с «Недостаточно средств».
   const doTrade = async () => {
-    const q = market === 'stock' ? Math.floor(Number(qty)) : Number(qty)
+    const q = parseQty(qty, market)
     if (!(q > 0)) { toast(t('bank.invalidAmount'), 'error'); return }
     setBusy(true)
     try {
@@ -139,7 +140,14 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
   const changes = asset.stats?.changes || {}
   const held = asset.heldQuantity || 0
-  const digits = market === 'crypto' ? 4 : 0
+
+  // Максимум для быстрых кнопок 25/50/75/MAX. Запас 1.5% сверх цены покрывает
+  // комиссию и небольшой price-impact, иначе «MAX» упирался бы в нехватку средств.
+  const affordable = asset.price > 0 ? balance / (asset.price * 1.015) : 0
+  const buyMax = market === 'stock'
+    ? Math.floor(Math.min(affordable, asset.freeShares ?? affordable))
+    : affordable
+  const tradeMax = trade === 'sell' ? held : buyMax
 
   const a = computeAnalytics(asset, history, market)
   const positionValue = held * asset.price
@@ -210,7 +218,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             {market === 'crypto' && <div className="ad-stat"><span>{t('asset.supply')}</span><b>{fmtNum(asset.supply, 0, t)}</b></div>}
             {market === 'crypto' && <div className="ad-stat"><span>{t('asset.ath')}</span><b>${formatMoney(asset.ath)}</b></div>}
             {market === 'crypto' && <div className="ad-stat"><span>{t('asset.atl')}</span><b>${formatMoney(asset.atl)}</b></div>}
-            {held > 0 && <div className="ad-stat"><span>{t('stocks.owned')}</span><b className="up">{fmtNum(held, digits, t)}</b></div>}
+            {held > 0 && <div className="ad-stat"><span>{t('stocks.owned')}</span><b className="up">{formatQty(held)}</b></div>}
           </div>
 
           {asset.description && <p className="ad-description">{asset.description}</p>}
@@ -244,8 +252,8 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
           {/* Действия */}
           <div className="ad-actions">
-            <button className="ad-buy" onClick={() => { setTrade('buy'); setQty('1') }}>{t('common.buy')}</button>
-            <button className="ad-sell" onClick={() => { setTrade('sell'); setQty('1') }} disabled={held <= 0}>{t('common.sell')}</button>
+            <button className="ad-buy" onClick={() => { setTrade('buy'); setQty('') }}>{t('common.buy')}</button>
+            <button className="ad-sell" onClick={() => { setTrade('sell'); setQty('') }} disabled={held <= 0}>{t('common.sell')}</button>
             <button className={`ad-fav-btn ${asset.isFavorite ? 'active' : ''}`} onClick={doFavorite}>
               <Star size={16} fill={asset.isFavorite ? '#fbbf24' : 'none'} /> {t('asset.favorite')}
             </button>
@@ -316,7 +324,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <span className="ad-info-title"><Wallet size={15} /> {t('asset.myPosition')}</span>
             {held > 0 ? (
               <>
-                <div className="ad-metric-row"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits, t)}</b></div>
+                <div className="ad-metric-row"><span>{t('stocks.owned')}</span><b>{formatQty(held)}</b></div>
                 <div className="ad-metric-row"><span>{t('asset.positionValue')}</span><b className="accent">${formatMoney(positionValue)}</b></div>
                 {avgPrice > 0 && (
                   <div className="ad-metric-row"><span>{t('asset.avgPrice')}</span><b>${formatMoney(avgPrice)}</b></div>
@@ -379,14 +387,48 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
       {/* Модалка сделки */}
       {trade && (
         <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content trade-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
-            <h3>{trade === 'buy' ? t('common.buy') : t('common.sell')} {asset.symbol}</h3>
-            <p className="modal-price">{t('stocks.pricePerShare')}: ${formatMoney(asset.price)}</p>
-            <div className="modal-quantity">
-              <label>{t('common.quantity')}:</label>
-              <input type="number" min={market === 'crypto' ? '0' : '1'} step={market === 'crypto' ? 'any' : '1'} value={qty} autoFocus
-                onChange={e => setQty(e.target.value)} />
+
+            <div className="tm-head">
+              <div className={`tm-side ${trade}`}>{trade === 'buy' ? t('common.buy') : t('common.sell')}</div>
+              <div className="tm-asset">
+                <b>{asset.symbol}</b>
+                <span>{asset.name}</span>
+              </div>
+              <div className="tm-price">
+                <b>${formatMoney(asset.price)}</b>
+                <span className={(asset.changePercent || 0) >= 0 ? 'up' : 'down'}>
+                  {(asset.changePercent || 0) >= 0 ? '+' : ''}{(asset.changePercent || 0).toFixed(2)}%
+                </span>
+              </div>
+            </div>
+
+            <div className="tm-field">
+              <div className="tm-field-head">
+                <label htmlFor="tm-qty">{t('common.quantity')}</label>
+                {tradeMax > 0 && (
+                  <span className="tm-avail">
+                    {trade === 'buy' ? t('trade.affordable') : t('trade.available')}: <b>{formatQty(tradeMax)}</b>
+                  </span>
+                )}
+              </div>
+              <input
+                id="tm-qty" type="text" inputMode="decimal" value={qty} autoFocus
+                placeholder={market === 'crypto' ? '0.00' : '1'}
+                onChange={e => setQty(e.target.value)}
+              />
+              <div className="tm-presets">
+                {[0.25, 0.5, 0.75, 1].map(f => (
+                  <button
+                    key={f} type="button" className="tm-preset"
+                    disabled={!(tradeMax > 0)}
+                    onClick={() => setQty(quantizeQty(tradeMax * f, market))}
+                  >
+                    {f === 1 ? t('trade.max') : `${f * 100}%`}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Разбивка сделки по данным бэкенда: цена исполнения ≠ котировке,
@@ -398,7 +440,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
             <div className="modal-account-row">
               <div className="modal-account-item"><span>{t('crypto.cashBalance')}</span><b>${formatMoney(balance)}</b></div>
-              <div className="modal-account-item"><span>{t('stocks.owned')}</span><b>{fmtNum(held, digits, t)}</b></div>
+              <div className="modal-account-item"><span>{t('stocks.owned')}</span><b>{formatQty(held)}</b></div>
             </div>
             <div className="modal-buttons">
               <button

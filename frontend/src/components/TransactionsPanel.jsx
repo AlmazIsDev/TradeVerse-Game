@@ -40,6 +40,24 @@ function formatCompact(n) {
   return v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+/**
+ * Количество монет/акций без потери значащих цифр.
+ *
+ * Округлять нельзя: мелкий остаток вроде 0.00000042 схлопывался в «0», и
+ * страница токена показывала ноль, хотя портфель стоил реальных денег.
+ * Целые печатаем без дробной части, дробные — до 8 знаков без хвостовых нулей.
+ */
+function formatQty(n) {
+  const v = Number(n || 0)
+  if (!Number.isFinite(v)) return '0'
+  if (Number.isInteger(v)) return v.toLocaleString('ru-RU')
+  const [int, frac = ''] = v.toFixed(8).replace(/0+$/, '').split('.')
+  // Пыль меньше 1e-8 округлилась бы в ноль — показываем значащие цифры как есть.
+  if (!frac && v !== 0) return v.toPrecision(2).replace('.', ',')
+  const intPart = Number(int).toLocaleString('ru-RU')
+  return frac ? `${intPart},${frac}` : intPart
+}
+
 function formatDateTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -211,5 +229,5 @@ function TransactionsPanel({ refreshKey = 0, category, companyId }) {
   )
 }
 
-export { formatMoney, formatCompact, formatDateTime }
+export { formatMoney, formatCompact, formatQty, formatDateTime }
 export default TransactionsPanel

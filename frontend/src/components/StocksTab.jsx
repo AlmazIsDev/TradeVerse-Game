@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
+import { parseQty, quantizeQty } from '../utils/qty'
 import AssetDetail from './AssetDetail'
 import { toast } from './Toast'
 import {
@@ -53,19 +54,20 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
 
   const openTrade = (stock, action) => {
     setTrade({ ...stock, action })
-    setQty('1')
+    setQty('')
   }
 
   const heldFor = (symbol) => portfolio.find(p => p.symbol === symbol)
 
   const confirmTrade = async () => {
     if (!trade) return
-    const q = Math.floor(Number(qty))
-    if (!Number.isFinite(q) || q < 1) {
+    const q = parseQty(qty, 'stock')
+    if (!(q >= 1)) {
       toast(t('bank.invalidAmount'), 'error')
       return
     }
-    if (trade.action === 'buy' && q * trade.price > balance) {
+    // Сверяемся с котировкой бэкенда: q * price не учитывает price-impact и комиссию.
+    if (trade.action === 'buy' && (quote ? quote.total : q * trade.price) > balance) {
       toast(t('stocks.insufficientFunds'), 'error')
       return
     }
@@ -142,6 +144,16 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
 
   const portfolioValue = portfolio.reduce((s, p) => s + (p.value || 0), 0)
   const portfolioPnl = portfolio.reduce((s, p) => s + (p.pnl || 0), 0)
+
+  // Максимум для кнопок 25/50/75/MAX. Запас 1.5% сверх цены покрывает комиссию
+  // и price-impact, иначе «MAX» упирался бы в нехватку средств.
+  const tradeMax = !trade ? 0
+    : trade.action === 'sell'
+      ? (heldFor(trade.symbol)?.quantity || 0)
+      : Math.floor(Math.min(
+        trade.price > 0 ? balance / (trade.price * 1.015) : 0,
+        trade.freeShares ?? Infinity,
+      ))
 
   if (loading) {
     return (
@@ -260,7 +272,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                       {badge(p)}
                       <div className="crypto-holding-info">
                         <span className="crypto-holding-symbol">{p.symbol}</span>
-                        <span className="crypto-holding-qty">{p.quantity} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
+                        <span className="crypto-holding-qty">{formatQty(p.quantity)} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
                       </div>
                       <div className="crypto-holding-values">
                         <span className="crypto-holding-value">${formatMoney(p.value)}</span>
@@ -306,15 +318,21 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
       {/* Модалка сделки */}
       {trade && (
         <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content trade-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
-            <h3>
-              {trade.action === 'buy'
-                ? t('stocks.buyShares', { ticker: trade.symbol })
-                : t('stocks.sellShares', { ticker: trade.symbol })}
-            </h3>
-            <p className="modal-company">{trade.name}</p>
-            <p className="modal-price">{t('stocks.pricePerShare')}: ${formatMoney(trade.price)}</p>
+            <div className="tm-head">
+              <div className={`tm-side ${trade.action}`}>{trade.action === 'buy' ? t('common.buy') : t('common.sell')}</div>
+              <div className="tm-asset">
+                <b>{trade.symbol}</b>
+                <span>{trade.name}</span>
+              </div>
+              <div className="tm-price">
+                <b>${formatMoney(trade.price)}</b>
+                <span className={(trade.changePercent || 0) >= 0 ? 'up' : 'down'}>
+                  {(trade.changePercent || 0) >= 0 ? '+' : ''}{(trade.changePercent || 0).toFixed(2)}%
+                </span>
+              </div>
+            </div>
 
             <div className="modal-account-row">
               <div className="modal-account-item">
@@ -323,16 +341,29 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
               </div>
               <div className="modal-account-item">
                 <span>{t('stocks.owned')}</span>
-                <b>{heldFor(trade.symbol)?.quantity || 0} {t('common.shares')}</b>
+                <b>{formatQty(heldFor(trade.symbol)?.quantity || 0)} {t('common.shares')}</b>
               </div>
             </div>
 
-            <div className="modal-quantity">
-              <label>{t('common.quantity')}:</label>
-              <input
-                type="number" min="1" step="1" value={qty} autoFocus
-                onChange={e => setQty(e.target.value)}
-              />
+            <div className="tm-field">
+              <div className="tm-field-head">
+                <label htmlFor="stock-qty">{t('common.quantity')}</label>
+                {tradeMax > 0 && (
+                  <span className="tm-avail">
+                    {trade.action === 'buy' ? t('trade.affordable') : t('trade.available')}: <b>{formatQty(tradeMax)}</b>
+                  </span>
+                )}
+              </div>
+              <input id="stock-qty" type="text" inputMode="numeric" value={qty} autoFocus
+                placeholder="1" onChange={e => setQty(e.target.value)} />
+              <div className="tm-presets">
+                {[0.25, 0.5, 0.75, 1].map(f => (
+                  <button key={f} type="button" className="tm-preset" disabled={!(tradeMax > 0)}
+                    onClick={() => setQty(quantizeQty(tradeMax * f, 'stock'))}>
+                    {f === 1 ? t('trade.max') : `${f * 100}%`}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <TradeBreakdown

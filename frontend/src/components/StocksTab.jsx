@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
 import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
-import { parseQty, quantizeQty } from '../utils/qty'
+import { parseQty } from '../utils/qty'
 import AssetDetail from './AssetDetail'
 import { toast } from './Toast'
 import {
@@ -28,7 +28,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [trade, setTrade] = useState(null)     // { ...stock, action }
-  const [qty, setQty] = useState('1')
+  const [qty, setQty] = useState('')
   const [quote, setQuote] = useState(null)
   const [busy, setBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -80,6 +80,9 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     try {
       const res = await tradeStock(trade.symbol, trade.action, q)
       onBalanceChange?.(res.balance)
+      // Иначе прежнее количество переоценивается по уже уменьшенному балансу
+      // и сразу после «успешно» выскакивает «не хватает средств».
+      setQty('')
       toast(t('stocks.tradeSuccess'))
       setRefreshKey(k => k + 1)
       await load()
@@ -144,16 +147,6 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
 
   const portfolioValue = portfolio.reduce((s, p) => s + (p.value || 0), 0)
   const portfolioPnl = portfolio.reduce((s, p) => s + (p.pnl || 0), 0)
-
-  // Максимум для кнопок 25/50/75/MAX. Запас 1.5% сверх цены покрывает комиссию
-  // и price-impact, иначе «MAX» упирался бы в нехватку средств.
-  const tradeMax = !trade ? 0
-    : trade.action === 'sell'
-      ? (heldFor(trade.symbol)?.quantity || 0)
-      : Math.floor(Math.min(
-        trade.price > 0 ? balance / (trade.price * 1.015) : 0,
-        trade.freeShares ?? Infinity,
-      ))
 
   if (loading) {
     return (
@@ -345,30 +338,11 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
               </div>
             </div>
 
-            <div className="tm-field">
-              <div className="tm-field-head">
-                <label htmlFor="stock-qty">{t('common.quantity')}</label>
-                {tradeMax > 0 && (
-                  <span className="tm-avail">
-                    {trade.action === 'buy' ? t('trade.affordable') : t('trade.available')}: <b>{formatQty(tradeMax)}</b>
-                  </span>
-                )}
-              </div>
-              <input id="stock-qty" type="text" inputMode="numeric" value={qty} autoFocus
-                placeholder="1" onChange={e => setQty(e.target.value)} />
-              <div className="tm-presets">
-                {[0.25, 0.5, 0.75, 1].map(f => (
-                  <button key={f} type="button" className="tm-preset" disabled={!(tradeMax > 0)}
-                    onClick={() => setQty(quantizeQty(tradeMax * f, 'stock'))}>
-                    {f === 1 ? t('trade.max') : `${f * 100}%`}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <TradeBreakdown
               market="stock" symbol={trade.symbol} action={trade.action}
-              quantity={qty} balance={balance} onQuote={setQuote}
+              quantity={qty} onQuantityChange={setQty}
+              balance={balance} held={heldFor(trade.symbol)?.quantity || 0}
+              onQuote={setQuote}
             />
 
             <div className="modal-buttons">

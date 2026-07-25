@@ -6,7 +6,7 @@ import {
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
-import { parseQty, quantizeQty } from '../utils/qty'
+import { parseQty } from '../utils/qty'
 import {
   Coins, Wallet, TrendingUp, TrendingDown, Copy, Check,
   ArrowUpRight, ArrowDownLeft, PlusCircle, X, Send, Search, Activity,
@@ -125,6 +125,9 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
     try {
       const res = await tradeCrypto(trade.symbol, trade.action, q)
       onBalanceChange?.(res.balance)
+      // Иначе прежнее количество переоценивается по уже уменьшенному балансу
+      // и сразу после «успешно» выскакивает «не хватает средств».
+      setQty('')
       toast(t('crypto.tradeSuccess'))
       setRefreshKey(k => k + 1)
       await load(true)
@@ -167,13 +170,6 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
     else if (sort === 'losers') r.sort((a, b) => (a.change24h || 0) - (b.change24h || 0))
     return r
   }, [market, search, sort])
-
-  // Максимум для кнопок 25/50/75/MAX. Запас 1.5% сверх цены покрывает комиссию
-  // и price-impact, иначе «MAX» упирался бы в нехватку средств.
-  const tradeMax = !trade ? 0
-    : trade.action === 'sell'
-      ? (holdingFor(trade.symbol)?.quantity || 0)
-      : (trade.price > 0 ? balance / (trade.price * 1.015) : 0)
 
   if (loading) {
     return (
@@ -379,29 +375,11 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
                 </span>
               </div>
             </div>
-            <div className="tm-field">
-              <div className="tm-field-head">
-                <label htmlFor="crypto-qty">{t('common.quantity')}</label>
-                {tradeMax > 0 && (
-                  <span className="tm-avail">
-                    {trade.action === 'buy' ? t('trade.affordable') : t('trade.available')}: <b>{formatQty(tradeMax)}</b>
-                  </span>
-                )}
-              </div>
-              <input id="crypto-qty" type="text" inputMode="decimal" value={qty} autoFocus
-                onChange={e => setQty(e.target.value)} placeholder="0.00" />
-              <div className="tm-presets">
-                {[0.25, 0.5, 0.75, 1].map(f => (
-                  <button key={f} type="button" className="tm-preset" disabled={!(tradeMax > 0)}
-                    onClick={() => setQty(quantizeQty(tradeMax * f, 'crypto'))}>
-                    {f === 1 ? t('trade.max') : `${f * 100}%`}
-                  </button>
-                ))}
-              </div>
-            </div>
             <TradeBreakdown
               market="crypto" symbol={trade.symbol} action={trade.action}
-              quantity={qty} balance={balance} onQuote={setQuote}
+              quantity={qty} onQuantityChange={setQty}
+              balance={balance} held={holdingFor(trade.symbol)?.quantity || 0}
+              onQuote={setQuote}
             />
             <div className="modal-account-row">
               <div className="modal-account-item"><span>{t('crypto.cashBalance')}</span><b>${formatMoney(balance)}</b></div>

@@ -6,7 +6,7 @@ import {
 import PriceChart from './PriceChart'
 import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
-import { parseQty, quantizeQty } from '../utils/qty'
+import { parseQty } from '../utils/qty'
 import { computeAnalytics } from '../utils/assetAnalytics'
 import { toast } from './Toast'
 import {
@@ -109,6 +109,9 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
       const fn = market === 'stock' ? tradeStock : tradeCrypto
       const res = await fn(symbol, trade, q)
       onBalanceChange?.(res.balance)
+      // Иначе прежнее количество переоценивается по уже уменьшенному балансу
+      // и сразу после «успешно» выскакивает «не хватает средств».
+      setQty('')
       toast(t('stocks.tradeSuccess'))
       await Promise.all([loadAsset(), loadHistory(timeframe)])
       onTraded?.()
@@ -140,14 +143,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
   const changes = asset.stats?.changes || {}
   const held = asset.heldQuantity || 0
-
-  // Максимум для быстрых кнопок 25/50/75/MAX. Запас 1.5% сверх цены покрывает
-  // комиссию и небольшой price-impact, иначе «MAX» упирался бы в нехватку средств.
-  const affordable = asset.price > 0 ? balance / (asset.price * 1.015) : 0
-  const buyMax = market === 'stock'
-    ? Math.floor(Math.min(affordable, asset.freeShares ?? affordable))
-    : affordable
-  const tradeMax = trade === 'sell' ? held : buyMax
 
   const a = computeAnalytics(asset, history, market)
   const positionValue = held * asset.price
@@ -404,38 +399,13 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
               </div>
             </div>
 
-            <div className="tm-field">
-              <div className="tm-field-head">
-                <label htmlFor="tm-qty">{t('common.quantity')}</label>
-                {tradeMax > 0 && (
-                  <span className="tm-avail">
-                    {trade === 'buy' ? t('trade.affordable') : t('trade.available')}: <b>{formatQty(tradeMax)}</b>
-                  </span>
-                )}
-              </div>
-              <input
-                id="tm-qty" type="text" inputMode="decimal" value={qty} autoFocus
-                placeholder={market === 'crypto' ? '0.00' : '1'}
-                onChange={e => setQty(e.target.value)}
-              />
-              <div className="tm-presets">
-                {[0.25, 0.5, 0.75, 1].map(f => (
-                  <button
-                    key={f} type="button" className="tm-preset"
-                    disabled={!(tradeMax > 0)}
-                    onClick={() => setQty(quantizeQty(tradeMax * f, market))}
-                  >
-                    {f === 1 ? t('trade.max') : `${f * 100}%`}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Разбивка сделки по данным бэкенда: цена исполнения ≠ котировке,
-                потому что крупный ордер сам двигает цену. */}
+            {/* Поле количества и разбивка сделки: цена исполнения ≠ котировке,
+                потому что крупный ордер сам двигает цену, а максимум для кнопок
+                долей считает бэкенд — на клиенте impact не воспроизвести. */}
             <TradeBreakdown
               market={market} symbol={symbol} action={trade}
-              quantity={qty} balance={balance} onQuote={setQuote}
+              quantity={qty} onQuantityChange={setQty}
+              balance={balance} held={held} onQuote={setQuote}
             />
 
             <div className="modal-account-row">

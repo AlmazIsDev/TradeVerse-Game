@@ -1061,9 +1061,16 @@
       "priceOverride": "Price (for regenerate)",
       "volatilityOverride": "Volatility (for regenerate)",
       "regenerate": "Regenerate history",
-      "regenerateConfirm": "Regenerate the entire price history? Existing points will be permanently deleted.",
+      "regenerateConfirm": "Regenerate the price history? The current {{count}} points will be permanently deleted and replaced with a fresh history from price {{price}} at volatility {{volatility}}.",
       "deletePointConfirm": "Delete this point?",
-      "noPoints": "No history yet"
+      "noPoints": "No history yet",
+      "regenerating": "Regenerating…",
+      "regenerated": "History regenerated: {{count}} points",
+      "badPrice": "Enter a price greater than zero",
+      "badVolatility": "Volatility must be between 0 and 1",
+      "searchPlaceholder": "Search by date or price",
+      "sortTs": "By date",
+      "sortPrice": "By price"
     }
   },
   "econ": {

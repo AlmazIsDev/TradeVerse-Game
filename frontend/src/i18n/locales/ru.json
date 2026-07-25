@@ -1061,9 +1061,16 @@
       "priceOverride": "Цена (для regenerate)",
       "volatilityOverride": "Волатильность (для regenerate)",
       "regenerate": "Пересоздать историю",
-      "regenerateConfirm": "Пересоздать всю историю цен? Текущие точки будут удалены безвозвратно.",
+      "regenerateConfirm": "Пересоздать историю цен? Текущие точки ({{count}}) будут удалены безвозвратно, вместо них появится новая история от цены {{price}} с волатильностью {{volatility}}.",
       "deletePointConfirm": "Удалить эту точку?",
-      "noPoints": "История пуста"
+      "noPoints": "История пуста",
+      "regenerating": "Пересоздаём…",
+      "regenerated": "История пересоздана: {{count}} точек",
+      "badPrice": "Укажите цену больше нуля",
+      "badVolatility": "Волатильность должна быть от 0 до 1",
+      "searchPlaceholder": "Поиск по дате или цене",
+      "sortTs": "По дате",
+      "sortPrice": "По цене"
     }
   },
   "econ": {

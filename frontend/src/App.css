@@ -1896,6 +1896,10 @@ body {
   to { transform: rotate(360deg); }
 }
 
+.spin {
+  animation: spin 1s linear infinite;
+}
+
 .error-state {
   display: flex;
   flex-direction: column;
@@ -4196,6 +4200,17 @@ textarea:focus {
   flex-direction: column;
   gap: 4px;
   margin-top: 12px;
+}
+
+.price-history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.price-history-toolbar .tx-search {
+  flex: 1;
 }
 
 .price-history-row {

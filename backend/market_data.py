@@ -17,6 +17,7 @@ from typing import Optional
 import logging
 import os
 import random
+import re
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -128,13 +129,14 @@ class MarketDataService:
             await db.price_history.insert_many(docs)
 
     @staticmethod
-    async def regenerate(db, market: str, symbol: str, current_price: float, volatility: float = 0.03):
+    async def regenerate(db, market: str, symbol: str, current_price: float, volatility: float = 0.03) -> int:
         """Принудительно пересоздаёт историю символа (сносит старую, строит заново)."""
         symbol = symbol.upper()
         await db.price_history.delete_many({"market": market, "symbol": symbol})
         docs = _build_walk_docs(market, symbol, current_price, volatility)
         if docs:
             await db.price_history.insert_many(docs)
+        return len(docs)
 
     @staticmethod
     async def get_history(db, market: str, symbol: str, interval: str) -> dict:
@@ -456,19 +458,52 @@ def _format_point(doc: dict) -> dict:
     return {"id": str(doc["_id"]), "ts": _aware(doc["ts"]).isoformat(), "price": doc["price"]}
 
 
+# Точки истории у одного символа — десятки тысяч, поэтому список только страницами.
+PH_SORT_FIELDS = {"ts", "price"}
+# Формат совпадает с тем, что рисует редактор, — иначе поиск «по тому, что написано»
+# не находил бы введённую дату.
+PH_TS_FORMAT = "%Y-%m-%d %H:%M"
+
+
 @router.get("/admin/price-history")
 async def admin_list_price_history(
     market: str = Query(...),
     symbol: str = Query(...),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    q: str = Query(None),
+    sort: str = Query("ts"),
+    order: int = Query(-1),
     _admin: dict = Depends(require_admin),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     if market not in VALID_MARKETS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный рынок")
-    rows = [r async for r in db.price_history.find(
-        {"market": market, "symbol": symbol.upper()}
-    ).sort("ts", 1)]
-    return [_format_point(r) for r in rows]
+    symbol = symbol.upper()
+    query: dict = {"market": market, "symbol": symbol}
+    if q:
+        rx = re.escape(q)
+        query["$expr"] = {"$or": [
+            {"$regexMatch": {"input": {"$dateToString": {"date": "$ts", "format": PH_TS_FORMAT}}, "regex": rx}},
+            {"$regexMatch": {"input": {"$toString": "$price"}, "regex": rx}},
+        ]}
+    sort_key = sort if sort in PH_SORT_FIELDS else "ts"
+    direction = 1 if order >= 0 else -1
+    rows = [r async for r in db.price_history.find(query)
+            .sort([(sort_key, direction), ("_id", direction)])
+            .skip(skip).limit(limit)]
+    total = await db.price_history.count_documents(query)
+    # Дефолты для пересоздания — чтобы админ видел, из каких значений оно пойдёт.
+    coll = db.stocks if market == MARKET_STOCK else db.crypto_assets
+    asset = await coll.find_one({"symbol": symbol}, {"price": 1, "volatility": 1})
+    return {
+        "items": [_format_point(r) for r in rows],
+        "total": total,
+        "asset": {
+            "price": float(asset.get("price", 0)) if asset else None,
+            "volatility": float(asset.get("volatility", 0.03)) if asset else None,
+        },
+    }
 
 
 @router.post("/admin/price-history", status_code=status.HTTP_201_CREATED)
@@ -536,8 +571,8 @@ async def admin_regenerate_price_history(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
     price = payload.price if payload.price is not None else float(asset.get("price", 0))
     volatility = payload.volatility if payload.volatility is not None else float(asset.get("volatility", 0.03))
-    await MarketDataService.regenerate(db, payload.market, symbol, price, volatility)
-    return {"regenerated": True, "points": 365 + 144}
+    points = await MarketDataService.regenerate(db, payload.market, symbol, price, volatility)
+    return {"regenerated": True, "points": points, "price": price, "volatility": volatility}
 
 
 if __name__ == "__main__":

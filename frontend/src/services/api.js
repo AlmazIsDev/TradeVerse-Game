@@ -769,8 +769,15 @@ export async function fetchMarketHistory(market, symbol, interval = '7d') {
   return request(`/api/market/history?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`)
 }
 
-export async function adminListPriceHistory(market, symbol) {
-  return request(`/api/admin/price-history?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`)
+export async function adminListPriceHistory(market, symbol, opts = {}) {
+  const params = new URLSearchParams({ market, symbol })
+  const { q, skip, limit, sort, order } = opts
+  if (q) params.set('q', q)
+  if (skip != null) params.set('skip', skip)
+  if (limit != null) params.set('limit', limit)
+  if (sort) params.set('sort', sort)
+  if (order != null) params.set('order', order)
+  return request(`/api/admin/price-history?${params.toString()}`)
 }
 
 export async function adminAddPricePoint(data) {

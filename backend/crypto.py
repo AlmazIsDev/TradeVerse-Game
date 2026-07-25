@@ -235,11 +235,12 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
         await MarketDataService.ensure_backfill(db, "crypto", symbol, market_price, coin.get("volatility", 0.05))
         set_fields: dict = {}
 
-        if fresh_real:
-            # Свежая реальная цена — новая рыночная база.
-            market_price = float(coin.get("price", market_price))
-        elif mode == "sim":
-            # Симуляция: блуждает именно РЫНОЧНАЯ цена (реальные данные недоступны).
+        if coin.get("source") == "coingecko":
+            if fresh_real:
+                market_price = float(coin.get("price", market_price))
+        else:
+            # Блуждает market_price, а не display: иначе demand от сделок
+            # компаундится в базу каждый тик и цена уходит в экспоненту.
             updated = coin.get("updated_at")
             if isinstance(updated, datetime) and updated.tzinfo is None:
                 updated = updated.replace(tzinfo=timezone.utc)

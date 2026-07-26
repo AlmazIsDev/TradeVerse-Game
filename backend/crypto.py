@@ -25,6 +25,7 @@ from ledger import (
 )
 from market_data import MarketDataService
 from notifications import push_notification
+from timeutil import now_utc
 from ws import broadcast
 
 router = APIRouter(prefix="/api/crypto", tags=["crypto"])
@@ -127,7 +128,7 @@ async def ensure_coins_seeded(db: AsyncIOMotorDatabase):
                 "ath": c["price"],
                 "atl": c["price"],
                 "volume24h": round(c["price"] * c.get("supply", 0) * 0.04, 2),
-                "updated_at": datetime.utcnow(),
+                "updated_at": now_utc(),
             })
             await MarketDataService.ensure_backfill(db, "crypto", c["symbol"], c["price"], c.get("volatility", 0.05))
 
@@ -150,7 +151,7 @@ def _walk_price(coin: dict) -> dict:
     coin["ath"] = round(max(coin.get("ath", new), new), 6)
     coin["atl"] = round(min(coin.get("atl", new) or new, new), 6)
     coin["volume24h"] = round(new * coin.get("supply", 0) * (0.03 + abs(random.gauss(0, 0.02))), 2)
-    coin["updated_at"] = datetime.utcnow()
+    coin["updated_at"] = now_utc()
     return coin
 
 
@@ -674,7 +675,7 @@ async def transfer_crypto(
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Не удалось выполнить перевод")
 
     value = round(amount * price, 2)
-    now = datetime.utcnow()
+    now = now_utc()
     await db.crypto_transfers.insert_one({
         "fromId": sender_id, "fromName": current_user.get("username"),
         "toId": rec_id, "toName": recipient.get("username"),
@@ -766,7 +767,7 @@ async def admin_update_coin(
             fields["marketCap"] = round(new_market_cap, 2)
     if new_price is not None:
         fields["base_price"] = new_price
-    fields["updated_at"] = datetime.utcnow()
+    fields["updated_at"] = now_utc()
 
     await db.crypto_assets.update_one({"symbol": symbol}, {"$set": fields})
     _MARKET_CACHE["ts"] = None
@@ -790,7 +791,7 @@ async def admin_create_coin(
         "color": payload.color, "supply": supply, "description": payload.description,
         "change24h": 0.0, "ath": payload.price, "atl": payload.price,
         "volume24h": round(payload.price * supply * 0.04, 2),
-        "updated_at": datetime.utcnow(),
+        "updated_at": now_utc(),
     }
     await db.crypto_assets.insert_one(doc)
     await MarketDataService.ensure_backfill(db, "crypto", symbol, payload.price, payload.volatility)

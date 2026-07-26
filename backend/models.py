@@ -3,6 +3,8 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from bson import ObjectId
 
+from timeutil import now_utc
+
 
 class PyObjectId(ObjectId):
     @classmethod
@@ -29,7 +31,7 @@ class UserDocument(BaseModel):
     card_visible: bool = True
     # data URL (base64), см. user_profile.py — без отдельной инфраструктуры файлового хранилища.
     avatar: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=now_utc)
 
     class Config:
         populate_by_name = True
@@ -47,7 +49,7 @@ class StockDocument(BaseModel):
     change: float
     changePercent: float
     currency: str = "USD"
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=now_utc)
 
     class Config:
         populate_by_name = True
@@ -64,7 +66,7 @@ class TransactionDocument(BaseModel):
     symbol: str
     amount: float
     price: float
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=now_utc)
 
     class Config:
         populate_by_name = True
@@ -78,7 +80,7 @@ class AppConfigDocument(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     key: str
     value: str
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=now_utc)
 
     class Config:
         populate_by_name = True
@@ -93,7 +95,7 @@ class AnalyticsDocument(BaseModel):
     userId: str
     eventType: str
     data: dict = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=now_utc)
 
     class Config:
         populate_by_name = True
@@ -114,7 +116,7 @@ class PurchaseDocument(BaseModel):
     price: float
     quantity: int = 1
     total: float = 0.0
-    purchased_at: datetime = Field(default_factory=datetime.utcnow)
+    purchased_at: datetime = Field(default_factory=now_utc)
 
     class Config:
         populate_by_name = True

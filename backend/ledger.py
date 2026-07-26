@@ -11,6 +11,8 @@ from typing import Any, Optional
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from timeutil import now_utc
+
 # Направление движения денег с точки зрения владельца операции
 INCOME = "income"
 EXPENSE = "expense"
@@ -98,7 +100,7 @@ async def record_transaction(
         "type": "income" if direction == INCOME else "expense",
         "symbol": symbol,
         "price": price,
-        "timestamp": datetime.utcnow(),
+        "timestamp": now_utc(),
     }
     result = await db.transactions.insert_one(doc)
     doc["id"] = str(result.inserted_id)
@@ -185,7 +187,7 @@ async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str, period: str =
     """Аналитика за период: доход, расход, изменение капитала, число операций
     и посуточный ряд для графика. period: today|yesterday|week|month|all.
     """
-    now = datetime.utcnow()
+    now = now_utc()
     today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Диапазон дней по периоду (start — начало первого дня корзины).

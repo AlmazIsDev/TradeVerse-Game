@@ -510,7 +510,7 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
     # «с момента регистрации» и был бессмысленным для давних игроков.
     # ponytail: скользящее окно 7д по ledger'у; для «за день/месяц» — параметризовать окно.
     period_net: dict[str, float] = {}
-    since = datetime.utcnow() - timedelta(days=7)
+    since = datetime.now(timezone.utc) - timedelta(days=7)
     async for row in db.transactions.aggregate([
         {"$match": {"timestamp": {"$gte": since}}},
         {"$group": {"_id": {"u": "$userId", "d": "$direction"}, "sum": {"$sum": "$amount"}}},

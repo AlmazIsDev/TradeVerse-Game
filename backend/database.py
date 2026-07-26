@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
 from typing import Any, Optional
 
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
+from timeutil import now_utc
 
 load_dotenv()
 
@@ -13,7 +14,10 @@ MONGODB_URL = os.getenv("MONGODB_URL")
 
 DATABASE_NAME = "tradeverse"
 
-client = AsyncIOMotorClient(MONGODB_URL)
+# tz_aware=True: Mongo хранит даты в UTC, но без этого флага драйвер отдаёт их
+# naive — и isoformat() уходит в API без смещения, из-за чего браузер трактует
+# метку как локальное время. С флагом все прочитанные даты — UTC-aware.
+client = AsyncIOMotorClient(MONGODB_URL, tz_aware=True)
 db: AsyncIOMotorDatabase = client[DATABASE_NAME]
 
 
@@ -67,7 +71,7 @@ async def find_stock_by_symbol(
 
 async def upsert_stock(db: AsyncIOMotorDatabase, stock_data: dict) -> dict:
     stock_data["symbol"] = stock_data["symbol"].upper()
-    stock_data["updated_at"] = datetime.utcnow()
+    stock_data["updated_at"] = now_utc()
     result = await db.stocks.update_one(
         {"symbol": stock_data["symbol"]},
         {"$set": stock_data},
@@ -139,7 +143,7 @@ async def find_config_by_key(db: AsyncIOMotorDatabase, key: str) -> Optional[dic
 async def upsert_config(db: AsyncIOMotorDatabase, key: str, value: str) -> dict:
     await db.app_config.update_one(
         {"key": key},
-        {"$set": {"key": key, "value": value, "updated_at": datetime.utcnow()}},
+        {"$set": {"key": key, "value": value, "updated_at": now_utc()}},
         upsert=True,
     )
     return await find_config_by_key(db, key)
@@ -149,7 +153,7 @@ async def upsert_config(db: AsyncIOMotorDatabase, key: str, value: str) -> dict:
 
 
 async def insert_analytics_event(db: AsyncIOMotorDatabase, event: dict) -> str:
-    event["timestamp"] = datetime.utcnow()
+    event["timestamp"] = now_utc()
     result = await db.analytics.insert_one(event)
     return str(result.inserted_id)
 
@@ -178,7 +182,7 @@ async def find_leaderboard(
 
 async def insert_purchase(db: AsyncIOMotorDatabase, purchase: dict) -> str:
     """Сохраняет покупку в коллекцию purchases. Возвращает ID документа."""
-    purchase["purchased_at"] = datetime.utcnow()
+    purchase["purchased_at"] = now_utc()
     result = await db.purchases.insert_one(purchase)
     return str(result.inserted_id)
 

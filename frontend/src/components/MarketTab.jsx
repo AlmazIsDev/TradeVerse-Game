@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchAssetMarket, buyAsset } from '../services/api'
+import { assetImage } from '../utils/assetImages'
 import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
 import {
@@ -149,10 +150,13 @@ function MarketTab({ balance = 0, onBalanceChange }) {
           {items.map(item => {
             const rc = RARITY_COLOR[item.rarity] || 'var(--color-accent)'
             const affordable = balance >= item.price
+            const img = assetImage(item.slug, item.type)
             return (
               <div key={item.slug} className={`asset-card market-card ${item.type === 'car' ? 'car-card' : ''}`} style={{ borderTopColor: rc }}>
                 <div className="asset-banner" style={{ background: RARITY_GRAD[item.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
-                  <span className="asset-banner-emoji">{ASSET_EMOJI[item.slug] || TYPE_EMOJI[item.type] || '📦'}</span>
+                  {img
+                    ? <img className="asset-banner-img" src={img} alt="" loading="lazy" />
+                    : <span className="asset-banner-emoji">{ASSET_EMOJI[item.slug] || TYPE_EMOJI[item.type] || '📦'}</span>}
                 </div>
                 <span className="market-card-name">{t(`assetNames.${item.slug}`, item.name)}</span>
                 {(item.rarity || item.category) && (

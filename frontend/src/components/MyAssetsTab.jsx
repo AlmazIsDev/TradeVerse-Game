@@ -8,6 +8,7 @@ import {
   collectAllAssets,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import { assetImage } from '../utils/assetImages'
 import ConfirmDialog from './ConfirmDialog'
 import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
@@ -328,6 +329,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const totalAccrued = list.reduce((s, a) => s + (a.accrued || 0), 0)
 
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
+  const imgFor = (a) => assetImage(a.slug, a.type)
 
   // Статус аренды — только инфо-бейдж; сами кнопки (сдать/отменить) вынесены
   // в меню «Взаимодействие» (см. buildActions), чтобы не плодить кнопки на карточке.
@@ -513,7 +515,9 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             return (
               <div key={a.id} className={`asset-card owned ${isCar ? 'car-card' : ''} ${menuOpenId === a.id ? 'menu-open' : ''}`}>
                 <div className="asset-banner" style={{ background: RARITY_GRAD[a.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
-                  <span className="asset-banner-emoji">{emojiFor(a)}</span>
+                  {imgFor(a)
+                    ? <img className="asset-banner-img" src={imgFor(a)} alt="" loading="lazy" />
+                    : <span className="asset-banner-emoji">{emojiFor(a)}</span>}
                   <span className="asset-level">{t('myassets.level')} {a.level}</span>
                 </div>
                 <div className="asset-card-head">

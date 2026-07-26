@@ -5,6 +5,7 @@ import {
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import { assetImage } from '../utils/assetImages'
 import ConfirmDialog from './ConfirmDialog'
 import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
@@ -72,6 +73,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
   const menuRef = useRef(null)
 
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
+  const imgFor = (a) => assetImage(a.slug, a.type)
   const list = tab === 'all' ? assets : assets.filter(a => a.type === tab)
 
   // IT-студии игрока (в т.ч. переданные компании — запрос идёт по userId).
@@ -304,7 +306,9 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
               return (
                 <div key={a.id} className={`asset-card owned ${isCar ? 'car-card' : ''} ${menuOpenId === a.id ? 'menu-open' : ''}`}>
                   <div className="asset-banner" style={{ background: RARITY_GRAD[a.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
-                    <span className="asset-banner-emoji">{emojiFor(a)}</span>
+                    {imgFor(a)
+                      ? <img className="asset-banner-img" src={imgFor(a)} alt="" loading="lazy" />
+                      : <span className="asset-banner-emoji">{emojiFor(a)}</span>}
                     <span className="asset-level">{t('myassets.level')} {a.level}</span>
                   </div>
                   <div className="asset-card-head"><span className="asset-name">{t(`assetNames.${a.slug}`, a.name)}</span></div>

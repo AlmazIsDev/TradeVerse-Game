@@ -1097,13 +1097,25 @@ select.company-name-input option {
 .notif-decline { background: transparent; border-color: rgba(255, 59, 48, 0.4); color: var(--color-danger); }
 
 /* ===================== ASSET BANNERS / CARS / RENTAL ===================== */
+/* Высота подобрана под соотношение фотографий (16:9): в колонке сетки ~250px
+   ширины кадр ложится почти без обрезки. */
 .asset-banner {
-  height: 96px; border-radius: var(--radius-md); margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-sm);
+  height: 140px; border-radius: var(--radius-md); margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-sm);
   display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
 }
 .asset-banner-emoji { font-size: 52px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1)); }
-.asset-banner .asset-level { position: absolute; top: 8px; right: 8px; }
-.car-card .asset-banner { height: 130px; }
+/* Фото объекта заполняет баннер целиком; градиент по редкости остаётся фоном и
+   виден, пока картинка грузится. Затемнение снизу — чтобы бейдж уровня читался. */
+.asset-banner-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+.asset-banner:has(.asset-banner-img)::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.35) 100%);
+}
+.asset-banner .asset-level { position: absolute; top: 8px; right: 8px; z-index: 1; }
+.car-card .asset-banner { height: 160px; }
 .car-card .asset-banner-emoji { font-size: 72px; }
 .myassets-tab .empty-state .placeholder-icon { font-size: 56px; }
 

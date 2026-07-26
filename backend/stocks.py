@@ -37,6 +37,11 @@ DEFAULT_STOCK_CONFIG = {
     "price_drop_threshold": -0.05,
     "price_rise_threshold": 0.10,
     "max_order_size_percent": 0.01,
+    # Сигма собственного блуждания цены за тик планировщика (60с). Подобрано
+    # симуляцией на окне 7д: 0.02 (как у крипты) прижимает цену к границе
+    # коридора в ~80% прогонов, 0.002 и ниже возвращает плоский график и вечное
+    # «Держать». 0.005 даёт живой разброс сигналов при 4% упора в коридор.
+    "volatility": 0.005,
 }
 
 # Абсолютный потолок размера одного ордера (акций). Дефолтная системная акция
@@ -96,6 +101,7 @@ class StockTradeRequest(BaseModel):
 
 class StockConfigUpdate(BaseModel):
     volatility_k: Optional[float] = None
+    volatility: Optional[float] = None
     total_shares: Optional[int] = None
     price_drop_threshold: Optional[float] = None
     price_rise_threshold: Optional[float] = None
@@ -307,6 +313,67 @@ async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
 
 CATALOG_ANCHOR_PULL = 0.1   # доля сближения цены акции компании с фундаменталом за тик
 
+# Коридор собственного блуждания цены вокруг базовой (как [0.3x,3x] у крипты).
+WALK_FLOOR = 0.3
+WALK_CEIL = 3.0
+
+# Сигма для БЭКФИЛЛА истории — это шаг ЗА СУТКИ (market_data._build_walk_docs
+# идёт назад по дням), а config["volatility"] — шаг за тик планировщика (60с).
+# Числа с разных временных масштабов и не взаимозаменяемы: подстановка тиковой
+# сигмы сюда сделала бы весь год истории почти плоской линией.
+BACKFILL_DAILY_VOLATILITY = 0.02
+
+
+def _walk_stock_price(stock: dict) -> Optional[float]:
+    """Новая цена системной акции от собственного блуждания, или None.
+
+    Раньше цена двигалась ТОЛЬКО объёмом сделок ботов, а их impact —
+    price × volatility_k × (qty/total_shares) ≈ 0.005% за сделку при дефолтном
+    выпуске в 1 млрд. Покупки и продажи взаимно гасились, график выходил
+    плоской линией, и вся аналитика вырождалась: momentum ≈ 0 → probUp = 50%
+    → тренд всегда «Держать». Здесь та же механика, что у крипты
+    (crypto._walk_price): случайный дрейф задаёт направление на тик, gauss даёт
+    шум, коридор вокруг base_price не даёт цене уйти в экспоненту.
+    """
+    base = float(stock.get("base_price") or stock.get("price") or 0)
+    old = float(stock.get("price") or 0)
+    if base <= 0 or old <= 0:
+        return None
+    vol = float(_resolve_config(stock)["volatility"])
+    drift = random.uniform(-0.5, 0.5) * vol
+    new = old * (1 + drift + random.gauss(0, vol))
+    new = max(base * WALK_FLOOR, min(base * WALK_CEIL, new))
+    new = round(max(0.01, new), 2)
+    return new if new != old else None
+
+
+async def _walk_system_stocks(db: AsyncIOMotorDatabase):
+    """Двигает цены системных акций собственным блужданием.
+
+    Пользовательские эмиссии (issuer) и акции компаний (companyId) пропускаем:
+    первые двигают только игроки, вторые дрейфуют к капиталу компании
+    (см. _revalue_company_stocks) — блуждание боролось бы с этим якорем.
+    """
+    async for s in db.stocks.find({"issuer": {"$in": [None, ""]}, "companyId": None}):
+        old = float(s.get("price") or 0)
+        if "base_price" not in s and old > 0:
+            await db.stocks.update_one({"_id": s["_id"]}, {"$set": {"base_price": old}})
+            s["base_price"] = old
+        new_price = _walk_stock_price(s)
+        if new_price is None:
+            continue
+        change = (new_price - old) / old * 100
+        await db.stocks.update_one(
+            {"_id": s["_id"]},
+            {"$set": {
+                "price": new_price,
+                "change": round(new_price - old, 2),
+                "changePercent": round(s.get("changePercent", 0.0) * 0.7 + change, 2),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+        await MarketDataService.record_snapshot(db, "stock", s["symbol"], new_price, force=True)
+
 
 async def _revalue_company_stocks(db: AsyncIOMotorDatabase):
     """Акции компаний (companyId != None) дрейфуют к «справедливой» цене =
@@ -353,23 +420,31 @@ async def _revalue_company_stocks(db: AsyncIOMotorDatabase):
 async def maintain_stock_market(db: AsyncIOMotorDatabase):
     """Фоновое обслуживание рынка акций (вызывается Scheduler'ом).
 
-    Системные акции НЕ привязаны к реальным котировкам — цена двигается только
-    объёмом сделок (игроки + боты), как и у пользовательских эмиссий. Акции
-    компаний дополнительно дрейфуют к капиталу (см. _revalue_company_stocks).
-    Здесь же делаем одноразовый бэкфилл истории и пишем периодические снимки.
+    Системные акции НЕ привязаны к реальным котировкам: цена складывается из
+    собственного блуждания (_walk_system_stocks, как у крипты) и объёма сделок
+    игроков/ботов. Без блуждания impact ботов был слишком мал, чтобы создать
+    тренд, и график выходил плоским. Акции компаний вместо блуждания дрейфуют к
+    капиталу (см. _revalue_company_stocks). Здесь же одноразовый бэкфилл
+    истории и периодические снимки.
     """
     stocks = await find_all_stocks(db)
     if not stocks:
         return
+    # Цены ДО тика — чтобы поймать движение от блуждания и сделок ботов. Раньше
+    # «до» и «до» читались из одного и того же документа, поэтому updates всегда
+    # выходил пустым и market_update по акциям не рассылался вообще.
+    before = {s["symbol"]: float(s.get("price", 0)) for s in stocks}
+    await _walk_system_stocks(db)
     # Несколько раундов ботов за тик ≈ торговля каждые 10с (см. BOT_ROUNDS_PER_TICK).
     for _ in range(BOT_ROUNDS_PER_TICK):
         await _run_bots(db, await find_all_stocks(db))
     await _revalue_company_stocks(db)
     updates = []
     for s in await find_all_stocks(db):
-        old_price = float(s.get("price", 0))
-        await MarketDataService.ensure_backfill(db, "stock", s["symbol"], s.get("price", 1) or 1, 0.02)
+        await MarketDataService.ensure_backfill(
+            db, "stock", s["symbol"], s.get("price", 1) or 1, BACKFILL_DAILY_VOLATILITY)
         await MarketDataService.record_snapshot(db, "stock", s["symbol"], s.get("price", 0))
+        old_price = before.get(s["symbol"], 0.0)
         new_price = float(s.get("price", 0))
         if old_price != new_price and old_price > 0:
             change = ((new_price - old_price) / old_price * 100)
@@ -893,4 +968,34 @@ if __name__ == "__main__":
     assert MAX_ORDER_SHARES == 10_000_000
     assert 10_000_000 <= MAX_ORDER_SHARES         # ровно 10 млн проходит
     assert not (10_000_001 <= MAX_ORDER_SHARES)   # 10 млн + 1 — отбой
+
+    # Блуждание цены: держится в коридоре и реально двигает цену (иначе график
+    # плоский и аналитика всегда выдаёт «Держать» с probUp = 50%).
+    stock = {"symbol": "T", "price": 100.0, "base_price": 100.0}
+    moved = 0
+    for _ in range(2000):
+        new = _walk_stock_price(stock)
+        if new is not None:
+            assert 100.0 * WALK_FLOOR <= new <= 100.0 * WALK_CEIL, new
+            stock["price"] = new
+            moved += 1
+    assert moved > 1900, f"цена почти не двигалась: {moved}/2000"
+
+    # За серию тиков должен накапливаться заметный тренд, а не шум вокруг старта.
+    # При дефолтной volatility средний размах за 4 часа (240 тиков) ≈ 6%; порог
+    # 2% ловит регресс «цена снова стоит на месте», не цепляясь за случайность.
+    swings = []
+    for _ in range(200):
+        s = {"symbol": "T", "price": 100.0, "base_price": 100.0}
+        for _ in range(240):
+            s["price"] = _walk_stock_price(s) or s["price"]
+        swings.append(abs(s["price"] - 100.0) / 100.0)
+    assert sum(swings) / len(swings) > 0.02, "тренда нет — график останется плоским"
+
+    # Нулевая/битая цена не должна ломать тик.
+    assert _walk_stock_price({"price": 0, "base_price": 0}) is None
+
+    # Сигма бэкфилла (шаг за сутки) и тиковая сигма — разные масштабы времени.
+    # Если их когда-нибудь «унифицируют», год истории станет плоским.
+    assert BACKFILL_DAILY_VOLATILITY > DEFAULT_STOCK_CONFIG["volatility"] * 2
     print("stocks self-check OK")

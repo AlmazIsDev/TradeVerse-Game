@@ -4273,3 +4273,171 @@ textarea:focus {
   gap: 12px;
   margin-top: 8px;
 }
+
+/* LEGAL FOOTER (landing + dashboard) */
+.legal-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--glass-border);
+  background: var(--color-bg-secondary);
+}
+
+.legal-footer-icon {
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  transition: color 0.2s ease;
+}
+
+.legal-footer-icon:hover {
+  color: var(--color-text-primary);
+}
+
+.legal-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-lg);
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+
+.legal-footer-links a {
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.legal-footer-links a:hover {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+
+/* В игре футер — компактная строка без фона: не должен красть высоту у контента. */
+.dashboard-main .legal-footer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: var(--spacing-md);
+  padding: 8px var(--spacing-lg);
+  background: transparent;
+  border-top: none;
+  opacity: 0.65;
+}
+
+.dashboard-main .legal-footer:hover {
+  opacity: 1;
+}
+
+.dashboard-main .legal-footer svg {
+  width: 15px;
+  height: 15px;
+}
+
+.dashboard-main .legal-footer-links {
+  gap: var(--spacing-md);
+  font-size: 11px;
+}
+
+/* ── Модалка «Улучшения»: горизонтальный скроллер уровней ─────────────────── */
+.upgrade-modal { max-width: 560px; }
+
+.upgrade-scroller {
+  display: flex;
+  align-items: stretch;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+.upgrade-arrow {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  background: var(--fill-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upgrade-arrow:hover:not(:disabled) { background: var(--color-accent); color: #fff; }
+.upgrade-arrow:disabled { opacity: 0.35; cursor: default; }
+
+.upgrade-track {
+  display: flex;
+  gap: var(--spacing-sm);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.upgrade-step {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 108px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--fill-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.upgrade-step:hover { border-color: var(--color-accent); }
+/* Уровни, попадающие в покупку, подсвечены слабее выбранного — видно объём шага. */
+.upgrade-step.included { background: var(--color-accent-soft, rgba(0, 113, 227, 0.12)); }
+.upgrade-step.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+}
+
+.upgrade-step-level { font-size: 12px; color: var(--color-text-secondary); }
+.upgrade-step-profit { font-size: 14px; font-weight: 600; }
+.upgrade-step-cost { font-size: 12px; color: var(--color-text-secondary); }
+
+.upgrade-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  background: var(--fill-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.upgrade-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  font-size: 13px;
+}
+
+.upgrade-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+}
+
+.upgrade-row > b { font-size: 13px; font-weight: 600; }
+.upgrade-row.payback { border-top: 1px solid var(--hairline); padding-top: var(--spacing-xs); }
+.upgrade-delta { margin-left: 6px; font-style: normal; font-size: 12px; color: var(--color-success, #34c759); }
+.upgrade-balance { font-size: 13px; color: var(--color-text-secondary); }
+
+@media (max-width: 600px) {
+  .upgrade-step { min-width: 96px; }
+  .upgrade-arrow { width: 28px; }
+}

@@ -1415,5 +1415,24 @@
     "pickPlayer": "Choose a player",
     "noTargetsCompany": "No companies available to expose",
     "noTargetsPlayer": "No players available to expose"
+  },
+  "legal": {
+    "terms": "Terms of Service",
+    "copyright": "© TradeVerse™ and contributors",
+    "privacy": "Privacy Policy"
+  },
+  "upgrade": {
+    "title": "Upgrades",
+    "currentLevel": "Level",
+    "prev": "Previous level",
+    "next": "Next level",
+    "payback": "Payback",
+    "paybackHours": "~{{hours}} h",
+    "rentRate": "Rent",
+    "totalCost": "Upgrade cost",
+    "balance": "balance",
+    "notEnough": "Insufficient funds",
+    "confirm": "Upgrade (+{{levels}} lvl)",
+    "done": "Upgraded to level {{level}}"
   }
 }

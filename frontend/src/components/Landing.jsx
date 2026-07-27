@@ -11,6 +11,7 @@ import {
   Landmark,
 } from 'lucide-react'
 import LanguageSwitcher from './LanguageSwitcher'
+import LegalFooter from './LegalFooter'
 
 const FEATURE_ICONS = {
   stocks: TrendingUp,
@@ -162,6 +163,8 @@ function Landing() {
           <p className="lp-footer-disclaimer">{t('landing.footer.disclaimer')}</p>
         </div>
       </footer>
+
+      <LegalFooter />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import {
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
+import UpgradeModal from './UpgradeModal'
 import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
@@ -50,13 +51,14 @@ const RARITY_GRAD = {
  * IT-студии (атака/защита) прямо из активов компании. Доход идёт в бюджет
  * компании. Управлять может только владелец (сервер проверяет владельца заново).
  */
-function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onClose, onRefresh }) {
+function CompanyAssetsPanel({ assets = [], isOwner = false, balance = 0, onBalanceChange, onClose, onRefresh }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState('all')
   const [busyId, setBusyId] = useState(null)
   const [rentModal, setRentModal] = useState(null)
   const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [confirm, setConfirm] = useState(null)                  // { title, message, danger, onConfirm }
+  const [upgradeModal, setUpgradeModal] = useState(null)  // актив в модалке «Улучшения»
   const [menuOpenId, setMenuOpenId] = useState(null)
   const [studios, setStudios] = useState([])
   const [materialsInfo, setMaterialsInfo] = useState(null)
@@ -102,6 +104,18 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
     } catch (err) { toast(err.message, 'error') } finally { setBusyId(null) }
   }
   const askAct = (id, fn, okKey, conf) => setConfirm({ ...conf, onConfirm: () => act(id, fn, okKey) })
+
+  const submitUpgrade = async (levels, _cost, targetLevel) => {
+    const id = upgradeModal.id
+    setBusyId(id)
+    try {
+      const res = await upgradeAsset(id, levels)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      toast(t('upgrade.done', { level: targetLevel }))
+      setUpgradeModal(null)
+      await refreshAll()
+    } catch (err) { toast(err.message, 'error') } finally { setBusyId(null) }
+  }
 
   const doCancel = (id) => askAct(id, cancelRent, 'rent.cancelled', { title: t('rent.list'), message: t('confirm.cancelRent') })
 
@@ -199,8 +213,8 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
     if (!isCar) {
       actions.push({
         key: 'upgrade', className: 'upgrade', disabled: busy,
-        icon: <ArrowUpCircle size={15} />, label: `${t('myassets.upgrade')} ($${formatMoney(a.upgradeCost)})`,
-        onClick: () => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) }),
+        icon: <ArrowUpCircle size={15} />, label: `${t('upgrade.title')} ($${formatMoney(a.upgradeCost)})`,
+        onClick: () => setUpgradeModal(a),
       })
     }
     if (a.type === 'business' && !a.slug?.startsWith('itstudio_')) {
@@ -345,6 +359,11 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
               )
             })}
           </div>
+        )}
+
+        {upgradeModal && (
+          <UpgradeModal asset={upgradeModal} balance={balance} busy={busyId === upgradeModal.id}
+            onClose={() => setUpgradeModal(null)} onConfirm={submitUpgrade} />
         )}
 
         {rentModal && (

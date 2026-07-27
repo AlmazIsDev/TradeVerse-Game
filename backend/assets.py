@@ -492,6 +492,33 @@ def _upgrade_cost(asset: dict) -> float:
     return round(base * UPGRADE_COST_PCT * _price_mult(asset), 2)
 
 
+UPGRADE_PREVIEW_LEVELS = 10   # сколько будущих уровней показывать в модалке «Улучшения»
+
+
+def _upgrade_plan(asset: dict, steps: int) -> list[dict]:
+    """Предпросмотр следующих уровней: цена перехода, накопленная стоимость,
+    доход и стоимость актива на каждом уровне. Формулы те же, что в
+    _upgrade_cost / _income_per_hour / _current_value — считаются на сервере,
+    чтобы клиент их не дублировал и не мог разойтись с фактическим списанием."""
+    level = asset.get("level", 1)
+    cumulative = 0.0
+    plan = []
+    for i in range(1, steps + 1):
+        at = {**asset, "level": level + i - 1}
+        cumulative += _upgrade_cost(at)
+        nxt = {**asset, "level": level + i}
+        plan.append({
+            "level": level + i,
+            "stepCost": _upgrade_cost(at),
+            "totalCost": round(cumulative, 2),
+            "incomePerHour": _income_per_hour(nxt),
+            "profitPerHour": round(_income_per_hour(nxt) - _upkeep_per_hour(nxt), 2),
+            "value": _current_value(nxt),
+            "rentRatePerHour": _rent_rate_per_hour(nxt),
+        })
+    return plan
+
+
 def _accrued(asset: dict) -> float:
     """Чистый накопленный доход (доход − расход) с последнего сбора, cap 24ч."""
     last = asset.get("last_collected")
@@ -970,9 +997,47 @@ async def collect_all_income(
     return {"collected": round(total, 2), "count": count, "balance": balance}
 
 
+class UpgradeBody(BaseModel):
+    """Улучшение сразу на несколько уровней (модалка «Улучшения» со скроллером)."""
+    levels: int = 1
+
+    @field_validator("levels")
+    @classmethod
+    def levels_ok(cls, v):
+        if v is None or v < 1:
+            raise ValueError("Минимум 1 уровень")
+        if v > UPGRADE_PREVIEW_LEVELS:
+            raise ValueError(f"Максимум {UPGRADE_PREVIEW_LEVELS} уровней за раз")
+        return int(v)
+
+
+@router.get("/{asset_id}/upgrade-preview")
+async def upgrade_preview(
+    asset_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Что даст каждый следующий уровень — для модалки «Улучшения»."""
+    asset = await _load_owned(db, str(current_user["_id"]), asset_id)
+    if asset.get("type") == TYPE_CAR:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
+    return {
+        "current": {
+            "level": asset.get("level", 1),
+            "incomePerHour": _income_per_hour(asset),
+            "profitPerHour": round(_income_per_hour(asset) - _upkeep_per_hour(asset), 2),
+            "value": _current_value(asset),
+            "rentRatePerHour": _rent_rate_per_hour(asset),
+        },
+        "levels": _upgrade_plan(asset, UPGRADE_PREVIEW_LEVELS),
+    }
+
+
 @router.post("/{asset_id}/upgrade")
 async def upgrade_asset(
     asset_id: str,
+    payload: UpgradeBody = UpgradeBody(),
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
@@ -984,16 +1049,26 @@ async def upgrade_asset(
     if asset.get("type") == TYPE_CAR:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
-    cost = _upgrade_cost(asset)
+    steps = payload.levels
+    seen_level = asset.get("level", 1)
+    cost = _upgrade_plan(asset, steps)[-1]["totalCost"]
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
-    await db.user_assets.update_one({"_id": asset["_id"]}, {"$inc": {"level": 1}})
+    # Уровень поднимаем условно — по тому же значению, что прочитали. Иначе два
+    # параллельных запроса, прочитав level=N, оба заплатят цену перехода с N и
+    # поднимут актив на 2·steps — уровни дешевле прайса (TOCTOU).
+    res = await db.user_assets.update_one(
+        {"_id": asset["_id"], "level": seen_level}, {"$inc": {"level": steps}},
+    )
+    if res.modified_count == 0:
+        await adjust_balance(db, user_id, cost)
+        raise HTTPException(status.HTTP_409_CONFLICT, "Уровень актива изменился — повторите")
     cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
     await record_transaction(
         db, user_id, EXPENSE, cost, cat,
-        f"Улучшение: {asset['name']} → ур.{asset.get('level', 1) + 1}",
-        balance_after=new_balance, meta={"assetId": asset_id},
+        f"Улучшение: {asset['name']} → ур.{seen_level + steps}",
+        balance_after=new_balance, meta={"assetId": asset_id, "levels": steps},
     )
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
     return {"asset": _serialize(updated), "balance": new_balance}
@@ -1463,6 +1538,23 @@ if __name__ == "__main__":
             assert _days <= _buy_days + 0.5, f"{_c['slug']} ур.{_lvl}: апгрейд {_days:.1f}д против покупки {_buy_days:.1f}д"
     # Цена улучшения следует за ценой покупки — как и доход экземпляра.
     assert _upgrade_cost(_base | {"price_mult": 2.5}) == _upgrade_cost(_base) * 2.5
+
+    # Предпросмотр улучшений: суммарная цена N уровней обязана совпадать с суммой
+    # пошаговых цен, иначе модалка «Улучшения» покажет не то, что спишет сервер.
+    biz = CATALOG_BY_SLUG["coffee"] | {"level": 1, "tuning_value": 0.0}
+    plan = _upgrade_plan(biz, UPGRADE_PREVIEW_LEVELS)
+    assert len(plan) == UPGRADE_PREVIEW_LEVELS
+    assert plan[0]["level"] == 2 and plan[0]["stepCost"] == _upgrade_cost(biz)
+    assert abs(plan[-1]["totalCost"] - sum(p["stepCost"] for p in plan)) < 0.01
+    # Шаг стоит одинаково на любом уровне (см. _upgrade_cost), а доход и стоимость растут.
+    assert all(plan[i]["stepCost"] == plan[i + 1]["stepCost"] for i in range(len(plan) - 1))
+    assert all(plan[i]["profitPerHour"] < plan[i + 1]["profitPerHour"] for i in range(len(plan) - 1))
+    assert all(plan[i]["value"] < plan[i + 1]["value"] for i in range(len(plan) - 1))
+    # План от уровня N совпадает с продолжением плана от уровня 1 — цена не
+    # зависит от того, купили уровни за один раз или по одному.
+    at3 = _upgrade_plan(biz | {"level": 3}, 2)
+    assert at3[0]["level"] == 4
+    assert abs(at3[-1]["totalCost"] - (plan[3]["totalCost"] - plan[1]["totalCost"])) < 0.01
 
     print("assets.py rent formula: OK")
     print(f"  studio(common,$5k)   = ${studio_rate}/сутки")

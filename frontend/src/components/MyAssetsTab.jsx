@@ -13,6 +13,7 @@ import ConfirmDialog from './ConfirmDialog'
 import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
+import UpgradeModal from './UpgradeModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, X, Gauge, LayoutGrid, Wrench, Package,
@@ -63,6 +64,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [rentModal, setRentModal] = useState(null)   // asset
   const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [tuneModal, setTuneModal] = useState(null)   // car asset
+  const [upgradeModal, setUpgradeModal] = useState(null)  // актив в модалке «Улучшения»
   const [confirm, setConfirm] = useState(null)       // { title, message, danger, onConfirm }
   const [isCompanyOwner, setIsCompanyOwner] = useState(false)
   const [materialsModal, setMaterialsModal] = useState(null)   // business asset
@@ -158,6 +160,22 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   // Открыть подтверждение перед действием (act выполнится по «Да»).
   const askAct = (id, fn, okKey, conf) =>
     setConfirm({ ...conf, onConfirm: () => act(id, fn, okKey) })
+
+  const submitUpgrade = async (levels, _cost, targetLevel) => {
+    const id = upgradeModal.id
+    setBusyId(id)
+    try {
+      const res = await upgradeAsset(id, levels)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      toast(t('upgrade.done', { level: targetLevel }))
+      setUpgradeModal(null)
+      await load()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   const collectAll = async () => {
     setCollectingAll(true)
@@ -360,8 +378,8 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     if (!isCar) {
       actions.push({
         key: 'upgrade', className: 'upgrade', disabled: busy,
-        icon: <ArrowUpCircle size={15} />, label: `${t('myassets.upgrade')} ($${formatMoney(a.upgradeCost)})`,
-        onClick: () => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) }),
+        icon: <ArrowUpCircle size={15} />, label: `${t('upgrade.title')} ($${formatMoney(a.upgradeCost)})`,
+        onClick: () => setUpgradeModal(a),
       })
     } else {
       actions.push({
@@ -571,6 +589,11 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             )
           })}
         </div>
+      )}
+
+      {upgradeModal && (
+        <UpgradeModal asset={upgradeModal} balance={balance} busy={busyId === upgradeModal.id}
+          onClose={() => setUpgradeModal(null)} onConfirm={submitUpgrade} />
       )}
 
       {rentModal && (

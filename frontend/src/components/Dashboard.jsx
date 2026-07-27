@@ -16,6 +16,7 @@ import MiningTab from './MiningTab'
 import SettingsPage from './SettingsPage'
 import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
+import LegalFooter from './LegalFooter'
 import ToastHost from './Toast'
 import { fetchCurrentUser, API_BASE_URL } from '../services/api'
 import { Shield } from 'lucide-react'
@@ -182,6 +183,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         <div className="dashboard-content">
           {renderContent()}
         </div>
+        <LegalFooter />
       </div>
       <NotificationCenter />
       <ToastHost />

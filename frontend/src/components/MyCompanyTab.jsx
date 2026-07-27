@@ -438,6 +438,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
         <CompanyAssetsPanel
           assets={data.assets}
           isOwner={data.isOwner}
+          balance={balance}
           onBalanceChange={onBalanceChange}
           onClose={() => setShowAssets(false)}
           onRefresh={async () => { await load(); setRefreshKey(k => k + 1) }}

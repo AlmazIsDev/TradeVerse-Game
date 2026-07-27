@@ -711,8 +711,14 @@ export async function collectAllAssets() {
   return request('/api/assets/collect-all', { method: 'POST' })
 }
 
-export async function upgradeAsset(id) {
-  return request(`/api/assets/${encodeURIComponent(id)}/upgrade`, { method: 'POST' })
+export async function upgradeAsset(id, levels = 1) {
+  return request(`/api/assets/${encodeURIComponent(id)}/upgrade`, {
+    method: 'POST', body: JSON.stringify({ levels }),
+  })
+}
+
+export async function fetchUpgradePreview(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/upgrade-preview`)
 }
 
 export async function sellAsset(id) {

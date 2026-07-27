@@ -8,6 +8,7 @@ node_modules
 .npmrc
 article.md
 graphify-out/
+docs/superpowers
 
 # Секреты
 backend/.env

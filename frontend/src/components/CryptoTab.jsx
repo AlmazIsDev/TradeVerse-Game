@@ -4,7 +4,7 @@ import {
   fetchCryptoAccount, fetchCryptoMarket, openCryptoAccount, tradeCrypto,
   transferCrypto, fetchCryptoTransfers,
 } from '../services/api'
-import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatQty, formatCompact } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
 import { parseQty } from '../utils/qty'
 import {
@@ -289,11 +289,11 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
                       {coinLogo({ ...mk, symbol: h.symbol, color: h.color })}
                       <div className="crypto-holding-info">
                         <span className="crypto-holding-symbol">{h.symbol}</span>
-                        <span className="crypto-holding-qty">{formatQty(h.quantity)}</span>
+                        <span className="crypto-holding-qty" title={formatQty(h.quantity)}>{formatQty(h.quantity)}</span>
                       </div>
                       <div className="crypto-holding-values">
-                        <span className="crypto-holding-value">{formatMoney(h.value)} $</span>
-                        <span className={`crypto-holding-pnl ${up ? 'up' : 'down'}`}>{up ? '+' : '−'}{formatMoney(Math.abs(pnl))} $</span>
+                        <span className="crypto-holding-value" title={`${formatMoney(h.value)} $`}>{formatCompact(h.value)} $</span>
+                        <span className={`crypto-holding-pnl ${up ? 'up' : 'down'}`} title={`${formatMoney(pnl)} $`}>{up ? '+' : '−'}{formatCompact(Math.abs(pnl))} $</span>
                       </div>
                       <span className={`crypto-holding-ch ${ch >= 0 ? 'up' : 'down'}`}>{ch >= 0 ? '+' : ''}{ch.toFixed(1)}%</span>
                     </div>

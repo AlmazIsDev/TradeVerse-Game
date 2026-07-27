@@ -1672,7 +1672,7 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .company-browse-item:hover { transform: translateY(-1px); }
 
 /* ===================== КРИПТА — двухколоночный интерфейс ===================== */
-.crypto-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--spacing-lg); align-items: start; }
+.crypto-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--spacing-lg); align-items: start; }
 @media (max-width: 960px) { .crypto-layout { grid-template-columns: 1fr; } }
 .crypto-col-main, .crypto-col-side { display: flex; flex-direction: column; gap: var(--spacing-lg); min-width: 0; }
 

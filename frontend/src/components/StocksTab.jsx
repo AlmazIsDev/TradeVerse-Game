@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
-import TransactionsPanel, { formatMoney, formatQty } from './TransactionsPanel'
+import TransactionsPanel, { formatMoney, formatQty, formatCompact } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
 import { parseQty } from '../utils/qty'
 import AssetDetail from './AssetDetail'
@@ -268,8 +268,8 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                         <span className="crypto-holding-qty">{formatQty(p.quantity)} {t('common.shares')} · ${formatMoney(p.avgPrice)}</span>
                       </div>
                       <div className="crypto-holding-values">
-                        <span className="crypto-holding-value">${formatMoney(p.value)}</span>
-                        <span className={`crypto-holding-pnl ${up ? 'up' : 'down'}`}>{up ? '+' : '−'}{formatMoney(Math.abs(p.pnl || 0))} $</span>
+                        <span className="crypto-holding-value" title={`$${formatMoney(p.value)}`}>${formatCompact(p.value)}</span>
+                        <span className={`crypto-holding-pnl ${up ? 'up' : 'down'}`} title={`${formatMoney(p.pnl || 0)} $`}>{up ? '+' : '−'}{formatCompact(Math.abs(p.pnl || 0))} $</span>
                       </div>
                     </div>
                   )

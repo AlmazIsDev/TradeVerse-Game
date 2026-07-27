@@ -287,7 +287,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
               <option value="">{t('mining.selectCoin')}</option>
               {market.coins.map(c => <option key={c.symbol} value={c.symbol}>{c.symbol} · ${formatMoney(c.price)}</option>)}
             </select>
-            {market.best && <small className="mining-best">{t('mining.aiBest')}: <b>{market.best}</b></small>}
+            {(s.bestCoin || market.best) && <small className="mining-best">{t('mining.aiBest')}: <b>{s.bestCoin || market.best}</b></small>}
           </label>
           <OverclockSlider
             value={farm.overclock}

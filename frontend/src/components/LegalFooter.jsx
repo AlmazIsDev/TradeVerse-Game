@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-const REPO_URL = 'https://github.com/AlmazIsDev/TradeVerse'
+const REPO_URL = 'https://github.com/AlmazIsDev/TradeVerse-Game'
 
 // lucide-react больше не поставляет бренд-иконки — путь взят из GitHub Octicons.
 function GithubMark() {

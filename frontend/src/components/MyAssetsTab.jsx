@@ -212,7 +212,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const openMaterials = async (asset) => {
     setMaterialsModal(asset)
     setMaterialsQty('10')
-    try { setMaterialsInfo(await fetchMaterialsPrice()) } catch { setMaterialsInfo(null) }
+    try { setMaterialsInfo(await fetchMaterialsPrice(asset.id)) } catch { setMaterialsInfo(null) }
   }
 
   const submitMaterials = async () => {
@@ -241,7 +241,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     setSuppliesModal({ asset, studio })
     setSuppliesBizQty('10')
     setSuppliesStudioQty('10')
-    try { setMaterialsInfo(await fetchMaterialsPrice()) } catch { setMaterialsInfo(null) }
+    try { setMaterialsInfo(await fetchMaterialsPrice(asset.id)) } catch { setMaterialsInfo(null) }
   }
 
   const submitSuppliesBiz = async () => {

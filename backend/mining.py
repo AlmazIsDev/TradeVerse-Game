@@ -28,7 +28,7 @@ from auth import get_current_user, require_admin
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_MINING, adjust_balance, record_transaction
 from econ import get_econ
-from shop import CATEGORY_ROLE
+from shop import CATALOG_BY_NAME, CATEGORY_ROLE
 from notifications import push_notification
 
 router = APIRouter(prefix="/api/mining", tags=["mining"])
@@ -45,13 +45,13 @@ TEMP_AMBIENT = 25.0
 TEMP_FACTOR = 30.0
 OVERHEAT_TEMP = 85.0
 MINING_MIN_ELAPSED_H = 300 / 3600.0   # тик добычи не чаще, чем раз в 5 минут
-MAX_ACCRUAL_H = 6.0                    # cap накопления оффлайн
+MAX_ACCRUAL_H = 24.0                   # cap накопления оффлайн — как у активов (assets.MAX_ACCRUAL_HOURS)
 FEE = 0.01
 
 # ── Экономика "доля от синтетической сложности сети" (см. design-спеку) ──
 DIFF_EXP = 1.5              # сложность монеты растёт быстрее цены — самобалансировка выбора
 DIFF_SCALE = 600.0          # калибрует градиент выбора монеты: слабая ферма тянется к дешёвым, сильная — к дорогим
-EMISSION = 135.0            # монето-USD-эквивалент/час при share=1.0; калибровано по окупаемости топовой фермы (~$5M / 21 день)
+EMISSION = 480.0            # монето-USD-эквивалент/час при share=1.0; калибровано так, чтобы ферма любого размера окупалась за ~4 дня — как активы (assets.py)
 LIVE_WEIGHT = 0.05          # вклад живых игроков в сложность — второстепенный сигнал (~5 игроков), не механизм
 
 # ── Эффективность компонентов (все клэмпятся в [EFF_FLOOR, 1.0]) ──
@@ -77,6 +77,11 @@ MANAGER_SALARY_PER_H = 40.0            # × уровень
 # тем в лучшем состоянии он держит оборудование (level 1 → ~56%, level 5 → 80%).
 MANAGER_REPAIR_BASE = 50.0
 MANAGER_REPAIR_PER_LEVEL = 6.0
+
+# Полное восстановление фермы с 0% износа стоит эту долю от цены её железа.
+# Калибровано так, чтобы разгон 1.5× оставался выгодным на ферме любого размера
+# (+14…+26% к чистой прибыли после ремонта) — см. _repair_cost.
+REPAIR_COST_PCT = 0.10
 
 
 def _now() -> datetime:
@@ -307,6 +312,9 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
         "overheating": temperature >= OVERHEAT_TEMP,
         "upsProtected": profile["ups_backup"] >= total_power,
         "upsCoverage": round(ups_coverage, 3),
+        # Рекомендация считается по профилю ИМЕННО этой фермы — у разного железа
+        # разная лучшая монета, одна общая на аккаунт врала бы всем кроме одной.
+        "bestCoin": choose_best_coin(market, profile),
         "efficiency": {"gpu": round(gpu_eff, 3), "ram": round(ram_eff, 3),
                        "ssd": round(ssd_eff, 3), "network": round(net_eff, 3)},
     }
@@ -317,10 +325,24 @@ def _mined_qty(revenue_usd: float, coin_price: float) -> float:
     return round(revenue_usd / coin_price, 8) if (revenue_usd > 0.01 and coin_price > 0) else 0.0
 
 
+def _hardware_value(farm: dict) -> float:
+    """Стоимость установленного железа по каталогу магазина (имена уникальны)."""
+    total = 0.0
+    for slot in (farm.get("components") or {}).values():
+        items = slot if isinstance(slot, list) else ([slot] if slot else [])
+        for it in items:
+            total += CATALOG_BY_NAME.get((it or {}).get("name"), 0.0)
+    return total
+
+
 def _repair_cost(farm: dict) -> float:
-    gpus = len(farm.get("components", {}).get("gpus", []))
+    """Ремонт стоит долю от цены железа, а не фиксированную сумму за GPU:
+    иначе восстановление фермы за $3 млн стоило бы как за $20 тыс., и износ
+    был бы налогом на бедных — на маленькой ферме ремонт съедал ~30% прибыли,
+    а на большой ~0.2%. Как следствие разгон окупался только у топовых сборок
+    (см. REPAIR_COST_PCT)."""
     missing = max(0.0, 100.0 - farm.get("condition", 100.0))
-    return round(missing * (100 + 30 * gpus), 2)
+    return round(_hardware_value(farm) * REPAIR_COST_PCT * missing / 100.0, 2)
 
 
 def _ai_should_repair(ai: bool, ai_level: int, condition: float, profit_per_h: float) -> bool:
@@ -1155,6 +1177,7 @@ async def admin_transfer_farm(
 
 
 if __name__ == "__main__":
+    from shop import CATALOG
     # Самопроверка решения ИИ о ремонте (см. _ai_should_repair / tick_all).
     # Без управляющего — не ремонтирует.
     assert _ai_should_repair(False, 0, 10.0, 100.0) is False
@@ -1254,6 +1277,21 @@ if __name__ == "__main__":
     assert 0.0 < _cov(1000) < 1.0              # маленький ИБП — частичная защита
     assert _cov(1_000_000) == 1.0              # резерв с запасом — полное покрытие, не >1
 
+    # ── Рекомендация ИИ считается по каждой ферме отдельно, не одна на аккаунт ──
+    _rec_market = {"CHEAP": {"symbol": "CHEAP", "price": 0.85}, "EXPENSIVE": {"symbol": "EXPENSIVE", "price": 340.0}}
+    _one_gpu = {"components": dict(_test_farm["components"], gpus=[{"specs": {"hashrate": 180, "power": 120}}]),
+                "overclock": 1.0, "condition": 100.0, "coin": "CHEAP"}
+    _big_rig = {"components": dict(_test_farm["components"],
+                                   cpu={"specs": {"cores": 32, "power": 250}},
+                                   ram={"specs": {"gb": 128, "power": 20}},
+                                   ssd={"specs": {"gb": 4096, "power": 10}},
+                                   network={"specs": {"speed": 40000, "power": 15}},
+                                   gpus=[{"specs": {"hashrate": 55000, "power": 5300}}] * 19),
+                "overclock": 1.0, "condition": 100.0, "coin": "CHEAP"}
+    _weak_rec = _compute(_one_gpu, _rec_market, energy_cost=0.12)["bestCoin"]
+    _strong_rec = _compute(_big_rig, _rec_market, energy_cost=0.12)["bestCoin"]
+    assert _weak_rec != _strong_rec, f"фермы с разным железом получили одну рекомендацию: {_weak_rec}"
+
     # ── Эффективность компонентов: клэмп на границах [EFF_FLOOR, 1.0] ──
     assert _gpu_efficiency(8, 8) == 1.0                  # 8 ядер кормят 8 GPU — полная эффективность
     assert round(_gpu_efficiency(8, 19), 2) == 0.42       # тех же 8 ядер на 19 GPU — throttling
@@ -1275,4 +1313,43 @@ if __name__ == "__main__":
     assert _reset["status"] == "idle" and _reset["coin"] is None
     assert _reset["condition"] == 100.0
     assert _reset["electricity_owed"] == 0.0
+    # ── Ремонт пропорционален цене железа, поэтому разгон выгоден на ЛЮБОЙ ферме ──
+    # (раньше ремонт стоил фикс. сумму за GPU: на малой ферме он съедал ~30% прибыли
+    # и разгон уходил в минус, на многомиллионной — 0.2% и был почти бесплатным.)
+    _shop_gpu = next(c for c in CATALOG if c["category"] == "gpu" and c["brand"] != "ASIC")
+    _shop_asic = next(c for c in CATALOG if c["brand"] == "ASIC")
+    assert CATALOG_BY_NAME[_shop_gpu["name"]] == _shop_gpu["base_price"]
+
+    def _priced(gpu, n):
+        """Рабочая ферма из _test_farm, но с РЕАЛЬНЫМИ (именованными) GPU из магазина:
+        _hardware_value ищет цену по имени, у безымянных заглушек она нулевая.
+        Железо масштабируется под n GPU, монета выбирается как у игрока — иначе
+        ферма упирается в пол эффективности или в насыщение доли сети."""
+        _farm = {"components": dict(_test_farm["components"],
+                                    motherboard={"specs": {"gpuSlots": n, "power": 60}},
+                                    cpu={"specs": {"cores": n, "power": 40 + n * 8}},
+                                    ram={"specs": {"gb": n * 32, "power": 20}},
+                                    ssd={"specs": {"gb": n * 512, "power": 10}},
+                                    network={"specs": {"speed": n * 2000, "power": 15}},
+                                    cooling={"specs": {"cooling": 200000, "power": 40}},
+                                    gpus=[{"name": gpu["name"], "specs": gpu["specs"]}] * n),
+                 "overclock": 1.0, "condition": 100.0,
+                 "manager": {"type": "player", "level": 0}}
+        _farm["coin"] = choose_best_coin(_rec_market, _farm_hw_profile(_farm))
+        return _farm
+    _small, _big = _priced(_shop_gpu, 2), _priced(_shop_asic, 19)
+    # Неизвестное имя (снятый с продажи товар) не роняет расчёт, а стоит 0.
+    assert _hardware_value(_small) == _shop_gpu["base_price"] * 2
+    assert _repair_cost(dict(_small, condition=0.0)) > 0
+    assert _repair_cost(dict(_small, condition=100.0)) == 0.0
+    assert _repair_cost(dict(_big, condition=0.0)) > _repair_cost(dict(_small, condition=0.0)) * 50
+
+    def _net_after_repair(farm, oc):
+        _f = dict(farm, overclock=oc)
+        _s = _compute(_f, _rec_market, energy_cost=0.12)
+        return _s["profitPerHour"] - _repair_cost(dict(_f, condition=0.0)) * _s["wearPerHour"] / 100.0
+    for _farm, _label in ((_small, "малая ферма"), (_big, "большая ферма")):
+        assert _net_after_repair(_farm, 1.5) > _net_after_repair(_farm, 1.0), \
+            f"{_label}: разгон убыточен — ремонт съедает прирост"
+
     print("mining self-check OK")

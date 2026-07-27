@@ -37,6 +37,8 @@ ASSET_TYPES = {TYPE_REALESTATE, TYPE_BUSINESS, TYPE_CAR}
 SELL_RATE = 0.7          # возврат при продаже — 70% текущей стоимости
 MAX_ACCRUAL_HOURS = 24   # максимум накопленного дохода за один сбор
 
+UPGRADE_COST_PCT = 0.32  # доля базовой цены за уровень (см. _upgrade_cost)
+
 # ── Тюнинг автомобилей ────────────────────────────────────────────────────────
 # Каждая деталь повышает престиж авто; стоимость улучшения зависит от цены авто
 # и текущего уровня детали. Вложения в тюнинг увеличивают стоимость авто (капитал).
@@ -54,7 +56,11 @@ def _tune_cost(asset: dict, level: int) -> float:
     return round(asset.get("price", 0) * TUNE_COST_FACTOR * (level + 1), 2)
 
 RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
-RENT_MAX_WAIT_H = 48     # максимум ожидания арендатора (2 суток)
+# Ожидание арендатора НЕ оплачивается, поэтому оно работает как налог на аренду:
+# при разбросе 1–48ч (в среднем 24.5ч) суточная сдача приносила лишь 49% ставки,
+# а часовая — 4%. Диапазон 1–6ч (в среднем 3.5ч) поднимает те же сценарии до
+# 87% и 22% — сдавать становится осмысленно и на короткий срок.
+RENT_MAX_WAIT_H = 6      # максимум ожидания арендатора
 RENT_MAX_HOURS = 720     # максимальный срок аренды (30 суток)
 RENTABLE_TYPES = {"realestate", "car", "business"}
 # Среди бизнесов в аренду сдаются только те, у кого есть полезная для арендатора
@@ -84,27 +90,35 @@ def _is_rentable(asset: dict) -> bool:
 # абсолютная сумма за счёт более высокой цены). Поэтому дешёвая недвижимость
 # даёт скромный доход, а элитная — кратно выгоднее как в долларах, так и в %,
 # и не бывает ситуации, когда дешёвый объект почти не уступает дорогому.
-# Ориентир баланса: «хорошая» недвижимость редкости rare (напр. Вилла, $160k)
-# должна приносить ≈$6000/сутки только за счёт аренды — окупаемость за ~27
-# суток (×3 к прежним ставкам), чтобы игрок мог быстро отбить актив, в т.ч.
-# под конец рабочего цикла/сессии, а не ждать месяцы.
+#
+# Ориентир баланса (единый для всей экономики): суммарная доходность актива —
+# 24–30% в сутки, то есть окупаемость 3.3–4.2 дня. Пассивный доход несёт 3/4
+# этой цели, аренда — оставшуюся 1/4 (АКТИВНАЯ часть, её надо выставлять
+# руками). Раньше пропорция была обратной, и сдаваемый актив в магазине
+# выглядел втрое хуже несдаваемого той же цены — карточка показывает только
+# пассивный доход. Прежние ставки 2.4–7.8%/сутки давали окупаемость 13–42 дня —
+# «поставил и ушёл на месяц», из-за чего активы ощущались бесполезными.
 RARITY_RENT_PCT = {
-    "common": 0.024,      # 2.4%/сутки — дешёвое имущество: окупаемость ~42 дня
-    "uncommon": 0.033,    # 3.3%/сутки — средний класс: окупаемость ~30 дней
-    "rare": 0.039,        # 3.9%/сутки — хорошее имущество: окупаемость ~26 дней (~$6000/сутки для Виллы)
-    "epic": 0.057,        # 5.7%/сутки — дорогое имущество: окупаемость ~18 дней
-    "legendary": 0.078,   # 7.8%/сутки — элитное имущество: окупаемость ~13 дней
+    "common": 0.060,      # 6.0%/сутки
+    "uncommon": 0.0625,   # 6.2%/сутки
+    "rare": 0.065,        # 6.5%/сутки
+    "epic": 0.070,        # 7.0%/сутки
+    "legendary": 0.075,   # 7.5%/сутки
 }
+# Автомобили не имеют пассивного дохода (см. _income_per_hour) — аренда для них
+# единственный источник, поэтому она должна нести всю цель целиком, а не 1/4:
+# без множителя авто окупались бы вчетверо дольше недвижимости той же редкости.
+CAR_RENT_MULT = 4.0
 # Минимальный суточный доход по редкости — подстраховка от вырожденных случаев
 # (например, сильно уценённый на рынке актив), а НЕ основной драйвер экономики,
 # как было раньше (плоский пол в $2000 одинаковый для всех — тот самый баг,
 # из-за которого дешёвая студия зарабатывала как элитная недвижимость).
 RARITY_RENT_FLOOR = {
-    "common": 120.0,
-    "uncommon": 450.0,
-    "rare": 1500.0,
-    "epic": 6000.0,
-    "legendary": 18000.0,
+    "common": 300.0,
+    "uncommon": 850.0,
+    "rare": 2500.0,
+    "epic": 8500.0,
+    "legendary": 22000.0,
 }
 
 # ── Материалы для бизнеса ────────────────────────────────────────────────────
@@ -112,55 +126,71 @@ RARITY_RENT_FLOOR = {
 # события (см. market_events.EVENT_TYPES["materials"], настраивается через
 # админ-панель — событие меняется, цена пересчитывается автоматически, без
 # правки кода). Закупка временно поднимает доход бизнеса.
-MATERIALS_BASE_COST = 45.0
-MATERIALS_BOOST_PER_UNIT = 0.01     # +1% к доходу за единицу
-MATERIALS_BOOST_CAP = 0.30          # максимум +30%
-MATERIALS_DURATION_H = 6            # действует 6 часов с момента закупки
+#
+# Это ГЛАВНАЯ активная механика бизнеса: пассивный доход капает сам, а буст
+# требует зайти и вложиться. Поэтому потолок высокий (+80%), а срок короткий
+# (4ч) — активный игрок обгоняет пассивного примерно в 1.5 раза, но обязан
+# возвращаться. Цена единицы — доля от часового дохода конкретного бизнеса
+# (MATERIALS_COST_PER_INCOME_H), иначе буст премиальной IT-студии стоил бы
+# столько же, сколько буст шаурмечной, то есть был бы бесплатным.
+MATERIALS_BOOST_PER_UNIT = 0.02     # +2% к доходу за единицу
+MATERIALS_BOOST_CAP = 0.80          # максимум +80%
+MATERIALS_DURATION_H = 4            # действует 4 часа с момента закупки
+# Единица материалов стоит столько же, сколько бизнес зарабатывает за этот
+# процент дохода примерно за 1.6ч — полный буст окупается за ~2.5ч из 4ч срока.
+MATERIALS_COST_PER_INCOME_H = 1.6
 
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
 # income_per_hour — пассивный доход; upkeep_per_hour — расход (для бизнесов).
 # rarity — определяет и рыночный дрейф цены (RARITY_FLOOR), и ставку аренды
 # (RARITY_RENT_PCT/RARITY_RENT_FLOOR) — есть у всех типов, включая бизнесы.
+#
+# Баланс доходности: чистый пассивный доход (income − upkeep) подобран так,
+# чтобы вместе с арендой актив выходил на 24–30% в сутки (окупаемость 3.3–4.2
+# дня, растёт с редкостью). Пассив несёт 3/4 цели, аренда — 1/4; несдаваемые
+# бизнесы (шаурмечная, кофейня, автомойка, завод) несут всю доходность в
+# income_per_hour. Доход экземпляра масштабируется по уплаченной цене
+# (см. buy_asset) — на пике рынка актив и стоит, и приносит больше.
 
 CATALOG = [
     # Недвижимость: аренда как доход, налог как расход
     {"slug": "studio", "type": TYPE_REALESTATE, "name": "Студия", "rarity": "common",
-     "price": 5000, "income_per_hour": 12, "upkeep_per_hour": 3, "rooms": 1, "meta": {"tax": 3}},
+     "price": 5000, "income_per_hour": 50, "upkeep_per_hour": 12, "rooms": 1, "meta": {"tax": 12}},
     {"slug": "flat2", "type": TYPE_REALESTATE, "name": "Двухкомнатная квартира", "rarity": "common",
-     "price": 14000, "income_per_hour": 32, "upkeep_per_hour": 7, "rooms": 2, "meta": {"tax": 7}},
+     "price": 14000, "income_per_hour": 140, "upkeep_per_hour": 35, "rooms": 2, "meta": {"tax": 35}},
     {"slug": "townhouse", "type": TYPE_REALESTATE, "name": "Таунхаус", "rarity": "uncommon",
-     "price": 45000, "income_per_hour": 95, "upkeep_per_hour": 18, "rooms": 4, "meta": {"tax": 18}},
+     "price": 45000, "income_per_hour": 469, "upkeep_per_hour": 117, "rooms": 4, "meta": {"tax": 117}},
     {"slug": "villa", "type": TYPE_REALESTATE, "name": "Вилла у моря", "rarity": "rare",
-     "price": 160000, "income_per_hour": 320, "upkeep_per_hour": 55, "rooms": 6, "meta": {"tax": 55}},
+     "price": 160000, "income_per_hour": 1733, "upkeep_per_hour": 433, "rooms": 6, "meta": {"tax": 433}},
     {"slug": "penthouse", "type": TYPE_REALESTATE, "name": "Пентхаус", "rarity": "epic",
-     "price": 480000, "income_per_hour": 950, "upkeep_per_hour": 140, "rooms": 8, "meta": {"tax": 140}},
+     "price": 480000, "income_per_hour": 5600, "upkeep_per_hour": 1400, "rooms": 8, "meta": {"tax": 1400}},
     {"slug": "castle", "type": TYPE_REALESTATE, "name": "Замок", "rarity": "legendary",
-     "price": 1500000, "income_per_hour": 3000, "upkeep_per_hour": 400, "rooms": 20, "meta": {"tax": 400}},
+     "price": 1500000, "income_per_hour": 18750, "upkeep_per_hour": 4688, "rooms": 20, "meta": {"tax": 4688}},
     # Бизнесы: доход и расходы, есть сотрудники. rarity — экономический класс
     # бизнеса (отдельно от category, которая отвечает только за тематику/иконку).
     {"slug": "shawarma", "type": TYPE_BUSINESS, "name": "Шаурмечная", "category": "retail", "rarity": "common",
-     "price": 8000, "income_per_hour": 60, "upkeep_per_hour": 20, "employees": 2},
+     "price": 8000, "income_per_hour": 119, "upkeep_per_hour": 39, "employees": 2},
     {"slug": "coffee", "type": TYPE_BUSINESS, "name": "Кофейня", "category": "retail", "rarity": "uncommon",
-     "price": 25000, "income_per_hour": 170, "upkeep_per_hour": 55, "employees": 4},
+     "price": 25000, "income_per_hour": 389, "upkeep_per_hour": 128, "employees": 4},
     {"slug": "carwash", "type": TYPE_BUSINESS, "name": "Автомойка", "category": "service", "rarity": "rare",
-     "price": 60000, "income_per_hour": 380, "upkeep_per_hour": 110, "employees": 6},
+     "price": 60000, "income_per_hour": 970, "upkeep_per_hour": 320, "employees": 6},
     # IT-студия — 4 тира (slug = "itstudio_" + ключ тира в game_config.ITSTUDIO_CONFIG).
     # Владение экземпляром открывает заказ атаки/защиты «Крыши города»
     # (см. cityroof.py) — материалы, шанс успеха и опыт зависят от тира.
     {"slug": "itstudio_basic", "type": TYPE_BUSINESS, "name": "IT-студия: Базовая", "category": "tech", "rarity": "epic",
-     "price": 200000, "income_per_hour": 1300, "upkeep_per_hour": 420, "employees": 12},
+     "price": 200000, "income_per_hour": 2612, "upkeep_per_hour": 862, "employees": 12},
     {"slug": "itstudio_medium", "type": TYPE_BUSINESS, "name": "IT-студия: Средняя", "category": "tech", "rarity": "epic",
-     "price": 450000, "income_per_hour": 2600, "upkeep_per_hour": 850, "employees": 20},
+     "price": 450000, "income_per_hour": 5877, "upkeep_per_hour": 1939, "employees": 20},
     {"slug": "itstudio_advanced", "type": TYPE_BUSINESS, "name": "IT-студия: Продвинутая", "category": "tech", "rarity": "legendary",
-     "price": 900000, "income_per_hour": 5000, "upkeep_per_hour": 1700, "employees": 32},
+     "price": 900000, "income_per_hour": 12593, "upkeep_per_hour": 4156, "employees": 32},
     {"slug": "itstudio_premium", "type": TYPE_BUSINESS, "name": "IT-студия: Премиальная", "category": "tech", "rarity": "legendary",
-     "price": 1800000, "income_per_hour": 9200, "upkeep_per_hour": 3200, "employees": 50},
+     "price": 1800000, "income_per_hour": 25187, "upkeep_per_hour": 8312, "employees": 50},
     {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office", "rarity": "legendary",
-     "price": 750000, "income_per_hour": 4600, "upkeep_per_hour": 1500, "employees": 40},
+     "price": 750000, "income_per_hour": 13993, "upkeep_per_hour": 4618, "employees": 40},
     # Медиахолдинг — открывает заказ разоблачений в СМИ (см. media.py): владелец
     # может ударить по доходам бизнесов конкурента и цене его акции.
     {"slug": "media_holding", "type": TYPE_BUSINESS, "name": "Медиахолдинг", "category": "media", "rarity": "legendary",
-     "price": 1200000, "income_per_hour": 6200, "upkeep_per_hour": 2100, "employees": 45},
+     "price": 1200000, "income_per_hour": 16791, "upkeep_per_hour": 5541, "employees": 45},
     # Автомобили: престиж (без дохода), учитываются в капитале, но сдаются в аренду
     {"slug": "citycar", "type": TYPE_CAR, "name": "Городской хэтчбек", "rarity": "common",
      "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 5}},
@@ -351,6 +381,17 @@ class TransferToPlayer(BaseModel):
 _now = now_utc
 
 
+def _price_mult(asset: dict) -> float:
+    """Во сколько раз экземпляр куплен дороже базовой цены каталога.
+
+    Рынок гоняет цену в ×0.5…×2.5 (ASSET_MULT_MIN/MAX), и без этой привязки
+    доход оставался бы базовым: купленный на пике актив окупался бы 8 дней
+    вместо 3.3, а на просадке — 1.7. Доход масштабируется вместе с ценой,
+    поэтому рыночный множитель решает, СКОЛЬКО вложить, а не насколько
+    выгодна сделка. Активы, купленные до появления поля, считаются как ×1.0."""
+    return float(asset.get("price_mult", 1.0) or 1.0)
+
+
 def _current_value(asset: dict) -> float:
     """Текущая рыночная стоимость экземпляра с учётом уровня улучшений и тюнинга."""
     base = asset.get("price", 0)
@@ -380,7 +421,7 @@ def _income_per_hour(asset: dict) -> float:
         return 0.0
     base = asset.get("income_per_hour", 0)
     level = asset.get("level", 1)
-    value = base * (1 + 0.25 * (level - 1))
+    value = base * (1 + 0.25 * (level - 1)) * _price_mult(asset)
     if asset.get("type") == TYPE_BUSINESS:
         value *= (1 + _materials_boost(asset))
     return round(value, 2)
@@ -402,14 +443,19 @@ def _rent_daily_rate(asset: dict) -> float:
     для всего имущества. Зависит от текущей стоимости актива (цена + апгрейды +
     тюнинг — см. _current_value) и его редкости/класса (RARITY_RENT_PCT): чем
     реже и роскошнее объект, тем выше именно % доходности, а не только сумма.
+    Авто получают повышенную ставку (CAR_RENT_MULT) — у них нет пассивного дохода.
     RARITY_RENT_FLOOR — лишь подстраховка от вырожденно низких значений, а не
-    основной регулятор (как было раньше с плоским полом в $2000 для всех)."""
+    основной регулятор (как было раньше с плоским полом в $2000 для всех).
+    Как и пассивный доход, ставка масштабируется по уплаченной цене (_price_mult)."""
     if not _is_rentable(asset):
         return 0.0
     rarity = _rent_rarity(asset)
     pct = RARITY_RENT_PCT[rarity]
     floor = RARITY_RENT_FLOOR[rarity]
-    return round(max(floor, _current_value(asset) * pct), 2)
+    if asset.get("type") == TYPE_CAR:
+        pct *= CAR_RENT_MULT
+        floor *= CAR_RENT_MULT
+    return round(max(floor, _current_value(asset) * pct) * _price_mult(asset), 2)
 
 
 def _rent_rate_per_hour(asset: dict) -> float:
@@ -427,13 +473,23 @@ def _rent_total(asset: dict, hours: int) -> float:
 
 
 def _upkeep_per_hour(asset: dict) -> float:
-    return round(asset.get("upkeep_per_hour", 0), 2)
+    # Масштабируется вместе с доходом (см. _price_mult), иначе купленный на пике
+    # актив имел бы прежний расход при повышенном доходе — доходность в % росла бы.
+    return round(asset.get("upkeep_per_hour", 0) * _price_mult(asset), 2)
 
 
 def _upgrade_cost(asset: dict) -> float:
+    """Улучшение стоит фиксированную долю базовой цены — НЕ растёт с уровнем.
+
+    Прирост дохода за уровень плоский (+25% базы, см. _income_per_hour), поэтому
+    цена вида base*0.4*level делала апгрейд всё хуже: L1→L2 окупался за 3.6 суток,
+    а L5→L6 уже за 18 — качать актив было втрое невыгоднее, чем купить второй.
+    При плоской доле окупаемость улучшения (2.9–4.0 суток) совпадает с покупкой
+    нового актива (3.3–4.2), и уровень перестаёт быть ловушкой."""
     base = asset.get("price", 0)
-    level = asset.get("level", 1)
-    return round(base * 0.4 * level, 2)
+    # Доход экземпляра масштабируется ценой покупки (_price_mult) — цена улучшения тоже,
+    # иначе купленный на пике актив качался бы по базовой цене за повышенный доход.
+    return round(base * UPGRADE_COST_PCT * _price_mult(asset), 2)
 
 
 def _accrued(asset: dict) -> float:
@@ -722,6 +778,9 @@ async def buy_asset(
         "rooms": catalog.get("rooms"),
         "employees": catalog.get("employees", 0),
         "price": float(catalog["price"]),   # базовая цена — для расчёта стоимости/улучшений
+        # Куплено дороже/дешевле базы → доход и расход экземпляра масштабируются
+        # так же (см. _price_mult), иначе покупка на пике рынка была бы ловушкой.
+        "price_mult": round(mult, 4),
         "income_per_hour": catalog.get("income_per_hour", 0),
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
         "level": 1,
@@ -1131,7 +1190,14 @@ async def rent_cancel(
 # ── Материалы для бизнеса ────────────────────────────────────────────────────
 
 
-async def _materials_unit_price(db: AsyncIOMotorDatabase) -> float:
+async def _materials_unit_price(db: AsyncIOMotorDatabase, asset: Optional[dict] = None) -> float:
+    """Цена единицы материалов для конкретного бизнеса.
+
+    Пропорциональна часовому доходу бизнеса: единица даёт +MATERIALS_BOOST_PER_UNIT
+    к доходу, поэтому и стоить должна долю от того, что этот процент приносит.
+    Без актива (общий прайс до выбора бизнеса) считаем по самому дешёвому
+    бизнесу каталога — это нижняя граница, которую клиент показывает как «от».
+    """
     econ = await get_econ(db)
     mult = econ.get("economy_mult", 1.0)
     try:
@@ -1139,17 +1205,28 @@ async def _materials_unit_price(db: AsyncIOMotorDatabase) -> float:
         mult *= (await event_shifts(db)).get("materials", 1.0)
     except Exception:
         pass
-    return round(MATERIALS_BASE_COST * mult, 2)
+    if asset is not None:
+        income_h = _income_per_hour(asset) / (1 + _materials_boost(asset))
+    else:
+        income_h = min(c["income_per_hour"] for c in CATALOG if c["type"] == TYPE_BUSINESS)
+    unit = income_h * MATERIALS_BOOST_PER_UNIT * MATERIALS_COST_PER_INCOME_H
+    return round(max(1.0, unit) * mult, 2)
 
 
 @router.get("/materials/price")
 async def materials_price(
-    _user: dict = Depends(get_current_user),
+    assetId: str = Query(None),
+    current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Текущая цена материалов за единицу — зависит от активного мирового события."""
+    """Текущая цена материалов за единицу. Зависит от активного мирового события
+    и от самого бизнеса (цена пропорциональна его доходу) — без assetId вернём
+    нижнюю границу по каталогу."""
+    asset = None
+    if assetId:
+        asset = await _load_owned(db, str(current_user["_id"]), assetId)
     return {
-        "unitPrice": await _materials_unit_price(db),
+        "unitPrice": await _materials_unit_price(db, asset),
         "boostPerUnit": MATERIALS_BOOST_PER_UNIT,
         "boostCap": MATERIALS_BOOST_CAP,
         "durationHours": MATERIALS_DURATION_H,
@@ -1171,7 +1248,7 @@ async def buy_materials(
     if asset.get("type") != TYPE_BUSINESS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Материалы закупаются только для бизнеса")
 
-    unit_price = await _materials_unit_price(db)
+    unit_price = await _materials_unit_price(db, asset)
     total = round(unit_price * payload.qty, 2)
     new_balance = await adjust_balance(db, user_id, -total)
     if new_balance is None:
@@ -1288,10 +1365,30 @@ if __name__ == "__main__":
     # 1 час не должен стоить столько же, сколько 30 суток.
     assert _rent_total(demo_asset, 1) < _rent_total(demo_asset, RENT_MAX_HOURS)
 
-    # примерно $6000/сутки только за счёт аренды — таков ориентир баланса
-    # (окупаемость ~27 суток).
+    # Ориентир баланса: вилла (rare, $160k) — аренда несёт 1/4 доходности,
+    # остальное даёт пассивный доход (см. RARITY_RENT_PCT).
     villa = {"type": "realestate", "price": 160000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
-    assert 5400 <= _rent_daily_rate(villa) <= 6600, _rent_daily_rate(villa)
+    assert 9000 <= _rent_daily_rate(villa) <= 12000, _rent_daily_rate(villa)
+
+    # Суммарная доходность каждого актива каталога — 24–31%/сутки (окупаемость
+    # 3.2–4.2 дня). Единый ориентир для всей экономики: активы, ферма и компании
+    # должны отбиваться за сопоставимое время, иначе один класс обесценивает остальные.
+    for _c in CATALOG:
+        _inst = _c | {"level": 1, "tuning_value": 0.0}
+        _daily = (_income_per_hour(_inst) - _upkeep_per_hour(_inst)) * 24 + _rent_daily_rate(_inst)
+        _pct = _daily / _c["price"] * 100
+        assert 23.0 <= _pct <= 31.0, f"{_c['slug']}: {_pct:.1f}%/сутки вне коридора 23–31"
+
+    # Авто не имеют пассивного дохода, поэтому их аренда дороже недвижимости той
+    # же редкости (CAR_RENT_MULT) — иначе машины были бы заведомо худшим активом.
+    _car_epic = {"type": "car", "price": 600000, "rarity": "epic", "level": 1, "tuning_value": 0.0}
+    _re_epic = {"type": "realestate", "price": 600000, "rarity": "epic", "level": 1, "tuning_value": 0.0}
+    assert _rent_daily_rate(_car_epic) > _rent_daily_rate(_re_epic)
+
+    # Ожидание арендатора не должно съедать короткую сдачу: при среднем ожидании
+    # (RENT_MIN_WAIT_H+RENT_MAX_WAIT_H)/2 суточная аренда реализует >80% ставки.
+    _avg_wait = (RENT_MIN_WAIT_H + RENT_MAX_WAIT_H) / 2
+    assert 24 / (24 + _avg_wait) > 0.8, "мёртвое ожидание съедает суточную аренду"
 
     # Один и тот же тип актива с разной редкостью НЕ должен зарабатывать одинаково:
     # дешёвый/частый объект уступает дорогому/редкому и в % доходности, и в сумме.
@@ -1306,8 +1403,8 @@ if __name__ == "__main__":
     # с элитным замком (старый баг — единый пол в $2000 для всех активов).
     studio_rate = _rent_daily_rate(CATALOG_BY_SLUG["studio"] | {"level": 1, "tuning_value": 0.0})
     castle_rate = _rent_daily_rate(CATALOG_BY_SLUG["castle"] | {"level": 1, "tuning_value": 0.0})
-    assert studio_rate < 300, studio_rate
-    assert castle_rate > 90000, castle_rate
+    assert studio_rate < 1500, studio_rate
+    assert castle_rate > 100000, castle_rate
     assert castle_rate / studio_rate > 100
 
     # Бизнесы и авто тоже сдаются в аренду — у каждого своя ставка через rarity,
@@ -1334,6 +1431,38 @@ if __name__ == "__main__":
     non_rentable = {"type": "crypto", "price": 40000, "rarity": "rare", "level": 1}
     assert _rent_rate_per_hour(non_rentable) == 0.0
     assert not _is_rentable(non_rentable)
+
+    # Купленный на пике рынка актив окупается за то же время, что купленный на
+    # просадке: доход, расход и аренда масштабируются вместе с ценой (_price_mult).
+    # Иначе покупка при ×2.5 растягивала бы окупаемость с 3.3 до 8 суток.
+    _base = CATALOG_BY_SLUG["itstudio_premium"] | {"level": 1, "tuning_value": 0.0}
+    def _payback_pct(mult):
+        _inst = _base | {"price_mult": mult}
+        _daily = (_income_per_hour(_inst) - _upkeep_per_hour(_inst)) * 24 + _rent_daily_rate(_inst)
+        return _daily / (_base["price"] * mult) * 100
+    for _m in (ASSET_MULT_MIN, 1.0, ASSET_MULT_MAX):
+        assert abs(_payback_pct(_m) - _payback_pct(1.0)) < 0.1, (_m, _payback_pct(_m))
+    # Активы, купленные до появления поля, считаются как ×1.0.
+    assert _income_per_hour(_base) == _income_per_hour(_base | {"price_mult": 1.0})
+
+    # Качать актив должно быть не хуже, чем купить ещё один: окупаемость улучшения
+    # не растёт с уровнем и держится в том же коридоре, что покупка нового.
+    # (Старый баг: цена улучшения base*0.4*level при плоском приросте дохода —
+    # L1→L2 окупался за 3.6 суток, L5→L6 за 18.)
+    def _daily(asset):
+        return (_income_per_hour(asset) - _upkeep_per_hour(asset)) * 24 + _rent_daily_rate(asset)
+    for _c in CATALOG:
+        if _c["type"] == TYPE_CAR:   # авто качаются тюнингом, а не уровнем
+            continue
+        _lvl1 = _c | {"level": 1, "tuning_value": 0.0}
+        _buy_days = _c["price"] / _daily(_lvl1)
+        for _lvl in (1, 5, 10):
+            _inst = _c | {"level": _lvl, "tuning_value": 0.0}
+            _gain = _daily(_c | {"level": _lvl + 1, "tuning_value": 0.0}) - _daily(_inst)
+            _days = _upgrade_cost(_inst) / _gain
+            assert _days <= _buy_days + 0.5, f"{_c['slug']} ур.{_lvl}: апгрейд {_days:.1f}д против покупки {_buy_days:.1f}д"
+    # Цена улучшения следует за ценой покупки — как и доход экземпляра.
+    assert _upgrade_cost(_base | {"price_mult": 2.5}) == _upgrade_cost(_base) * 2.5
 
     print("assets.py rent formula: OK")
     print(f"  studio(common,$5k)   = ${studio_rate}/сутки")

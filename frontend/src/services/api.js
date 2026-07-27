@@ -745,8 +745,11 @@ export async function cancelRent(id) {
 
 // ── Materials for business ───────────────────────────────────────────────────
 
-export async function fetchMaterialsPrice() {
-  return request('/api/assets/materials/price')
+// Цена материалов зависит от дохода КОНКРЕТНОГО бизнеса (см. assets._materials_unit_price):
+// без assetId сервер вернёт цену самого дешёвого бизнеса из каталога.
+export async function fetchMaterialsPrice(assetId) {
+  const q = assetId ? `?assetId=${encodeURIComponent(assetId)}` : ''
+  return request(`/api/assets/materials/price${q}`)
 }
 
 export async function buyMaterials(id, qty) {

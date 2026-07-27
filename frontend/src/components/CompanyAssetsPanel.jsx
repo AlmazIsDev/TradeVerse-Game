@@ -122,7 +122,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
 
   const openMaterials = async (asset) => {
     setMaterialsModal(asset); setMaterialsQty('10')
-    try { setMaterialsInfo(await fetchMaterialsPrice()) } catch { setMaterialsInfo(null) }
+    try { setMaterialsInfo(await fetchMaterialsPrice(asset.id)) } catch { setMaterialsInfo(null) }
   }
 
   const submitMaterials = async () => {
@@ -143,7 +143,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
     const studio = studios.find(x => x.assetId === asset.id) || null
     setSuppliesModal({ asset, studio })
     setSuppliesBizQty('10'); setSuppliesStudioQty('10')
-    try { setMaterialsInfo(await fetchMaterialsPrice()) } catch { setMaterialsInfo(null) }
+    try { setMaterialsInfo(await fetchMaterialsPrice(asset.id)) } catch { setMaterialsInfo(null) }
   }
 
   const submitSuppliesBiz = async () => {

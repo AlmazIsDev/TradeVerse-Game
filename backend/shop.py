@@ -39,6 +39,7 @@ DEFAULT_SHOP_CONFIG = {
     "ups": 1.0, "network": 1.0,
 }
 PRICE_PER_HASH = 6.0
+ASIC_PRICE_RATIO = 0.45     # цена ASIC за хеш относительно GPU (см. каталог ниже)
 
 # Категории и их роль в сборке фермы (required — обязательные компоненты).
 CATEGORY_ROLE = {
@@ -93,6 +94,9 @@ def _build_catalog() -> list[dict]:
                 })
 
     # ASIC-майнеры: профессиональное узкоспециализированное железо (высокий hashrate/потребление).
+    # Цена за хеш ниже, чем у GPU (ASIC_PRICE_RATIO): доля фермы в сети насыщается
+    # (mining._farm_share), поэтому огромный хешрейт ASIC даёт непропорционально
+    # меньше дохода — без скидки за хеш такие сборки окупались бы вдвое дольше GPU.
     for i, (name, hashrate, power) in enumerate([
         ("AntCore S1 Pro", 12000, 3000),
         ("AntCore S2 Titan", 26000, 3400),
@@ -102,7 +106,7 @@ def _build_catalog() -> list[dict]:
             "id": f"gpu-asic-{i}", "category": "gpu", "name": name, "brand": "ASIC",
             "color": _tier_color(5),
             "specs": {"hashrate": hashrate, "power": power},
-            "base_price": round(hashrate * PRICE_PER_HASH * 0.7, 2),
+            "base_price": round(hashrate * PRICE_PER_HASH * ASIC_PRICE_RATIO, 2),
         })
 
     # Блоки питания: по мощности (+ промышленные).
@@ -115,9 +119,14 @@ def _build_catalog() -> list[dict]:
         })
 
     # Охлаждение: по теплоотводу (+ иммерсионные ванны для ASIC/ферм).
+    # Верхние модели закрывают промышленные сборки: ферма из 19 ASIC тянет
+    # ~101 кВт, и без теплоотвода этого порядка она греется до сотен градусов
+    # (см. mining._compute) — то есть физически несобираема, хотя железо продаётся.
     coolers = [
         ("Воздушное", 400), ("Башенное", 800), ("Жидкостное", 1600),
         ("Иммерсионное", 4000), ("Иммерсионная ванна Pro", 9000),
+        ("Промышленный чиллер", 25000), ("Чиллерная станция", 60000),
+        ("Градирня", 120000),
     ]
     for i, (name, cap) in enumerate(coolers):
         items.append({
@@ -217,6 +226,10 @@ def _build_catalog() -> list[dict]:
 
 CATALOG = _build_catalog()
 CATALOG_BY_ID = {c["id"]: c for c in CATALOG}
+# Установленный в ферму компонент хранит только name/specs (см. mining._install_one),
+# поэтому цену железа приходится искать по имени — имена в каталоге уникальны.
+CATALOG_BY_NAME = {c["name"]: c["base_price"] for c in CATALOG}
+assert len(CATALOG_BY_NAME) == len(CATALOG), "имена товаров должны быть уникальны"
 
 
 async def _shop_config(db) -> dict:

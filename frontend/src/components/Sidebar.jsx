@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Store, Trophy, Cpu, Settings } from 'lucide-react'
+import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Store, Trophy, Cpu, Settings, Landmark } from 'lucide-react'
 
 const ICON_MAP = {
   account: Wallet,
@@ -10,6 +10,7 @@ const ICON_MAP = {
   stocks: TrendingUp,
   mining: Cpu,
   realestate: Home,
+  centralmarket: Landmark,
   myhomes: Building,
   mycompany: Store,
   leaderboard: Trophy,
@@ -26,6 +27,7 @@ function Sidebar({ activeTab, onTabChange }) {
       { id: 'bank', label: t('nav.bank') },
     ] },
     { title: t('nav.groupMarkets'), items: [
+      { id: 'centralmarket', label: t('nav.centralMarket') },
       { id: 'crypto', label: t('nav.crypto') },
       { id: 'stocks', label: t('nav.stocks') },
       { id: 'realestate', label: t('nav.realestate') },

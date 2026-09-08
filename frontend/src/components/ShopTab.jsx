@@ -1,53 +1,66 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// NEXUS · Магазин оборудования и недвижимости.
+// Доступные категории: gpu, cpu, case, supplies (расходники), house (дома).
+// Источники каталога:
+//   • Железо: GET /api/shop/catalog + adminCatalog.js (витрина 90+ GPU/CPU/case).
+//   • Дома:  GET /api/assets/market?type=realestate — 6 типов (studio/flat2/
+//            townhouse/villa/penthouse/castle), реальная цена и доход с бэкенда.
+// Карточка компактная: иконка, категория, имя, характеристика, цена и кнопка
+// «Купить». Количество/итоговая цена/баланс — в модалке BuyModal.
+// Бэкенд НЕ вызывается при покупке (демо-режим: кнопка закрывает + toast).
+// ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchShopCatalog, buyHardware, sellHardware, fetchInventory } from '../services/api'
+import { fetchShopCatalog, fetchAssetMarket } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
-import ConfirmDialog from './ConfirmDialog'
+import { ADMIN_SHOP_CATALOG } from '../utils/adminCatalog'
+import BuyModal from './BuyModal'
 import { toast } from './Toast'
+// ── Иконки (lucide-react). Home — отдельная пилюля для недвижимости. ──────
 import {
-  Monitor, Cpu, HardDrive, Zap, Fan, Box, Server, Battery, Network,
-  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart, Minus, Plus,
+  Monitor, Cpu, Box, Package, Clock, Home,
+  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
 } from 'lucide-react'
 
-// Магазин оборудования NEXUS — единый каталог всех комплектующих.
-// Реиспользует существующий backend /api/shop (каталог + покупка).
+// Фильтр-пилюли: категории магазина.
+// "supplies" приходит из adminCatalog.js (витрина), "house" — из /api/assets/market.
 const CATEGORIES = [
   { id: '', icon: ShoppingCart },        // Все
   { id: 'gpu', icon: Monitor },
   { id: 'cpu', icon: Cpu },
-  { id: 'motherboard', icon: Cpu },
-  { id: 'ram', icon: HardDrive },
-  { id: 'ssd', icon: HardDrive },
-  { id: 'psu', icon: Zap },
-  { id: 'cooling', icon: Fan },
   { id: 'case', icon: Box },
-  { id: 'rack', icon: Server },
-  { id: 'fan', icon: Fan },
-  { id: 'ups', icon: Battery },
-  { id: 'network', icon: Network },
+  { id: 'supplies', icon: Package },
+  { id: 'house', icon: Home },
 ]
 
 const CAT_COLOR = {
-  gpu: '#818cf8', cpu: '#a855f7', motherboard: '#0ea5e9', ram: '#22d3ee',
-  ssd: '#34d399', psu: '#eab308', cooling: '#06b6d4', case: '#94a3b8',
-  rack: '#64748b', fan: '#38bdf8', ups: '#f59e0b', network: '#818cf8',
+  gpu: '#818cf8', cpu: '#a855f7', case: '#94a3b8', supplies: '#f97316', house: '#22c55e',
+}
+
+// Доход/час для дома: assets.py присылает income_per_hour.
+// Число жильцов выводим из rooms (rooms+1, минимум 2).
+function houseSpecLine(item, t) {
+  const s = item.specs || {}
+  const income = s.income_per_hour != null ? `+$${s.income_per_hour}${t('house.incomeShort')}` : ''
+  const rooms = s.rooms != null ? `${s.rooms} ${t('house.roomsShort')}` : ''
+  const residents = s.rooms != null ? t('house.upTo', { count: Math.max(2, s.rooms + 1) }) : ''
+  return [rooms, income, residents].filter(Boolean).join(' · ')
 }
 
 function specLine(cat, s = {}, t) {
   switch (cat) {
     case 'gpu': return `${s.hashrate >= 1000 ? (s.hashrate / 1000).toFixed(1) + 'k' : s.hashrate} H/s · ${s.power}W`
     case 'cpu': return `${t('units.cores', { count: s.cores })} · ${s.power}W`
-    case 'motherboard': return `${t('units.gpuSlots', { count: s.gpuSlots })}`
-    case 'ram': return `${s.gb} ${t('units.gb')}`
-    case 'ssd': return `${s.gb} ${t('units.gb')}`
-    case 'psu': return `${s.power} W`
-    case 'cooling': return `${s.cooling} ${t('units.cooling')}`
-    case 'fan': return `${s.cooling} ${t('units.cooling')} · ${s.power}W`
     case 'case': return `${t('units.slots', { count: s.slots })}`
-    case 'rack': return `${s.slots} ${t('units.gpuCap')}${s.industrial ? ' · ' + t('units.industrial') : ''}`
-    case 'ups': return `${s.backup} VA`
-    case 'network': return `${s.speed >= 1000 ? (s.speed / 1000) + ' ' + t('units.gbit') : s.speed + ' ' + t('units.mbit')}`
+    case 'supplies': return t(`supplies.${s.kind}`, s.kind || '')
+    case 'house': {
+      // Для обратной совместимости (если когда-нибудь придёт из adminCatalog).
+      const income = s.income != null ? `+$${s.income}${t('house.incomeShort')}` : ''
+      const residents = s.residents != null ? t('house.upTo', { count: s.residents }) : ''
+      const rooms = s.rooms != null ? `${s.rooms} ${t('house.roomsShort')}` : ''
+      return [rooms, income, residents].filter(Boolean).join(' · ')
+    }
     default: return ''
   }
 }
@@ -61,31 +74,63 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState('asc')
-  const [busyId, setBusyId] = useState(null)
-  const [confirm, setConfirm] = useState(null)   // { item, qty } awaiting purchase confirmation
-  const [sellConfirm, setSellConfirm] = useState(null) // { item, qty } awaiting sale
-  const [qty, setQty] = useState({})              // itemId -> quantity to buy
-  const [owned, setOwned] = useState({})          // itemId -> count in inventory
+  // BuyModal: выбранный товар (открывает модалку покупки) или null.
+  // Продажи в магазине больше нет — упращено: карточка показывает только
+  // кнопку «Купить», которая открывает BuyModal.
+  const [buyItem, setBuyItem] = useState(null)
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 250)
     return () => clearTimeout(id)
   }, [searchInput])
 
-  const qtyOf = (id) => Math.max(1, Math.min(1000, qty[id] || 1))
-  const setItemQty = (id, v) => setQty(q => ({ ...q, [id]: Math.max(1, Math.min(1000, v || 1)) }))
+  // Локальный qty-стейт упразднён — см. handleBuyConfirm ниже.
 
-  const loadInventory = useCallback(async () => {
-    try {
-      const inv = await fetchInventory()
-      setOwned(Object.fromEntries((inv || []).map(i => [i.itemId, i.count])))
-    } catch { /* инвентарь необязателен для магазина */ }
-  }, [])
+  // loadInventory упразднён: карточка больше не показывает «В наличии» /
+  // «Продать» — это переехало в MyAssetsTab.
+// ── Загрузка каталога ──────────────────────────────────────────────
+// Железо: fetchShopCatalog(category) + adminCatalog (для всех 90+ видеокарт/CPU/case).
+// Дома: fetchAssetMarket('realestate') — 6 типов, бэкенд возвращает реальную
+// цену с учётом динамического множителя, поэтому админскую витрину
+// (REAL_ESTATE_PRODUCTS) сюда подмешивать не нужно.
+async function loadShopItems(category) {
+  if (category === 'house') {
+    const market = await fetchAssetMarket('realestate')
+    return (market || []).map(m => ({
+      id: m.slug,                    // для buyAsset(slug) — см. backend/assets.py
+      category: 'house',
+      type: 'realestate',
+      slug: m.slug,
+      name: m.name,
+      color: m.color || '#22c55e',
+      // houseType: 'asset' — это реальный покупаемый объект (не витрина)
+      houseType: 'asset',
+      rarity: m.rarity,
+      price: m.price,
+      specs: {
+        rooms: m.rooms,
+        basement: m.basement,
+        income_per_hour: m.income_per_hour,
+        upkeep_per_hour: m.upkeep_per_hour,
+      },
+    }))
+  }
+  const backendItems = await fetchShopCatalog(category || undefined)
+  // Подмешиваем админскую витрину (GPU/CPU/case/supplies) только если она
+  // отсутствует в ответе бэкенда и подходит под активную категорию.
+  const backendIds = new Set((backendItems || []).map(i => i.id))
+  const adminOnly = ADMIN_SHOP_CATALOG.filter(a =>
+    !backendIds.has(a.id) &&
+    (!category || a.category === category)
+  )
+  return [...(backendItems || []), ...adminOnly]
+}
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setItems(await fetchShopCatalog(category || undefined))
+      const items = await loadShopItems(category)
+      setItems(items)
       setError(null)
     } catch (err) {
       setError(err.message)
@@ -95,38 +140,22 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   }, [category])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { loadInventory() }, [loadInventory])
+  // loadInventory удалён: карточка больше не показывает инвентарь.
 
-  const buy = async (item, n) => {
-    setBusyId(item.id)
-    try {
-      const res = await buyHardware(item.id, n)
-      onBalanceChange?.(res.balance)
-      toast(t('market.bought'))
-      await Promise.all([load(), loadInventory()])   // цены могли сдвинуться
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  const sell = async (item, n) => {
-    setBusyId(item.id)
-    try {
-      const res = await sellHardware(item.id, n)
-      onBalanceChange?.(res.balance)
-      toast(t('shop.sold', { qty: res.quantity, refund: formatMoney(res.refund) }))
-      await Promise.all([load(), loadInventory()])
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setBusyId(null)
-    }
+// Покупка (демо-режим): кнопка «Купить» в BuyModal просто закрывает окно
+// и показывает toast. Бэкенд не вызывается — только фронтенд.
+  const handleBuyConfirm = (qty) => {
+    const item = buyItem
+    if (!item) return
+    setBuyItem(null)
+    toast(t('market.bought'))
   }
 
   const view = useMemo(() => {
     let r = items
+    // Защитный фильтр по категории — оставляем только то, что продаётся в магазине.
+    // 'house' — витрина домов из adminCatalog (REAL_ESTATE_PRODUCTS).
+    r = r.filter(i => ['gpu', 'cpu', 'case', 'supplies', 'house'].includes(i.category))
     if (search) r = r.filter(i => (i.name || '').toLowerCase().includes(search))
     return [...r].sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price)
   }, [items, search, sortOrder])
@@ -177,43 +206,59 @@ function ShopTab({ balance = 0, onBalanceChange }) {
           {view.map(item => {
             // Цвет по мощности/тиру приходит из каталога (item.color); категорийный — запасной.
             const color = item.color || CAT_COLOR[item.category] || '#0071e3'
-            const n = qtyOf(item.id)
-            const affordable = balance >= item.price * n
-            const have = owned[item.id] || 0
+            // В демо-режиме busy-флаг не нужен — кнопка просто открывает BuyModal.
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
-            const busy = busyId === item.id
+            // Дома идут отдельной веткой рендера: без qty/sell, иконка Home.
+            if (item.category === 'house' || item.houseType === 'asset') {
+              const affordable = balance >= item.price
+              return (
+                <div key={item.id} className="gpu-card" style={{ borderColor: `${color}55` }}>
+                  <span className="gpu-card-icon" style={{ background: color }}><Home size={20} /></span>
+                  <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
+                  <span className="gpu-card-name">{hwName(item, t)}</span>
+                  <div className="gpu-card-specs"><span>{houseSpecLine(item, t)}</span></div>
+                  {item.specs?.basement > 0 && (
+                    <div className="gpu-card-spec-row">
+                      {t('realestate.basement', { defaultValue: t('house.basementShort') })}: {item.specs.basement}
+                    </div>
+                  )}
+                  <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
+                  <button
+                    className="gpu-card-buy"
+                    style={{ background: affordable ? color : undefined }}
+                    disabled={!affordable}
+                    onClick={() => setBuyItem(item)}
+                  >
+                    {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
+                  </button>
+                </div>
+              )
+            }
+            // Карточка железа: компактная, без qty-степпера, без power-строки.
+            const affordable = balance >= item.price
             return (
-              <div key={item.id} className="gpu-card" style={{ borderColor: `${color}55` }}>
+              <div key={item.id} className="gpu-card gpu-card-compact" style={{ borderColor: `${color}55` }}>
                 <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={20} /></span>
                 <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
                 <span className="gpu-card-name">{hwName(item, t)}</span>
                 <div className="gpu-card-specs"><span>{specLine(item.category, item.specs, t)}</span></div>
-                {item.specs?.power > 0 && (
-                  <div className="gpu-card-spec-row"><Zap size={11} style={{ color }} /> {t('shop.powerRow', { w: item.specs.power })}</div>
-                )}
-                {item.specs?.cooling > 0 && (
-                  <div className="gpu-card-spec-row"><Fan size={11} style={{ color }} /> {item.coolingLabel || t('shop.coolingRow', { w: item.specs.cooling })}</div>
-                )}
-                {have > 0 && <div className="gpu-card-owned">{t('shop.owned', { count: have })}</div>}
                 <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
-                <div className="gpu-card-qty">
-                  <button type="button" className="gpu-qty-btn" disabled={busy || n <= 1} onClick={() => setItemQty(item.id, n - 1)}><Minus size={12} /></button>
-                  <input type="number" min="1" max="1000" value={n} disabled={busy}
-                    onChange={e => setItemQty(item.id, parseInt(e.target.value, 10))} />
-                  <button type="button" className="gpu-qty-btn" disabled={busy || n >= 1000} onClick={() => setItemQty(item.id, n + 1)}><Plus size={12} /></button>
-                </div>
-                <button
-                  className="gpu-card-buy"
-                  style={{ background: affordable ? color : undefined }}
-                  disabled={!affordable || busy}
-                  onClick={() => setConfirm({ item, qty: n })}
-                >
-                  {busy ? t('bank.processing') : affordable ? `${t('common.buy')}${n > 1 ? ` ×${n}` : ''}` : t('stocks.insufficientFunds')}
-                </button>
-                {have > 0 && (
-                  <button className="gpu-card-sell" disabled={busy}
-                    onClick={() => setSellConfirm({ item, qty: Math.min(n, have) })}>
-                    {t('shop.sell')}
+                {item.fromAdmin ? (
+                  <button
+                    className="gpu-card-buy gpu-card-buy-soon"
+                    disabled
+                    title={t('shop.soonHint')}
+                  >
+                    <Clock size={12} /> {t('shop.soon')}
+                  </button>
+                ) : (
+                  <button
+                    className="gpu-card-buy"
+                    style={{ background: affordable ? color : undefined }}
+                    disabled={!affordable}
+                    onClick={() => setBuyItem(item)}
+                  >
+                    {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
                   </button>
                 )}
               </div>
@@ -222,26 +267,17 @@ function ShopTab({ balance = 0, onBalanceChange }) {
         </div>
       )}
 
-      <ConfirmDialog
-        open={!!confirm}
-        busy={busyId === confirm?.item?.id}
-        title={t('common.buy')}
-        message={confirm ? t('confirm.buyHardware', { name: hwName(confirm.item, t), price: formatMoney(confirm.item.price * confirm.qty) }) : ''}
-        confirmLabel={t('common.buy')}
-        onConfirm={async () => { const c = confirm; setConfirm(null); await buy(c.item, c.qty) }}
-        onCancel={() => setConfirm(null)}
+      {/* Модалка покупки: qty, total, balance, кнопка «Купить» (демо). */}
+      <BuyModal
+        open={!!buyItem}
+        item={buyItem}
+        balance={balance}
+        onConfirm={handleBuyConfirm}
+        onCancel={() => setBuyItem(null)}
       />
 
-      <ConfirmDialog
-        open={!!sellConfirm}
-        danger
-        busy={busyId === sellConfirm?.item?.id}
-        title={t('shop.sell')}
-        message={sellConfirm ? t('shop.confirmSell', { qty: sellConfirm.qty, name: hwName(sellConfirm.item, t) }) : ''}
-        confirmLabel={t('shop.sell')}
-        onConfirm={async () => { const c = sellConfirm; setSellConfirm(null); await sell(c.item, c.qty) }}
-        onCancel={() => setSellConfirm(null)}
-      />
+// Продажа в магазине отключена — карточка показывает только «Купить»,
+// продажа/улучшения доступны в MyAssetsTab.
     </div>
   )
 }

@@ -7,6 +7,10 @@ import {
   GPU_PRODUCTS, CPU_PRODUCTS, CASE_PRODUCTS,
   SUPPLIES_PRODUCTS, REAL_ESTATE_PRODUCTS, BUSINESS_PRODUCTS,
 } from '../utils/shopCatalog'
+// Дефолтные цены из utils/adminCatalog.js — используются как стартовое
+// значение для полей ввода. Если админ ещё ничего не менял, поля уже
+// заполнены согласованными с экономикой цифрами.
+import { ADMIN_DEFAULT_PRICES } from '../utils/adminCatalog'
 
 const PRICE_CATEGORIES = [
   { id: 'gpu', labelKey: 'admin.prices.gpu', icon: Monitor, products: GPU_PRODUCTS },
@@ -41,7 +45,17 @@ function PriceEditorTab() {
         if (!cancelled && resp.ok) {
           const data = await resp.json()
           if (!cancelled) {
-            setPrices(data.prices || {})
+            // Бэкенд хранит только ИЗМЕНЁННЫЕ админом цены. Для всех id,
+            // которых нет в ответе, подмешиваем дефолт из adminCatalog
+            // (плавная лестница по rarity / category, согласованная с
+            // backend/assets.py). Чтобы админ мог сбросить конкретную
+            // позицию, сохранение идёт через явный null.
+            const stored = data.prices || {}
+            const merged = { ...ADMIN_DEFAULT_PRICES }
+            for (const k of Object.keys(stored)) {
+              if (stored[k] !== undefined) merged[k] = stored[k]
+            }
+            setPrices(merged)
           }
         }
       } catch {

@@ -10,6 +10,7 @@
     "cityroof": "City Roof",
     "crypto": "Cryptocurrency",
     "realestate": "Market",
+    "centralMarket": "Central Market",
     "myhomes": "My Property",
     "mybusiness": "My Businesses",
     "mycompany": "My Company",
@@ -18,6 +19,56 @@
     "groupMarkets": "Markets",
     "groupAssets": "Assets & Business",
     "groupCommunity": "Community"
+  },
+  "centralmarket": {
+    "subtitle": "Peer-to-peer trading between players",
+    "createLot": "Create lot",
+    "category": "Category",
+    "quantity": "Quantity",
+    "perItem": "per item",
+    "sortPriceAsc": "Cheapest first",
+    "sortPriceDesc": "Most expensive first",
+    "resetFilters": "Reset filters",
+    "searchPlaceholder": "Search by item or category…",
+    "lotsCount": "Lots: {{count}}",
+    "noLots": "No lots found",
+    "emptyTitle": "No lots here yet",
+    "emptyTextEmpty": "Be the first to list your item for sale.",
+    "emptyTextFiltered": "Nothing matches the current filters. Try resetting them.",
+    "createFirstLot": "Create the first lot",
+    "inStock": "in stock",
+    "edit": "Edit",
+    "delete": "Delete",
+    "editTitle": "Edit lot",
+    "editSuccess": "Lot updated",
+    "deleteTitle": "Delete lot?",
+    "deleteConfirm": "Lot \"{{name}}\" will be removed from sale.",
+    "deleteSuccess": "Lot removed",
+    "buySuccess": "Bought: {{name}} ×{{qty}}",
+    "cat_all": "All",
+    "cat_realestate": "Real estate",
+    "cat_business": "Business",
+    "cat_car": "Cars",
+    "cat_item": "Items",
+    "cat_other": "Other"
+  },
+  "createLot": {
+    "title": "Create lot",
+    "subtitle": "Choose an item, quantity and price per unit",
+    "sourceInventory": "From inventory",
+    "sourceFree": "Free item",
+    "item": "Item",
+    "itemPlaceholder": "Choose an item",
+    "inventoryEmpty": "Your inventory is empty",
+    "qty": "Quantity",
+    "pricePerItem": "Price per unit",
+    "submit": "Create",
+    "you": "You",
+    "errorItem": "Please choose an item",
+    "errorQty": "Quantity must be a positive number",
+    "errorQtyExceed": "You only have {{max}} in stock",
+    "errorPrice": "Price must be a positive number",
+    "success": "Lot created"
   },
   "common": {
     "loading": "Loading...",
@@ -316,14 +367,16 @@
   "market": {
     "cat_realestate": "Real estate",
     "cat_business": "Businesses",
-    "cat_car": "Cars",
     "searchPlaceholder": "Search by name...",
     "noItems": "Nothing found",
     "bought": "Asset purchased!",
     "employees": "Employees",
     "profitPerHour": "Profit/h",
     "prestige": "Prestige",
-    "rentalNote": "Rental: buy an IT-Studio or Media Holding (or property/cars), then list it for rent in «My Assets» — players or bots become tenants and pay you."
+    "basement": "Basement",
+    "soon": "Soon",
+    "soonHint": "Purchasing this item will be available after the backend update",
+    "rentalNote": "Rental: buy an IT-Studio or Media Holding (or property), then list it for rent in «My Assets» — players or bots become tenants and pay you."
   },
   "myassets": {
     "empty": "You don't own any assets yet. Check out the Market.",
@@ -568,6 +621,13 @@
       "diamond": "Diamond"
     }
   },
+  "mining": {
+    "upgradeAction": "Mining upgrade (${{cost}})",
+    "upgradeTitle": "Install mining rig",
+    "bought": "Mining upgrade installed",
+    "active": "Mining active",
+    "confirm": "Install mining equipment in the basement for ${{cost}}? The property will generate an extra ${{income}}/h."
+  },
   "itstudio": {
     "ordered": "Order placed. Ready in ~{{hours}}h.",
     "pending": "IT studio job in progress…",
@@ -603,7 +663,19 @@
     "orderedMinutes": "Order placed. Ready in ~{{minutes}} min."
   },
   "shop": {
-    "nexusDesc": "One store for all components: GPUs, CPUs, motherboards, memory, drives, PSUs, cooling, cases, racks and networking.",
+    "nexusDesc": "Component & real estate store: graphics cards, processors, cases, supplies and homes.",
+    "houses": "Homes",
+    "housesDesc": "Cottages, villas, penthouses and castles. In-store purchase coming soon.",
+    "houseName": {
+      "common": "Studio",
+      "uncommon": "Townhouse",
+      "rare": "Seaside Villa",
+      "epic": "Penthouse",
+      "legendary": "Castle"
+    },
+    "houseIncome": "Income: +${{amount}}/h",
+    "houseResidents": "Up to {{count}} residents",
+    "houseSoonHint": "Home purchases will be available after the backend update",
     "gpu": "GPU Store",
     "gpuDesc": "A store where you can buy graphics cards, processors, and server racks",
     "gpuCards": "Graphics Cards",
@@ -652,6 +724,8 @@
     "owned": "Owned: {{count}}",
     "sell": "Sell",
     "confirmSell": "Sell {{qty}}× \"{{name}}\"? You get part of the cost back.",
+    "soon": "Soon",
+    "soonHint": "Purchasing this item will be available after the backend update",
     "sold": "Sold {{qty}}× · +${{refund}}"
   },
   "assetNames": {
@@ -691,7 +765,10 @@
     "upgrade": "Upgrade"
   },
   "buyModal": {
-    "quantity": "Quantity"
+    "quantity": "Quantity",
+    "pricePerUnit": "Price per unit",
+    "total": "Total",
+    "balance": "Your balance"
   },
   "realestate": {
     "rarity": "Rarity",
@@ -700,6 +777,22 @@
     "basement": "Basement Capacity",
     "basementShort": "cases",
     "tax": "Tax per kWh",
+    "rarities": {
+      "common": "Common",
+      "uncommon": "Uncommon",
+      "rare": "Rare",
+      "epic": "Epic",
+      "legendary": "Legendary"
+    }
+  },
+  "house": {
+    "name": "Home",
+    "rooms": "Rooms",
+    "roomsShort": "rm",
+    "income": "Income",
+    "incomeShort": "$/h",
+    "upTo": "up to {{count}} residents",
+    "upToShort": "residents",
     "rarities": {
       "common": "Common",
       "uncommon": "Uncommon",
@@ -1055,7 +1148,9 @@
       "rack": "Rack",
       "fan": "Fans",
       "ups": "UPS",
-      "network": "Network"
+      "network": "Network",
+      "supplies": "Supplies",
+      "house": "Homes"
     },
     "desc": {
       "gpu": "Increases hashrate — the core mining power.",

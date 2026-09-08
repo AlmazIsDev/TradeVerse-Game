@@ -1,17 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchAssetMarket, buyAsset } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
+import { ADMIN_MARKET_CATALOG, ADMIN_DEFAULT_PRICES } from '../utils/adminCatalog'
 import {
-  Home, Briefcase, Car, Search, AlertTriangle, Check, X,
+  Home, Briefcase, Search, Clock, AlertTriangle,
   TrendingUp, Coins, LayoutGrid, KeyRound,
 } from 'lucide-react'
 
+// Категории-пилюли. Транспорт (car) удалён по требованию — на вкладке «Рынок»
+// остались только недвижимость и бизнесы из админ-каталога.
 const CATEGORIES = [
   { id: 'all', icon: LayoutGrid },
   { id: 'realestate', icon: Home },
   { id: 'business', icon: Briefcase },
-  { id: 'car', icon: Car },
 ]
 
 const RARITY_COLOR = {
@@ -19,13 +20,6 @@ const RARITY_COLOR = {
   epic: '#a855f7', legendary: '#f59e0b',
 }
 
-const ASSET_EMOJI = {
-  studio: '🏠', flat2: '🏢', townhouse: '🏘️', villa: '🏖️', penthouse: '🌆', castle: '🏰',
-  shawarma: '🌯', coffee: '☕', carwash: '🚿', factory: '🏭',
-  itstudio_basic: '💻', itstudio_medium: '💻', itstudio_advanced: '💻', itstudio_premium: '💻',
-  citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
-}
-const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }
 const RARITY_GRAD = {
   common: 'linear-gradient(135deg,#334155,#1e293b)',
   uncommon: 'linear-gradient(135deg,#166534,#14532d)',
@@ -34,63 +28,114 @@ const RARITY_GRAD = {
   legendary: 'linear-gradient(135deg,#b45309,#78350f)',
 }
 
-function MarketTab({ balance = 0, onBalanceChange }) {
+const TYPE_EMOJI = { realestate: '🏠', business: '🏢' }
+
+// Сопоставление category бизнеса (retail/service/tech/office) → эмодзи для
+// быстрой визуальной идентификации. Дублируется из adminCatalog.js, потому что
+// карточка на «Рынке» рисуется здесь, а не из каталога напрямую.
+const BIZ_CAT_EMOJI = {
+  retail: '🛍️',
+  service: '🛠️',
+  tech: '💻',
+  office: '🏢',
+}
+
+function MarketTab() {
   const { t } = useTranslation()
   const [category, setCategory] = useState('all')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [confirm, setConfirm] = useState(null)   // item pending purchase
-  const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState(null)
 
+  // Дебаунс для поля поиска — без него ввод дёргает фильтр на каждую клавишу.
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 300)
     return () => clearTimeout(id)
   }, [searchInput])
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const data = await fetchAssetMarket({ type: category === 'all' ? undefined : category, search: search || undefined })
-      setItems(data)
-      setError(null)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }, [category, search])
+  // Сохранённые админом цены. Подтягиваются ТОЛЬКО если залогинен админ —
+  // обычные игроки видят дефолты из ADMIN_MARKET_CATALOG (согласованные
+  // с экономикой). Словарь: {<numericId>: <price>}, где numericId = N
+  // из admin-re-N / admin-biz-N.
+  const [adminPrices, setAdminPrices] = useState({})
 
-  useEffect(() => { load() }, [load])
-
-  // Динамический рынок дрейфует на сервере раз в тик планировщика (см.
-  // backend/assets.py tick_market) — обновляем список тихо, без скелетона.
   useEffect(() => {
-    const onRealtime = (ev) => {
-      if (ev.detail?.type === 'market_update') load(true)
+    let cancelled = false
+    async function loadAdminPrices() {
+      try {
+        const stored = localStorage.getItem('tradeverse_user')
+        const user = stored ? JSON.parse(stored) : null
+        if (user?.role !== 'admin') return
+        const token = user.token
+        if (!token) return
+        const resp = await fetch('/api/admin/shop-prices', {
+          headers: { 'Authorization': 'Bearer ' + token },
+        })
+        if (cancelled || !resp.ok) return
+        const data = await resp.json()
+        const stored_prices = data.prices || {}
+        // Подмешиваем дефолты, чтобы было что показать, если админ ещё
+        // ничего не правил.
+        const merged = { ...ADMIN_DEFAULT_PRICES }
+        for (const k of Object.keys(stored_prices)) {
+          if (stored_prices[k] !== undefined) merged[k] = stored_prices[k]
+        }
+        if (!cancelled) setAdminPrices(merged)
+      } catch {
+        // ignore — MarketTab работает и без админ-цен
+      }
     }
-    window.addEventListener('tv:realtime', onRealtime)
-    return () => window.removeEventListener('tv:realtime', onRealtime)
-  }, [load])
+    loadAdminPrices()
+    return () => { cancelled = true }
+  }, [])
 
-  const doBuy = async () => {
-    if (!confirm) return
-    setBusy(true)
-    setFeedback(null)
+  // Витрина собирается из ADMIN_MARKET_CATALOG (см. utils/adminCatalog.js):
+  // это справочник из PriceEditorTab (admin.prices.realestate / business).
+  // Покупка/продажа пока отключены — кнопка «Купить» заменена на «Скоро»
+  // (как в ShopTab для GPU/CPU/case). Бэкенд /api/assets/market не дёргаем.
+  const items = useMemo(() => {
     try {
-      const res = await buyAsset(confirm.slug)
-      onBalanceChange?.(res.balance)
-      setFeedback({ type: 'success', text: t('market.bought') })
-      setTimeout(() => { setConfirm(null); setFeedback(null) }, 800)
-    } catch (err) {
-      setFeedback({ type: 'error', text: err.message })
-    } finally {
-      setBusy(false)
+      let list = ADMIN_MARKET_CATALOG
+      if (category !== 'all') {
+        list = list.filter(it => it.category === category)
+      }
+      if (search) {
+        const q = search.toLowerCase()
+        list = list.filter(it =>
+          (it.name || '').toLowerCase().includes(q) ||
+          (it.rarity || '').toLowerCase().includes(q) ||
+          (it.category_business || '').toLowerCase().includes(q),
+        )
+      }
+      // Если для этой позиции админ сохранил свою цену — показываем её.
+      // В adminCatalog id имеет вид admin-re-<N> / admin-biz-<N>; в
+      // adminPrices ключ — число N (см. ADMIN_DEFAULT_PRICES).
+      const hasAdminOverride = Object.keys(adminPrices).length > 0
+      if (hasAdminOverride) {
+        list = list.map(it => {
+          const m = (it.id || '').match(/^admin-(?:re|biz)-(\d+)$/)
+          if (!m) return it
+          const pid = parseInt(m[1], 10)
+          if (adminPrices[pid] != null) {
+            return { ...it, price: adminPrices[pid], priceOverridden: true }
+          }
+          return it
+        })
+      }
+      // Сортировка: дешёвые сверху, легендарные в конце.
+      return [...list].sort((a, b) => (a.price || 0) - (b.price || 0))
+    } catch (e) {
+      setError(e.message)
+      return []
     }
-  }
+  }, [category, search, adminPrices])
+
+  const cardEmoji = useCallback((it) => {
+    if (it.category === 'business') {
+      return BIZ_CAT_EMOJI[it.category_business] || it.emoji || '🏢'
+    }
+    return TYPE_EMOJI[it.category] || '📦'
+  }, [])
 
   return (
     <div className="market-tab">
@@ -121,18 +166,10 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-      {(category === 'all' || category === 'business') && (
-        <div className="market-rental-note">
-          <KeyRound size={16} />
-          <span>{t('market.rentalNote')}</span>
-        </div>
-      )}
-
-      {loading && (
-        <div className="asset-grid">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="asset-card skeleton" style={{ height: 190 }} />)}
-        </div>
-      )}
+      <div className="market-rental-note">
+        <KeyRound size={16} />
+        <span>{t('market.rentalNote')}</span>
+      </div>
 
       {error && (
         <div className="error-state">
@@ -141,80 +178,73 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         </div>
       )}
 
-      {!loading && !error && items.length === 0 && (
+      {!error && items.length === 0 && (
         <div className="empty-state"><p>{t('market.noItems')}</p></div>
       )}
 
-      {!loading && !error && items.length > 0 && (
+      {!error && items.length > 0 && (
         <div className="asset-grid">
           {items.map(item => {
             const rc = RARITY_COLOR[item.rarity] || 'var(--color-accent)'
-            const affordable = balance >= item.price
             return (
-              <div key={item.slug} className={`asset-card market-card ${item.type === 'car' ? 'car-card' : ''}`} style={{ borderTopColor: rc }}>
-                <div className="asset-banner" style={{ background: RARITY_GRAD[item.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
-                  <span className="asset-banner-emoji">{ASSET_EMOJI[item.slug] || TYPE_EMOJI[item.type] || '📦'}</span>
+              <div
+                key={item.id}
+                className="asset-card market-card"
+                style={{ borderTopColor: rc }}
+              >
+                <div
+                  className="asset-banner"
+                  style={{ background: RARITY_GRAD[item.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}
+                >
+                  <span className="asset-banner-emoji">{cardEmoji(item)}</span>
                 </div>
-                <span className="market-card-name">{t(`assetNames.${item.slug}`, item.name)}</span>
-                {(item.rarity || item.category) && (
+                <span className="market-card-name">{item.name}</span>
+                {(item.rarity || item.category_business) && (
                   <div className="market-card-meta">
-                    <span className="market-card-rarity" style={{ color: rc }}>
-                      {item.rarity ? t(`realestate.rarities.${item.rarity}`, item.rarity) : ''}
-                    </span>
-                    {item.category && <span className="market-card-cat">{t(`business.categories.${item.category}`, item.category)}</span>}
+                    {item.rarity && (
+                      <span className="market-card-rarity" style={{ color: rc }}>
+                        {t(`realestate.rarities.${item.rarity}`, item.rarity)}
+                      </span>
+                    )}
+                    {item.category_business && (
+                      <span className="market-card-cat">
+                        {t(`business.categories.${item.category_business}`, item.category_business)}
+                      </span>
+                    )}
                   </div>
                 )}
                 <div className="asset-stats">
-                  {item.rooms != null && <div className="asset-stat"><span>{t('realestate.rooms')}</span><b>{item.rooms}</b></div>}
-                  {item.employees > 0 && <div className="asset-stat"><span>{t('market.employees')}</span><b>{item.employees}</b></div>}
-                  {item.profitPerHour > 0 && (
-                    <div className="asset-stat"><span>{t('market.profitPerHour')}</span>
-                      <b className="up"><TrendingUp size={12} /> {formatMoney(item.profitPerHour)} $</b></div>
+                  {item.rooms != null && (
+                    <div className="asset-stat">
+                      <span>{t('realestate.rooms')}</span><b>{item.rooms}</b>
+                    </div>
                   )}
-                  {item.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{item.meta.prestige}</b></div>}
+                  {item.employees > 0 && (
+                    <div className="asset-stat">
+                      <span>{t('market.employees')}</span><b>{item.employees}</b>
+                    </div>
+                  )}
+                  {item.basement != null && (
+                    <div className="asset-stat">
+                      <span>{t('market.basement')}</span><b>{item.basement}</b>
+                    </div>
+                  )}
                 </div>
                 <div className="market-card-price">
                   <span className="mcp-value"><Coins size={16} /> ${formatMoney(item.price)}</span>
-                  {item.trend != null && item.trend !== 0 && (
-                    <span className={`asset-trend ${item.trend >= 0 ? 'up' : 'down'}`}>
-                      {item.trend >= 0 ? '▲' : '▼'} {Math.abs(item.trend).toFixed(1)}%
-                    </span>
-                  )}
                 </div>
+                {/* Все позиции здесь — из админ-каталога, покупка/продажа
+                    пока не подключены к бэкенду (см. adminCatalog.js). */}
                 <button
-                  className="asset-buy-btn"
-                  onClick={() => { setConfirm(item); setFeedback(null) }}
-                  disabled={!affordable}
+                  className="asset-buy-btn market-soon-btn"
+                  disabled
+                  title={t('market.soonHint', t('shop.soonHint'))}
                 >
-                  {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
+                  <Clock size={14} /> {t('market.soon', t('shop.soon'))}
                 </button>
               </div>
             )
           })}
-        </div>
-      )}
-
-      {confirm && (
-        <div className="modal-overlay" onClick={() => !busy && setConfirm(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setConfirm(null)}><X size={18} /></button>
-            <h3>{t('common.buy')}: {t(`assetNames.${confirm.slug}`, confirm.name)}</h3>
-            <p className="modal-total">{t('common.total')}: <strong>${formatMoney(confirm.price)}</strong></p>
-            {feedback && (
-              <div className={`transfer-feedback ${feedback.type}`}>
-                {feedback.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}
-                <span>{feedback.text}</span>
-              </div>
-            )}
-            <div className="modal-buttons">
-              <button className="stock-btn buy-btn" onClick={doBuy} disabled={busy}>
-                {busy ? t('bank.processing') : t('common.confirm')}
-              </button>
-              <button className="stock-btn cancel-btn" onClick={() => setConfirm(null)} disabled={busy}>
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

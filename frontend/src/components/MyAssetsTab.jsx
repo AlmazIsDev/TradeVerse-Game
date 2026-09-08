@@ -5,7 +5,7 @@ import {
   transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
-  collectAllAssets,
+  collectAllAssets, buyMiningUpgrade,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
@@ -14,7 +14,7 @@ import MediaExposeModal from './MediaExposeModal'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
-  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info,
+  Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info, Pickaxe,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -239,7 +239,8 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
   // IT-студия: единая закупка комплектующих. Открывает модалку с обоими
   // видами закупки (материалы дохода бизнеса + расходники студии) — источник
-  // цен: fetchMaterialsPrice (доход) и studio.material (студия).
+// Закупка IT-студии временно отключена, но openSupplies оставлен на случай возврата механики.
+  // eslint-disable-next-line no-unused-vars
   const openSupplies = async (asset) => {
     const studio = studios.find(x => x.assetId === asset.id) || null
     setSuppliesModal({ asset, studio })
@@ -284,8 +285,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
   }
 
-  // Атака/защита требуют карты «Крыши города» (список целей + актуальный
-  // конфиг цены/материалов) — подгружаем лениво, только когда открывают заказ.
+// Атака/защита IT-студии временно отключены в меню имущества (см. buildActions),
+// но openOrder + ItStudioOrderModal/инфраструктура оставлены — чтобы быстро
+// вернуть механику без восстановления импортов и логики.
+  // eslint-disable-next-line no-unused-vars
   const openOrder = async (mode) => {
     setOrderModal({ mode })
     if (!cityMap) {
@@ -351,6 +354,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const buildActions = (a) => {
     const busy = busyId === a.id
     const isCar = a.type === 'car'
+    const isRealEstate = a.type === 'realestate'
     const actions = []
 
     if (!isCar && a.profitPerHour > 0) {
@@ -360,17 +364,31 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => askAct(a.id, collectAsset, 'myassets.collected', { title: t('myassets.collect'), message: t('confirm.collect', { amount: formatMoney(a.accrued) }) }),
       })
     }
-    if (!isCar) {
+    if (!isCar && a.type !== 'realestate' && a.type !== 'business') {
       actions.push({
         key: 'upgrade', className: 'upgrade', disabled: busy,
         icon: <ArrowUpCircle size={15} />, label: `${t('myassets.upgrade')} ($${formatMoney(a.upgradeCost)})`,
         onClick: () => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) }),
       })
-    } else {
+    }
+    if (isCar) {
       actions.push({
         key: 'tune', className: 'upgrade', disabled: busy,
         icon: <Wrench size={15} />, label: t('tune.title'),
         onClick: () => setTuneModal(a),
+      })
+    }
+    // Улучшение «Майнинг» для дома: покупается ровно 1 раз, цена basement*10000.
+    // Показывается только при наличии подвала (available) и только если ещё не куплено.
+    if (isRealEstate && a.mining?.available && !a.mining?.purchased) {
+      actions.push({
+        key: 'mining-buy', className: 'upgrade', disabled: busy,
+        icon: <Pickaxe size={15} />,
+        label: t('mining.upgradeAction', { cost: formatMoney(a.mining.cost) }),
+        onClick: () => askAct(a.id, buyMiningUpgrade, 'mining.bought', {
+          title: t('mining.upgradeTitle'),
+          message: t('mining.confirm', { cost: formatMoney(a.mining.cost), income: formatMoney(a.mining.incomePerHour) }),
+        }),
       })
     }
     if (a.type === 'business' && !a.slug?.startsWith('itstudio_')) {
@@ -380,23 +398,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => openMaterials(a),
       })
     }
-    if (a.slug?.startsWith('itstudio_')) {
-      const s = studios.find(x => x.assetId === a.id)
-      if (s?.pendingJob) {
-        actions.push({ key: 'itstudio-pending', disabled: true, info: true, icon: <Package size={13} />, label: t('itstudio.pending') })
-      } else {
-        // IT-студия: единая закупка комплектующих объединяет материалы для
-        // буста дохода бизнеса и расходники для атак/защиты студии — оба
-        // эффекта сохраняются (см. openSupplies / suppliesModal).
-        actions.push({
-          key: 'itstudio-supplies', disabled: busy, icon: <Package size={15} />,
-          label: t('itstudio.buySupplies') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
-          onClick: () => openSupplies(a),
-        })
-        actions.push({ key: 'itstudio-attack', disabled: busy, icon: <Swords size={15} />, label: t('itstudio.attack'), onClick: () => openOrder('attack') })
-        actions.push({ key: 'itstudio-defense', disabled: busy, icon: <ShieldPlus size={15} />, label: t('itstudio.defense'), onClick: () => openOrder('defense') })
-      }
-    }
     // Медиахолдинг: заказ разоблачения в СМИ против компании-конкурента.
     if (a.slug === 'media_holding') {
       actions.push({
@@ -405,7 +406,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => { setMediaModal(true); setMenuOpenId(null) },
       })
     }
-    if (isCompanyOwner) {
+    if (isCompanyOwner && a.type !== 'realestate') {
       actions.push({
         key: 'toCompany', disabled: busy, icon: <Building2 size={15} />, label: t('myassets.toCompany'),
         onClick: () => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) }),
@@ -542,6 +543,9 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                     </>
                   )}
                   {a.rooms != null && <div className="asset-stat"><span>{t('realestate.rooms')}</span><b>{a.rooms}</b></div>}
+                  {a.basement != null && a.basement > 0 && (
+                    <div className="asset-stat"><span>{t('realestate.basement')}</span><b>{a.basement}</b></div>
+                  )}
                   {a.meta?.tax != null && <div className="asset-stat"><span>{t('myassets.tax')}</span><b className="down">${a.meta.tax}{t('units.perHour')}</b></div>}
                   {a.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{a.meta.prestige}</b></div>}
                   {isCar && <div className="asset-stat"><span><Gauge size={12} /> {t('car.condition')}</span><b className="up">{t(`car.cond_${Math.min(a.level, 3)}`, t('car.cond_1'))}</b></div>}
@@ -554,7 +558,12 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   <div className="asset-hint" title={t('car.rentalOnlyHint')}><Info size={13} /> {t('car.rentalOnly')}</div>
                 )}
                 {renderRentalStatus(a)}
-                {renderStudio(a)}
+                {a.type === 'realestate' && a.mining?.purchased && (
+                  <div className="asset-rental rented" title={t('mining.active')}>
+                    <Pickaxe size={13} /> {t('mining.active')} · +${formatMoney(a.mining.incomePerHour)}{t('units.perHour')}
+                  </div>
+                )}
+                {a.slug?.startsWith('itstudio_') ? null : renderStudio(a)}
 
                 <div className="asset-interact" ref={menuOpenId === a.id ? menuRef : null}>
                   <button className="asset-interact-btn" disabled={busy}

@@ -649,6 +649,11 @@ export async function tuneCar(id, part) {
   return request(`/api/assets/${encodeURIComponent(id)}/tune`, { method: 'POST', body: JSON.stringify({ part }) })
 }
 
+// Улучшение «Майнинг» для дома: покупается 1 раз, цена = basement * 10 000.
+export async function buyMiningUpgrade(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/mining/buy`, { method: 'POST' })
+}
+
 export async function listPropertyForRent(id, minHours) {
   return request(`/api/assets/${encodeURIComponent(id)}/rent/list`, {
     method: 'POST', body: JSON.stringify({ minHours }),

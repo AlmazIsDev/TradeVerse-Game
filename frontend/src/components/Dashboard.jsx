@@ -9,6 +9,7 @@ import CryptoTab from './CryptoTab'
 import ShopTab from './ShopTab'
 import LeaderboardTab from './LeaderboardTab'
 import MarketTab from './MarketTab'
+import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
 import MyCompanyTab from './MyCompanyTab'
 import CityRoofTab from './CityRoofTab'
@@ -155,6 +156,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'realestate':
         return <MarketTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'centralmarket':
+        return <CentralMarketTab />
       case 'myhomes':
         return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':

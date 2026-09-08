@@ -123,19 +123,23 @@ MATERIALS_DURATION_H = 6            # действует 6 часов с мом�
 # (RARITY_RENT_PCT/RARITY_RENT_FLOOR) — есть у всех типов, включая бизнесы.
 
 CATALOG = [
-    # Недвижимость: аренда как доход, налог как расход
+    # Недвижимость: аренда как доход, налог как расход. Поле basement — ёмкость
+    # подвала в корпусах, определяет цену/доходность улучшения «Майнинг»
+    # (basement * 10 000 за покупку, basement * 100/ч дохода). Подобрано так,
+    # чтобы более дорогой дом позволял поставить больше оборудования и быстрее
+    # окупать улучшение.
     {"slug": "studio", "type": TYPE_REALESTATE, "name": "Студия", "rarity": "common",
-     "price": 5000, "income_per_hour": 12, "upkeep_per_hour": 3, "rooms": 1, "meta": {"tax": 3}},
+     "price": 5000, "income_per_hour": 12, "upkeep_per_hour": 3, "rooms": 1, "basement": 2, "meta": {"tax": 3}},
     {"slug": "flat2", "type": TYPE_REALESTATE, "name": "Двухкомнатная квартира", "rarity": "common",
-     "price": 14000, "income_per_hour": 32, "upkeep_per_hour": 7, "rooms": 2, "meta": {"tax": 7}},
+     "price": 14000, "income_per_hour": 32, "upkeep_per_hour": 7, "rooms": 2, "basement": 3, "meta": {"tax": 7}},
     {"slug": "townhouse", "type": TYPE_REALESTATE, "name": "Таунхаус", "rarity": "uncommon",
-     "price": 45000, "income_per_hour": 95, "upkeep_per_hour": 18, "rooms": 4, "meta": {"tax": 18}},
+     "price": 45000, "income_per_hour": 95, "upkeep_per_hour": 18, "rooms": 4, "basement": 6, "meta": {"tax": 18}},
     {"slug": "villa", "type": TYPE_REALESTATE, "name": "Вилла у моря", "rarity": "rare",
-     "price": 160000, "income_per_hour": 320, "upkeep_per_hour": 55, "rooms": 6, "meta": {"tax": 55}},
+     "price": 160000, "income_per_hour": 320, "upkeep_per_hour": 55, "rooms": 6, "basement": 10, "meta": {"tax": 55}},
     {"slug": "penthouse", "type": TYPE_REALESTATE, "name": "Пентхаус", "rarity": "epic",
-     "price": 480000, "income_per_hour": 950, "upkeep_per_hour": 140, "rooms": 8, "meta": {"tax": 140}},
+     "price": 480000, "income_per_hour": 950, "upkeep_per_hour": 140, "rooms": 8, "basement": 16, "meta": {"tax": 140}},
     {"slug": "castle", "type": TYPE_REALESTATE, "name": "Замок", "rarity": "legendary",
-     "price": 1500000, "income_per_hour": 3000, "upkeep_per_hour": 400, "rooms": 20, "meta": {"tax": 400}},
+     "price": 1500000, "income_per_hour": 3000, "upkeep_per_hour": 400, "rooms": 20, "basement": 24, "meta": {"tax": 400}},
     # Бизнесы: доход и расходы, есть сотрудники. rarity — экономический класс
     # бизнеса (отдельно от category, которая отвечает только за тематику/иконку).
     {"slug": "shawarma", "type": TYPE_BUSINESS, "name": "Шаурмечная", "category": "retail", "rarity": "common",
@@ -373,6 +377,39 @@ def _materials_boost(asset: dict) -> float:
     return float(m.get("boostPct", 0.0))
 
 
+# ── Майнинг-улучшение для домов ──────────────────────────────────────────────
+# Подвал дома (поле basement, ёмкость в корпусах) используется как множитель
+# майнинговой фермы. Улучшение «Майнинг» покупается 1 раз: цена = N * 10000,
+# где N — ёмкость подвала. После активации дом начинает приносить пассивный
+# доход от майнинга (N * 100 $/час). Доход включается в общую формулу
+# _income_per_hour, чтобы он собирался тем же /collect и попадал в
+# /collect-all без отдельной механики. Поле mining хранится на документе актива
+# (bool) — повторная покупка запрещена.
+MINING_INCOME_PER_BASEMENT = 100.0  # $ в час за каждую единицу ёмкости подвала
+
+
+def _mining_income_per_hour(asset: dict) -> float:
+    """Доход от майнинг-улучшения в час. 0, если улучшение не куплено или
+    актив — не недвижимость / без подвала."""
+    if not asset.get("mining"):
+        return 0.0
+    if asset.get("type") != TYPE_REALESTATE:
+        return 0.0
+    basement = int(asset.get("basement") or 0)
+    if basement <= 0:
+        return 0.0
+    return round(basement * MINING_INCOME_PER_BASEMENT, 2)
+
+
+def _mining_cost(asset: dict) -> float:
+    """Цена покупки улучшения «Майнинг» = basement * 10 000. Подвал 0 → нет
+    смысла (нельзя поставить оборудование), покупка запрещена на бэкенде."""
+    basement = int(asset.get("basement") or 0)
+    if basement <= 0:
+        return 0.0
+    return float(basement * 10000)
+
+
 def _income_per_hour(asset: dict) -> float:
     # Авто не приносят почасового пассивного дохода — только аренда (см. _is_rentable).
     # Их «уровень» не качается через upgrade, прогресс идёт через тюнинг/престиж.
@@ -383,6 +420,10 @@ def _income_per_hour(asset: dict) -> float:
     value = base * (1 + 0.25 * (level - 1))
     if asset.get("type") == TYPE_BUSINESS:
         value *= (1 + _materials_boost(asset))
+    # Майнинг-улучшение дома: пассивный доход от оборудования в подвале,
+    # складывается с базовым почасовым доходом (у большинства домов он уже 0,
+    # а у арендных моделей база ненулевая — суммирование уместно).
+    value += _mining_income_per_hour(asset)
     return round(value, 2)
 
 
@@ -613,6 +654,23 @@ def _studio_view(asset: dict) -> Optional[dict]:
     return studio_progress(tier, asset.get("studioXp", 0), asset.get("itstudioMaterials", {}))
 
 
+def _mining_view(asset: dict) -> Optional[dict]:
+    """Информация об улучшении «Майнинг» для UI. Доступно только для
+    недвижимости; для остальных типов None. Включается в _serialize чтобы
+    клиент мог показать кнопку покупки/статус без отдельного эндпоинта."""
+    if asset.get("type") != TYPE_REALESTATE:
+        return None
+    basement = int(asset.get("basement") or 0)
+    cost = round(basement * 10000, 2)
+    return {
+        "available": basement > 0,
+        "purchased": bool(asset.get("mining")),
+        "basement": basement,
+        "cost": cost,
+        "incomePerHour": _mining_income_per_hour(asset),
+    }
+
+
 def _serialize(asset: dict) -> dict:
     return {
         "id": str(asset["_id"]),
@@ -622,6 +680,7 @@ def _serialize(asset: dict) -> dict:
         "category": asset.get("category"),
         "rarity": asset.get("rarity"),
         "rooms": asset.get("rooms"),
+        "basement": asset.get("basement"),
         "employees": asset.get("employees", 0),
         "level": asset.get("level", 1),
         "price": asset.get("price", 0),
@@ -639,6 +698,7 @@ def _serialize(asset: dict) -> dict:
         "tuneMaxLevel": TUNE_MAX_LEVEL,
         "materialsBoostPct": _materials_boost(asset),
         "studio": _studio_view(asset),
+        "mining": _mining_view(asset),
         "purchasedAt": asset.get("purchased_at").isoformat() if isinstance(asset.get("purchased_at"), datetime) else None,
     }
 
@@ -720,11 +780,13 @@ async def buy_asset(
         "category": catalog.get("category"),
         "rarity": catalog.get("rarity"),
         "rooms": catalog.get("rooms"),
+        "basement": catalog.get("basement"),   # ёмкость подвала (недвижимость) — для улучшения «Майнинг»
         "employees": catalog.get("employees", 0),
         "price": float(catalog["price"]),   # базовая цена — для расчёта стоимости/улучшений
         "income_per_hour": catalog.get("income_per_hour", 0),
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
         "level": 1,
+        "mining": False,         # улучшение «Майнинг» ещё не куплено
         "meta": catalog.get("meta", {}),
         "companyId": None,      # None = личный актив; иначе принадлежит компании
         "rental": None,         # активное объявление/аренда (см. rental)
@@ -978,6 +1040,54 @@ async def tune_asset(
         meta={"assetId": asset_id, "part": part, "level": level + 1},
     )
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    return {"asset": _serialize(updated), "balance": new_balance, "cost": cost}
+
+
+@router.post("/{asset_id}/mining/buy")
+async def buy_mining_upgrade(
+    asset_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Купить улучшение «Майнинг» для дома. Доступно только для недвижимости
+    с подвалом (basement > 0). Покупается ровно 1 раз — повторные вызовы
+    запрещены. Цена всегда пересчитывается сервером от basement (формула
+    N * 10 000) — клиентское значение не используется, чтобы цену нельзя
+    было подменить. После покупки дом начинает приносить пассивный доход
+    (basement * $100/ч), который собирается тем же /collect, что и обычный
+    доход недвижимости."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("type") != TYPE_REALESTATE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Улучшение «Майнинг» доступно только для домов")
+    if asset.get("mining"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Улучшение «Майнинг» уже куплено")
+    basement = int(asset.get("basement") or 0)
+    if basement <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "У этого дома нет подвала — майнинг недоступен")
+    cost = _mining_cost(asset)
+    new_balance = await adjust_balance(db, user_id, -cost)
+    if new_balance is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+    # Активируем улучшение и сбрасываем КД, чтобы доход начал копиться сразу.
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"mining": True, "last_collected": _now()}},
+    )
+    await record_transaction(
+        db, user_id, EXPENSE, cost, CAT_REALESTATE,
+        f"Майнинг-улучшение: {asset.get('name')}", balance_after=new_balance,
+        meta={"assetId": asset_id, "basement": basement},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(user_id, {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
     return {"asset": _serialize(updated), "balance": new_balance, "cost": cost}
 
 

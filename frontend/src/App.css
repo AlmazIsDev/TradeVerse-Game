@@ -1865,9 +1865,6 @@ body {
     right: -8px;
   }
 
-  .world-event-icon {
-    font-size: 22px;
-  }
 }
 
 /* ===================== LOADING / ERROR / EMPTY STATES ===================== */
@@ -3709,6 +3706,176 @@ body {
 
 .buy-modal-confirm:active {
   transform: translateY(0);
+}
+
+/* ── Модалка подтверждения покупки на вкладке «Рынок» ─────────────────── */
+.market-buy-modal {
+  max-width: 420px;
+  width: min(420px, 94vw);
+  padding: 22px 22px 18px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.market-buy-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--fill-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.06));
+}
+.market-buy-modal-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 26px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+.market-buy-modal-emoji { line-height: 1; }
+.market-buy-modal-item-text { min-width: 0; flex: 1; }
+.market-buy-modal-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--color-text-tertiary, #94a3b8);
+  margin-bottom: 2px;
+}
+.market-buy-modal-name {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+.market-buy-modal-subtitle {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+.market-buy-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--fill-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.06));
+}
+.market-buy-modal-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.market-buy-modal-row-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+.market-buy-modal-row-price .market-buy-modal-row-value {
+  color: var(--color-accent);
+}
+.market-buy-modal-buy {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
+.market-buy-modal-buy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.market-buy-modal-buy:active:not(:disabled) {
+  transform: translateY(0);
+}
+.market-buy-modal-buy:disabled {
+  background: var(--fill-soft);
+  color: var(--color-text-tertiary, #94a3b8);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Степпер количества внутри модалки покупки (ShopBuyModal). */
+.market-buy-modal-qty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--fill-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.06));
+}
+.market-buy-modal-qty-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.market-buy-modal-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.market-buy-modal-stepper-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.market-buy-modal-stepper-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.1);
+}
+.market-buy-modal-stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.market-buy-modal-stepper-input {
+  width: 64px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+  -moz-appearance: textfield;
+}
+.market-buy-modal-stepper-input::-webkit-outer-spin-button,
+.market-buy-modal-stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.market-buy-modal-stepper-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
 }
 
 .gpu-card-multiplier {

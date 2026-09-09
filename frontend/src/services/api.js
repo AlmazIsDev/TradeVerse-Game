@@ -495,22 +495,6 @@ export async function updateEconomyConfig(data) {
   return request('/api/admin/economy/config', { method: 'POST', body: JSON.stringify(data) })
 }
 
-export async function fetchEconomyEvents() {
-  return request('/api/admin/economy/events')
-}
-
-export async function startEconomyEvent(type) {
-  return request('/api/admin/economy/events/start', { method: 'POST', body: JSON.stringify({ type }) })
-}
-
-export async function stopEconomyEvent(eventId) {
-  return request(`/api/admin/economy/events/${encodeURIComponent(eventId)}/stop`, { method: 'POST' })
-}
-
-export async function fetchActiveWorldEvents() {
-  return request('/api/events/active')
-}
-
 // ── Crypto API ────────────────────────────────────────────────────────────────
 
 export async function openCryptoAccount() {
@@ -612,6 +596,14 @@ export async function fetchAssetMarket(opts = {}) {
 
 export async function buyAsset(slug) {
   return request('/api/assets/buy', { method: 'POST', body: JSON.stringify({ slug }) })
+}
+
+// Альтернативный эндпоинт покупки (/api/market/buy). Используется, если
+// основной /api/assets/buy возвращает 404 (например, прокси/nginx на сервере
+// режет POST). Поведение сервера идентично: тот же обработчик, другая
+// приставка. Если тоже не сработает — 404 пробрасывается наверх.
+export async function buyAssetViaMarket(slug) {
+  return request('/api/market/buy', { method: 'POST', body: JSON.stringify({ slug }) })
 }
 
 export async function fetchMyAssets(type) {

@@ -53,6 +53,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [data, setData] = useState(null)
   const [roles, setRoles] = useState([])
   const [permOptions, setPermOptions] = useState([])
+  const [roleBonuses, setRoleBonuses] = useState({})
+  const [maxStaffFactor, setMaxStaffFactor] = useState(1.6)
   const [foundingFee, setFoundingFee] = useState(10000)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -83,6 +85,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       setData(res.company)
       setRoles(res.roles || [])
       setPermOptions(res.permissions || [])
+      setRoleBonuses(res.roleBonuses || {})
+      if (res.maxStaffFactor != null) setMaxStaffFactor(res.maxStaffFactor)
       if (res.foundingFee != null) setFoundingFee(res.foundingFee)
     } catch {
       setData(null)
@@ -418,6 +422,42 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
 
       <p className="company-note">{t('company.incomeNote')}</p>
 
+      {/* Сводка вклада сотрудников — показывает, насколько штат усиливает доход. */}
+      {data.staffBonusPct != null && (
+        <div className="company-staff-card">
+          <div className="csc-head">
+            <span className="csc-title"><Users size={15} /> {t('company.staffBonusTitle')}</span>
+            <span className="csc-pct">+{formatMoney(data.staffBonusPct || 0)}%</span>
+          </div>
+          <div className="csc-bar" title={t('company.staffFactor', { factor: (data.staffFactor || 1).toFixed(2) })}>
+            <div
+              className="csc-bar-fill"
+              style={{ width: `${Math.min(100, ((data.staffFactor || 1) - 1) * 100 / Math.max(0.01, (maxStaffFactor - 1) * 100) * 100)}%` }}
+            />
+          </div>
+          <div className="csc-meta">
+            <span>{t('company.baseRevenue')}: ${formatMoney(data.baseRevenuePerHour || 0)}{t('units.perHour')}</span>
+            <span>{t('company.totalRevenue')}: ${formatMoney(data.revenuePerHour || 0)}{t('units.perHour')}</span>
+          </div>
+          {Array.isArray(data.perMemberBonus) && data.perMemberBonus.length > 0 && (
+            <div className="csc-list">
+              {data.perMemberBonus.map(m => (
+                <span key={m.userId} className="csc-pill" title={t('company.staffBonusOne', { pct: (m.bonus * 100).toFixed(1) })}>
+                  <span className="csc-pill-name">{m.username}</span>
+                  <span className="csc-pill-role">{t(`company.roles.${m.role}`, m.role)}</span>
+                  <span className="csc-pill-bonus">+{(m.bonus * 100).toFixed(1)}%</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {data.viewerRole && roleBonuses[data.viewerRole] != null && (
+            <div className="csc-self">
+              {t('company.yourContribution', { pct: (roleBonuses[data.viewerRole] * 100).toFixed(1) })}
+            </div>
+          )}
+        </div>
+      )}
+
       {data.isOwner && (
         <div className="company-actions">
           <button className="asset-act collect" disabled={busy || data.accrued <= 0}
@@ -545,7 +585,10 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
             <input placeholder={t('company.invitePlayer')} value={invite.username}
               onChange={e => setInvite({ ...invite, username: e.target.value })} />
             <select value={invite.role} onChange={e => setInvite({ ...invite, role: e.target.value })}>
-              {roles.map(r => <option key={r} value={r}>{t(`company.roles.${r}`, r)}</option>)}
+              {roles.map(r => {
+                const pct = roleBonuses[r] != null ? (roleBonuses[r] * 100).toFixed(0) : '?'
+                return <option key={r} value={r}>{t(`company.roles.${r}`, r)} (+{pct}%)</option>
+              })}
             </select>
             <input type="number" min="1" placeholder={t('company.salary')} value={invite.salary}
               onChange={e => setInvite({ ...invite, salary: e.target.value })} />

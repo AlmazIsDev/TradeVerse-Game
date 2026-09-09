@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { acceptInvite, declineInvite, acceptApplication, declineApplication } from '../services/api'
-import { Building2, UserPlus, Check, X, Globe } from 'lucide-react'
+import { Building2, UserPlus, Check, X } from 'lucide-react'
 
 const ACTIONABLE = new Set(['company_invite', 'company_application'])
-const EVENT_POPUP_TTL_MS = 7000
 
 /**
  * Глобальный центр realtime-уведомлений.
@@ -21,7 +20,6 @@ function NotificationCenter() {
   const { t } = useTranslation()
   const [popups, setPopups] = useState([])   // [{ id, type, title, body, data }]
   const [busyId, setBusyId] = useState(null)
-  const timersRef = useRef([])   // активные таймеры автоскрытия — чистим при unmount
 
   const dismiss = useCallback((id) => {
     setPopups(prev => prev.filter(p => p.id !== id))
@@ -31,29 +29,6 @@ function NotificationCenter() {
     const onRealtime = (ev) => {
       const data = ev.detail
       if (!data) return
-      // Мировое экономическое событие (backend/market_events.py) — шлётся всем
-      // игрокам broadcast'ом, раньше нигде не показывалось на фронте.
-      if (data.type === 'event' || data.type === 'event_ended') {
-        const started = data.type === 'event'
-        // Дедуп по типу+имени: повторный broadcast того же события не плодит попапы.
-        const key = `${data.type}-${data.name}`
-        const popup = {
-          id: `${key}-${Date.now()}`,
-          kind: 'event',
-          icon: data.icon,
-          title: started
-            ? t('notifications.worldEventStarted', { name: data.name })
-            : t('notifications.worldEventEnded', { name: data.name }),
-        }
-        setPopups(prev => (
-          prev.some(p => p.kind === 'event' && p.title === popup.title)
-            ? prev
-            : [popup, ...prev].slice(0, 4)
-        ))
-        const timer = setTimeout(() => dismiss(popup.id), EVENT_POPUP_TTL_MS)
-        timersRef.current.push(timer)
-        return
-      }
       if (data.type !== 'notification' || !data.notification) return
       const n = data.notification
       // Мгновенно обновляем ленту в шапке (без debounce 1.2с).
@@ -64,8 +39,6 @@ function NotificationCenter() {
     window.addEventListener('tv:realtime', onRealtime)
     return () => {
       window.removeEventListener('tv:realtime', onRealtime)
-      timersRef.current.forEach(clearTimeout)
-      timersRef.current = []
     }
   }, [t, dismiss])
 
@@ -94,16 +67,15 @@ function NotificationCenter() {
   return (
     <div className="tv-popup-stack">
       {popups.map(p => {
-        const isEvent = p.kind === 'event'
         const isInvite = p.type === 'company_invite'
         const busy = busyId === p.id
         return (
-          <div key={p.id} className={`tv-popup-card ${isEvent ? 'tv-popup-event' : ''}`}>
+          <div key={p.id} className="tv-popup-card">
             <button className="tv-popup-close" onClick={() => dismiss(p.id)} disabled={busy} title={t('common.close')}>
               <X size={16} />
             </button>
             <div className="tv-popup-icon">
-              {isEvent ? (p.icon || <Globe size={22} />) : isInvite ? <UserPlus size={22} /> : <Building2 size={22} />}
+              {isInvite ? <UserPlus size={22} /> : <Building2 size={22} />}
             </div>
             <div className="tv-popup-body">
               <span className="tv-popup-title">{p.title}</span>
@@ -114,16 +86,14 @@ function NotificationCenter() {
                   {p.data.salary != null && <span>${Number(p.data.salary).toLocaleString('ru-RU')}{t('units.perHour')}</span>}
                 </div>
               )}
-              {!isEvent && (
-                <div className="tv-popup-actions">
-                  <button className="tv-popup-btn accept" disabled={busy} onClick={() => act(p, true)}>
-                    <Check size={14} /> {t('company.accept')}
-                  </button>
-                  <button className="tv-popup-btn decline" disabled={busy} onClick={() => act(p, false)}>
-                    <X size={14} /> {t('company.decline')}
-                  </button>
-                </div>
-              )}
+              <div className="tv-popup-actions">
+                <button className="tv-popup-btn accept" disabled={busy} onClick={() => act(p, true)}>
+                  <Check size={14} /> {t('company.accept')}
+                </button>
+                <button className="tv-popup-btn decline" disabled={busy} onClick={() => act(p, false)}>
+                  <X size={14} /> {t('company.decline')}
+                </button>
+              </div>
             </div>
           </div>
         )

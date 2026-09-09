@@ -2,12 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchEconomyAnalytics, fetchEconomyConfig, updateEconomyConfig,
-  fetchEconomyEvents, startEconomyEvent, stopEconomyEvent,
 } from '../services/api'
 import { formatCompact } from './TransactionsPanel'
 import {
   DollarSign, Users, Home, Briefcase, Car, Building2, Coins, LineChart,
-  Activity, Save, Check, AlertTriangle, Wallet, Zap, Square,
+  Activity, Save, Check, AlertTriangle, Wallet,
 } from 'lucide-react'
 
 const CONFIG_FIELDS = [
@@ -24,7 +23,6 @@ function EconomyAdmin() {
   const { t } = useTranslation()
   const [analytics, setAnalytics] = useState(null)
   const [config, setConfig] = useState(null)
-  const [events, setEvents] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -32,12 +30,11 @@ function EconomyAdmin() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [a, c, e] = await Promise.all([
-        fetchEconomyAnalytics(), fetchEconomyConfig(), fetchEconomyEvents().catch(() => null),
+      const [a, c] = await Promise.all([
+        fetchEconomyAnalytics(), fetchEconomyConfig(),
       ])
       setAnalytics(a)
       setConfig(c)
-      setEvents(e)
     } catch (err) {
       setMsg({ type: 'error', text: err.message })
     } finally {
@@ -45,27 +42,15 @@ function EconomyAdmin() {
     }
   }, [])
 
-  const runEvent = async (fn) => {
-    try {
-      await fn()
-      setEvents(await fetchEconomyEvents())
-    } catch (err) {
-      setMsg({ type: 'error', text: err.message })
-    }
-  }
-
   useEffect(() => { load() }, [load])
 
   // Живые обновления: аналитика приходит периодическим пушем только админам
-  // (см. push_to_admins в scheduler.py), события — тем же broadcast, что и
-  // NotificationCenter, но здесь мы ещё и обновляем список активных/историю.
+  // (см. push_to_admins в scheduler.py).
   useEffect(() => {
     const onRealtime = (ev) => {
       const d = ev.detail
       if (d?.type === 'economy_stats' && d.stats) {
         setAnalytics(d.stats)
-      } else if (d?.type === 'event' || d?.type === 'event_ended') {
-        fetchEconomyEvents().then(setEvents).catch(() => {})
       }
     }
     window.addEventListener('tv:realtime', onRealtime)
@@ -143,43 +128,6 @@ function EconomyAdmin() {
       <button className="admin-btn admin-btn-primary" onClick={save} disabled={saving}>
         <Save size={15} /> {saving ? t('bank.processing') : t('econ.save')}
       </button>
-
-      {events && (
-        <>
-          <h3 className="econ-title"><Zap size={16} /> {t('econ.events')}</h3>
-          {events.active.length > 0 && (
-            <div className="econ-events-active">
-              {events.active.map(ev => (
-                <div key={ev.id} className="econ-event active">
-                  <span className="econ-event-icon">{ev.icon}</span>
-                  <div className="econ-event-info"><b>{ev.name}</b>{ev.desc && <small>{ev.desc}</small>}<span>{t('econ.eventActive')}</span></div>
-                  <button className="asset-act sell" onClick={() => runEvent(() => stopEconomyEvent(ev.id))}>
-                    <Square size={13} /> {t('econ.stop')}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="econ-event-types">
-            {events.types.map(ty => (
-              <button key={ty.type} className="econ-event-type" title={ty.desc || ''} onClick={() => runEvent(() => startEconomyEvent(ty.type))}>
-                <span>{ty.icon}</span> {ty.name}
-              </button>
-            ))}
-          </div>
-          {events.history.length > 0 && (
-            <div className="econ-event-history">
-              <span className="econ-hist-title">{t('econ.eventHistory')}</span>
-              {events.history.map(ev => (
-                <div key={ev.id} className="econ-hist-row">
-                  <span>{ev.icon} {ev.name}</span>
-                  <span className="econ-hist-src">{ev.source}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
     </div>
   )
 }

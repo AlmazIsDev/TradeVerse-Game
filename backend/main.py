@@ -33,15 +33,14 @@ from auth import (
 from economy import router as economy_router
 from crypto import router as crypto_router
 from stocks import router as stocks_router
-from assets import router as assets_router
+from assets import router as assets_router, market_buy_router
 from company import router as company_router
 from user_profile import router as user_profile_router
 from cityroof import router as cityroof_router
 from notifications import router as notifications_router
 from market_data import router as market_router
 from econ import router as econ_router
-from market_events import router as events_router
-from shop import router as shop_router
+from shop import router as shop_router, admin_router as shop_admin_router
 from mining import router as mining_router
 from media import router as media_router
 from ws import router as ws_router
@@ -113,7 +112,6 @@ async def lifespan(app: FastAPI):
     await db.price_history.create_index([("market", 1), ("symbol", 1), ("ts", 1)])
     await db.user_favorites.create_index([("userId", 1), ("market", 1), ("symbol", 1)])
     await db.market_meta.create_index("market", unique=True)
-    await db.market_events.create_index("active")
     await db.user_hardware.create_index("userId")
     await db.user_hardware.create_index("farmId")
     await db.mining_farms.create_index("userId")
@@ -152,14 +150,17 @@ app.include_router(economy_router)
 app.include_router(crypto_router)
 app.include_router(stocks_router)
 app.include_router(assets_router)
+# Альтернативный путь покупки (/api/market/buy) — см. assets.market_buy_router.
+app.include_router(market_buy_router)
 app.include_router(company_router)
 app.include_router(user_profile_router)
 app.include_router(cityroof_router)
 app.include_router(notifications_router)
 app.include_router(market_router)
 app.include_router(econ_router)
-app.include_router(events_router)
 app.include_router(shop_router)
+# Админские цены магазина (редактор цен / PriceEditorTab).
+app.include_router(shop_admin_router)
 app.include_router(mining_router)
 app.include_router(media_router)
 app.include_router(ws_router)

@@ -18,6 +18,9 @@ import {
   SUPPLIES_PRODUCTS,
   REAL_ESTATE_PRODUCTS, BUSINESS_PRODUCTS,
 } from './shopCatalog'
+// Каталог машин/фур/прицепов для редактора цен (PriceEditorTab).
+// Импортируем именно CARS_CATALOG, потому что он уже плоский список.
+import { CARS_CATALOG } from './carsCatalog'
 
 // ── GPU: 90 моделей, 3 бренда × 4 линейки × 6 тиров ──────────────────────────
 function _gpuHashrate(name) {
@@ -227,6 +230,152 @@ function _houseResidents(rooms) {
   })
 })()
 
+// ── WAREHOUSES: склады (раздел «Склады» на вкладке «Рынок») ─────────────────
+// Площадь от 50 м² до 100 000 м². Цена растёт по логарифмической кривой,
+// чтобы небольшие склады оставались доступными, а большие — ощутимо дороже.
+//
+// Параметры кривой (подобраны под 50..100000 м²):
+//   price(area) = round( 1200 * area * (1 + 0.5 * log10(area / 50)) )
+//   50 м²     →  ~60 000
+//   100 м²    →  ~150 000
+//   1 000 м²  →  ~2.1 млн
+//   10 000 м² →  ~30 млн
+//   100 000 м² → ~330 млн
+//
+// Количество шагов: 16 позиций (логарифмическая шкала), кратные 1/2/5 для
+// читаемой лестницы. Каждая позиция получает rarity по размеру:
+//   common    < 500 м²
+//   uncommon  500..2 000
+//   rare      2 000..10 000
+//   epic      10 000..50 000
+//   legendary ≥ 50 000
+function _warehousePrice(area) {
+  return Math.round(1200 * area * (1 + 0.5 * Math.log10(area / 50)))
+}
+function _warehouseRarity(area) {
+  if (area < 500) return 'common'
+  if (area < 2000) return 'uncommon'
+  if (area < 10000) return 'rare'
+  if (area < 50000) return 'epic'
+  return 'legendary'
+}
+const WAREHOUSE_AREAS = [50, 80, 120, 200, 300, 500, 800, 1200, 2000, 3500,
+  6000, 10000, 18000, 35000, 60000, 100000]
+export const ADMIN_WAREHOUSES_CATALOG = WAREHOUSE_AREAS.map((area, i) => {
+  const rarity = _warehouseRarity(area)
+  // Цвет подбираем по сегменту: тёплые тона — для больших, холодные — для малых.
+  const colorByRarity = {
+    common: '#9ca3af', uncommon: '#22c55e', rare: '#3b82f6',
+    epic: '#a855f7', legendary: '#f59e0b',
+  }
+  return {
+    id: `admin-wh-${i + 1}`,
+    slug: `admin-wh-${i + 1}`,
+    type: 'warehouse',
+    category: 'warehouse',
+    name: `Склад ${area.toLocaleString('ru-RU')} м²`,
+    rarity,
+    fromAdmin: true,
+    color: colorByRarity[rarity],
+    emoji: '🏬',
+    specs: {
+      areaSqm: area,          // площадь, м²
+      storageCap: area * 20,  // запас условных «слотов» (юнитов товара)
+      slots: 1,               // один склад = один объект во владении
+    },
+    employees: Math.max(2, Math.round(area / 200)),
+    price: _warehousePrice(area),
+  }
+})
+
+// ── FACTORIES: заводы (раздел «Заводы» на вкладке «Рынок») ───────────────────
+// Пока один тип: завод видеокарт. Превращает ресурсы в GPU.
+// В будущем сюда добавляются новые типы заводов.
+export const ADMIN_FACTORIES_CATALOG = [
+  {
+    id: 'admin-fac-gpu-1',
+    slug: 'admin-fac-gpu-1',
+    type: 'factory',
+    category: 'gpu',
+    name: 'Завод видеокарт',
+    rarity: 'rare',
+    fromAdmin: true,
+    color: '#3b82f6',
+    emoji: '🏭',
+    specs: {
+      produces: 'gpu',          // что производит
+      outputPerHour: 4,         // базовая мощность (админ меняет)
+      input: ['chips', 'metal'], // что потребляет (опционально, для будущей логики)
+      employees: 24,
+    },
+    employees: 24,
+    price: 250000,
+  },
+]
+
+// ── SOURCES: источники ресурсов (раздел «Источники» на вкладке «Рынок») ───────
+// Три типа: шахта (руда/металл), поле (еда/растения), лесопилка (дерево).
+// Это «добывающие» активы — дают ресурсы, нужны заводам.
+export const ADMIN_SOURCES_CATALOG = [
+  {
+    id: 'admin-src-mine-1',
+    slug: 'admin-src-mine-1',
+    type: 'source',
+    category: 'mine',
+    name: 'Шахта',
+    rarity: 'common',
+    fromAdmin: true,
+    color: '#64748b',
+    emoji: '⛏️',
+    specs: {
+      resource: 'metal',        // что добывает
+      outputPerHour: 6,         // базовая добыча в час
+      capacity: 500,            // запас склада
+      employees: 8,
+    },
+    employees: 8,
+    price: 35000,
+  },
+  {
+    id: 'admin-src-field-1',
+    slug: 'admin-src-field-1',
+    type: 'source',
+    category: 'field',
+    name: 'Поле',
+    rarity: 'common',
+    fromAdmin: true,
+    color: '#22c55e',
+    emoji: '🌾',
+    specs: {
+      resource: 'food',
+      outputPerHour: 8,
+      capacity: 600,
+      employees: 6,
+    },
+    employees: 6,
+    price: 22000,
+  },
+  {
+    id: 'admin-src-sawmill-1',
+    slug: 'admin-src-sawmill-1',
+    type: 'source',
+    category: 'sawmill',
+    name: 'Лесопилка',
+    rarity: 'uncommon',
+    fromAdmin: true,
+    color: '#a16207',
+    emoji: '🪵',
+    specs: {
+      resource: 'wood',
+      outputPerHour: 5,
+      capacity: 450,
+      employees: 10,
+    },
+    employees: 10,
+    price: 48000,
+  },
+]
+
 // ── BUSINESS: бизнесы из админ-справочника (PriceEditorTab) ───────────────────
 // 12 моделей, сгруппированы по category (retail/tech/service/office).
 // Эти позиции тоже витрина: покупка/продажа отключены до того, как бэкенд будет
@@ -312,11 +461,15 @@ export const ADMIN_SHOP_CATALOG = [
   ...ADMIN_SUPPLIES_CATALOG,
 ]
 
-// Сводный каталог для вкладки «Рынок» (недвижимость + бизнесы). Транспорт
-// сюда намеренно НЕ входит — см. задачу: «удалить оттуда транспорт».
+// Сводный каталог для вкладки «Рынок» (недвижимость + бизнесы + заводы +
+// источники + склады). Транспорт сюда намеренно НЕ входит — см. задачу:
+// «удалить оттуда транспорт».
 export const ADMIN_MARKET_CATALOG = [
   ...ADMIN_REAL_ESTATE_CATALOG,
   ...ADMIN_BUSINESS_CATALOG,
+  ...ADMIN_FACTORIES_CATALOG,
+  ...ADMIN_SOURCES_CATALOG,
+  ...ADMIN_WAREHOUSES_CATALOG,
 ]
 
 // ── Дефолтные цены для редактора цен (PriceEditorTab) ────────────────────────
@@ -373,6 +526,14 @@ export const ADMIN_DEFAULT_PRICES = (() => {
     const m = item.id.match(/^admin-biz-(\d+)$/)
     if (m) out[parseInt(m[1], 10)] = item.price
   }
+  // Заводы: ключи = slug-строки вида `admin-fac-gpu-1`. Значение — price.
+  for (const item of ADMIN_FACTORIES_CATALOG) out[item.slug] = item.price
+  // Источники: ключи = slug-строки вида `admin-src-mine-1`.
+  for (const item of ADMIN_SOURCES_CATALOG) out[item.slug] = item.price
+  // Склады: ключи = slug-строки вида `admin-wh-1`.
+  for (const item of ADMIN_WAREHOUSES_CATALOG) out[item.slug] = item.price
+  // Машины/фуры/прицепы: ключи = slug-строки из CARS_CATALOG.
+  for (const item of CARS_CATALOG) out[item.slug] = item.price
   return out
 })()
 

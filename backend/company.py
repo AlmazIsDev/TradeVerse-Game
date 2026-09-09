@@ -38,6 +38,21 @@ ROLES = ["intern", "worker", "manager", "engineer", "director"]
 # ponytail: без enforcement, добавить проверки в эндпоинты когда понадобится
 PERMISSIONS = ["manage_finance", "manage_employees", "manage_assets"]
 
+# Бонус роли к доходу компании. Чем выше должность — тем сильнее сотрудник
+# прокачивает бизнесы. Суммируется по штату и применяется в
+# assets.company_income_per_hour как staff_factor (1 + сумма бонусов).
+# Сверху ограничено MAX_STAFF_FACTOR, чтобы набор intern-ов не давал x100.
+ROLE_BONUSES = {
+    "intern": 0.02,
+    "worker": 0.04,
+    "manager": 0.07,
+    "engineer": 0.10,
+    "director": 0.15,
+}
+DEFAULT_ROLE_BONUS = 0.02
+MAX_STAFF_FACTOR = 1.60  # потолок: +60% к доходу от штата
+
+
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -292,6 +307,59 @@ def _hours_since(company: dict) -> float:
     return min((_now() - last).total_seconds() / 3600.0, MAX_ACCRUAL_HOURS)
 
 
+def _staff_factor(db, company_id: str, members: list) -> "tuple[float, list]":
+    """Совокупный бонус штата к доходу компании.
+
+    Возвращает (factor, per_member). factor = 1 + сумма бонусов ролей,
+    ограниченная MAX_STAFF_FACTOR сверху. per_member — список словарей
+    {userId, username, role, bonus} для UI.
+    """
+    total = 0.0
+    per_member = []
+    user_ids = [m["userId"] for m in members if ObjectId.is_valid(m.get("userId", ""))]
+    users = {}
+    if user_ids:
+        cursor = db.users.find(
+            {"_id": {"$in": [ObjectId(u) for u in user_ids]}},
+            {"username": 1},
+        )
+        async for u in cursor:
+            users[str(u["_id"])] = u.get("username")
+    for m in members:
+        role = m.get("role", "worker")
+        bonus = ROLE_BONUSES.get(role, DEFAULT_ROLE_BONUS)
+        total += bonus
+        per_member.append({
+            "userId": m.get("userId"),
+            "username": users.get(m.get("userId"), m.get("username", "—")),
+            "role": role,
+            "bonus": round(bonus, 4),
+        })
+    factor = 1.0 + min(total, MAX_STAFF_FACTOR - 1.0)
+    return round(factor, 4), per_member
+
+async def _company_revenue_with_staff(db, company_id: str) -> float:
+    """Доход компании в час с учётом бонуса штата (используется в каталоге)."""
+    try:
+        media_factor = 1.0
+        try:
+            from media import active_owner_income_factor
+            company = await db.companies.find_one(
+                {"_id": ObjectId(company_id)},
+                {"ownerId": 1},
+            )
+            if company:
+                media_factor = await active_owner_income_factor(db, company["ownerId"])
+        except Exception:
+            pass
+        members = await _members(db, company_id)
+        staff_factor, _ = await _staff_factor(db, company_id, members)
+        base = await company_income_per_hour(db, company_id, media_factor)
+        return round(base * staff_factor, 2)
+    except Exception:
+        return 0.0
+
+
 async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
     cid = str(company["_id"])
     members = await _members(db, cid)
@@ -302,7 +370,9 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         media_factor = await active_owner_income_factor(db, company["ownerId"])
     except Exception:
         media_factor = 1.0
-    revenue = await company_income_per_hour(db, cid, media_factor)   # реальный доход от активов
+    staff_factor, per_member_bonus = await _staff_factor(db, cid, members)
+    base_revenue = await company_income_per_hour(db, cid, media_factor)
+    revenue = round(base_revenue * staff_factor, 2)   # применяем бонус ролей
     owner_salary = round(company.get("owner_salary", 0.0), 2)
     payroll = round(sum(m.get("salary", 0) for m in members) + owner_salary, 2)
     hours = _hours_since(company)
@@ -380,6 +450,10 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         "budget": round(company.get("budget", 0.0), 2),
         "createdAt": company.get("created_at").isoformat() if isinstance(company.get("created_at"), datetime) else None,
         "revenuePerHour": revenue,
+        "baseRevenuePerHour": base_revenue,
+        "staffFactor": staff_factor,
+        "staffBonusPct": round((staff_factor - 1.0) * 100, 2),
+        "perMemberBonus": per_member_bonus,
         "payrollPerHour": payroll,
         "ownerSalary": owner_salary,
         "reputationFactor": media_factor,
@@ -432,8 +506,12 @@ async def get_my_company(
     user_id = str(current_user["_id"])
     company = await _my_company_or_membership(db, user_id)
     if not company:
-        return {"company": None, "foundingFee": FOUNDING_FEE, "roles": ROLES, "permissions": PERMISSIONS}
-    return {"company": await _serialize(db, company, user_id), "roles": ROLES, "permissions": PERMISSIONS}
+        return {"company": None, "foundingFee": FOUNDING_FEE, "roles": ROLES,
+            "permissions": PERMISSIONS, "roleBonuses": ROLE_BONUSES,
+            "maxStaffFactor": MAX_STAFF_FACTOR}
+    return {"company": await _serialize(db, company, user_id), "roles": ROLES,
+            "permissions": PERMISSIONS, "roleBonuses": ROLE_BONUSES,
+            "maxStaffFactor": MAX_STAFF_FACTOR}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -838,7 +916,8 @@ async def list_companies(
             "id": cid, "name": c["name"],
             "ownerName": owner.get("username") if owner else "—",
             "memberCount": members, "assetCount": len(assets),
-            "capital": capital, "revenuePerHour": await company_income_per_hour(db, cid),
+            "capital": capital,
+            "revenuePerHour": await _company_revenue_with_staff(db, cid),
             "isMine": c.get("ownerId") == uid, "applied": applied,
             "isOpen": c.get("isOpen", True), "logo": c.get("logo", ""),
         })

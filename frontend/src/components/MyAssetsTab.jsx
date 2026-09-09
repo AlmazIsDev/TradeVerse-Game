@@ -15,6 +15,7 @@ import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
   Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info, Pickaxe,
+  Factory, Mountain, Warehouse,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -25,6 +26,13 @@ const TYPE_TABS = [
   { id: 'realestate', icon: Home },
   { id: 'car', icon: Car },
   { id: 'business', icon: Briefcase },
+  // Инфраструктурные активы (покупаются на вкладке «Рынок»): заводы, источники
+  // ресурсов, склады. Без этих вкладок купленные активы не отображались в
+  // «Моём имуществе», хотя записи создавались в user_assets — выглядело как
+  // «покупка не сработала». Согласовано с backend/assets.py ASSET_TYPES.
+  { id: 'factory', icon: Factory },
+  { id: 'source', icon: Mountain },
+  { id: 'warehouse', icon: Warehouse },
 ]
 
 // «Изображения» объектов (эмодзи-баннеры вместо фото — работает без внешних ассетов)
@@ -34,7 +42,10 @@ const ASSET_EMOJI = {
   itstudio_basic: '💻', itstudio_medium: '💻', itstudio_advanced: '💻', itstudio_premium: '💻',
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
 }
-const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }
+const TYPE_EMOJI = {
+  realestate: '🏠', business: '🏢', car: '🚗',
+  factory: '🏭', source: '⛏️', warehouse: '🏬',
+}
 
 // Пресеты срока аренды (в часах) — кнопки в модалке сдачи в аренду.
 const RENT_DURATIONS = [

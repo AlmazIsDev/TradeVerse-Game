@@ -1,51 +1,46 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// NEXUS · Магазин оборудования и недвижимости.
-// Доступные категории: gpu, cpu, case, supplies (расходники), house (дома).
-// Источники каталога:
-//   • Железо: GET /api/shop/catalog + adminCatalog.js (витрина 90+ GPU/CPU/case).
-//   • Дома:  GET /api/assets/market?type=realestate — 6 типов (studio/flat2/
-//            townhouse/villa/penthouse/castle), реальная цена и доход с бэкенда.
+// NEXUS · Магазин оборудования.
+// Доступные категории: gpu, cpu, case, supplies (расходники).
+// Дома и бизнесы живут на отдельной вкладке «Рынок» (MarketTab).
+// Источник каталога: GET /api/shop/catalog — бэкенд отдаёт и базовые
+// позиции (gpu-cc-0-0, psu-500, …), и полные админские серии
+// (admin-gpu-1..90, admin-cpu-1..90, admin-case-1..90, admin-supply-*).
+// Имена и id согласованы с frontend/src/utils/shopCatalog.js.
 // Карточка компактная: иконка, категория, имя, характеристика, цена и кнопка
 // «Купить». Количество/итоговая цена/баланс — в модалке BuyModal.
-// Бэкенд НЕ вызывается при покупке (демо-режим: кнопка закрывает + toast).
+// Покупка железа → POST /api/shop/buy.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchShopCatalog, fetchAssetMarket } from '../services/api'
-import { formatMoney } from './TransactionsPanel'
-import { hwName } from '../utils/hwName'
-import { ADMIN_SHOP_CATALOG } from '../utils/adminCatalog'
-import BuyModal from './BuyModal'
-import { toast } from './Toast'
-// ── Иконки (lucide-react). Home — отдельная пилюля для недвижимости. ──────
 import {
-  Monitor, Cpu, Box, Package, Clock, Home,
+  fetchShopCatalog,
+  buyHardware,
+} from '../services/api'
+import { formatMoney } from './TransactionsPanel'
+// Модалка покупки в едином стиле с рынком: товар → количество → баланс → цена
+// за шт. → итого → кнопка «Купить». Старая BuyModal.jsx больше не используется
+// (если где-то ещё — не трогаем).
+import { hwName } from '../utils/hwName'
+import ShopBuyModal from './ShopBuyModal'
+import { toast } from './Toast'
+// ── Иконки (lucide-react). ───────────────────────────────────────────────
+import {
+  Monitor, Cpu, Box, Package,
   Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
 } from 'lucide-react'
 
-// Фильтр-пилюли: категории магазина.
-// "supplies" приходит из adminCatalog.js (витрина), "house" — из /api/assets/market.
+// Фильтр-пилюли: категории магазина (дома убраны — они на «Рынке»).
+// "supplies" — расходники с бэкенда (см. /api/shop/catalog).
 const CATEGORIES = [
   { id: '', icon: ShoppingCart },        // Все
   { id: 'gpu', icon: Monitor },
   { id: 'cpu', icon: Cpu },
   { id: 'case', icon: Box },
   { id: 'supplies', icon: Package },
-  { id: 'house', icon: Home },
 ]
 
 const CAT_COLOR = {
-  gpu: '#818cf8', cpu: '#a855f7', case: '#94a3b8', supplies: '#f97316', house: '#22c55e',
-}
-
-// Доход/час для дома: assets.py присылает income_per_hour.
-// Число жильцов выводим из rooms (rooms+1, минимум 2).
-function houseSpecLine(item, t) {
-  const s = item.specs || {}
-  const income = s.income_per_hour != null ? `+$${s.income_per_hour}${t('house.incomeShort')}` : ''
-  const rooms = s.rooms != null ? `${s.rooms} ${t('house.roomsShort')}` : ''
-  const residents = s.rooms != null ? t('house.upTo', { count: Math.max(2, s.rooms + 1) }) : ''
-  return [rooms, income, residents].filter(Boolean).join(' · ')
+  gpu: '#818cf8', cpu: '#a855f7', case: '#94a3b8', supplies: '#f97316',
 }
 
 function specLine(cat, s = {}, t) {
@@ -54,13 +49,6 @@ function specLine(cat, s = {}, t) {
     case 'cpu': return `${t('units.cores', { count: s.cores })} · ${s.power}W`
     case 'case': return `${t('units.slots', { count: s.slots })}`
     case 'supplies': return t(`supplies.${s.kind}`, s.kind || '')
-    case 'house': {
-      // Для обратной совместимости (если когда-нибудь придёт из adminCatalog).
-      const income = s.income != null ? `+$${s.income}${t('house.incomeShort')}` : ''
-      const residents = s.residents != null ? t('house.upTo', { count: s.residents }) : ''
-      const rooms = s.rooms != null ? `${s.rooms} ${t('house.roomsShort')}` : ''
-      return [rooms, income, residents].filter(Boolean).join(' · ')
-    }
     default: return ''
   }
 }
@@ -74,10 +62,12 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState('asc')
-  // BuyModal: выбранный товар (открывает модалку покупки) или null.
+  // ShopBuyModal: выбранный товар (открывает модалку покупки) или null.
   // Продажи в магазине больше нет — упращено: карточка показывает только
-  // кнопку «Купить», которая открывает BuyModal.
+  // кнопку «Купить», которая открывает ShopBuyModal.
   const [buyItem, setBuyItem] = useState(null)
+  // busy — пока идёт POST /api/shop/buy (блокирует кнопку и крестик модалки).
+  const [buyBusy, setBuyBusy] = useState(false)
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 250)
@@ -89,41 +79,13 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   // loadInventory упразднён: карточка больше не показывает «В наличии» /
   // «Продать» — это переехало в MyAssetsTab.
 // ── Загрузка каталога ──────────────────────────────────────────────
-// Железо: fetchShopCatalog(category) + adminCatalog (для всех 90+ видеокарт/CPU/case).
-// Дома: fetchAssetMarket('realestate') — 6 типов, бэкенд возвращает реальную
-// цену с учётом динамического множителя, поэтому админскую витрину
-// (REAL_ESTATE_PRODUCTS) сюда подмешивать не нужно.
+// Железо/расходники: fetchShopCatalog(category) — бэкенд отдаёт и базовые
+// позиции (gpu-cc-0-0, psu-500, …), и полные админские серии
+// (admin-gpu-1..90, admin-cpu-1..90, admin-case-1..90, admin-supply-*).
+// Дома и бизнесы в магазине больше не продаются — они на «Рынке» (MarketTab).
 async function loadShopItems(category) {
-  if (category === 'house') {
-    const market = await fetchAssetMarket('realestate')
-    return (market || []).map(m => ({
-      id: m.slug,                    // для buyAsset(slug) — см. backend/assets.py
-      category: 'house',
-      type: 'realestate',
-      slug: m.slug,
-      name: m.name,
-      color: m.color || '#22c55e',
-      // houseType: 'asset' — это реальный покупаемый объект (не витрина)
-      houseType: 'asset',
-      rarity: m.rarity,
-      price: m.price,
-      specs: {
-        rooms: m.rooms,
-        basement: m.basement,
-        income_per_hour: m.income_per_hour,
-        upkeep_per_hour: m.upkeep_per_hour,
-      },
-    }))
-  }
-  const backendItems = await fetchShopCatalog(category || undefined)
-  // Подмешиваем админскую витрину (GPU/CPU/case/supplies) только если она
-  // отсутствует в ответе бэкенда и подходит под активную категорию.
-  const backendIds = new Set((backendItems || []).map(i => i.id))
-  const adminOnly = ADMIN_SHOP_CATALOG.filter(a =>
-    !backendIds.has(a.id) &&
-    (!category || a.category === category)
-  )
-  return [...(backendItems || []), ...adminOnly]
+  // Бэкенд отдаёт и базовые, и админские позиции (см. backend/shop.py).
+  return await fetchShopCatalog(category || undefined)
 }
 
   const load = useCallback(async () => {
@@ -142,20 +104,36 @@ async function loadShopItems(category) {
   useEffect(() => { load() }, [load])
   // loadInventory удалён: карточка больше не показывает инвентарь.
 
-// Покупка (демо-режим): кнопка «Купить» в BuyModal просто закрывает окно
-// и показывает toast. Бэкенд не вызывается — только фронтенд.
-  const handleBuyConfirm = (qty) => {
+// Покупка: вызывает бэкенд (POST /api/shop/buy для железа/расходников) и
+// обновляет баланс игрока после успешной транзакции. Дома/бизнесы покупаются
+// на вкладке «Рынок» (MarketTab), здесь их нет.
+  const handleBuyConfirm = async (qty) => {
     const item = buyItem
     if (!item) return
-    setBuyItem(null)
-    toast(t('market.bought'))
+    // Не закрываем модалку сразу — пусть крутится «Загрузка…», и только после
+    // успешного ответа сервера закрываем. Если ошибка — модалка остаётся
+    // открытой, чтобы игрок мог повторить или скорректировать количество.
+    setBuyBusy(true)
+    try {
+      const res = await buyHardware(item.id, qty)
+      if (res && typeof res.balance === 'number' && onBalanceChange) {
+        onBalanceChange(res.balance)
+      }
+      const total = res?.total != null ? res.total : (item.price * qty)
+      toast(t('market.bought', { defaultValue: 'Куплено' }) + ` — $${formatMoney(total)}`)
+      setBuyItem(null)
+    } catch (err) {
+      toast(err?.message || t('common.error', { defaultValue: 'Ошибка' }))
+    } finally {
+      setBuyBusy(false)
+    }
   }
 
   const view = useMemo(() => {
     let r = items
-    // Защитный фильтр по категории — оставляем только то, что продаётся в магазине.
-    // 'house' — витрина домов из adminCatalog (REAL_ESTATE_PRODUCTS).
-    r = r.filter(i => ['gpu', 'cpu', 'case', 'supplies', 'house'].includes(i.category))
+    // Защитный фильтр по категории — только то, что продаётся в магазине
+    // (дома/бизнесы убраны — они на «Рынке», см. MarketTab).
+    r = r.filter(i => ['gpu', 'cpu', 'case', 'supplies'].includes(i.category))
     if (search) r = r.filter(i => (i.name || '').toLowerCase().includes(search))
     return [...r].sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price)
   }, [items, search, sortOrder])
@@ -166,7 +144,6 @@ async function loadShopItems(category) {
         <ShoppingCart size={22} className="icon" />
         <h2 className="tab-title">NEXUS · {t('nav.shop')}</h2>
       </div>
-      <p className="shop-subtitle">{t('shop.nexusDesc')}</p>
 
       <div className="market-toolbar">
         <div className="market-cats">
@@ -206,35 +183,10 @@ async function loadShopItems(category) {
           {view.map(item => {
             // Цвет по мощности/тиру приходит из каталога (item.color); категорийный — запасной.
             const color = item.color || CAT_COLOR[item.category] || '#0071e3'
-            // В демо-режиме busy-флаг не нужен — кнопка просто открывает BuyModal.
+            // busy-флаг не нужен — кнопка открывает BuyModal, покупка асинхронна.
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
-            // Дома идут отдельной веткой рендера: без qty/sell, иконка Home.
-            if (item.category === 'house' || item.houseType === 'asset') {
-              const affordable = balance >= item.price
-              return (
-                <div key={item.id} className="gpu-card" style={{ borderColor: `${color}55` }}>
-                  <span className="gpu-card-icon" style={{ background: color }}><Home size={20} /></span>
-                  <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
-                  <span className="gpu-card-name">{hwName(item, t)}</span>
-                  <div className="gpu-card-specs"><span>{houseSpecLine(item, t)}</span></div>
-                  {item.specs?.basement > 0 && (
-                    <div className="gpu-card-spec-row">
-                      {t('realestate.basement', { defaultValue: t('house.basementShort') })}: {item.specs.basement}
-                    </div>
-                  )}
-                  <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
-                  <button
-                    className="gpu-card-buy"
-                    style={{ background: affordable ? color : undefined }}
-                    disabled={!affordable}
-                    onClick={() => setBuyItem(item)}
-                  >
-                    {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
-                  </button>
-                </div>
-              )
-            }
-            // Карточка железа: компактная, без qty-степпера, без power-строки.
+            // Карточка железа: компактная. Бэкенд отдаёт все позиции
+            // (включая admin-gpu/cpu/case/supply), кнопка «Купить» всегда активна.
             const affordable = balance >= item.price
             return (
               <div key={item.id} className="gpu-card gpu-card-compact" style={{ borderColor: `${color}55` }}>
@@ -243,41 +195,30 @@ async function loadShopItems(category) {
                 <span className="gpu-card-name">{hwName(item, t)}</span>
                 <div className="gpu-card-specs"><span>{specLine(item.category, item.specs, t)}</span></div>
                 <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
-                {item.fromAdmin ? (
-                  <button
-                    className="gpu-card-buy gpu-card-buy-soon"
-                    disabled
-                    title={t('shop.soonHint')}
-                  >
-                    <Clock size={12} /> {t('shop.soon')}
-                  </button>
-                ) : (
-                  <button
-                    className="gpu-card-buy"
-                    style={{ background: affordable ? color : undefined }}
-                    disabled={!affordable}
-                    onClick={() => setBuyItem(item)}
-                  >
-                    {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
-                  </button>
-                )}
+                <button
+                  className="gpu-card-buy"
+                  style={{ background: affordable ? color : undefined }}
+                  disabled={!affordable}
+                  onClick={() => setBuyItem(item)}
+                >
+                  {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
+                </button>
               </div>
             )
           })}
         </div>
       )}
 
-      {/* Модалка покупки: qty, total, balance, кнопка «Купить» (демо). */}
-      <BuyModal
+      {/* Модалка покупки в едином стиле с рынком:
+          товар → количество → баланс → цена/шт. → итого → «Купить». */}
+      <ShopBuyModal
         open={!!buyItem}
         item={buyItem}
         balance={balance}
+        busy={buyBusy}
         onConfirm={handleBuyConfirm}
-        onCancel={() => setBuyItem(null)}
+        onCancel={() => { if (!buyBusy) setBuyItem(null) }}
       />
-
-// Продажа в магазине отключена — карточка показывает только «Купить»,
-// продажа/улучшения доступны в MyAssetsTab.
     </div>
   )
 }

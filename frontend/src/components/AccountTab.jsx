@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchWeeklyAnalytics, fetchActiveWorldEvents } from '../services/api'
+import { fetchWeeklyAnalytics } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
 import TransactionsPanel, { formatMoney } from './TransactionsPanel'
 import AnalyticsChart from './AnalyticsChart'
@@ -14,31 +14,15 @@ function AccountTab({ balance = 0 }) {
   const { t } = useTranslation()
   const [period, setPeriod] = useState('week')
   const { data, loading, error } = useApiOnMount(() => fetchWeeklyAnalytics(period), [period])
-  const { data: eventsData } = useApiOnMount(() => fetchActiveWorldEvents(), [])
 
   const analytics = data || { income: 0, expense: 0, net: 0, operations: 0, days: [] }
   const displayBalance = data?.balance != null ? data.balance : balance
   const days = analytics.days || []
   const netPositive = analytics.net >= 0
-  const worldEvents = eventsData?.active || []
 
   return (
     <div className="account-tab">
       <h2 className="tab-title">{t('account.title')}</h2>
-
-      {worldEvents.length > 0 && (
-        <div className="world-events">
-          {worldEvents.map(ev => (
-            <div key={ev.id} className="world-event" title={ev.desc || ''}>
-              <span className="world-event-icon">{ev.icon}</span>
-              <div className="world-event-info">
-                <b>{ev.name}</b>
-                {ev.desc && <span>{ev.desc}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div className="account-period">
         {PERIODS.map(p => (

@@ -12,8 +12,10 @@ import MarketTab from './MarketTab'
 import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
 import MyCompanyTab from './MyCompanyTab'
+// CarsTab — вкладка «Автосалон» (заглушка, наполнение добавим следующим шагом).
 import CityRoofTab from './CityRoofTab'
 import MiningTab from './MiningTab'
+import CarsTab from './CarsTab'
 import SettingsPage from './SettingsPage'
 import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
@@ -162,6 +164,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'cars':
+        return <CarsTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'leaderboard':
         return <LeaderboardTab currentUserId={user?.id} />
       case 'settings':

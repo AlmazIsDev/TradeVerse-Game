@@ -307,7 +307,7 @@ def _hours_since(company: dict) -> float:
     return min((_now() - last).total_seconds() / 3600.0, MAX_ACCRUAL_HOURS)
 
 
-def _staff_factor(db, company_id: str, members: list) -> "tuple[float, list]":
+async def _staff_factor(db, company_id: str, members: list) -> "tuple[float, list]":
     """Совокупный бонус штата к доходу компании.
 
     Возвращает (factor, per_member). factor = 1 + сумма бонусов ролей,

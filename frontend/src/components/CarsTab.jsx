@@ -1,12 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CarsTab · вкладка «Автосалон».
 // Три секции: машины (cars), фуры (trucks) и прицепы (trailers).
-// Источник каталога — локальный CARS_CATALOG (frontend/src/utils/carsCatalog.js).
-// Бэкенд покупки пока не подключён — это витрина в стиле домов/бизнесов
-// на «Рынке». Карточка показывает расход топлива и грузоподъёмность.
-//
-// На клике «Купить» открывается MarketBuyModal (та же модалка, что и на
-// вкладке «Рынок»): товар → баланс → цена → кнопка «Купить».
+// Источник каталога — сервер (/api/assets/market?type=car, backend/assets.py
+// → _CAR_CATALOG): цены динамические (рыночный множитель), покупка реальная
+// через /api/assets/buy. Локальный carsCatalog.js больше не источник данных.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -18,7 +15,8 @@ import {
 import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
 import MarketBuyModal from './MarketBuyModal'
-import { CARS_CATALOG, CAR_SECTIONS } from '../utils/carsCatalog'
+import { fetchAssetMarket, buyAsset } from '../services/api'
+import { CAR_SECTIONS } from '../utils/carsCatalog'
 
 // Ранг редкости для сортировки.
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 }
@@ -49,6 +47,33 @@ function CarsTab({ balance = 0, onBalanceChange }) {
   // pendingBuy — выбранный для покупки товар; null если модалка закрыта.
   const [pendingBuy, setPendingBuy] = useState(null)
   const [busy, setBusy] = useState(false)
+  // Каталог с сервера (динамические цены). Секции truck/trailer живут в
+  // поле category; легковые — type "car" без категории или category:"car".
+  const [cars, setCars] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const loadCars = useCallback(async () => {
+    try {
+      const data = await fetchAssetMarket({ type: 'car' })
+      const items = (Array.isArray(data) ? data : []).map(c => ({
+        id: c.slug,
+        slug: c.slug,
+        name: c.name,
+        category: c.category || 'car',
+        type: c.category || 'car',
+        rarity: c.rarity || 'common',
+        price: c.price,
+        specs: c.meta || {},
+      }))
+      setCars(items)
+    } catch (e) {
+      toast(e?.message || t('common.error', 'Ошибка'))
+    } finally {
+      setLoading(false)
+    }
+  }, [t])
+
+  useEffect(() => { loadCars() }, [loadCars])
 
   // Дебаунс для поля поиска.
   useEffect(() => {
@@ -63,7 +88,7 @@ function CarsTab({ balance = 0, onBalanceChange }) {
 
   // Витрина: фильтр по секции + поиск + сортировка.
   const view = useMemo(() => {
-    let r = CARS_CATALOG
+    let r = cars
     if (section !== 'all') r = r.filter(x => x.category === section)
     if (search) {
       const q = search.toLowerCase()
@@ -85,7 +110,7 @@ function CarsTab({ balance = 0, onBalanceChange }) {
       arr.sort((a, b) => ((a.price || 0) - (b.price || 0)) * dir)
     }
     return arr
-  }, [section, search, sortBy, sortDir])
+  }, [cars, section, search, sortBy, sortDir])
 
   // Клик «Купить» — открыть модалку.
   const handleBuy = useCallback((item) => {
@@ -96,20 +121,25 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     })
   }, [t])
 
-  // Подтверждение покупки: бэкенда пока нет, поэтому просто тост + закрыть.
+  // Подтверждение покупки: реальная покупка через /api/assets/buy.
   const handleConfirm = useCallback(async () => {
     const item = pendingBuy
-    if (!item) return
+    if (!item?.slug) return
     setBusy(true)
-    // Имитируем небольшой «запрос», чтобы кнопка погасла на ~400мс.
-    await new Promise(r => setTimeout(r, 400))
-    toast(
-      t('cars.ordered', { defaultValue: 'Заявка оформлена' }) + `: ${item.name}`,
-    )
-    if (onBalanceChange) onBalanceChange(balance)
-    setPendingBuy(null)
-    setBusy(false)
-  }, [pendingBuy, balance, onBalanceChange, t])
+    try {
+      const res = await buyAsset(item.slug)
+      if (res && typeof res.balance === 'number' && onBalanceChange) {
+        onBalanceChange(res.balance)
+      }
+      toast(t('market.bought', { defaultValue: 'Куплено' }) + `: ${item.name}`)
+      setPendingBuy(null)
+      loadCars()   // цена могла сдвинуться (спрос)
+    } catch (e) {
+      toast(e?.message || t('common.error', 'Ошибка'))
+    } finally {
+      setBusy(false)
+    }
+  }, [pendingBuy, onBalanceChange, t, loadCars])
 
   return (
     <div className="cars-tab market-tab">
@@ -168,7 +198,9 @@ function CarsTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-      {view.length === 0 ? (
+      {loading ? (
+        <div className="empty-state"><p>{t('common.loading', 'Загрузка…')}</p></div>
+      ) : view.length === 0 ? (
         <div className="empty-state">
           <p>{t('cars.noItems', 'Ничего не найдено')}</p>
         </div>

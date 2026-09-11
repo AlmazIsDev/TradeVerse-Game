@@ -4,7 +4,7 @@ import { formatMoney } from './TransactionsPanel'
 // Модалка подтверждения покупки для вкладки «Рынок»: показывает товар,
 // баланс, цену и кнопку «Купить».
 import MarketBuyModal from './MarketBuyModal'
-import { fetchAssetMarket, buyAsset, buyAssetViaMarket } from '../services/api'
+import { fetchAssetMarket, buyAsset } from '../services/api'
 import { toast } from './Toast'
 // Категории MarketTab. type бэкенда + type каталога должны совпадать
 // ('realestate' / 'business' / 'factory' / 'source'), чтобы фильтрация на
@@ -352,27 +352,13 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   // во владении. На успехе обновляем локальный баланс через onBalanceChange.
   // Фолбэк: если основной /api/assets/buy вернул 404 (например, на сервере
   // прокси режет POST или бэкенд ещё не перезапущен со старым кодом),
-  // пробуем альтернативный /api/market/buy — это та же ручка, просто под
-  // другим префиксом (см. backend/assets.py market_buy_router). Если оба
-  // пути 404-ят — показываем полный текст ошибки в toast, чтобы было
-  // понятно, что именно не работает.
   const handleConfirm = useCallback(async () => {
     const item = pendingBuy
     if (!item?.slug) return
     setBusy(prev => ({ ...prev, [item.slug]: true }))
     try {
       const slug = String(item.slug).trim()
-      let res
-      try {
-        res = await buyAsset(slug)
-      } catch (err) {
-        if (err && (err.status === 404 || err.status === 405 || err.status === 502)) {
-          // Основной путь не сработал — пробуем альтернативный.
-          res = await buyAssetViaMarket(slug)
-        } else {
-          throw err
-        }
-      }
+      const res = await buyAsset(slug)
       if (res && typeof res.balance === 'number' && onBalanceChange) {
         onBalanceChange(res.balance)
       }

@@ -1220,7 +1220,9 @@
     "title": "Уведомления",
     "markAllRead": "Прочитать все",
     "noNotifications": "Нет уведомлений",
-    "new": "Новое"
+    "new": "Новое",
+    "worldEventStarted": "Мировое событие: {{name}}",
+    "worldEventEnded": "Завершено: {{name}}"
   },
   "confirm": {
     "collect": "Собрать накопленную прибыль ${{amount}}?",

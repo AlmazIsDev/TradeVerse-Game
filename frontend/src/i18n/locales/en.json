@@ -1220,7 +1220,9 @@
     "title": "Notifications",
     "markAllRead": "Mark all read",
     "noNotifications": "No notifications",
-    "new": "New"
+    "new": "New",
+    "worldEventStarted": "World event: {{name}}",
+    "worldEventEnded": "Ended: {{name}}"
   },
   "confirm": {
     "collect": "Collect accrued profit ${{amount}}?",

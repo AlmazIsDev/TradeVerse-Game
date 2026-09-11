@@ -181,3 +181,14 @@ async def get_weekly_analytics(
     return data
 
 
+@router.get("/events/active")
+async def get_active_world_events(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Активные мировые события для показа игрокам (без прав админа)."""
+    from market_events import get_active_events, _serialize
+    events = await get_active_events(db)
+    return {"active": [_serialize(e) for e in events]}
+
+

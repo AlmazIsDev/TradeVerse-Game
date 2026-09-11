@@ -1968,6 +1968,9 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   border: none; background: transparent; color: var(--color-text-secondary);
   cursor: pointer; padding: 2px; border-radius: 6px; transition: all .18s ease;
 }
+/* Попап мирового события: без кнопок действий, с эмодзи-иконкой события. */
+.tv-popup-event .tv-popup-icon { background: linear-gradient(135deg, #b45309, #f59e0b); }
+.tv-popup-event .tv-popup-actions { display: none; }
 .tv-popup-close:hover { background: rgba(0, 0, 0, 0.08); color: var(--color-text-primary); }
 .tv-popup-icon {
   flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
@@ -1988,6 +1991,19 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   transition: transform .12s ease, filter .18s ease;
 }
 .tv-popup-btn:active { transform: scale(0.95); }
+
+/* ===================== WORLD EVENTS ===================== */
+.world-events { display: flex; flex-direction: column; gap: var(--spacing-xs); margin-bottom: var(--spacing-lg); }
+.world-event {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  padding: 12px 14px; border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.12), transparent);
+  border: 1px solid rgba(0, 113, 227, 0.28);
+}
+.world-event-icon { font-size: 26px; line-height: 1; }
+.world-event-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.world-event-info b { color: var(--color-text-primary); font-size: 14px; }
+.world-event-info span { font-size: 12px; color: var(--color-text-secondary); }
 .tv-popup-btn:disabled { opacity: 0.6; cursor: default; }
 .tv-popup-btn.accept { background: linear-gradient(135deg,#34c759,#248a3d); color: #ffffff; }
 .tv-popup-btn.accept:hover { filter: brightness(1.1); }

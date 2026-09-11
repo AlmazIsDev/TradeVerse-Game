@@ -598,17 +598,52 @@ export async function buyAsset(slug) {
   return request('/api/assets/buy', { method: 'POST', body: JSON.stringify({ slug }) })
 }
 
-// Альтернативный эндпоинт покупки (/api/market/buy). Используется, если
-// основной /api/assets/buy возвращает 404 (например, прокси/nginx на сервере
-// режет POST). Поведение сервера идентично: тот же обработчик, другая
-// приставка. Если тоже не сработает — 404 пробрасывается наверх.
-export async function buyAssetViaMarket(slug) {
-  return request('/api/market/buy', { method: 'POST', body: JSON.stringify({ slug }) })
-}
-
 export async function fetchMyAssets(type) {
   const q = type ? `?type=${encodeURIComponent(type)}` : ''
   return request(`/api/assets/mine${q}`)
+}
+
+// Активные мировые события (backend/market_events.py) — баннер на «Обзоре»
+// и попапы в NotificationCenter.
+export async function fetchActiveWorldEvents() {
+  return request('/api/events/active')
+}
+
+// ── Центральный рынок: лоты игроков (p2p) ───────────────────────────────────
+// kind: "asset" (itemId = _id актива из «Моих активов», qty всегда 1)
+//     | "hardware" (itemId = id железа из магазина, qty ≤ кол-ва свободных штук).
+// Режим «свободный предмет» не поддерживается сервером: продавать можно только
+// то, чем владеешь. Сервер возвращает лот: {id, kind, itemId, name, qty,
+// pricePerItem, sellerId, seller, createdAt}.
+
+export async function fetchMarketLots() {
+  return request('/api/market/lots')
+}
+
+export async function createMarketLot({ kind, itemId, qty = 1, pricePerItem }) {
+  return request('/api/market/lots', {
+    method: 'POST',
+    body: JSON.stringify({ kind, itemId, qty, pricePerItem }),
+  })
+}
+
+export async function updateMarketLot(lotId, { qty, pricePerItem }) {
+  return request(`/api/market/lots/${encodeURIComponent(lotId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ qty, pricePerItem }),
+  })
+}
+
+export async function cancelMarketLot(lotId) {
+  return request(`/api/market/lots/${encodeURIComponent(lotId)}`, { method: 'DELETE' })
+}
+
+// Покупка qty штук из лота. Вернёт 409, если лот уже купил кто-то другой.
+export async function buyMarketLot(lotId, qty = 1) {
+  return request(`/api/market/lots/${encodeURIComponent(lotId)}/buy`, {
+    method: 'POST',
+    body: JSON.stringify({ qty }),
+  })
 }
 
 export async function collectAsset(id) {

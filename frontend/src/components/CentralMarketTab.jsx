@@ -1,45 +1,29 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchMyAssets } from '../services/api'
+import {
+  fetchMarketLots, createMarketLot, updateMarketLot, cancelMarketLot, buyMarketLot,
+  fetchMyAssets, fetchInventory,
+} from '../services/api'
 import {
   Plus, Search, X, Filter, ArrowUpDown, ArrowUp, ArrowDown,
   Package, Tag, Hash, DollarSign, AlertTriangle, Check, ChevronDown,
   Edit3, Trash2, ShoppingCart, User,
 } from 'lucide-react'
 
-// Категории для фильтра и бейджей.
-const CATEGORIES = [
+// ─────────────────────────────────────────────────────────────────────────────
+// CentralMarketTab · Центральный рынок — p2p торговля между игроками.
+// Бэкенд: backend/market_lots.py. Два вида лотов:
+//   kind:"asset"    — актив из «Моих активов» (дом/бизнес/авто/завод…), qty=1;
+//   kind:"hardware" — железо из инвентаря магазина, qty ≤ свободных штук.
+// Режим «свободный предмет» удалён: продавать можно только то, чем владеешь —
+// сервер иначе отклонит лот.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const KINDS = [
   { id: 'all', icon: '🗂️' },
-  { id: 'realestate', icon: '🏠' },
-  { id: 'business', icon: '🏢' },
-  { id: 'car', icon: '🚗' },
-  { id: 'item', icon: '📦' },
-  { id: 'other', icon: '✨' },
+  { id: 'asset', icon: '🏠' },
+  { id: 'hardware', icon: '📦' },
 ]
-
-// Каталог возможных предметов (используется для режима «Свободный предмет»,
-// когда игрок хочет выставить то, чего у него сейчас нет в инвентаре).
-const ITEM_CATALOG = [
-  { id: 'flat2', name: 'Квартира', category: 'realestate' },
-  { id: 'townhouse', name: 'Таунхаус', category: 'realestate' },
-  { id: 'villa', name: 'Вилла', category: 'realestate' },
-  { id: 'penthouse', name: 'Пентхаус', category: 'realestate' },
-  { id: 'castle', name: 'Замок', category: 'realestate' },
-  { id: 'coffee', name: 'Кофейня', category: 'business' },
-  { id: 'shawarma', name: 'Шаурмячная', category: 'business' },
-  { id: 'carwash', name: 'Автомойка', category: 'business' },
-  { id: 'factory', name: 'Завод', category: 'business' },
-  { id: 'itstudio_basic', name: 'IT-студия (Basic)', category: 'business' },
-  { id: 'sedan', name: 'Седан', category: 'car' },
-  { id: 'sport', name: 'Спорткар', category: 'car' },
-  { id: 'super', name: 'Суперкар', category: 'car' },
-  { id: 'metal', name: 'Металл', category: 'item' },
-  { id: 'wood', name: 'Древесина', category: 'item' },
-]
-
-function findItemMeta(itemId) {
-  return ITEM_CATALOG.find(i => i.id === itemId) || { id: itemId, name: itemId, category: 'other' }
-}
 
 function fmtMoney(n) {
   if (n == null || isNaN(n)) return '—'
@@ -51,7 +35,8 @@ function CentralMarketTab() {
 
   // ── Состояние лотов и инвентаря ────────────────────────────────────────
   const [lots, setLots] = useState([])
-  const [inventory, setInventory] = useState([])
+  const [myAssets, setMyAssets] = useState([])      // [{id, name, type}]
+  const [myHardware, setMyHardware] = useState([])  // [{itemId, name, count}]
   const [inventoryLoading, setInventoryLoading] = useState(false)
 
   // ── Текущий пользователь (для определения «свой/чужой» лот) ────────────
@@ -64,7 +49,7 @@ function CentralMarketTab() {
 
   // ── Фильтры/сортировка/поиск ───────────────────────────────────────────
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [category, setCategory] = useState('all')
+  const [kind, setKind] = useState('all')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [minQty, setMinQty] = useState('')
@@ -82,22 +67,40 @@ function CentralMarketTab() {
     setSort(s => s === 'default' ? 'price_asc' : s === 'price_asc' ? 'price_desc' : 'default')
   }, [])
 
-  // ── Создание лота ──────────────────────────────────────────────────────
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createSource, setCreateSource] = useState('inventory')  // 'inventory' | 'free'
-  const [createItemId, setCreateItemId] = useState('')
-  const [createQty, setCreateQty] = useState('1')
-  const [createPrice, setCreatePrice] = useState('')
-  const [createError, setCreateError] = useState(null)
-  const [createBusy, setCreateBusy] = useState(false)
+  // ── Загрузка лотов и инвентаря ────────────────────────────────────────
+  const loadLots = useCallback(async () => {
+    try {
+      const data = await fetchMarketLots()
+      setLots(Array.isArray(data?.lots) ? data.lots : [])
+    } catch {
+      setLots([])
+    }
+  }, [])
 
-  // ── Редактирование/удаление лота ───────────────────────────────────────
-  const [editLot, setEditLot] = useState(null)  // объект лота или null
-  const [editQty, setEditQty] = useState('1')
-  const [editPrice, setEditPrice] = useState('')
-  const [editError, setEditError] = useState(null)
-  const [editBusy, setEditBusy] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(null)  // lot или null
+  const loadInventory = useCallback(async () => {
+    setInventoryLoading(true)
+    try {
+      const [a, h] = await Promise.all([
+        fetchMyAssets().catch(() => ({ assets: [] })),
+        fetchInventory().catch(() => []),
+      ])
+      setMyAssets(Array.isArray(a?.assets) ? a.assets : [])
+      setMyHardware(Array.isArray(h) ? h : [])
+    } finally {
+      setInventoryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadLots(); loadInventory() }, [loadLots, loadInventory])
+
+  // Realtime: обновляем лоты по WS-событиям рынка.
+  useEffect(() => {
+    const onRt = (e) => {
+      if (['market_sold', 'balance', 'notification'].includes(e.detail?.type)) loadLots()
+    }
+    window.addEventListener('tv:realtime', onRt)
+    return () => window.removeEventListener('tv:realtime', onRt)
+  }, [loadLots])
 
   // ── Тост ────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState(null)
@@ -108,35 +111,17 @@ function CentralMarketTab() {
     toastTimerRef.current = setTimeout(() => setToast(null), 2500)
   }, [])
 
-  // ── Загрузка инвентаря ────────────────────────────────────────────────
-  const loadInventory = useCallback(async () => {
-    setInventoryLoading(true)
-    try {
-      const data = await fetchMyAssets()
-      setInventory(Array.isArray(data) ? data : (data?.items || []))
-    } catch {
-      setInventory([])
-    } finally {
-      setInventoryLoading(false)
-    }
-  }, [])
+  // ── Создание лота ──────────────────────────────────────────────────────
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createKind, setCreateKind] = useState('asset')   // 'asset' | 'hardware'
+  const [createItemId, setCreateItemId] = useState('')
+  const [createQty, setCreateQty] = useState('1')
+  const [createPrice, setCreatePrice] = useState('')
+  const [createError, setCreateError] = useState(null)
+  const [createBusy, setCreateBusy] = useState(false)
 
-  useEffect(() => { loadInventory() }, [loadInventory])
-
-  // Делаем список инвентаря плоским: { id, slug, name, type, qty }
-  const inventoryOptions = useMemo(() => {
-    return inventory.map(a => ({
-      id: a._id || a.id || a.slug,
-      slug: a.slug,
-      name: a.name || a.slug,
-      type: a.type || 'other',
-      qty: a.qty ?? a.quantity ?? 1,
-    }))
-  }, [inventory])
-
-  // ── Сброс/инициализация формы создания ───────────────────────────────
   const resetCreate = useCallback(() => {
-    setCreateSource('inventory')
+    setCreateKind('asset')
     setCreateItemId('')
     setCreateQty('1')
     setCreatePrice('')
@@ -145,16 +130,13 @@ function CentralMarketTab() {
   }, [])
   const openCreate = useCallback(() => {
     resetCreate()
-    // Если инвентарь пуст, по умолчанию предлагаем «свободный» режим
-    if (inventoryOptions.length === 0) setCreateSource('free')
     setCreateOpen(true)
-  }, [resetCreate, inventoryOptions.length])
+  }, [resetCreate])
   const closeCreate = useCallback(() => {
     setCreateOpen(false)
     resetCreate()
   }, [resetCreate])
 
-  // ── Создание лота (мок) ───────────────────────────────────────────────
   const submitCreate = useCallback(async () => {
     setCreateError(null)
     const qty = Number(createQty)
@@ -163,37 +145,27 @@ function CentralMarketTab() {
     if (!Number.isFinite(qty) || qty <= 0) return setCreateError(t('createLot.errorQty'))
     if (!Number.isFinite(price) || price <= 0) return setCreateError(t('createLot.errorPrice'))
 
-    // В режиме инвентаря: кол-во не должно превышать остаток
-    if (createSource === 'inventory') {
-      const src = inventoryOptions.find(o => o.id === createItemId || o.slug === createItemId)
-      if (src && qty > src.qty) {
-        return setCreateError(t('createLot.errorQtyExceed', { max: src.qty }))
-      }
-    }
-
     setCreateBusy(true)
     try {
-      await new Promise(r => setTimeout(r, 350))
-      const newLot = {
-        id: Date.now(),
-        itemId: createItemId,
-        qty,
-        pricePerItem: price,
-        sellerId: currentUser?.id || 'me',
-        seller: currentUser?.username || t('createLot.you'),
-        createdAt: Date.now(),
-      }
-      setLots(prev => [newLot, ...prev])
+      await createMarketLot({ kind: createKind, itemId: createItemId, qty, pricePerItem: price })
       showToast('success', t('createLot.success'))
       closeCreate()
+      await Promise.all([loadLots(), loadInventory()])
     } catch (e) {
       setCreateError(e?.message || t('common.error'))
     } finally {
       setCreateBusy(false)
     }
-  }, [createItemId, createQty, createPrice, createSource, inventoryOptions, currentUser, t, showToast, closeCreate])
+  }, [createKind, createItemId, createQty, createPrice, t, showToast, closeCreate, loadLots, loadInventory])
 
-  // ── Редактирование лота (мок) ─────────────────────────────────────────
+  // ── Редактирование/удаление лота ───────────────────────────────────────
+  const [editLot, setEditLot] = useState(null)
+  const [editQty, setEditQty] = useState('1')
+  const [editPrice, setEditPrice] = useState('')
+  const [editError, setEditError] = useState(null)
+  const [editBusy, setEditBusy] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
   const openEdit = useCallback((lot) => {
     setEditLot(lot)
     setEditQty(String(lot.qty))
@@ -215,34 +187,48 @@ function CentralMarketTab() {
     if (!Number.isFinite(price) || price <= 0) return setEditError(t('createLot.errorPrice'))
     setEditBusy(true)
     try {
-      await new Promise(r => setTimeout(r, 300))
-      setLots(prev => prev.map(l => l.id === editLot.id ? { ...l, qty, pricePerItem: price } : l))
+      await updateMarketLot(editLot.id, { qty, pricePerItem: price })
       showToast('success', t('centralmarket.editSuccess'))
       closeEdit()
+      await loadLots()
     } catch (e) {
       setEditError(e?.message || t('common.error'))
     } finally {
       setEditBusy(false)
     }
-  }, [editLot, editQty, editPrice, t, showToast, closeEdit])
+  }, [editLot, editQty, editPrice, t, showToast, closeEdit, loadLots])
 
-  // ── Удаление лота (мок) ───────────────────────────────────────────────
   const doDelete = useCallback(async (lot) => {
     try {
-      await new Promise(r => setTimeout(r, 250))
-      setLots(prev => prev.filter(l => l.id !== lot.id))
+      await cancelMarketLot(lot.id)
       showToast('success', t('centralmarket.deleteSuccess'))
       setConfirmDelete(null)
+      await loadLots()
     } catch (e) {
       showToast('error', e?.message || t('common.error'))
     }
-  }, [showToast, t])
+  }, [showToast, t, loadLots])
 
-  // ── Покупка лота (мок) ────────────────────────────────────────────────
-  const buyLot = useCallback(async (lot) => {
-    showToast('success', t('centralmarket.buySuccess', { name: findItemMeta(lot.itemId).name, qty: lot.qty }))
-    setLots(prev => prev.filter(l => l.id !== lot.id))
-  }, [showToast, t])
+  // ── Покупка лота ───────────────────────────────────────────────────────
+  // Покупаем весь остаток лота сразу (сервер поддерживает и частичную).
+  const [buyLot, setBuyLot] = useState(null)   // лот, ожидающий подтверждения
+  const [buyBusy, setBuyBusy] = useState(false)
+  const confirmBuy = useCallback(async () => {
+    if (!buyLot) return
+    setBuyBusy(true)
+    try {
+      const res = await buyMarketLot(buyLot.id, buyLot.qty)
+      showToast('success', t('centralmarket.buySuccess', { name: buyLot.name, qty: res?.qty ?? buyLot.qty }))
+      setBuyLot(null)
+      await loadLots()
+    } catch (e) {
+      showToast('error', e?.message || t('common.error'))
+      setBuyLot(null)
+      await loadLots()
+    } finally {
+      setBuyBusy(false)
+    }
+  }, [buyLot, t, showToast, loadLots])
 
   // ── Фильтрация + сортировка ───────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -254,15 +240,13 @@ function CentralMarketTab() {
 
     return lots
       .filter(lot => {
-        const item = findItemMeta(lot.itemId)
-        if (category !== 'all' && item.category !== category) return false
+        if (kind !== 'all' && lot.kind !== kind) return false
         if (lot.pricePerItem < minP || lot.pricePerItem > maxP) return false
         if (lot.qty < minQ || lot.qty > maxQ) return false
         if (q) {
-          const name = item.name.toLowerCase()
-          const cat = item.category.toLowerCase()
+          const name = (lot.name || '').toLowerCase()
           const seller = (lot.seller || '').toLowerCase()
-          if (!name.includes(q) && !cat.includes(q) && !seller.includes(q)) return false
+          if (!name.includes(q) && !seller.includes(q)) return false
         }
         return true
       })
@@ -271,10 +255,10 @@ function CentralMarketTab() {
         : sort === 'price_desc'
           ? b.pricePerItem - a.pricePerItem
           : 0)
-  }, [lots, category, minPrice, maxPrice, minQty, maxQty, search, sort])
+  }, [lots, kind, minPrice, maxPrice, minQty, maxQty, search, sort])
 
   const resetFilters = () => {
-    setCategory('all')
+    setKind('all')
     setMinPrice(''); setMaxPrice('')
     setMinQty(''); setMaxQty('')
     setSearchInput('')
@@ -282,11 +266,14 @@ function CentralMarketTab() {
   }
 
   const hasActiveFilters =
-    category !== 'all' || minPrice !== '' || maxPrice !== '' ||
+    kind !== 'all' || minPrice !== '' || maxPrice !== '' ||
     minQty !== '' || maxQty !== '' || search !== '' || sort !== 'default'
 
   const isOwn = (lot) =>
     currentUser?.id && lot.sellerId && String(lot.sellerId) === String(currentUser.id)
+
+  const kindIcon = (k) => (k === 'asset' ? '🏠' : '📦')
+  const kindLabel = (k) => t(`centralmarket.cat_${k}`, k === 'asset' ? 'Активы' : 'Железо')
 
   return (
     <div className="centralmarket-tab">
@@ -369,16 +356,16 @@ function CentralMarketTab() {
                 <Filter size={12} /> {t('centralmarket.category')}
               </span>
               <div className="centralmarket-cat-pills">
-                {CATEGORIES.map(c => (
+                {KINDS.map(c => (
                   <button
                     key={c.id}
                     type="button"
-                    className={`tx-pill ${category === c.id ? 'active' : ''}`}
-                    onClick={() => setCategory(c.id)}
+                    className={`tx-pill ${kind === c.id ? 'active' : ''}`}
+                    onClick={() => setKind(c.id)}
                     title={c.id}
                   >
                     <span style={{ marginRight: 4 }}>{c.icon}</span>
-                    {c.id === 'all' ? t('common.all') : t(`centralmarket.cat_${c.id}`, c.id)}
+                    {c.id === 'all' ? t('common.all') : kindLabel(c.id)}
                   </button>
                 ))}
               </div>
@@ -460,20 +447,19 @@ function CentralMarketTab() {
         ) : (
           <div className="centralmarket-lots-grid">
             {filtered.map(lot => {
-              const item = findItemMeta(lot.itemId)
               const total = lot.qty * lot.pricePerItem
               const own = isOwn(lot)
               return (
                 <div key={lot.id} className={`centralmarket-lot ${own ? 'is-own' : ''}`}>
                   <div className="centralmarket-lot-icon">
-                    <span>{CATEGORIES.find(c => c.id === item.category)?.icon || '📦'}</span>
+                    <span>{kindIcon(lot.kind)}</span>
                   </div>
 
                   <div className="centralmarket-lot-main">
-                    <div className="centralmarket-lot-name">{item.name}</div>
+                    <div className="centralmarket-lot-name">{lot.name}</div>
                     <div className="centralmarket-lot-meta">
                       <span className="centralmarket-lot-pill">
-                        <Tag size={11} /> {t(`centralmarket.cat_${item.category}`, item.category)}
+                        <Tag size={11} /> {kindLabel(lot.kind)}
                       </span>
                       <span className="centralmarket-lot-pill">
                         <Hash size={11} /> ×{lot.qty}
@@ -516,7 +502,7 @@ function CentralMarketTab() {
                       <button
                         type="button"
                         className="centralmarket-lot-btn centralmarket-lot-btn--buy"
-                        onClick={() => buyLot(lot)}
+                        onClick={() => setBuyLot(lot)}
                       >
                         <ShoppingCart size={13} /> {t('common.buy')}
                         <span className="centralmarket-lot-btn-price">{fmtMoney(total)}</span>
@@ -547,29 +533,29 @@ function CentralMarketTab() {
             </h3>
             <p className="centralmarket-modal-subtitle">{t('createLot.subtitle')}</p>
 
-            {/* Выбор источника предмета */}
+            {/* Тип товара: актив или железо */}
             <div className="centralmarket-source-pills">
               <button
                 type="button"
-                className={`tx-pill ${createSource === 'inventory' ? 'active' : ''}`}
-                onClick={() => { setCreateSource('inventory'); setCreateItemId('') }}
+                className={`tx-pill ${createKind === 'asset' ? 'active' : ''}`}
+                onClick={() => { setCreateKind('asset'); setCreateItemId('') }}
                 disabled={createBusy}
               >
-                <Package size={12} /> {t('createLot.sourceInventory')}
+                🏠 {kindLabel('asset')}
               </button>
               <button
                 type="button"
-                className={`tx-pill ${createSource === 'free' ? 'active' : ''}`}
-                onClick={() => { setCreateSource('free'); setCreateItemId('') }}
+                className={`tx-pill ${createKind === 'hardware' ? 'active' : ''}`}
+                onClick={() => { setCreateKind('hardware'); setCreateItemId('') }}
                 disabled={createBusy}
               >
-                <Tag size={12} /> {t('createLot.sourceFree')}
+                📦 {kindLabel('hardware')}
               </button>
             </div>
 
             <label className="centralmarket-field">
               <span><Package size={13} /> {t('createLot.item')}</span>
-              {createSource === 'inventory' ? (
+              {createKind === 'asset' ? (
                 <select
                   value={createItemId}
                   onChange={e => setCreateItemId(e.target.value)}
@@ -579,13 +565,13 @@ function CentralMarketTab() {
                   <option value="" disabled>
                     {inventoryLoading
                       ? t('common.loading')
-                      : inventoryOptions.length === 0
+                      : myAssets.length === 0
                         ? t('createLot.inventoryEmpty')
                         : t('createLot.itemPlaceholder')}
                   </option>
-                  {inventoryOptions.map(o => (
-                    <option key={o.id} value={o.slug || o.id}>
-                      {o.name} · ×{o.qty} {t('centralmarket.inStock')}
+                  {myAssets.map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({kindLabel('asset')})
                     </option>
                   ))}
                 </select>
@@ -593,13 +579,19 @@ function CentralMarketTab() {
                 <select
                   value={createItemId}
                   onChange={e => setCreateItemId(e.target.value)}
-                  disabled={createBusy}
+                  disabled={createBusy || inventoryLoading}
                   className="centralmarket-select"
                 >
-                  <option value="" disabled>{t('createLot.itemPlaceholder')}</option>
-                  {ITEM_CATALOG.map(i => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} · {t(`centralmarket.cat_${i.category}`, i.category)}
+                  <option value="" disabled>
+                    {inventoryLoading
+                      ? t('common.loading')
+                      : myHardware.length === 0
+                        ? t('createLot.inventoryEmpty')
+                        : t('createLot.itemPlaceholder')}
+                  </option>
+                  {myHardware.map(h => (
+                    <option key={h.itemId} value={h.itemId}>
+                      {h.name} · ×{h.count} {t('centralmarket.inStock')}
                     </option>
                   ))}
                 </select>
@@ -611,9 +603,9 @@ function CentralMarketTab() {
                 <span><Hash size={13} /> {t('createLot.qty')}</span>
                 <input
                   type="number" min="1" step="1"
-                  value={createQty}
+                  value={createKind === 'asset' ? '1' : createQty}
                   onChange={e => setCreateQty(e.target.value)}
-                  disabled={createBusy}
+                  disabled={createBusy || createKind === 'asset'}
                   className="centralmarket-input"
                 />
               </label>
@@ -665,7 +657,7 @@ function CentralMarketTab() {
               <Edit3 size={18} /> {t('centralmarket.editTitle')}
             </h3>
             <p className="centralmarket-modal-subtitle">
-              {findItemMeta(editLot.itemId).name} · {t('common.total')}: {fmtMoney(editLot.qty * editLot.pricePerItem)}
+              {editLot.name} · {t('common.total')}: {fmtMoney(editLot.qty * editLot.pricePerItem)}
             </p>
 
             <div className="centralmarket-field-row">
@@ -673,9 +665,9 @@ function CentralMarketTab() {
                 <span><Hash size={13} /> {t('createLot.qty')}</span>
                 <input
                   type="number" min="1" step="1"
-                  value={editQty}
+                  value={editLot.kind === 'asset' ? '1' : editQty}
                   onChange={e => setEditQty(e.target.value)}
-                  disabled={editBusy}
+                  disabled={editBusy || editLot.kind === 'asset'}
                   className="centralmarket-input"
                 />
               </label>
@@ -726,7 +718,7 @@ function CentralMarketTab() {
               <Trash2 size={18} /> {t('centralmarket.deleteTitle')}
             </h3>
             <p className="centralmarket-modal-subtitle">
-              {t('centralmarket.deleteConfirm', { name: findItemMeta(confirmDelete.itemId).name })}
+              {t('centralmarket.deleteConfirm', { name: confirmDelete.name })}
             </p>
             <div className="modal-buttons">
               <button
@@ -736,11 +728,29 @@ function CentralMarketTab() {
               >
                 {t('common.yes')}, {t('centralmarket.delete').toLowerCase()}
               </button>
-              <button
-                type="button"
-                className="stock-btn cancel-btn"
-                onClick={() => setConfirmDelete(null)}
-              >
+              <button type="button" className="stock-btn cancel-btn" onClick={() => setConfirmDelete(null)}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Подтверждение покупки */}
+      {buyLot && (
+        <div className="modal-overlay" onClick={() => !buyBusy && setBuyLot(null)}>
+          <div className="modal-content centralmarket-modal" onClick={e => e.stopPropagation()}>
+            <h3 className="centralmarket-modal-title">
+              <ShoppingCart size={18} /> {t('common.buy')}
+            </h3>
+            <p className="centralmarket-modal-subtitle">
+              {buyLot.name} ×{buyLot.qty} · {t('common.total')}: {fmtMoney(buyLot.qty * buyLot.pricePerItem)}
+            </p>
+            <div className="modal-buttons">
+              <button type="button" className="stock-btn buy-btn" onClick={confirmBuy} disabled={buyBusy}>
+                {buyBusy ? t('bank.processing') : t('common.yes')}
+              </button>
+              <button type="button" className="stock-btn cancel-btn" onClick={() => setBuyLot(null)} disabled={buyBusy}>
                 {t('common.cancel')}
               </button>
             </div>

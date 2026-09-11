@@ -27,6 +27,7 @@ CAT_DIVIDEND = "dividend"
 CAT_SHOP = "shop"
 CAT_MINING = "mining"
 CAT_SYSTEM = "system"
+CAT_MARKET = "market"
 # Категории для «инфраструктурных» активов рынка: заводы (factory), источники
 # ресурсов (source) и склады (warehouse). Покупка/продажа проходят через те же
 # /api/assets/buy и /api/assets/{id}/sell, но в реестре помечаются отдельно —

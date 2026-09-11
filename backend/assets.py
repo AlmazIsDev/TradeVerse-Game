@@ -29,12 +29,6 @@ from econ import get_econ
 from timeutil import now_utc, to_aware
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
-# Альтернативный префикс для покупки. Используется, если /api/assets/buy
-# режется прокси/nginx на сервере (например, настроен location только на
-# GET). Не конфликтует с существующими маршрутами, дублирует ровно одну
-# ручку — покупку актива. Фронт дергает его через /api/market/buy, если
-# основной /api/assets/buy отвечает 404 (см. MarketTab.handleConfirm).
-market_buy_router = APIRouter(prefix="/api/market", tags=["market-buy"])
 
 TYPE_REALESTATE = "realestate"
 TYPE_BUSINESS = "business"
@@ -372,8 +366,59 @@ _ADMIN_MARKET_WAREHOUSES = [
     for i, area in enumerate(_WAREHOUSE_AREAS)
 ]
 
+# ── Автосалон (cars/trucks/trailers) ─────────────────────────────────────────
+# Согласовано с frontend/src/utils/carsCatalog.js (CarsTab): те же слаги,
+# цены и редкость. Все идут как TYPE_CAR (общая логика владения/тюнинга),
+# категория (car/truck/trailer) и характеристики — в category/meta.
+# При покупке клиентская цена не используется — сервер берёт цену отсюда.
+_CAR_CATALOG = [
+    # Легковые
+    {"slug": "car-hatchback-1", "type": TYPE_CAR, "category": "car", "name": "Хэтчбек «Старт»",
+     "rarity": "common", "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 6.5, "cargoKg": 350, "maxSpeed": 160}},
+    {"slug": "car-sedan-1", "type": TYPE_CAR, "category": "car", "name": "Седан «Комфорт»",
+     "rarity": "common", "price": 22000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 7.2, "cargoKg": 450, "maxSpeed": 180}},
+    {"slug": "car-suv-1", "type": TYPE_CAR, "category": "car", "name": "Кроссовер «Тропик»",
+     "rarity": "uncommon", "price": 38000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 8.5, "cargoKg": 600, "maxSpeed": 190}},
+    {"slug": "car-sport-1", "type": TYPE_CAR, "category": "car", "name": "Спорткар «Вихрь»",
+     "rarity": "rare", "price": 95000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 11.0, "cargoKg": 220, "maxSpeed": 280}},
+    {"slug": "car-premium-1", "type": TYPE_CAR, "category": "car", "name": "Премиум «Империал»",
+     "rarity": "epic", "price": 220000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 9.4, "cargoKg": 500, "maxSpeed": 250}},
+    # Фуры (тягачи): hookable — какие прицепы можно цеплять
+    {"slug": "truck-light-1", "type": TYPE_CAR, "category": "truck", "name": "Фура «Курьер»",
+     "rarity": "common", "price": 65000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 18.0, "cargoKg": 1500, "maxSpeed": 110,
+              "hookable": ["trailer-small", "trailer-medium"]}},
+    {"slug": "truck-mid-1", "type": TYPE_CAR, "category": "truck", "name": "Фура «Магистраль»",
+     "rarity": "uncommon", "price": 130000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 26.0, "cargoKg": 3000, "maxSpeed": 100,
+              "hookable": ["trailer-small", "trailer-medium", "trailer-large"]}},
+    {"slug": "truck-heavy-1", "type": TYPE_CAR, "category": "truck", "name": "Фура «Тяжеловоз»",
+     "rarity": "rare", "price": 240000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 38.0, "cargoKg": 6000, "maxSpeed": 90,
+              "hookable": ["trailer-medium", "trailer-large", "trailer-jumbo"]}},
+    # Прицепы
+    {"slug": "trailer-small", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Малый»",
+     "rarity": "common", "price": 9000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 2000, "maxSpeed": 110}},
+    {"slug": "trailer-medium", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Средний»",
+     "rarity": "uncommon", "price": 22000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 6000, "maxSpeed": 100}},
+    {"slug": "trailer-large", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Большой»",
+     "rarity": "rare", "price": 55000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 15000, "maxSpeed": 90}},
+    {"slug": "trailer-jumbo", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Джамбо»",
+     "rarity": "epic", "price": 130000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 30000, "maxSpeed": 80}},
+]
+
 CATALOG = (CATALOG + _ADMIN_MARKET_HOUSES + _ADMIN_MARKET_BUSINESSES
-           + _ADMIN_MARKET_FACTORIES + _ADMIN_MARKET_SOURCES + _ADMIN_MARKET_WAREHOUSES)
+           + _ADMIN_MARKET_FACTORIES + _ADMIN_MARKET_SOURCES + _ADMIN_MARKET_WAREHOUSES
+           + _CAR_CATALOG)
 CATALOG_BY_SLUG = {c["slug"]: c for c in CATALOG}
 CATALOG_BY_SLUG_CI = {c["slug"].lower(): c for c in CATALOG}
 CATALOG_BY_NAME = {c["name"].strip().lower(): c for c in CATALOG}
@@ -456,6 +501,14 @@ async def _drift_asset_market(db: AsyncIOMotorDatabase):
         total_cash += float(u.get("balance", 0) or 0)
     supply_factor = max(-0.10, min(0.20, (total_cash / users / 50000.0) * 0.10)) if users else 0.0
 
+    # Мировые события (могут стартовать/завершаться).
+    try:
+        from market_events import maybe_autostart, event_shifts, slug_event_shift
+        await maybe_autostart(db)
+        ev = await event_shifts(db)
+    except Exception:
+        ev = {"shifts": {}}
+
     for m in [x async for x in db.asset_market.find({})]:
         slug = m.get("slug")
         catalog = CATALOG_BY_SLUG.get(slug, {})
@@ -467,6 +520,7 @@ async def _drift_asset_market(db: AsyncIOMotorDatabase):
         target += min(0.40, owners.get(slug, 0) * 0.02)      # спрос
         target -= min(0.30, listings.get(slug, 0) * 0.03)    # переизбыток предложения
         target += inflation + supply_factor + activity_factor
+        target += slug_event_shift(ev.get("shifts", {}), slug, atype)  # событие
 
         cur = m.get("mult", 1.0)
         # Плавный дрейф к цели (8%) + маленький шум → без резких скачков.
@@ -608,10 +662,14 @@ def _materials_boost(asset: dict) -> float:
 # _income_per_hour, чтобы он собирался тем же /collect и попадал в
 # /collect-all без отдельной механики. Поле mining хранится на документе актива
 # (bool) — повторная покупка запрещена.
-MINING_INCOME_PER_BASEMENT = 100.0  # $ в час за каждую единицу ёмкости подвала
+# Коэффициенты майнинг-подвала и инфраструктуры берутся из econ (DEFAULT_ECON),
+# поэтому показываются и списываются одними и теми же числами. В sync-контекстах
+# (_serialize/_income_per_hour без econ) используются значения по умолчанию;
+# расхождение возможно только сразу после смены коэффициента админом.
+from econ import DEFAULT_ECON
 
 
-def _mining_income_per_hour(asset: dict) -> float:
+def _mining_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
     """Доход от майнинг-улучшения в час. 0, если улучшение не куплено или
     актив — не недвижимость / без подвала."""
     if not asset.get("mining"):
@@ -621,19 +679,48 @@ def _mining_income_per_hour(asset: dict) -> float:
     basement = int(asset.get("basement") or 0)
     if basement <= 0:
         return 0.0
-    return round(basement * MINING_INCOME_PER_BASEMENT, 2)
+    rate = float(econ.get("mining_basement_income")) if econ else DEFAULT_ECON["mining_basement_income"]
+    return round(basement * rate, 2)
 
 
-def _mining_cost(asset: dict) -> float:
-    """Цена покупки улучшения «Майнинг» = basement * 10 000. Подвал 0 → нет
-    смысла (нельзя поставить оборудование), покупка запрещена на бэкенде."""
+def _mining_cost(asset: dict, econ: Optional[dict] = None) -> float:
+    """Цена улучшения «Майнинг» = basement × mining_basement_cost (из econ).
+    Подвал 0 → улучшение недоступно (дублируется проверкой в эндпоинте покупки)."""
     basement = int(asset.get("basement") or 0)
     if basement <= 0:
         return 0.0
-    return float(basement * 10000)
+    cost_per = float(econ.get("mining_basement_cost")) if econ else DEFAULT_ECON["mining_basement_cost"]
+    return float(basement * cost_per)
 
 
-def _income_per_hour(asset: dict) -> float:
+def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
+    """Почасовой доход инфраструктуры (заводы/источники/склады).
+
+    Завод: meta.outputPerHour × infra_gpu_price (продукция продаётся «на сторону»
+    по фиксированной цене из econ). Источник: meta.resource → цена ресурса.
+    Склад: meta.areaSqm × infra_warehouse_rate (плата за хранение).
+    Коэффициенты берутся из econ; в sync-контексте — дефолты.
+    """
+    t = asset.get("type")
+    meta = asset.get("meta") or {}
+    if t == TYPE_FACTORY:
+        return round(int(meta.get("outputPerHour") or 0) * float(
+            econ.get("infra_gpu_price") if econ else DEFAULT_ECON["infra_gpu_price"]), 2)
+    if t == TYPE_SOURCE:
+        resource = str(meta.get("resource") or "")
+        key = {"metal": "infra_metal_price", "food": "infra_food_price", "wood": "infra_wood_price"}.get(resource)
+        if not key:
+            return 0.0
+        return round(int(meta.get("outputPerHour") or 0) * float(
+            econ.get(key) if econ else DEFAULT_ECON[key]), 2)
+    if t == TYPE_WAREHOUSE:
+        area = int(meta.get("areaSqm") or 0)
+        return round(area * float(
+            econ.get("infra_warehouse_rate") if econ else DEFAULT_ECON["infra_warehouse_rate"]), 2)
+    return 0.0
+
+
+def _income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
     # Авто не приносят почасового пассивного дохода — только аренда (см. _is_rentable).
     # Их «уровень» не качается через upgrade, прогресс идёт через тюнинг/престиж.
     if asset.get("type") == TYPE_CAR:
@@ -646,7 +733,9 @@ def _income_per_hour(asset: dict) -> float:
     # Майнинг-улучшение дома: пассивный доход от оборудования в подвале,
     # складывается с базовым почасовым доходом (у большинства домов он уже 0,
     # а у арендных моделей база ненулевая — суммирование уместно).
-    value += _mining_income_per_hour(asset)
+    value += _mining_income_per_hour(asset, econ)
+    # Инфраструктура (завод/источник/склад): доход от продукции/хранения.
+    value += _infra_income_per_hour(asset, econ)
     return round(value, 2)
 
 
@@ -700,7 +789,7 @@ def _upgrade_cost(asset: dict) -> float:
     return round(base * 0.4 * level, 2)
 
 
-def _accrued(asset: dict) -> float:
+def _accrued(asset: dict, econ: Optional[dict] = None) -> float:
     """Чистый накопленный доход (доход − расход) с последнего сбора, cap 24ч."""
     last = asset.get("last_collected")
     if not isinstance(last, datetime):
@@ -710,7 +799,7 @@ def _accrued(asset: dict) -> float:
     hours = min((_now() - last).total_seconds() / 3600.0, MAX_ACCRUAL_HOURS)
     if hours <= 0:
         return 0.0
-    net = (_income_per_hour(asset) - _upkeep_per_hour(asset)) * hours
+    net = (_income_per_hour(asset, econ) - _upkeep_per_hour(asset)) * hours
     return round(max(0.0, net), 2)
 
 
@@ -769,6 +858,8 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
             try:
                 econ = await get_econ(db)
                 payout = round(payout * econ.get("rent_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
+                from market_events import event_shifts
+                payout = round(payout * (await event_shifts(db)).get("rental", 1.0), 2)
             except Exception:
                 pass
             # Бонус «Гранд-отеля» (Крыша города) — +% к доходу от аренды.
@@ -882,7 +973,7 @@ def _mining_view(asset: dict) -> Optional[dict]:
     if asset.get("type") != TYPE_REALESTATE:
         return None
     basement = int(asset.get("basement") or 0)
-    cost = round(basement * 10000, 2)
+    cost = _mining_cost(asset)   # basement × mining_basement_cost (из econ)
     return {
         "available": basement > 0,
         "purchased": bool(asset.get("mining")),
@@ -997,8 +1088,7 @@ def _fallback_source(slug: str) -> Optional[dict]:
     if not info:
         return None
     name, rarity, price, employees, resource, out, cap = info
-    return {"slug": slug, "type": TYPE_SOURCE, "category": resource.split("-")[0]
-            if False else _src_category(slug),
+    return {"slug": slug, "type": TYPE_SOURCE, "category": _src_category(slug),
             "name": name, "rarity": rarity, "price": price,
             "income_per_hour": 0, "upkeep_per_hour": 0, "employees": employees,
             "meta": {"resource": resource, "outputPerHour": out, "capacity": cap}}
@@ -1111,23 +1201,6 @@ async def buy_asset(
     return {"asset": _serialize(doc), "balance": new_balance, "paid": pay_price}
 
 
-# ── Альтернативный эндпоинт покупки (/api/market/buy) ────────────────────────
-# Точно такой же обработчик, как /api/assets/buy, но с другим префиксом.
-# Подключается в main.py через market_buy_router. Нужен как обходной путь,
-# если на сервере nginx/CDN/прокси режет POST /api/assets/buy (например,
-# настроен location только на /api/assets/<id>/*, а плоский /buy не
-# пробрасывается). Фронт в MarketTab.handleConfirm пробует основной путь,
-# и только при 404 — этот.
-@market_buy_router.post("/buy", status_code=status.HTTP_201_CREATED)
-async def buy_asset_alias(
-    payload: BuyRequest,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Псевдоним buy_asset на /api/market/buy — обходной путь для прокси."""
-    return await buy_asset(payload=payload, current_user=current_user, db=db)
-
-
 # ── Ownership ────────────────────────────────────────────────────────────────
 
 
@@ -1238,7 +1311,7 @@ async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
     )
     if matched.modified_count == 0:
         return 0.0  # накопление уже присвоено параллельным запросом
-    amount = _accrued(asset)
+    amount = _accrued(asset, econ)
     amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
     amount = round(amount * event_income, 2)
     if city_bonus:
@@ -1379,7 +1452,7 @@ async def buy_mining_upgrade(
     if basement <= 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "У этого дома нет подвала — майнинг недоступен")
-    cost = _mining_cost(asset)
+    cost = _mining_cost(asset, await get_econ(db))
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
@@ -1555,6 +1628,11 @@ async def rent_cancel(
 async def _materials_unit_price(db: AsyncIOMotorDatabase) -> float:
     econ = await get_econ(db)
     mult = econ.get("economy_mult", 1.0)
+    try:
+        from market_events import event_shifts
+        mult *= (await event_shifts(db)).get("materials", 1.0)
+    except Exception:
+        pass
     return round(MATERIALS_BASE_COST * mult, 2)
 
 

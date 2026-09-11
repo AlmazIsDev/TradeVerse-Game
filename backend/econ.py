@@ -33,6 +33,15 @@ DEFAULT_ECON = {
     "energy_cost": 0.12,    # стоимость энергии ($/kWh) — для майнинга
     "wc_price": 50.0,       # цена WarCoin
     "economy_mult": 1.0,    # общий множитель экономики
+    # ── Майнинг-подвал (улучшение «Майнинг» для домов, assets.py) ────────────
+    "mining_basement_cost": 12000.0,    # цена улучшения за единицу ёмкости подвала
+    "mining_basement_income": 35.0,     # пассивный доход $/ч за единицу подвала
+    # ── Инфраструктура (заводы/источники/склады, assets.py) ──────────────────
+    "infra_gpu_price": 250.0,       # $ за единицу продукции завода (meta.produces="gpu")
+    "infra_metal_price": 60.0,      # $ за единицу ресурса
+    "infra_food_price": 15.0,       # $ за единицу ресурса
+    "infra_wood_price": 40.0,       # $ за единицу ресурса
+    "infra_warehouse_rate": 0.15,   # $/ч за м² площади склада
 }
 
 
@@ -56,6 +65,13 @@ class EconConfigUpdate(BaseModel):
     energy_cost: Optional[float] = None
     wc_price: Optional[float] = None
     economy_mult: Optional[float] = None
+    mining_basement_cost: Optional[float] = None
+    mining_basement_income: Optional[float] = None
+    infra_gpu_price: Optional[float] = None
+    infra_metal_price: Optional[float] = None
+    infra_food_price: Optional[float] = None
+    infra_wood_price: Optional[float] = None
+    infra_warehouse_rate: Optional[float] = None
 
 
 @router.get("/config")

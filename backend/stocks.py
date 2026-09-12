@@ -291,15 +291,6 @@ async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
             "updated_at": datetime.now(timezone.utc),
         })
         await db.stocks.update_one({"symbol": s["symbol"], "free_shares": free_shares}, update)
-        await db.stock_events.insert_one({
-            "symbol": s["symbol"],
-            "type": action,
-            "quantity": qty,
-            "priceBefore": price,
-            "priceAfter": new_price,
-            "userId": BOT_USER_ID,
-            "timestamp": datetime.now(timezone.utc),
-        })
         await MarketDataService.record_snapshot(db, "stock", s["symbol"], new_price, force=True)
         change = ((new_price - price) / price * 100) if price else 0.0
         await broadcast({

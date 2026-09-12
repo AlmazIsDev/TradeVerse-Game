@@ -884,21 +884,6 @@ async def admin_get_all_transactions(
         "balanceAfter": "$balance_after",
         "timestamp": 1,
     }}]
-    # У ботов сумма — это quantity * priceAfter, отдельного поля amount нет.
-    bot_stage = [
-        {"$match": {"userId": "bot"}},
-        {"$project": {
-            "source": "bot",
-            "direction": {"$cond": [{"$eq": ["$type", "sell"]}, "income", "expense"]},
-            "category": "trade",
-            "label": {"$trim": {"input": {"$concat": [{"$toUpper": {"$ifNull": ["$type", ""]}}, " ", {"$ifNull": ["$symbol", ""]}]}}},
-            "username": "BOT",
-            "amount": {"$multiply": [{"$ifNull": ["$quantity", 0]}, {"$ifNull": ["$priceAfter", 0]}]},
-            "balanceAfter": None,
-            "timestamp": 1,
-        }},
-    ]
-
     # Глобальный топ-K лежит внутри объединения пер-веточных топ-K, поэтому
     # сортировку с лимитом проталкиваем в каждую ветку: так работают индексы
     # по timestamp и запрос идёт ~0.2с вместо ~3с на полном union.
@@ -908,7 +893,6 @@ async def admin_get_all_transactions(
 
     match: dict = {}
     pre_match: dict | None = None   # матч по сырому полю ДО $project (индексируемый путь)
-    pre_match_bot: dict | None = None
     if kind in ("income", "expense"):
         match["direction"] = kind
     if q:
@@ -923,8 +907,6 @@ async def admin_get_all_transactions(
             if uids:
                 # userId в реестре бывает и ObjectId, и строкой — матчим оба вида.
                 pre_match = {"userId": {"$in": [ObjectId(uid) for uid in uids] + uids}}
-                # У ботов username всегда "BOT" — совпадает, только если «bot» в запросе.
-                pre_match_bot = {"userId": "bot"} if "bot" in ql else {"_id": {"$exists": False}}
             else:
                 # Имя не найдено среди известных: могут быть документы с
                 # неизвестным userId — оставляем старый медленный путь.
@@ -953,29 +935,15 @@ async def admin_get_all_transactions(
         out += [sort_stage, {"$limit": take}]
         return out
 
-    def bot_branch() -> list:
-        if pre_match_bot is not None:
-            # Фильтр по имени: pre_match_bot уже содержит матч по userId,
-            # post-матч (kind) добавляем следом.
-            out = [{"$match": pre_match_bot}] + bot_stage[1:]
-            if match:
-                out.append({"$match": match})
-        elif match:
-            out = bot_stage + [{"$match": match}]
-        else:
-            out = bot_stage
-        return out + [sort_stage, {"$limit": take}]
-
     def fast_branch(stages: list) -> list:
         # Быстрый путь дефолтного вида: сортируем ДО $project, тогда сортировка
         # видит сырое поле timestamp и опирается на индекс (~0.6с вместо ~2с).
-        head = stages[:-1]  # для ботов это {"$match": {"userId": "bot"}}
+        head = stages[:-1]
         return head + [sort_stage, {"$limit": take}, stages[-1]]
 
     pick = fast_branch if (not match and pre_match is None and sort_key == "timestamp") else branch
-    # Для kind="bot" реестр не нужен — отсекаем его сразу, чтобы не гонять 77k зря.
+    # Логи сделок ботов вырезаны — фильтр kind="bot" всегда пуст.
     pipeline: list = [{"$match": {"_id": None}}] if kind == "bot" else pick(ledger_stage)
-    pipeline.append({"$unionWith": {"coll": "stock_events", "pipeline": bot_branch()}})
     pipeline += [sort_stage, {"$skip": skip}, {"$limit": limit + 1}]
 
     rows = await db.transactions.aggregate(pipeline, allowDiskUse=True).to_list(limit + 1)

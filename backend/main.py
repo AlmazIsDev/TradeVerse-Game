@@ -907,11 +907,32 @@ async def admin_get_all_transactions(
     sort_stage = {"$sort": {sort_key: 1 if order >= 0 else -1, "_id": 1}}
 
     match: dict = {}
+    pre_match: dict | None = None   # матч по сырому полю ДО $project (индексируемый путь)
+    pre_match_bot: dict | None = None
     if kind in ("income", "expense"):
         match["direction"] = kind
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
-        if field in TX_SORT_FIELDS:
+        if field == "username":
+            # Поиск по имени разрешаем в приложении по карте имён и матчим по
+            # индексируемому userId ДО $project. Иначе $regexMatch по
+            # вычисленному в $project полю заставляет БД проектировать и
+            # сканировать всю коллекцию на каждый запрос — минуты и 504.
+            ql = q.casefold()
+            uids = [uid for uid, name in names.items() if ql in name.casefold()]
+            if uids:
+                # userId в реестре бывает и ObjectId, и строкой — матчим оба вида.
+                pre_match = {"userId": {"$in": [ObjectId(uid) for uid in uids] + uids}}
+                # У ботов username всегда "BOT" — совпадает, только если «bot» в запросе.
+                pre_match_bot = {"userId": "bot"} if "bot" in ql else {"_id": {"$exists": False}}
+            else:
+                # Имя не найдено среди известных: могут быть документы с
+                # неизвестным userId — оставляем старый медленный путь.
+                match["$expr"] = {"$regexMatch": {
+                    "input": {"$toString": {"$ifNull": ["$username", ""]}},
+                    "regex": re.escape(q), "options": "i",
+                }}
+        elif field in TX_SORT_FIELDS:
             # Через $toString, иначе точечный поиск по числам и датам
             # («Сумма: 100», «timestamp: 2026-07») не находил бы ничего.
             match["$expr"] = {"$regexMatch": {
@@ -925,10 +946,25 @@ async def admin_get_all_transactions(
         # Глобальный топ-K лежит внутри объединения пер-веточных топ-K, поэтому
         # сортировку с лимитом можно протолкнуть в каждую ветку.
         out = list(stages)
+        if pre_match is not None:
+            out = [{"$match": pre_match}] + out
         if match:
             out.append({"$match": match})
         out += [sort_stage, {"$limit": take}]
         return out
+
+    def bot_branch() -> list:
+        if pre_match_bot is not None:
+            # Фильтр по имени: pre_match_bot уже содержит матч по userId,
+            # post-матч (kind) добавляем следом.
+            out = [{"$match": pre_match_bot}] + bot_stage[1:]
+            if match:
+                out.append({"$match": match})
+        elif match:
+            out = bot_stage + [{"$match": match}]
+        else:
+            out = bot_stage
+        return out + [sort_stage, {"$limit": take}]
 
     def fast_branch(stages: list) -> list:
         # Быстрый путь дефолтного вида: сортируем ДО $project, тогда сортировка
@@ -936,10 +972,10 @@ async def admin_get_all_transactions(
         head = stages[:-1]  # для ботов это {"$match": {"userId": "bot"}}
         return head + [sort_stage, {"$limit": take}, stages[-1]]
 
-    pick = fast_branch if (not match and sort_key == "timestamp") else branch
+    pick = fast_branch if (not match and pre_match is None and sort_key == "timestamp") else branch
     # Для kind="bot" реестр не нужен — отсекаем его сразу, чтобы не гонять 77k зря.
     pipeline: list = [{"$match": {"_id": None}}] if kind == "bot" else pick(ledger_stage)
-    pipeline.append({"$unionWith": {"coll": "stock_events", "pipeline": pick(bot_stage)}})
+    pipeline.append({"$unionWith": {"coll": "stock_events", "pipeline": bot_branch()}})
     pipeline += [sort_stage, {"$skip": skip}, {"$limit": limit + 1}]
 
     rows = await db.transactions.aggregate(pipeline, allowDiskUse=True).to_list(limit + 1)

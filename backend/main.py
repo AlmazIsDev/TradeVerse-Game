@@ -848,6 +848,97 @@ async def admin_get_user_property(
 
 TX_SORT_FIELDS = {"timestamp", "direction", "label", "category", "username", "amount", "balanceAfter"}
 
+# Дискретные фильтры и их сырые/вычисляемые поля. players → userId (индекс),
+# direction/category вычисляются в $project — матчим $expr-эквивалентом до
+# проекции, source — константа проекции, живёт в post-match.
+_AMOUNT_OPS = {"amount_min": "$gte", "amount_max": "$lte"}
+_TS_OPS = {"ts_from": "$gte", "ts_to": "$lte"}
+
+
+def build_tx_filters(f: dict, names: dict) -> tuple[dict | None, dict]:
+    """Фильтры админ-таблицы → (pre_match до $project, post_match после).
+
+    f: players/exclude_players (id), categories, directions, sources (+exclude_),
+    amount_min/amount_max, ts_from/ts_to. names: {uid_hex: username}.
+    """
+    raw: dict = {}
+    raw_conds: list[dict] = []  # вычислимые поля → обычные предикаты через $or/$nor
+
+    def uid_variants(uid: str) -> list:
+        # userId хранится и ObjectId, и строкой; не-id (имя из строки поиска) — как есть.
+        return [ObjectId(uid), uid] if ObjectId.is_valid(uid) else [uid]
+
+    for uid in f.get("players") or []:
+        raw.setdefault("userId", {"$in": []})["$in"] += uid_variants(uid)
+    for uid in f.get("exclude_players") or []:
+        raw.setdefault("userId", {"$nin": []})["$nin"] += uid_variants(uid)
+
+    # Направление/категория вычисляются в $project из direction|type и
+    # category|symbol. Выражения ($expr) запрещают индексы и гоняются на
+    # каждом документе, поэтому раскладываем в запросные предикаты: ветка для
+    # документов с полем + явные ветки $exists для вычисляемого фолбэка.
+    def _dir_conds(d):
+        conds = [{"direction": {"$in": d}}]
+        if "income" in d:
+            conds.append({"direction": {"$exists": False}, "type": "sell"})
+        if "expense" in d:
+            conds.append({"direction": {"$exists": False}, "type": {"$ne": "sell"}})
+        return conds
+
+    def _cat_conds(c):
+        conds = [{"category": {"$in": c}}]
+        if "trade" in c:
+            conds.append({"category": {"$exists": False}, "symbol": {"$exists": True}})
+        if "system" in c:
+            conds.append({"category": {"$exists": False}, "symbol": {"$exists": False}})
+        return conds
+
+    if f.get("directions"):
+        raw_conds.append({"$or": _dir_conds(f["directions"])})
+    if f.get("exclude_directions"):
+        raw_conds.append({"$nor": _dir_conds(f["exclude_directions"])})
+    if f.get("categories"):
+        raw_conds.append({"$or": _cat_conds(f["categories"])})
+    if f.get("exclude_categories"):
+        raw_conds.append({"$nor": _cat_conds(f["exclude_categories"])})
+
+    for key, op in _AMOUNT_OPS.items():
+        if f.get(key) is not None:
+            raw.setdefault("amount", {})[op] = float(f[key])
+    for key, op in _TS_OPS.items():
+        if f.get(key):
+            raw.setdefault("timestamp", {})[op] = f[key]
+
+    if raw_conds:
+        raw = {"$and": [raw, *raw_conds]} if raw else (
+            raw_conds[0] if len(raw_conds) == 1 else {"$and": raw_conds})
+
+    post: dict = {}
+    if f.get("sources"):
+        post["source"] = {"$in": f["sources"]}
+    if f.get("exclude_sources"):
+        post["source"] = {"$nin": f["exclude_sources"]}
+
+    if not raw:
+        return None, post
+    return raw, post
+
+
+@app.get("/api/admin/transactions/filters")
+async def admin_transaction_filter_options(
+    _admin=Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Справочник значений для мультифильтров таблицы транзакций."""
+    players = [{"id": str(u["_id"]), "username": u.get("username", "")}
+               async for u in db.users.find({}, {"username": 1}).sort("username", 1)]
+    categories = await db.transactions.distinct("category")
+    return {
+        "players": players,
+        "categories": sorted(c for c in categories if c),
+        "sources": ["user"],  # логи ботов вырезаны
+    }
+
 
 @app.get("/api/admin/transactions")
 async def admin_get_all_transactions(
@@ -856,6 +947,12 @@ async def admin_get_all_transactions(
     q: str = Query(None),
     field: str = Query(None),
     kind: str = Query("all"),
+    players: str = Query(None), exclude_players: str = Query(None),
+    categories: str = Query(None), exclude_categories: str = Query(None),
+    directions: str = Query(None), exclude_directions: str = Query(None),
+    sources: str = Query(None), exclude_sources: str = Query(None),
+    amount_min: float = Query(None), amount_max: float = Query(None),
+    ts_from: str = Query(None), ts_to: str = Query(None),
     sort: str = Query("timestamp"),
     order: int = Query(-1),
     _admin=Depends(require_admin),
@@ -892,9 +989,28 @@ async def admin_get_all_transactions(
     sort_stage = {"$sort": {sort_key: 1 if order >= 0 else -1, "_id": 1}}
 
     match: dict = {}
+    post_match: dict = {}
     pre_match: dict | None = None   # матч по сырому полю ДО $project (индексируемый путь)
     if kind in ("income", "expense"):
         match["direction"] = kind
+
+    # Мультифильтры: CSV-списки + диапазоны → pre/post-match через билдер.
+    def _split_csv(s):
+        return [v.strip() for v in s.split(",") if v.strip()] if s else None
+
+    f_pre, f_post = build_tx_filters({
+        "players": _split_csv(players), "exclude_players": _split_csv(exclude_players),
+        "categories": _split_csv(categories), "exclude_categories": _split_csv(exclude_categories),
+        "directions": _split_csv(directions), "exclude_directions": _split_csv(exclude_directions),
+        "sources": _split_csv(sources), "exclude_sources": _split_csv(exclude_sources),
+        "amount_min": amount_min, "amount_max": amount_max,
+        "ts_from": ts_from, "ts_to": ts_to,
+    }, names)
+    if f_pre:
+        # Слияние с pre_match от поиска по имени: оба условия по userId → $and.
+        pre_match = {"$and": [pre_match, f_pre]} if pre_match else f_pre
+    if f_post:
+        post_match = f_post
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
         if field == "username":
@@ -930,8 +1046,9 @@ async def admin_get_all_transactions(
         out = list(stages)
         if pre_match is not None:
             out = [{"$match": pre_match}] + out
-        if match:
-            out.append({"$match": match})
+        tail = match | post_match if not ("$expr" in match and post_match) else {"$and": [match, post_match]}
+        if tail:
+            out.append({"$match": tail})
         out += [sort_stage, {"$limit": take}]
         return out
 
@@ -941,7 +1058,7 @@ async def admin_get_all_transactions(
         head = stages[:-1]
         return head + [sort_stage, {"$limit": take}, stages[-1]]
 
-    pick = fast_branch if (not match and pre_match is None and sort_key == "timestamp") else branch
+    pick = fast_branch if (not match and not post_match and pre_match is None and sort_key == "timestamp") else branch
     # Логи сделок ботов вырезаны — фильтр kind="bot" всегда пуст.
     pipeline: list = [{"$match": {"_id": None}}] if kind == "bot" else pick(ledger_stage)
     pipeline += [sort_stage, {"$skip": skip}, {"$limit": limit + 1}]

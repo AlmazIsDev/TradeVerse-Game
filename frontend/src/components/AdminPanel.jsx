@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig,
   adminListCollections, adminListDocuments, adminCreateDocument, adminUpdateDocument, adminDeleteDocument,
-  adminListTransactions,
+  adminListTransactions, adminTxFilterOptions,
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
 } from '../services/api'
+import TxFilters, { TX_FIELDS } from './TxFilters'
 import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import UserPropertyModal from './UserPropertyModal'
@@ -66,16 +67,6 @@ function DbDocPreview({ doc, refs = {} }) {
 const DB_PAGE_SIZE = 50
 const TX_PAGE_SIZE = 50
 
-// Поля транзакций: сортировка + точечный поиск вида "Категория: cityroof".
-const TX_FIELDS = [
-  { key: 'timestamp', i18n: 'admin.txTime', fallback: 'Время' },
-  { key: 'direction', i18n: 'admin.txDirection', fallback: 'Операция' },
-  { key: 'label', i18n: 'admin.txLabel', fallback: 'Описание' },
-  { key: 'category', i18n: 'admin.txCategory', fallback: 'Категория' },
-  { key: 'username', i18n: 'admin.txUser', fallback: 'Игрок' },
-  { key: 'amount', i18n: 'admin.txAmount', fallback: 'Сумма' },
-  { key: 'balanceAfter', i18n: 'admin.txBalance', fallback: 'Баланс после' },
-]
 
 function AdminPanel({ user, onClose }) {
   const { t } = useTranslation()
@@ -103,7 +94,9 @@ function AdminPanel({ user, onClose }) {
   const [stocksV2, setStocksV2] = useState([])
   const [users, setUsers] = useState([])
   const [transactions, setTransactions] = useState({ items: [], has_more: false })
-  const [txFilter, setTxFilter] = useState('all') // 'all' | 'income' | 'expense' | 'bot'
+  const [txFilters, setTxFilters] = useState({ include: {}, exclude: {}, ranges: {} })
+  const [txOptions, setTxOptions] = useState({ players: [], categories: [], sources: ['user'] })
+  const [openTxMenu, setOpenTxMenu] = useState(null) // key открытого дропдауна фильтра
   const [txSearch, setTxSearch] = useState('')       // дебаунсенное значение, уходит на сервер
   const [txSearchInput, setTxSearchInput] = useState('') // сырой ввод
   const [txSort, setTxSort] = useState('timestamp')
@@ -176,17 +169,57 @@ function AdminPanel({ user, onClose }) {
 
   // Точечный поиск: "поле: значение" (напр. «Категория: cityroof», "username: admin").
   // Поле распознаём и по имени, и по локализованной подписи; иначе — свободный поиск.
-  const parseTxSearch = (raw) => {
+  // Гибрид со справочником: "поле: v1, !v2" — значения дописываются в фильтр поля
+  // (с «!» — в исключения), свободный текст остаётся свободным поиском.
+  const parseTxSearch = (raw, filters) => {
     const s = raw.trim()
     const m = s.match(/^([^:]+):\s*(.*)$/)
-    if (!m) return { q: s, field: undefined }
+    if (!m) return { q: s, filters }
     const key = m[1].trim().toLowerCase()
     const f = TX_FIELDS.find(x => x.key.toLowerCase() === key || t(x.i18n, x.fallback).toLowerCase() === key)
-    return f ? { q: m[2].trim(), field: f.key } : { q: s, field: undefined }
+    if (!f) return { q: s, filters }
+    const include = [], exclude = []
+    m[2].split(',').map(v => v.trim()).filter(Boolean).forEach(v => {
+      if (v.startsWith('!')) exclude.push(v.slice(1)); else include.push(v)
+    })
+    const next = { include: { ...filters.include }, exclude: { ...filters.exclude }, ranges: filters.ranges }
+    if (include.length) next.include[f.key] = [...(next.include[f.key] || []), ...include]
+    if (exclude.length) next.exclude[f.key] = [...(next.exclude[f.key] || []), ...exclude]
+    return { q: '', filters: next }
   }
 
+  // Переключение значения в include/exclude; из противоположной стороны снимается.
+  const toggleTxValue = (field, value, mode) => setTxFilters(f => {
+    const cur = f[mode][field] || []
+    const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value]
+    const side = { ...f[mode] }
+    if (next.length) side[field] = next
+    else delete side[field]
+    const other = mode === 'include' ? 'exclude' : 'include'
+    const otherSide = { ...f[other] }
+    if (otherSide[field]) otherSide[field] = otherSide[field].filter(v => v !== value)
+    return { ...f, [mode]: side, [other]: otherSide }
+  })
+
+  // Смена режима дропдауна (включить/кроме): значения переезжают между сторонами.
+  const setTxMode = (field, mode) => setTxFilters(f => {
+    const other = mode === 'include' ? 'exclude' : 'include'
+    const vals = f[other][field] || []
+    const src = { ...f[other] }
+    delete src[field]
+    const dst = { ...f[mode], [field]: vals }
+    return { ...f, [other]: src, [mode]: dst }
+  })
+
+  const setTxRange = (field, side, value) => setTxFilters(f => {
+    const r = { ...(f.ranges[field] || {}), [side]: value }
+    const ranges = { ...f.ranges, [field]: r }
+    if (!Object.values(r).some(v => v !== '' && v != null)) delete ranges[field]
+    return { ...f, ranges }
+  })
+
   // Сброс на первую страницу при смене фильтра, поиска или сортировки.
-  useEffect(() => { setTxPage(0) }, [txFilter, txSearch, txSort, txOrder])
+  useEffect(() => { setTxPage(0) }, [txFilters, txSearch, txSort, txOrder])
 
   // Дебаунс: regex-поиск идёт по 180k записям, не дёргаем сервер на каждый символ.
   useEffect(() => {
@@ -196,15 +229,15 @@ function AdminPanel({ user, onClose }) {
 
   useEffect(() => {
     if (activeSection !== 'transactions') return
-    const { q, field } = parseTxSearch(txSearch)
+    const { q, field, filters } = parseTxSearch(txSearch, txFilters)
     adminListTransactions({
-      q: q || undefined, field, kind: txFilter,
+      q: q || undefined, field, filters,
       skip: txPage * TX_PAGE_SIZE, limit: TX_PAGE_SIZE,
       sort: txSort, order: txOrder,
     })
       .then(setTransactions)
       .catch(err => toast(t('admin.loadError') + ': ' + err.message, 'error'))
-  }, [activeSection, txFilter, txSearch, txSort, txOrder, txPage, txNonce])
+  }, [activeSection, txFilters, txSearch, txSort, txOrder, txPage, txNonce])
 
   useEffect(() => {
     if (activeSection !== 'database' || !dbActiveCollection) return
@@ -246,7 +279,8 @@ function AdminPanel({ user, onClose }) {
         const data = await request('/api/admin/users')
         setUsers(data)
       } else if (activeSection === 'transactions') {
-        // Транзакции грузит отдельный effect (по фильтру/поиску/сортировке/странице).
+        // Транзакции грузит отдельный effect; здесь — справочник значений фильтров.
+        adminTxFilterOptions().then(setTxOptions).catch(() => {})
       } else if (activeSection === 'database') {
         if (dbCollections.length === 0) {
           const cols = await adminListCollections()
@@ -1182,16 +1216,12 @@ function AdminPanel({ user, onClose }) {
               <div className="tx-filter-bar">
                 <div className="tx-search"><Search size={15} className="tx-search-icon" />
                   <input value={txSearchInput} onChange={e => setTxSearchInput(e.target.value)} placeholder={t('admin.searchTx', 'Поиск по операции, категории, игроку...')} /></div>
-                <div className="tx-chips">
-                  {['all', 'income', 'expense', 'bot'].map(f => (
-                    <button key={f} className={`tx-chip ${txFilter === f ? 'active' : ''}`} onClick={() => setTxFilter(f)}>
-                      {t(`admin.txFilter.${f}`, f.toUpperCase())}
-                    </button>
-                  ))}
-                </div>
-                <select className="admin-input tx-sort-select" value={txSort} onChange={e => setTxSort(e.target.value)}>
-                  {TX_FIELDS.map(f => <option key={f.key} value={f.key}>{t(f.i18n, f.fallback)}</option>)}
-                </select>
+                <TxFilters
+                  filters={txFilters} setFilters={setTxFilters}
+                  options={txOptions} openMenu={openTxMenu} setOpenMenu={setOpenTxMenu}
+                  toggleValue={toggleTxValue} setMode={setTxMode} setRange={setTxRange}
+                  sort={txSort} onSort={setTxSort}
+                />
                 <button className="admin-btn" onClick={() => setTxOrder(o => -o)}
                   title={txOrder >= 0 ? t('admin.database.sortAsc') : t('admin.database.sortDesc')}>
                   {txOrder >= 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}

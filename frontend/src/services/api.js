@@ -474,15 +474,31 @@ export async function adminGetDocument(name, docId) {
 
 export async function adminListTransactions(opts = {}) {
   const params = new URLSearchParams()
-  const { q, field, kind, skip, limit, sort, order } = opts
+  const { q, field, filters, skip, limit, sort, order } = opts
   if (q) params.set('q', q)
   if (field) params.set('field', field)
-  if (kind) params.set('kind', kind)
+  if (filters) {
+    for (const [key, vals] of Object.entries(filters.include || {})) {
+      if (vals.length) params.set(key, vals.join(','))
+    }
+    for (const [key, vals] of Object.entries(filters.exclude || {})) {
+      if (vals.length) params.set('exclude_' + key, vals.join(','))
+    }
+    const r = filters.ranges || {}
+    if (r.timestamp?.from) params.set('ts_from', r.timestamp.from)
+    if (r.timestamp?.to) params.set('ts_to', r.timestamp.to)
+    if (r.amount?.min !== '' && r.amount?.min != null) params.set('amount_min', r.amount.min)
+    if (r.amount?.max !== '' && r.amount?.max != null) params.set('amount_max', r.amount.max)
+  }
   if (skip != null) params.set('skip', skip)
   if (limit != null) params.set('limit', limit)
   if (sort) params.set('sort', sort)
   if (order != null) params.set('order', order)
   return request(`/api/admin/transactions?${params.toString()}`)
+}
+
+export async function adminTxFilterOptions() {
+  return request('/api/admin/transactions/filters')
 }
 
 export async function adminCreateDocument(name, doc) {

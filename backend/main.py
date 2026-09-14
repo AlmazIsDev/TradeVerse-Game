@@ -42,9 +42,10 @@ from market_data import router as market_router
 from econ import router as econ_router
 from market_events import router as events_router
 from market_lots import router as market_lots_router
-from shop import router as shop_router, admin_router as shop_admin_router
+from shop import router as shop_router, admin_router as shop_admin_router, alias_admin_router as shop_admin_alias_router
 from mining import router as mining_router
 from media import router as media_router
+from farm import router as farm_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
 
@@ -126,6 +127,9 @@ async def lifespan(app: FastAPI):
     await db.cityroof_itstudio_jobs.create_index("orderedBy")
     await db.cityroof_itstudio_jobs.create_index([("status", 1), ("ready_at", 1)])
     await db.cityroof_itstudio_jobs.create_index([("studioAssetId", 1), ("status", 1)])
+    # Ферма: одно поле на (userId, assetId). Индексы для полей и занятости машин.
+    await db.user_fields.create_index([("userId", 1), ("assetId", 1)], unique=True)
+    await db.user_hardware.create_index("busy_until")
     # Refresh-токены: уникальный индекс по хешу + TTL для авто-очистки истёкших.
     await db.refresh_tokens.create_index("token_hash", unique=True)
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
@@ -143,7 +147,10 @@ app.add_middleware(
     allow_origins=[
         "https://tradeverse.weissx.net",   # прод-фронтенд
         "http://localhost:20300",          # локальный vite (dev/preview)
+        "http://127.0.0.1:20300",          # алиас по IP (vite может открыть так)
         "http://localhost:5173",           # локальный vite (дефолтный порт)
+        "http://127.0.0.1:5173",           # алиас по IP для дефолтного vite
+        "http://localhost",                # бонус: origin без порта (на всякий случай)
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -167,9 +174,12 @@ app.include_router(market_lots_router)
 app.include_router(shop_router)
 # Админские цены магазина (редактор цен / PriceEditorTab).
 app.include_router(shop_admin_router)
+app.include_router(shop_admin_alias_router)   # алиас /api/admin/shop-prices (для совместимости)
 app.include_router(mining_router)
 app.include_router(media_router)
 app.include_router(ws_router)
+# Ферма: поле, культуры, машины (комбайн/трактор), топливо (см. backend/farm.py).
+app.include_router(farm_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────

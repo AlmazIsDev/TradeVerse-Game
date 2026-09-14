@@ -279,7 +279,15 @@ async function request(endpoint, options = {}) {
     return await response.json()
   } catch (error) {
     if (error instanceof ApiError) throw error
-    throw new ApiError('Не удалось подключиться к серверу. Проверьте подключение.', 0)
+    // Сетевая/transport-ошибка (TypeError: Failed to fetch, ECONNREFUSED,
+    // обрыв во время dev-reload, CORS preflight abort и т.п.). Добавляем
+    // endpoint и причину — иначе в UI видно только общее «проверьте
+    // подключение» и непонятно, что именно отвалилось.
+    const cause = error?.message || error?.name || 'network error'
+    throw new ApiError(
+      `Не удалось подключиться к серверу (${endpoint}): ${cause}. Проверьте, что backend запущен на ${API_BASE_URL}.`,
+      0,
+    )
   }
 }
 
@@ -954,6 +962,30 @@ export async function setFarmCoin(id, symbol) { return request(`/api/mining/farm
 export async function setOverclock(id, value) { return request(`/api/mining/farms/${encodeURIComponent(id)}/overclock`, { method: 'POST', body: JSON.stringify({ value }) }) }
 export async function repairFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/repair`, { method: 'POST' }) }
 export async function farmManager(id, action) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action }) }) }
+
+// ── Ферма: поле, культуры, машины, топливо ──────────────────────────────────
+
+export async function fetchFarmCatalog() { return request('/api/farm/catalog') }
+export async function fetchMyFarm() { return request('/api/farm/my') }
+export async function buyFarmCells(assetId, blocks = 1) {
+  return request('/api/farm/cells/buy', { method: 'POST', body: JSON.stringify({ assetId, blocks }) })
+}
+export async function farmPlant(assetId, cropId, cellIndices = []) {
+  return request('/api/farm/plant', { method: 'POST', body: JSON.stringify({ assetId, cropId, cellIndices }) })
+}
+export async function farmHarvest(assetId, cellIndices = []) {
+  return request('/api/farm/harvest', { method: 'POST', body: JSON.stringify({ assetId, cellIndices }) })
+}
+export async function buyFuel(liters) {
+  return request('/api/farm/fuel/buy', { method: 'POST', body: JSON.stringify({ liters }) })
+}
+export async function sellStorage(assetId, cropId, qty) {
+  return request('/api/farm/sell-storage', { method: 'POST', body: JSON.stringify({ assetId, cropId, qty }) })
+}
+export async function fetchFarmVehicles() { return request('/api/farm/vehicles') }
+export async function buyFarmVehicle(vehicleId, quantity = 1) {
+  return request('/api/farm/vehicles/buy', { method: 'POST', body: JSON.stringify({ vehicleId, quantity }) })
+}
 
 export {
   API_BASE_URL,

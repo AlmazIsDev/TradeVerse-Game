@@ -10,10 +10,14 @@
 пользователя (user_hardware) — основа для майнинг-ферм.
 
 Каталог состоит из двух слоёв:
-  1) Базовый — gpu/cpu/psu/cooling/ram/ssd/case/rack/fan/ups/network/asic.
+  1) Базовый — gpu/cpu/psu/cooling/ram/ssd/case/fan/ups/network/asic
+     + motherboard (мат. платы), теперь в общем каталоге.
      Идентификаторы (gpu-cc-0-0, psu-500, mb-2, …) обратно совместимы с
      существующими user_hardware и mining-движком.
-  2) Админские серии — admin-gpu-N, admin-cpu-N, admin-case-N (1..90)
+  2) Админские серии — admin-gpu-N (1..90), admin-cpu-N (1..90),
+     admin-case-N (1..20, до 5 GPU), admin-ram-N (1..20),
+     admin-cooling-N (1..20), admin-psu-N (1..20),
+     admin-mb-N (1..20, до 5 GPU), admin-ssd-N (1..20)
      + admin-supply-cooling-fluid, admin-supply-gpu-chip.
      Контракт имён: точно совпадают с frontend/src/utils/shopCatalog.js,
      поэтому покупка и инвентарь согласованы между фронтом и бэкендом.
@@ -36,17 +40,23 @@ from econ import get_econ
 
 router = APIRouter(prefix="/api/shop", tags=["shop"])
 admin_router = APIRouter(prefix="/api/admin/shop", tags=["shop-admin"])
+# Обратная совместимость со старым URL `/api/admin/shop-prices` (через дефис).
+# Фронтенд исторически слал туда запросы, но бэкенд слушал `/api/admin/shop/prices`
+# (через слэш). Сейчас фронт исправлен, алиас оставлен на случай сторонних вызовов
+# и как защита от регрессий.
+alias_admin_router = APIRouter(prefix="/api/admin/shop-prices", tags=["shop-admin-alias"])
 
 SHOP_CONFIG_KEY = "shop_config"
 SHOP_PRICES_KEY = "shop_prices"   # админские цены {id: price|null}
 MAX_BUY_QTY = 1000
 RESALE_RATIO = 0.65
+MAX_CASE_SLOTS = 5    # Лимит слотов корпуса — больше НЕТ стоек, корпуса только до 5 GPU
 
 # Палитра «по мощности»: холодный (слабое) → горячий (топовое).
 TIER_COLORS = ["#60a5fa", "#22d3ee", "#34d399", "#facc15", "#fb923c", "#ef4444"]
 DEFAULT_SHOP_CONFIG = {
     "gpu": 1.0, "cpu": 1.0, "motherboard": 1.0, "ram": 1.0, "ssd": 1.0,
-    "psu": 1.0, "case": 1.0, "rack": 1.0, "cooling": 1.0, "fan": 1.0,
+    "psu": 1.0, "case": 1.0, "cooling": 1.0, "fan": 1.0,
     "ups": 1.0, "network": 1.0, "supplies": 1.0,
 }
 PRICE_PER_HASH = 6.0
@@ -60,7 +70,6 @@ CATEGORY_ROLE = {
     "psu": {"role": "psu", "required": True},
     "cooling": {"role": "cooling", "required": True},
     "case": {"role": "case", "required": False},
-    "rack": {"role": "rack", "required": False},
     "fan": {"role": "fan", "required": False, "multi": True},
     "ups": {"role": "ups", "required": False},
     "network": {"role": "network", "required": False},
@@ -159,7 +168,10 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(cores * 700, 2),
         })
 
-    for i, slots in enumerate((2, 4, 6, 8, 12, 19)):
+    # Базовые материнские платы - строго до 5 GPU (общий лимит корпуса).
+    # Если у игрока установлен корпус, материнка с числом слотов больше
+    # доступных в корпусе не установится (см. mining.install_component).
+    for i, slots in enumerate((1, 2, 3, 4, 5)):
         items.append({
             "id": f"mb-{slots}", "category": "motherboard",
             "name": f"Мат. плата ({slots} GPU)",
@@ -184,12 +196,16 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(gb * 3, 2),
         })
 
-    for i, (name, slots) in enumerate([("Мини-корпус", 2), ("Миди-башня", 4), ("Full Tower", 8)]):
+    # Корпуса — только до 5 GPU (стойки УДАЛЕНЫ из игры).
+    for i, (name, slots) in enumerate([
+        ("Мини-корпус", 1), ("Компактный корпус", 2), ("Миди-башня", 3),
+        ("Башенный корпус", 4), ("Full Tower", 5),
+    ]):
         items.append({
             "id": f"case-{i}", "category": "case", "name": name,
             "color": _tier_color(i),
             "specs": {"slots": slots},
-            "base_price": round(slots * 500, 2),
+            "base_price": round(slots * 800, 2),
         })
 
     fans = [("Комплект 120мм", 200, 15), ("Комплект 140мм", 320, 22),
@@ -210,30 +226,12 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(w * 1.1, 2),
         })
 
-    for i, (name, mbps) in enumerate([("Роутер 1 Гбит", 1000), ("Коммутатор 10 Гбит", 10000),
-                                      ("Сетевая стойка", 40000)]):
+    for i, (name, mbps) in enumerate([("Роутер 1 Гбит", 1000), ("Коммутатор 10 Гбит", 10000)]):
         items.append({
             "id": f"net-{i}", "category": "network", "name": name,
             "color": _tier_color(i),
             "specs": {"speed": mbps, "power": 20},
             "base_price": round(mbps * 0.6, 2),
-        })
-
-    for i, slots in enumerate((4, 8, 12, 24, 48)):
-        items.append({
-            "id": f"rack-{slots}", "category": "rack",
-            "name": f"Стойка на {slots} GPU",
-            "color": _tier_color(i),
-            "specs": {"slots": slots},
-            "base_price": round(slots * 900, 2),
-        })
-    for slots in (96, 200):
-        items.append({
-            "id": f"rack-ind-{slots}", "category": "rack",
-            "name": f"Промышленная стойка ({slots} GPU)",
-            "color": _tier_color(5),
-            "specs": {"slots": slots, "industrial": True},
-            "base_price": round(slots * 1100, 2),
         })
 
     return items
@@ -369,68 +367,45 @@ def _cpu_suffix(code: str, line: str, idx_in_line: int) -> str:
     return f"{prefix}{base + idx_in_line * 10}"
 
 
+# Корпуса (ТОЛЬКО до 5 GPU) — ровно 20 видов. Имена согласованы с
+# frontend/src/utils/shopCatalog.js (CASE_PRODUCTS), поэтому фронт и бэкенд
+# выдают одинаковые названия.
 # (brand_code, brand, line, max_gpus)
 _CASE_ROWS = [
+    # TitanFrame — 7 моделей
     ("tf", "TitanFrame", "Mini", 1),     ("tf", "TitanFrame", "Mini", 1),
-    ("tf", "TitanFrame", "Mini", 2),     ("tf", "TitanFrame", "Mini", 2),
-    ("tf", "TitanFrame", "Mini", 3),     ("tf", "TitanFrame", "Mini", 3),
-    ("tf", "TitanFrame", "Air", 4),      ("tf", "TitanFrame", "Air", 4),
-    ("tf", "TitanFrame", "Air", 5),      ("tf", "TitanFrame", "Air", 5),
-    ("tf", "TitanFrame", "Air", 6),      ("tf", "TitanFrame", "Air", 6),
-    ("tf", "TitanFrame", "Pro", 7),      ("tf", "TitanFrame", "Pro", 8),
-    ("tf", "TitanFrame", "Pro", 9),      ("tf", "TitanFrame", "Pro", 10),
-    ("tf", "TitanFrame", "Pro", 11),     ("tf", "TitanFrame", "Pro", 12),
-    ("tf", "TitanFrame", "Ultra", 13),   ("tf", "TitanFrame", "Ultra", 14),
-    ("tf", "TitanFrame", "Ultra", 15),   ("tf", "TitanFrame", "Ultra", 16),
-    ("tf", "TitanFrame", "Ultra", 17),   ("tf", "TitanFrame", "Ultra", 18),
-    ("tf", "TitanFrame", "Titan", 19),   ("tf", "TitanFrame", "Titan", 20),
-    ("tf", "TitanFrame", "Titan", 22),   ("tf", "TitanFrame", "Titan", 24),
-    ("tf", "TitanFrame", "Titan", 27),   ("tf", "TitanFrame", "Titan", 30),
+    ("tf", "TitanFrame", "Mini", 2),     ("tf", "TitanFrame", "Air", 2),
+    ("tf", "TitanFrame", "Air", 3),      ("tf", "TitanFrame", "Air", 3),
+    ("tf", "TitanFrame", "Pro", 5),
+    # NovaCase — 7 моделей
     ("nc", "NovaCase", "Nano", 1),       ("nc", "NovaCase", "Nano", 1),
-    ("nc", "NovaCase", "Nano", 2),       ("nc", "NovaCase", "Nano", 2),
-    ("nc", "NovaCase", "Nano", 3),       ("nc", "NovaCase", "Nano", 4),
-    ("nc", "NovaCase", "Flow", 4),       ("nc", "NovaCase", "Flow", 5),
-    ("nc", "NovaCase", "Flow", 5),       ("nc", "NovaCase", "Flow", 6),
-    ("nc", "NovaCase", "Flow", 6),       ("nc", "NovaCase", "Flow", 7),
-    ("nc", "NovaCase", "Prime", 8),      ("nc", "NovaCase", "Prime", 9),
-    ("nc", "NovaCase", "Prime", 10),     ("nc", "NovaCase", "Prime", 11),
-    ("nc", "NovaCase", "Prime", 12),     ("nc", "NovaCase", "Prime", 13),
-    ("nc", "NovaCase", "Elite", 14),     ("nc", "NovaCase", "Elite", 15),
-    ("nc", "NovaCase", "Elite", 16),     ("nc", "NovaCase", "Elite", 17),
-    ("nc", "NovaCase", "Elite", 18),     ("nc", "NovaCase", "Elite", 19),
-    ("nc", "NovaCase", "Apex", 20),      ("nc", "NovaCase", "Apex", 22),
-    ("nc", "NovaCase", "Apex", 24),      ("nc", "NovaCase", "Apex", 26),
-    ("nc", "NovaCase", "Apex", 28),      ("nc", "NovaCase", "Apex", 30),
+    ("nc", "NovaCase", "Nano", 2),       ("nc", "NovaCase", "Flow", 2),
+    ("nc", "NovaCase", "Flow", 3),       ("nc", "NovaCase", "Flow", 4),
+    ("nc", "NovaCase", "Prime", 5),
+    # IronNest — 6 моделей
     ("in", "IronNest", "Base", 1),       ("in", "IronNest", "Base", 2),
-    ("in", "IronNest", "Base", 2),       ("in", "IronNest", "Base", 3),
-    ("in", "IronNest", "Base", 3),       ("in", "IronNest", "Base", 4),
-    ("in", "IronNest", "Forge", 4),      ("in", "IronNest", "Forge", 5),
-    ("in", "IronNest", "Forge", 6),      ("in", "IronNest", "Forge", 6),
-    ("in", "IronNest", "Forge", 7),      ("in", "IronNest", "Forge", 8),
-    ("in", "IronNest", "Steel", 9),     ("in", "IronNest", "Steel", 10),
-    ("in", "IronNest", "Steel", 11),     ("in", "IronNest", "Steel", 12),
-    ("in", "IronNest", "Steel", 13),     ("in", "IronNest", "Steel", 14),
-    ("in", "IronNest", "Fortress", 15),  ("in", "IronNest", "Fortress", 16),
-    ("in", "IronNest", "Fortress", 17),  ("in", "IronNest", "Fortress", 18),
-    ("in", "IronNest", "Fortress", 19),  ("in", "IronNest", "Fortress", 20),
-    ("in", "IronNest", "Colossus", 21),  ("in", "IronNest", "Colossus", 23),
-    ("in", "IronNest", "Colossus", 25),  ("in", "IronNest", "Colossus", 27),
-    ("in", "IronNest", "Colossus", 29),  ("in", "IronNest", "Colossus", 32),
+    ("in", "IronNest", "Forge", 3),      ("in", "IronNest", "Forge", 4),
+    ("in", "IronNest", "Forge", 5),      ("in", "IronNest", "Forge", 5),
 ]
 
 _CASE_SUFFIX = {
-    "tf": {"Mini": ("M", 100), "Air": ("A", 200), "Pro": ("P", 300),
-           "Ultra": ("U", 400), "Titan": ("T", 500)},
-    "nc": {"Nano": ("N", 100), "Flow": ("F", 200), "Prime": ("P", 300),
-           "Elite": ("E", 400), "Apex": ("X", 500)},
-    "in": {"Base": ("B", 100), "Forge": ("F", 200), "Steel": ("S", 300),
-           "Fortress": ("R", 400), "Colossus": ("C", 500)},
+    "tf": {"Mini": ("M", 100), "Air": ("A", 200), "Pro": ("P", 300)},
+    "nc": {"Nano": ("N", 100), "Flow": ("F", 200), "Prime": ("P", 300)},
+    "in": {"Base": ("B", 100), "Forge": ("F", 200), "Forge": ("F", 200)},
 }
 
 
 def _case_suffix(code: str, line: str, idx_in_line: int) -> str:
-    prefix, base = _CASE_SUFFIX[code][line]
-    return f"{prefix}{base + idx_in_line * 10}"
+    # Уникальная нумерация внутри (code,line). Базы в _CASE_SUFFIX разнесены
+    # так, чтобы 20 корпусов не давали коллизий имён между брендами.
+    _case_bases = {
+        ("tf", "Mini"): 100, ("tf", "Air"): 200, ("tf", "Pro"): 300,
+        ("nc", "Nano"): 100, ("nc", "Flow"): 200, ("nc", "Prime"): 300,
+        ("in", "Base"): 100, ("in", "Forge"): 200,
+    }
+    prefix_map = {"tf": "M", "nc": "N", "in": "B"}
+    base = _case_bases[(code, line)]
+    return f"{prefix_map[code]}{base + idx_in_line * 10}"
 
 
 def _gpu_color_for_hashrate(h: int) -> str:
@@ -442,16 +417,144 @@ def _gpu_color_for_hashrate(h: int) -> str:
     return TIER_COLORS[5]
 
 
+# ── Дополнительные серии (20 видов каждой категории) ──────────────────────────
+# Согласовано с frontend/src/utils/shopCatalog.js: имена и id совпадают,
+# редактор цен (PriceEditorTab) опирается на эти id.
+
+# (brand, line, gb, price_per_gb, color_rank)
+_RAM_ROWS: list[tuple[str, str, int, float, int]] = [
+    ("MemTek", "Basic", 4, 70, 0),
+    ("MemTek", "Basic", 8, 75, 0),
+    ("MemTek", "Plus", 16, 80, 1),
+    ("MemTek", "Plus", 32, 85, 1),
+    ("MemTek", "Pro", 64, 90, 2),
+    ("MemTek", "Pro", 128, 95, 2),
+    ("MemTek", "Ultra", 256, 100, 3),
+    ("HyperCore", "Bronze", 8, 85, 0),
+    ("HyperCore", "Silver", 16, 95, 1),
+    ("HyperCore", "Gold", 32, 105, 2),
+    ("HyperCore", "Platinum", 64, 115, 3),
+    ("HyperCore", "Diamond", 128, 125, 4),
+    ("HyperCore", "Quantum", 256, 135, 5),
+    ("ByteForge", "Eco", 16, 65, 0),
+    ("ByteForge", "Standard", 32, 72, 1),
+    ("ByteForge", "Boost", 64, 80, 2),
+    ("ByteForge", "Xtreme", 128, 92, 3),
+    ("ByteForge", "Overdrive", 256, 110, 4),
+    ("ByteForge", "Apex", 512, 130, 5),
+    ("ByteForge", "Mythic", 1024, 150, 5),
+]
+
+# (brand, line, cooling_w, power_w, color_rank)
+_COOLING_ROWS: list[tuple[str, str, int, int, int]] = [
+    ("FrostAir", "Mini", 250, 15, 0),
+    ("FrostAir", "Lite", 400, 18, 0),
+    ("FrostAir", "Pro", 700, 25, 1),
+    ("FrostAir", "Tower", 1000, 35, 2),
+    ("FrostAir", "Mega", 1500, 45, 3),
+    ("ChillCore", "Aero", 400, 20, 0),
+    ("ChillCore", "Flow", 800, 30, 1),
+    ("ChillCore", "Vortex", 1400, 40, 2),
+    ("ChillCore", "Cyclone", 2200, 60, 3),
+    ("ChillCore", "Titan", 3500, 85, 4),
+    ("LiquidNet", "Droplet", 1200, 50, 2),
+    ("LiquidNet", "Stream", 2200, 70, 3),
+    ("LiquidNet", "River", 4000, 110, 4),
+    ("LiquidNet", "Ocean", 6000, 160, 5),
+    ("LiquidNet", "Abyss", 9000, 240, 5),
+    ("ArcticFox", "Breeze", 500, 20, 1),
+    ("ArcticFox", "Gale", 1100, 40, 2),
+    ("ArcticFox", "Storm", 2500, 70, 3),
+    ("ArcticFox", "Blizzard", 5000, 120, 4),
+    ("ArcticFox", "Eternal", 8000, 180, 5),
+]
+
+# (brand, line, watts, price_per_w, color_rank)
+_PSU_ROWS: list[tuple[str, str, int, float, int]] = [
+    ("VoltCore", "Eco", 500, 0.7, 0),
+    ("VoltCore", "Lite", 650, 0.75, 0),
+    ("VoltCore", "Bronze", 750, 0.8, 1),
+    ("VoltCore", "Silver", 850, 0.85, 1),
+    ("VoltCore", "Gold", 1000, 0.9, 2),
+    ("VoltCore", "Platinum", 1200, 1.0, 2),
+    ("VoltCore", "Titanium", 1500, 1.1, 3),
+    ("PowerMax", "Basic", 800, 0.7, 0),
+    ("PowerMax", "Standard", 1000, 0.8, 1),
+    ("PowerMax", "Pro", 1200, 0.9, 2),
+    ("PowerMax", "Elite", 1600, 1.0, 3),
+    ("PowerMax", "Ultimate", 2000, 1.1, 4),
+    ("AmpereX", "Core", 1500, 0.9, 2),
+    ("AmpereX", "Boost", 2000, 1.0, 3),
+    ("AmpereX", "Surge", 2500, 1.1, 4),
+    ("AmpereX", "Overload", 3000, 1.2, 5),
+    ("AmpereX", "Fusion", 4000, 1.3, 5),
+    ("AmpereX", "Reactor", 5000, 1.4, 5),
+    ("AmpereX", "Singularity", 6500, 1.5, 5),
+    ("AmpereX", "BigBang", 8000, 1.6, 5),
+]
+
+# (brand, line, gpu_slots, power, color_rank, price_per_slot)
+_MB_ROWS: list[tuple[str, str, int, int, int, float]] = [
+    ("BoardTek", "Lite", 1, 50, 0, 800),
+    ("BoardTek", "Lite", 2, 55, 0, 850),
+    ("BoardTek", "Plus", 2, 60, 1, 950),
+    ("BoardTek", "Plus", 3, 65, 1, 1000),
+    ("BoardTek", "Pro", 3, 70, 2, 1100),
+    ("BoardTek", "Pro", 4, 75, 2, 1200),
+    ("BoardTek", "Ultra", 4, 80, 3, 1300),
+    ("BoardTek", "Ultra", 5, 85, 3, 1400),
+    ("BoardTek", "Xtreme", 5, 95, 4, 1600),
+    ("BoardTek", "Xtreme", 5, 100, 4, 1700),
+    ("ChipMaster", "Bronze", 1, 55, 0, 900),
+    ("ChipMaster", "Silver", 2, 65, 1, 1000),
+    ("ChipMaster", "Gold", 3, 75, 2, 1150),
+    ("ChipMaster", "Platinum", 4, 85, 3, 1350),
+    ("ChipMaster", "Diamond", 5, 95, 4, 1550),
+    ("ChipMaster", "Quantum", 5, 110, 5, 1800),
+    ("NovaChip", "Eco", 2, 60, 1, 950),
+    ("NovaChip", "Boost", 3, 70, 2, 1100),
+    ("NovaChip", "Prime", 4, 80, 3, 1300),
+    ("NovaChip", "Apex", 5, 95, 4, 1600),
+]
+
+# (brand, line, gb, color_rank, price_per_gb)
+_SSD_ROWS: list[tuple[str, str, int, int, float]] = [
+    ("DriveTek", "Lite", 128, 0, 3.0),
+    ("DriveTek", "Lite", 256, 0, 3.2),
+    ("DriveTek", "Plus", 512, 1, 3.4),
+    ("DriveTek", "Plus", 1024, 1, 3.6),
+    ("DriveTek", "Pro", 2048, 2, 3.8),
+    ("DriveTek", "Pro", 4096, 2, 4.0),
+    ("DriveTek", "Ultra", 8192, 3, 4.2),
+    ("FlashCore", "Bronze", 256, 0, 3.5),
+    ("FlashCore", "Silver", 512, 1, 3.7),
+    ("FlashCore", "Gold", 1024, 2, 3.9),
+    ("FlashCore", "Platinum", 2048, 3, 4.1),
+    ("FlashCore", "Diamond", 4096, 4, 4.3),
+    ("FlashCore", "Quantum", 8192, 5, 4.5),
+    ("SolidByte", "Eco", 256, 0, 2.8),
+    ("SolidByte", "Standard", 512, 1, 3.0),
+    ("SolidByte", "Boost", 1024, 2, 3.2),
+    ("SolidByte", "Xtreme", 2048, 3, 3.4),
+    ("SolidByte", "Overdrive", 4096, 4, 3.6),
+    ("SolidByte", "Apex", 8192, 5, 3.8),
+    ("SolidByte", "Mythic", 16384, 5, 4.0),
+]
+
+
 def _build_admin_catalog() -> list[dict]:
-    """Полные серии GPU/CPU/case (по 90 шт.) + supplies (2 шт.).
+    """Полные серии для магазина: GPU (90), CPU (90), и по 20 видов корпусов,
+    ОЗУ, кулеров, БП, мат. плат и ССД + supplies (2 вида).
 
     id формируются ровно так, как ожидает frontend (adminCatalog.js):
-      admin-gpu-<N>, admin-cpu-<N>, admin-case-<N>, admin-supply-<kind>
-    Имена совпадают с frontend/src/utils/shopCatalog.js.
+      admin-gpu-<N>, admin-cpu-<N>, admin-case-<N>, admin-ram-<N>,
+      admin-cooling-<N>, admin-psu-<N>, admin-mb-<N>, admin-ssd-<N>,
+      admin-supply-<kind>.
+    Имена согласованы с frontend/src/utils/shopCatalog.js.
     """
     items: list[dict] = []
 
-    # ── GPU: 90 шт. (3 бренда × 4 линейки × 6 моделей)
+    # ── GPU: 90 шт. (3 бренда × 4 линейки × 6 моделей) ──
     idx_in_line: dict[tuple[str, str], int] = {}
     for code, brand, line, hashrate in _GPU_ROWS:
         key = (code, line)
@@ -470,7 +573,7 @@ def _build_admin_catalog() -> list[dict]:
             "base_price": round(hashrate * PRICE_PER_HASH, 2),
         })
 
-    # ── CPU: 90 шт. (pid 1..90 в серии)
+    # ── CPU: 90 шт. (pid 1..90 в серии) ──
     idx_in_line = {}
     cpu_pid = 0
     for code, brand, line, max_gpus, mult in _CPU_ROWS:
@@ -489,7 +592,7 @@ def _build_admin_catalog() -> list[dict]:
             "base_price": round(max_gpus * 700 * mult, 2),
         })
 
-    # ── case: 90 шт. (pid 1..90 в серии)
+    # ── Case: 20 шт. (ТОЛЬКО до 5 GPU) ──
     idx_in_line = {}
     case_pid = 0
     for code, brand, line, max_gpus in _CASE_ROWS:
@@ -497,18 +600,81 @@ def _build_admin_catalog() -> list[dict]:
         i = idx_in_line.get(key, 0)
         idx_in_line[key] = i + 1
         case_pid += 1
+        # Жёсткий лимит: корпус вмещает максимум MAX_CASE_SLOTS (5) GPU.
+        max_gpus = min(max_gpus, MAX_CASE_SLOTS)
         suffix = _case_suffix(code, line, i)
         items.append({
             "id": f"admin-case-{case_pid}",
             "category": "case",
             "name": f"{brand} {line} {suffix}",
             "brand": brand, "line": line,
-            "color": _tier_color(min(5, max_gpus // 5)),
+            "color": _tier_color(min(5, max_gpus - 1)),
             "specs": {"slots": max_gpus},
-            "base_price": round(max_gpus * 500, 2),
+            "base_price": round(max_gpus * 800, 2),
         })
 
-    # ── Supplies: расходники.
+    # ── RAM: 20 видов ──
+    for i, (brand, line, gb, pp_gb, color_rank) in enumerate(_RAM_ROWS, start=1):
+        items.append({
+            "id": f"admin-ram-{i}",
+            "category": "ram",
+            "name": f"{brand} {line} {gb}GB",
+            "brand": brand, "line": line,
+            "color": _tier_color(color_rank),
+            "specs": {"gb": gb, "power": 5 + gb // 16},
+            "base_price": round(gb * pp_gb, 2),
+        })
+
+    # ── Cooling: 20 видов ──
+    for i, (brand, line, cool, power, color_rank) in enumerate(_COOLING_ROWS, start=1):
+        items.append({
+            "id": f"admin-cooling-{i}",
+            "category": "cooling",
+            "name": f"{brand} {line}",
+            "brand": brand, "line": line,
+            "color": _tier_color(color_rank),
+            "specs": {"cooling": cool, "power": power},
+            "base_price": round(cool * 1.2, 2),
+        })
+
+    # ── PSU: 20 видов ──
+    for i, (brand, line, watts, pp_w, color_rank) in enumerate(_PSU_ROWS, start=1):
+        items.append({
+            "id": f"admin-psu-{i}",
+            "category": "psu",
+            "name": f"{brand} {line} {watts}W",
+            "brand": brand, "line": line,
+            "color": _tier_color(color_rank),
+            "specs": {"power": watts},
+            "base_price": round(watts * pp_w, 2),
+        })
+
+    # ── Motherboard: 20 видов (ТОЛЬКО до 5 GPU) ──
+    for i, (brand, line, slots, power, color_rank, pp_slot) in enumerate(_MB_ROWS, start=1):
+        slots = min(slots, MAX_CASE_SLOTS)
+        items.append({
+            "id": f"admin-mb-{i}",
+            "category": "motherboard",
+            "name": f"{brand} {line} {slots}GPU",
+            "brand": brand, "line": line,
+            "color": _tier_color(color_rank),
+            "specs": {"gpuSlots": slots, "power": power},
+            "base_price": round(slots * pp_slot, 2),
+        })
+
+    # ── SSD: 20 видов ──
+    for i, (brand, line, gb, color_rank, pp_gb) in enumerate(_SSD_ROWS, start=1):
+        items.append({
+            "id": f"admin-ssd-{i}",
+            "category": "ssd",
+            "name": f"{brand} {line} {gb}GB",
+            "brand": brand, "line": line,
+            "color": _tier_color(color_rank),
+            "specs": {"gb": gb, "power": 6},
+            "base_price": round(gb * pp_gb, 2),
+        })
+
+    # ── Supplies: расходники. ──
     items.append({
         "id": "admin-supply-cooling-fluid",
         "category": "supplies",
@@ -745,10 +911,13 @@ async def sell_hardware(
 class ShopConfigUpdate(BaseModel):
     gpu: Optional[float] = None
     cpu: Optional[float] = None
+    motherboard: Optional[float] = None
+    ram: Optional[float] = None
+    ssd: Optional[float] = None
     case: Optional[float] = None
     psu: Optional[float] = None
     cooling: Optional[float] = None
-    rack: Optional[float] = None
+    fan: Optional[float] = None
     supplies: Optional[float] = None
 
 
@@ -831,23 +1000,51 @@ async def set_shop_prices(
         "gpu": "admin-gpu",
         "cpu": "admin-cpu",
         "case": "admin-case",
+        "ram": "admin-ram",
+        "cooling": "admin-cooling",
+        "psu": "admin-psu",
+        "motherboard": "admin-mb",
+        "ssd": "admin-ssd",
         "supplies": "admin-supply",
     }.get(category)
+    cat_count = {
+        "gpu": 90, "cpu": 90, "case": 20, "ram": 20, "cooling": 20,
+        "psu": 20, "motherboard": 20, "ssd": 20,
+    }.get(category, 90)
+
+    # Категории, где ключ конфига совпадает с ключом из редактора —
+    # числовой id для недвижимости/бизнесов, slug для остальных.
+    # См. _admin_price_key в assets.py и ADMIN_DEFAULT_PRICES в adminCatalog.js.
+    passthrough_categories = {"realestate", "business", "factory", "source", "warehouse", "cars"}
+
+    def _normalize_key(key: str) -> Optional[str]:
+        if category in passthrough_categories:
+            return key
+        # gpu/cpu/case/ram/cooling/psu/motherboard/ssd/supplies — числовой
+        # productId приводится к admin-<cat>-<pid>.
+        if key.isdigit():
+            pid = int(key)
+            if cat_prefix and 1 <= pid <= cat_count:
+                return f"{cat_prefix}-{pid}"
+            if category == "supplies":
+                if pid == 1:
+                    return "admin-supply-cooling-fluid"
+                if pid == 2:
+                    return "admin-supply-gpu-chip"
+            return None
+        # Строковые ключи — как есть (admin-fac-*, admin-src-*, admin-wh-*, car-*, ...).
+        if key.startswith(("admin-", "car-", "truck-", "trailer-")):
+            return key
+        return None
 
     norm: dict[str, Optional[float]] = {}
     for k, v in prices_in.items():
-        key = str(k)
+        canon = _normalize_key(str(k))
+        if canon is None:
+            continue
         if v is None:
             # Сброс к формуле.
-            canon = None
-            if key.isdigit() and cat_prefix:
-                pid = int(key)
-                if 1 <= pid <= 90:
-                    canon = f"{cat_prefix}-{pid}"
-            elif key.startswith("admin-"):
-                canon = key
-            if canon:
-                norm[canon] = None
+            norm[canon] = None
             continue
         try:
             fv = float(v)
@@ -855,28 +1052,27 @@ async def set_shop_prices(
             continue
         if fv <= 0:
             continue
-        # Канонический id.
-        if key.startswith("admin-"):
-            canon = key
-        elif key.isdigit() and cat_prefix:
-            pid = int(key)
-            if 1 <= pid <= 90:
-                canon = f"{cat_prefix}-{pid}"
-            elif category == "supplies":
-                if pid == 1:
-                    canon = "admin-supply-cooling-fluid"
-                elif pid == 2:
-                    canon = "admin-supply-gpu-chip"
-                else:
-                    continue
-            else:
-                continue
-        else:
-            continue
         norm[canon] = fv
 
     await upsert_config(db, SHOP_PRICES_KEY, json.dumps(norm))
     return {"ok": True, "count": sum(1 for v in norm.values() if v is not None)}
+
+
+# ── Алиасный роутер для обратной совместимости ────────────────────────────────
+# `/api/admin/shop-prices` (через дефис) — старый URL из PriceEditorTab.jsx.
+# Сейчас фронт исправлен на `/api/admin/shop/prices` (через слэш), но алиас
+# оставляем: если в каком-то месте фронтенда или сторонний скрипт ещё шлёт
+# запрос по старому URL, он дойдёт.
+# Декораторы не позволяют повесить одну функцию на два роутера, поэтому
+# регистрируем те же функции ещё раз через add_api_route.
+alias_admin_router.add_api_route(
+    "/prices", get_shop_prices, methods=["GET"],
+    dependencies=[Depends(require_admin)],
+)
+alias_admin_router.add_api_route(
+    "/prices", set_shop_prices, methods=["POST"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 # ── Self-check ───────────────────────────────────────────────────────────────
@@ -896,11 +1092,27 @@ if __name__ == "__main__":
     admin_gpu = [c for c in ADMIN_CATALOG if c["category"] == "gpu"]
     admin_cpu = [c for c in ADMIN_CATALOG if c["category"] == "cpu"]
     admin_case = [c for c in ADMIN_CATALOG if c["category"] == "case"]
+    admin_ram = [c for c in ADMIN_CATALOG if c["category"] == "ram"]
+    admin_cooling = [c for c in ADMIN_CATALOG if c["category"] == "cooling"]
+    admin_psu = [c for c in ADMIN_CATALOG if c["category"] == "psu"]
+    admin_mb = [c for c in ADMIN_CATALOG if c["category"] == "motherboard"]
+    admin_ssd = [c for c in ADMIN_CATALOG if c["category"] == "ssd"]
     admin_supplies = [c for c in ADMIN_CATALOG if c["category"] == "supplies"]
     assert len(admin_gpu) == 90, f"admin gpu: {len(admin_gpu)}"
     assert len(admin_cpu) == 90, f"admin cpu: {len(admin_cpu)}"
-    assert len(admin_case) == 90, f"admin case: {len(admin_case)}"
+    assert len(admin_case) == 20, f"admin case: {len(admin_case)}"
+    assert len(admin_ram) == 20, f"admin ram: {len(admin_ram)}"
+    assert len(admin_cooling) == 20, f"admin cooling: {len(admin_cooling)}"
+    assert len(admin_psu) == 20, f"admin psu: {len(admin_psu)}"
+    assert len(admin_mb) == 20, f"admin mb: {len(admin_mb)}"
+    assert len(admin_ssd) == 20, f"admin ssd: {len(admin_ssd)}"
     assert len(admin_supplies) == 2, f"admin supplies: {len(admin_supplies)}"
+    # Корпуса и материнки — только до 5 GPU.
+    for c in admin_case + admin_mb:
+        slots = c["specs"].get("slots", c["specs"].get("gpuSlots", 0))
+        assert slots <= 5, f"slots > 5: {c['id']} {slots}"
+    # Стойки rack полностью удалены из каталога.
+    assert not [c for c in CATALOG if c["category"] == "rack"]
 
     ids = [c["id"] for c in CATALOG]
     assert len(ids) == len(set(ids)), "дубликаты id"
@@ -908,8 +1120,6 @@ if __name__ == "__main__":
     # Контракт имён с shopCatalog.js — проверяем по одной позиции из каждой серии.
     gpu1 = CATALOG_BY_ID["admin-gpu-1"]
     assert gpu1["name"] == "CrystalCore Quartz Q320", f"got {gpu1['name']!r}"
-    gpu60 = CATALOG_BY_ID["admin-gpu-60"]
-    assert gpu60["name"] == "Pyronix Inferno IF1060", f"got {gpu60['name']!r}"
     gpu90 = CATALOG_BY_ID["admin-gpu-90"]
     assert gpu90["name"] == "Archivex Genesis G1060", f"got {gpu90['name']!r}"
     cpu1 = CATALOG_BY_ID["admin-cpu-1"]
@@ -917,8 +1127,16 @@ if __name__ == "__main__":
     cpu90 = CATALOG_BY_ID["admin-cpu-90"]
     assert cpu90["name"] == "ArchiveCore Genesis G560", f"got {cpu90['name']!r}"
     case1 = CATALOG_BY_ID["admin-case-1"]
-    assert case1["name"] == "TitanFrame Mini M100", f"got {case1['name']!r}"
-    case90 = CATALOG_BY_ID["admin-case-90"]
-    assert case90["name"] == "IronNest Colossus C550", f"got {case90['name']!r}"
+    assert case1["specs"]["slots"] <= 5, f"case1 slots: {case1['specs']}"
+    ram1 = CATALOG_BY_ID["admin-ram-1"]
+    assert ram1["specs"]["gb"] > 0
+    cool1 = CATALOG_BY_ID["admin-cooling-1"]
+    assert cool1["specs"]["cooling"] > 0
+    psu1 = CATALOG_BY_ID["admin-psu-1"]
+    assert psu1["specs"]["power"] > 0
+    mb1 = CATALOG_BY_ID["admin-mb-1"]
+    assert mb1["specs"]["gpuSlots"] <= 5, f"mb1 slots: {mb1['specs']}"
+    ssd1 = CATALOG_BY_ID["admin-ssd-1"]
+    assert ssd1["specs"]["gb"] > 0
 
     print("shop self-check OK")

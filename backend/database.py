@@ -9,9 +9,12 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 load_dotenv()
 
-MONGODB_URL = os.getenv("MONGODB_URL")
-
-DATABASE_NAME = "tradeverse"
+# ── Настройки БД (всё из backend/.env) ───────────────────────────────────────
+# MONGODB_URL   — строка подключения. Дефолт: mongodb://localhost:27017/
+# DATABASE_NAME — имя базы. Дефолт: tradeverse
+# DB_ENGINE     — только для скрипта start_db.py (docker|native), database.py его не читает.
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "tradeverse")
 
 client = AsyncIOMotorClient(MONGODB_URL)
 db: AsyncIOMotorDatabase = client[DATABASE_NAME]

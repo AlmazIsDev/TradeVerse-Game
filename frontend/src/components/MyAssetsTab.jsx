@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchMyAssets, collectAsset, upgradeAsset, sellAsset, fetchCompany,
+  fetchMyAssets, collectAsset, sellAsset, fetchCompany,
   transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
@@ -11,11 +11,12 @@ import { formatMoney } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
+import FarmPanel from './FarmPanel'
 import {
-  Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
+  Home, Car, Briefcase, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
-  Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info, Pickaxe,
-  Factory, Mountain, Warehouse,
+  Cpu, SlidersHorizontal, ChevronDown, ChevronLeft, Send, Newspaper, Info, Pickaxe,
+  Factory, Mountain, Warehouse, Sprout,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -91,6 +92,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [giftModal, setGiftModal] = useState(null)               // актив, передаваемый игроку
   const [giftName, setGiftName] = useState('')
   const [mediaModal, setMediaModal] = useState(false)            // разоблачение в СМИ (актив «Медиахолдинг»)
+  const [fieldModal, setFieldModal] = useState(null)             // актив-поле с открытой панелью управления
   const menuRef = useRef(null)
 
   // Закрытие меню «Взаимодействие» по клику вне него.
@@ -375,13 +377,6 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => askAct(a.id, collectAsset, 'myassets.collected', { title: t('myassets.collect'), message: t('confirm.collect', { amount: formatMoney(a.accrued) }) }),
       })
     }
-    if (!isCar && a.type !== 'realestate' && a.type !== 'business') {
-      actions.push({
-        key: 'upgrade', className: 'upgrade', disabled: busy,
-        icon: <ArrowUpCircle size={15} />, label: `${t('myassets.upgrade')} ($${formatMoney(a.upgradeCost)})`,
-        onClick: () => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) }),
-      })
-    }
     if (isCar) {
       actions.push({
         key: 'tune', className: 'upgrade', disabled: busy,
@@ -415,6 +410,15 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         key: 'media-expose', disabled: busy, icon: <Newspaper size={15} />,
         label: t('media.order'),
         onClick: () => { setMediaModal(true); setMenuOpenId(null) },
+      })
+    }
+    // Поле (источник category='field'): кнопка «Управление полем» — заглушка,
+    // панель управления пока пустая (см. below по fieldModal).
+    if (a.type === 'source' && a.category === 'field') {
+      actions.push({
+        key: 'manage-field', disabled: busy, icon: <Sprout size={15} />,
+        label: t('field.manage'),
+        onClick: () => { setFieldModal(a); setMenuOpenId(null) },
       })
     }
     if (isCompanyOwner && a.type !== 'realestate') {
@@ -474,6 +478,21 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
           <b>{s.material.qty}</b>
         </div>
       </div>
+    )
+  }
+
+  // Панель управления полем: когда открыта (fieldModal), заменяем весь список
+  // активов полной панелью фермы (сетка клеток, склад, топливо, машины).
+  // Кнопка «Назад» внутри панели возвращает к списку источников.
+  if (fieldModal) {
+    return (
+      <FarmPanel
+        assetId={fieldModal.id}
+        assetName={t(`assetNames.${fieldModal.slug}`, fieldModal.name)}
+        onBack={() => setFieldModal(null)}
+        balance={balance}
+        onBalanceChange={onBalanceChange}
+      />
     )
   }
 

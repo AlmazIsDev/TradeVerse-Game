@@ -138,4 +138,7 @@ export const CAR_SECTIONS = [
   { id: 'car',      label: 'cars.cat_car',      fallback: 'Машины' },
   { id: 'truck',    label: 'cars.cat_truck',    fallback: 'Фуры' },
   { id: 'trailer',  label: 'cars.cat_trailer',  fallback: 'Прицепы' },
+  // Ферма: комбайны и тракторы. Источник данных — /api/farm/vehicles (backend/farm.py),
+  // покупка — /api/farm/vehicles/buy. Это отдельная витрина, не входящая в CARS_CATALOG.
+  { id: 'farm',     label: 'cars.cat_farm',     fallback: 'Ферма' },
 ]

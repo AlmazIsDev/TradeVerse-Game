@@ -118,7 +118,7 @@ function PriceEditorTab() {
         const storedUser = localStorage.getItem('tradeverse_user')
         const token = storedUser ? JSON.parse(storedUser).token : null
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
-        const resp = await fetch('/api/admin/shop-prices', { headers })
+        const resp = await fetch('/api/admin/shop/prices', { headers })
         if (!cancelled && resp.ok) {
           const data = await resp.json()
           if (!cancelled) {
@@ -169,18 +169,21 @@ function PriceEditorTab() {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       }
-      await fetch('/api/admin/shop-prices', {
+      const resp = await fetch('/api/admin/shop/prices', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ prices }),
+        body: JSON.stringify({ prices, category: activeCategory }),
       })
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`)
+      }
       setHasChanges(false)
       setSavedMessage(true)
       setTimeout(() => setSavedMessage(false), 2000)
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Не удалось сохранить цены:', err)
     }
-  }, [prices])
+  }, [prices, activeCategory])
 
   const handleReset = useCallback(() => {
     if (!confirm(t('admin.prices.resetConfirm'))) return

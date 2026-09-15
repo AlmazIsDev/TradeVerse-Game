@@ -949,10 +949,22 @@ export async function fetchInventory() {
 
 // ── Mining farms ────────────────────────────────────────────────────────────────
 
-export async function fetchFarms() { return request('/api/mining/farms') }
+export async function fetchFarms(houseId) {
+  const q = houseId ? `?houseId=${encodeURIComponent(houseId)}` : ''
+  return request(`/api/mining/farms${q}`)
+}
+// Список домов игрока с подвалом, у каждого — basement и массив слотов
+// (свободные/занятые, farmId/farmName если занят).
+export async function fetchMiningHouses() { return request('/api/mining/houses') }
 export async function fetchMiningMarket() { return request('/api/mining/market') }
 export async function fetchMiningParts() { return request('/api/mining/parts') }
-export async function createFarm(name) { return request('/api/mining/farms', { method: 'POST', body: JSON.stringify({ name }) }) }
+export async function createFarm(name, houseId, slotIndex) {
+  return request('/api/mining/farms', {
+    method: 'POST',
+    body: JSON.stringify({ name, houseId, slotIndex }),
+  })
+}
+export async function addCoolant(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/coolant`, { method: 'POST' }) }
 export async function deleteFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
 export async function installComponent(id, category, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category, hwId }) }) }
 export async function uninstallComponent(id, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/uninstall`, { method: 'POST', body: JSON.stringify({ hwId }) }) }

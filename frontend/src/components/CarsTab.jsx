@@ -15,7 +15,7 @@ import {
 import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
 import MarketBuyModal from './MarketBuyModal'
-import { fetchAssetMarket, buyAsset } from '../services/api'
+import { fetchAssetMarket, buyAsset, fetchFarmVehicles, buyFarmVehicle } from '../services/api'
 import { CAR_SECTIONS } from '../utils/carsCatalog'
 
 // Ранг редкости для сортировки.
@@ -50,6 +50,9 @@ function CarsTab({ balance = 0, onBalanceChange }) {
   // Каталог с сервера (динамические цены). Секции truck/trailer живут в
   // поле category; легковые — type "car" без категории или category:"car".
   const [cars, setCars] = useState([])
+  // Фермерская техника (комбайны/тракторы) — отдельный API /api/farm/vehicles.
+  // Покупка идёт через /api/farm/vehicles/buy, а не /api/assets/buy.
+  const [farmVehicles, setFarmVehicles] = useState([])
   const [loading, setLoading] = useState(true)
 
   const loadCars = useCallback(async () => {
@@ -73,7 +76,31 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     }
   }, [t])
 
+  // Загрузка фермерских машин (компактный список из FARM_VEHICLES бэкенда).
+  const loadFarmVehicles = useCallback(async () => {
+    try {
+      const data = await fetchFarmVehicles()
+      const items = (data?.vehicles || []).map(v => ({
+        id: v.id,
+        slug: v.slug,
+        name: v.name,
+        category: 'farm',
+        type: v.kind,          // 'combine' | 'tractor'
+        kind: v.kind,
+        tier: v.tier,
+        rarity: v.rarity || 'common',
+        price: v.price,
+        emoji: v.emoji || (v.kind === 'tractor' ? '🚜' : '🌾'),
+        specs: v.specs || {},
+        owned: v.owned || 0,
+        isFarmVehicle: true,
+      }))
+      setFarmVehicles(items)
+    } catch { /* ферма не обязательна — молча проглатываем */ }
+  }, [])
+
   useEffect(() => { loadCars() }, [loadCars])
+  useEffect(() => { loadFarmVehicles() }, [loadFarmVehicles])
 
   // Дебаунс для поля поиска.
   useEffect(() => {
@@ -86,10 +113,13 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     else { setSortBy(by); setSortDir('asc') }
   }, [sortBy])
 
-  // Витрина: фильтр по секции + поиск + сортировка.
+  // Витрина: фильтр по секции + поиск + сортировка. Секция 'farm' читает
+  // farmVehicles, 'all' — объединяет.
   const view = useMemo(() => {
-    let r = cars
-    if (section !== 'all') r = r.filter(x => x.category === section)
+    let r
+    if (section === 'farm') r = farmVehicles
+    else if (section === 'all') r = [...cars, ...farmVehicles]
+    else r = cars.filter(x => x.category === section)
     if (search) {
       const q = search.toLowerCase()
       r = r.filter(x =>
@@ -121,25 +151,29 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     })
   }, [t])
 
-  // Подтверждение покупки: реальная покупка через /api/assets/buy.
+  // Подтверждение покупки: фарм-машины — /api/farm/vehicles/buy, остальное
+  // — /api/assets/buy.
   const handleConfirm = useCallback(async () => {
     const item = pendingBuy
     if (!item?.slug) return
     setBusy(true)
     try {
-      const res = await buyAsset(item.slug)
+      const res = item.isFarmVehicle
+        ? await buyFarmVehicle(item.slug, 1)
+        : await buyAsset(item.slug)
       if (res && typeof res.balance === 'number' && onBalanceChange) {
         onBalanceChange(res.balance)
       }
       toast(t('market.bought', { defaultValue: 'Куплено' }) + `: ${item.name}`)
       setPendingBuy(null)
-      loadCars()   // цена могла сдвинуться (спрос)
+      if (item.isFarmVehicle) loadFarmVehicles()
+      else loadCars()
     } catch (e) {
       toast(e?.message || t('common.error', 'Ошибка'))
     } finally {
       setBusy(false)
     }
-  }, [pendingBuy, onBalanceChange, t, loadCars])
+  }, [pendingBuy, onBalanceChange, t, loadCars, loadFarmVehicles])
 
   return (
     <div className="cars-tab market-tab">

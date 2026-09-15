@@ -16,6 +16,9 @@ import MyCompanyTab from './MyCompanyTab'
 import CityRoofTab from './CityRoofTab'
 import MiningTab from './MiningTab'
 import CarsTab from './CarsTab'
+// PlayerBusinessesTab — заглушка раздела «Бизнесы игроков». Наполнение
+// добавим следующим шагом (витрина бизнесов игроков с покупкой товаров).
+import PlayerBusinessesTab from './PlayerBusinessesTab'
 import SettingsPage from './SettingsPage'
 import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
@@ -166,6 +169,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cars':
         return <CarsTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'playerbusinesses':
+        return <PlayerBusinessesTab />
       case 'leaderboard':
         return <LeaderboardTab currentUserId={user?.id} />
       case 'settings':

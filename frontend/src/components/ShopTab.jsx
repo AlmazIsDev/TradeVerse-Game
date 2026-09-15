@@ -25,28 +25,40 @@ import ShopBuyModal from './ShopBuyModal'
 import { toast } from './Toast'
 // ── Иконки (lucide-react). ───────────────────────────────────────────────
 import {
-  Monitor, Cpu, Box, Package,
+  Monitor, Cpu, Box, Package, MemoryStick, HardDrive, Snowflake, Zap, CircuitBoard,
   Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
 } from 'lucide-react'
 
 // Фильтр-пилюли: категории магазина (дома убраны — они на «Рынке»).
 // "supplies" — расходники с бэкенда (см. /api/shop/catalog).
 const CATEGORIES = [
-  { id: '', icon: ShoppingCart },        // Все
+  { id: '', icon: ShoppingCart },            // Все
   { id: 'gpu', icon: Monitor },
   { id: 'cpu', icon: Cpu },
+  { id: 'motherboard', icon: CircuitBoard },
+  { id: 'ram', icon: MemoryStick },
+  { id: 'ssd', icon: HardDrive },
+  { id: 'cooling', icon: Snowflake },
+  { id: 'psu', icon: Zap },
   { id: 'case', icon: Box },
   { id: 'supplies', icon: Package },
 ]
 
 const CAT_COLOR = {
-  gpu: '#818cf8', cpu: '#a855f7', case: '#94a3b8', supplies: '#f97316',
+  gpu: '#818cf8', cpu: '#a855f7', motherboard: '#06b6d4', ram: '#10b981',
+  ssd: '#eab308', cooling: '#0ea5e9', psu: '#f59e0b', case: '#94a3b8',
+  supplies: '#f97316',
 }
 
 function specLine(cat, s = {}, t) {
   switch (cat) {
     case 'gpu': return `${s.hashrate >= 1000 ? (s.hashrate / 1000).toFixed(1) + 'k' : s.hashrate} H/s · ${s.power}W`
     case 'cpu': return `${t('units.cores', { count: s.cores })} · ${s.power}W`
+    case 'motherboard': return `${s.gpuSlots || 0} GPU · ${s.power || 0}W`
+    case 'ram': return `${s.gb} ГБ · ${s.power || 0}W`
+    case 'ssd': return `${s.gb} ГБ · ${s.power || 0}W`
+    case 'cooling': return `${s.cooling || 0} Вт охл. · ${s.power || 0}W`
+    case 'psu': return `${s.power || 0}W`
     case 'case': return `${t('units.slots', { count: s.slots })}`
     case 'supplies': return t(`supplies.${s.kind}`, s.kind || '')
     default: return ''
@@ -129,11 +141,14 @@ async function loadShopItems(category) {
     }
   }
 
+  // Категории, которые показываются в магазине. Дома/бизнесы отсеиваются —
+  // они на «Рынке» (MarketTab).
+  const SHOP_CATEGORIES = new Set([
+    'gpu', 'cpu', 'motherboard', 'ram', 'ssd', 'cooling', 'psu', 'case', 'supplies',
+  ])
+
   const view = useMemo(() => {
-    let r = items
-    // Защитный фильтр по категории — только то, что продаётся в магазине
-    // (дома/бизнесы убраны — они на «Рынке», см. MarketTab).
-    r = r.filter(i => ['gpu', 'cpu', 'case', 'supplies'].includes(i.category))
+    let r = items.filter(i => SHOP_CATEGORIES.has(i.category))
     if (search) r = r.filter(i => (i.name || '').toLowerCase().includes(search))
     return [...r].sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price)
   }, [items, search, sortOrder])

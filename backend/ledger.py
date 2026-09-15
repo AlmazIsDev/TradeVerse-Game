@@ -36,6 +36,9 @@ CAT_MARKET = "market"
 CAT_FACTORY = "factory"
 CAT_SOURCE = "source"
 CAT_WAREHOUSE = "warehouse"
+# Ферма (см. farm.py): продажа культур со склада поля и покупка топлива.
+CAT_FARM = "farm"
+CAT_FUEL = "fuel"
 
 VALID_DIRECTIONS = {INCOME, EXPENSE}
 

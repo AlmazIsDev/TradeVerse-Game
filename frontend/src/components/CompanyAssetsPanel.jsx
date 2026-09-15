@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  listPropertyForRent, cancelRent, upgradeAsset, fetchMaterialsPrice, buyMaterials,
+  listPropertyForRent, cancelRent, fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
@@ -10,7 +10,7 @@ import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
 import {
   LayoutGrid, Home, Car, Briefcase, KeyRound, X, Check, AlertTriangle, TrendingUp, Users,
-  ArrowUpCircle, Package, Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Newspaper,
+  Package, Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Newspaper,
 } from 'lucide-react'
 
 const TABS = [
@@ -197,13 +197,6 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, onBalanceChange, onC
     const isCar = a.type === 'car'
     const actions = []
 
-    if (!isCar) {
-      actions.push({
-        key: 'upgrade', className: 'upgrade', disabled: busy,
-        icon: <ArrowUpCircle size={15} />, label: `${t('myassets.upgrade')} ($${formatMoney(a.upgradeCost)})`,
-        onClick: () => askAct(a.id, upgradeAsset, 'myassets.upgraded', { title: t('myassets.upgrade'), message: t('confirm.upgrade', { cost: formatMoney(a.upgradeCost) }) }),
-      })
-    }
     if (a.type === 'business' && !a.slug?.startsWith('itstudio_')) {
       actions.push({
         key: 'materials', disabled: busy, icon: <Package size={15} />,

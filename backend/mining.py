@@ -19,7 +19,7 @@ import math
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
@@ -35,8 +35,15 @@ router = APIRouter(prefix="/api/mining", tags=["mining"])
 # Обязательные компоненты для запуска добычи.
 REQUIRED_ROLES = ["motherboard", "cpu", "psu", "ram", "ssd", "cooling"]  # + хотя бы 1 gpu
 
-# Ёмкость по вентиляторам, когда корпус/стойка не установлены (открытый стенд).
+# Ёмкость по вентиляторам, когда корпус не установлен (открытый стенд).
 FAN_BASE_CAP = 6
+
+# Лимит подвалов и корпусов:
+#   - майнинг разрешён ТОЛЬКО в подвалах домов (basement > 0);
+#   - в одном подвале можно установить столько корпусов, сколько его ёмкость;
+#   - в каждом корпусе — до 5 GPU (см. shop.MAX_CASE_SLOTS).
+MAX_CASES_PER_BASEMENT_SLOT = 1   # один корпус = один слот подвала
+CASE_MAX_GPUS = 5                # жёсткий лимит слотов корпуса
 
 HASH_YIELD = 0.001          # доход за единицу хешрейта × профитность монеты
 ELEC_SCALE = 0.15           # масштаб счёта за электричество
@@ -45,6 +52,20 @@ TEMP_AMBIENT = 25.0
 TEMP_FACTOR = 30.0
 OVERHEAT_TEMP = 85.0
 MINING_MIN_ELAPSED_H = 300 / 3600.0   # тик добычи не чаще, чем раз в 5 минут
+
+# Охлаждающая жидкость (расходник, заправляется в ферму).
+COOLANT_MAX = 4                    # макс. шт. в ферме
+COOLANT_DURATION_H = 12.0         # 1 шт. работает 12 часов
+COOLANT_TEMP_REDUCTION = 0.25      # -25% к температуре, пока действует
+
+# Реалистичный износ (детали ломаются только при высокой температуре).
+WEAR_BASE_PER_H = 0.05            # базовый — ничтожный, просто «возраст»
+WEAR_TEMP_START = 40.0            # с этой температуры начинается нарастающий износ
+WEAR_TEMP_HOT = 60.0              # «горячо» — износ ощутимый
+WEAR_TEMP_CRIT = 80.0             # критично — износ быстрый
+WEAR_AT_HOT = 0.8                 # износ/ч при 60°С
+WEAR_AT_CRIT = 4.0                # износ/ч при 80°С
+WEAR_OVERCLOCK_FACTOR = 3.0       # множитель износа за разгон выше 1.0x
 MAX_ACCRUAL_H = 6.0                    # cap накопления оффлайн
 FEE = 0.01
 
@@ -138,7 +159,15 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     manager = farm.get("manager") or {"type": "player", "level": 0}
     ai_level = manager.get("level", 0) if manager.get("type") == "ai" else 0
     cool_bonus = min(0.5, ai_level * 0.06)
-    temperature = round(TEMP_AMBIENT + (total_power / max(1, cooling_cap)) * TEMP_FACTOR * (1 - cool_bonus), 1)
+    base_temp = TEMP_AMBIENT + (total_power / max(1, cooling_cap)) * TEMP_FACTOR * (1 - cool_bonus)
+    # Бонус охлаждающей жидкости: пока datetime coolant_until не наступила,
+    # температура считается сниженной на 25%.
+    coolant_until = farm.get("coolant_until")
+    coolant_active = bool(coolant_until and coolant_until > _now())
+    if coolant_active:
+        # Снижение от дельты (превышения над TEMP_AMBIENT), сохраняя базу.
+        base_temp = TEMP_AMBIENT + (base_temp - TEMP_AMBIENT) * (1 - COOLANT_TEMP_REDUCTION)
+    temperature = round(base_temp, 1)
 
     coin_sym = farm.get("coin")
     coin = market.get(coin_sym) if coin_sym else None
@@ -149,8 +178,22 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     salary_per_h = round(MANAGER_SALARY_PER_H * ai_level, 2) if manager.get("type") == "ai" else 0.0
 
     overclock_excess = max(0.0, overclock - 1.0)
-    temp_wear = max(0.0, (temperature - 60) / 100.0)
-    wear_per_h = round(0.3 + overclock_excess * 2 + temp_wear * 3, 4)
+    # Реалистичный износ: при t < 40°C детали практически не изнашиваются,
+    # при 40+ — линейный рост, при 80+ — критический. Бонус жидкости уже
+    # уменьшает температуру, так что износ падает автоматически.
+    if temperature < WEAR_TEMP_START:
+        temp_wear = 0.0
+    elif temperature < WEAR_TEMP_HOT:
+        # 40..60 → 0..WEAR_AT_HOT
+        temp_wear = (temperature - WEAR_TEMP_START) / (WEAR_TEMP_HOT - WEAR_TEMP_START) * WEAR_AT_HOT
+    elif temperature < WEAR_TEMP_CRIT:
+        # 60..80 → WEAR_AT_HOT..WEAR_AT_CRIT
+        ratio = (temperature - WEAR_TEMP_HOT) / (WEAR_TEMP_CRIT - WEAR_TEMP_HOT)
+        temp_wear = WEAR_AT_HOT + (WEAR_AT_CRIT - WEAR_AT_HOT) * ratio
+    else:
+        # 80+ — экстраполяция: быстрый износ
+        temp_wear = WEAR_AT_CRIT + (temperature - WEAR_TEMP_CRIT) * 0.5
+    wear_per_h = round(WEAR_BASE_PER_H + temp_wear + overclock_excess * WEAR_OVERCLOCK_FACTOR, 4)
 
     profit_per_h = round(revenue_per_h - electricity_per_h - salary_per_h, 2)
     return {
@@ -160,6 +203,11 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
         "salaryPerHour": salary_per_h, "profitPerHour": profit_per_h,
         "wearPerHour": wear_per_h, "gpuCount": len(gpus),
         "overheating": temperature >= OVERHEAT_TEMP,
+        "coolantActive": coolant_active,
+        "coolantCount": int(farm.get("coolant", 0) or 0),
+        "coolantMax": COOLANT_MAX,
+        "coolantUntil": coolant_until.isoformat() if coolant_until else None,
+        "tempWearThreshold": WEAR_TEMP_START,
     }
 
 
@@ -201,12 +249,16 @@ def _serialize(farm: dict, stats: dict) -> dict:
         "totalSpent": round(farm.get("total_spent", 0.0), 2),
         "totalMinedUsd": round(farm.get("total_mined_usd", 0.0), 2),
         "totalMinedCoins": round(farm.get("total_mined_coins", 0.0), 8),
+        "houseId": str(farm["houseId"]) if farm.get("houseId") else None,
+        "slotIndex": int(farm.get("slotIndex", 0)) if farm.get("slotIndex") is not None else None,
+        "coolant": int(farm.get("coolant", 0) or 0),
+        "coolantUntil": farm["coolant_until"].isoformat() if farm.get("coolant_until") else None,
         "components": {
             "motherboard": comp.get("motherboard"),
             "cpu": comp.get("cpu"), "psu": comp.get("psu"),
             "ram": comp.get("ram"), "ssd": comp.get("ssd"),
             "cooling": comp.get("cooling"), "case": comp.get("case"),
-            "rack": comp.get("rack"), "ups": comp.get("ups"),
+            "ups": comp.get("ups"),
             "network": comp.get("network"),
             "gpus": comp.get("gpus", []), "fans": comp.get("fans", []),
         },
@@ -225,26 +277,25 @@ def _missing_required(farm: dict) -> list[str]:
 
 
 def _enclosure_slots(comp: dict) -> Optional[int]:
-    """Число посадочных мест корпуса/стойки (None = размещение не выбрано —
-    открытый стенд без жёсткого ограничения корпусом)."""
-    for role in ("case", "rack"):
-        node = comp.get(role)
-        if node:
-            slots = node.get("specs", {}).get("slots")
-            if slots:
-                return int(slots)
+    """Число посадочных мест корпуса (None = корпус не установлен —
+    открытый стенд без жёсткого ограничения). Стойки rack удалены из игры."""
+    node = comp.get("case")
+    if node:
+        slots = node.get("specs", {}).get("slots")
+        if slots:
+            return min(int(slots), CASE_MAX_GPUS)  # жёсткий лимит 5 GPU
     return None
 
 
 def _capacity(farm: dict) -> dict:
     """Максимум и остаток слотов для multi-компонентов (GPU, вентиляторы).
 
-    Корпус/стойка задают общий лимит посадочных мест; для GPU он ещё и
-    ограничен числом слотов материнской платы. Вентиляторы без корпуса
-    ограничены открытым стендом (FAN_BASE_CAP)."""
+    Корпус задаёт общий лимит посадочных мест (не более 5 GPU); для GPU он
+    ещё и ограничен числом слотов материнской платы (тоже ≤ 5). Вентиляторы
+    без корпуса ограничены открытым стендом (FAN_BASE_CAP)."""
     comp = farm.get("components", {})
     enclosure = _enclosure_slots(comp)
-    mb_slots = (comp.get("motherboard") or {}).get("specs", {}).get("gpuSlots", 0)
+    mb_slots = min(int((comp.get("motherboard") or {}).get("specs", {}).get("gpuSlots", 0) or 0), CASE_MAX_GPUS)
 
     gpu_max = mb_slots if mb_slots else 0
     if enclosure is not None:
@@ -258,6 +309,28 @@ def _capacity(farm: dict) -> dict:
         "fan": max(0, fan_max - fan_used),
         "gpuMax": gpu_max, "fanMax": fan_max,
     }
+
+
+async def _user_basement_capacity(db, user_id: str) -> int:
+    """Суммарная ёмкость подвалов всех домов игрока. Каждый слот подвала
+    вмещает один корпус (для майнинга). Без подвала майнинг запрещён."""
+    total = 0
+    async for a in db.user_assets.find(
+        {"userId": user_id, "type": "realestate"}
+    ):
+        total += int(a.get("basement") or 0)
+    return total
+
+
+async def _user_installed_cases(db, user_id: str) -> int:
+    """Сколько корпусов уже установлено во все фермы игрока (для контроля
+    лимита подвала)."""
+    cnt = 0
+    async for f in db.mining_farms.find({"userId": user_id}):
+        comp = f.get("components", {}) or {}
+        if comp.get("case"):
+            cnt += 1
+    return cnt
 
 
 # ── Помощники доступа ────────────────────────────────────────────────────────
@@ -294,6 +367,10 @@ async def _load_farm(db, user_id, farm_id) -> dict:
 
 class CreateFarm(BaseModel):
     name: str
+    # Ферма теперь привязана к дому (basement) и конкретному слоту корпуса.
+    # houseId = id актива-недвижимости; slotIndex = номер слота (0..basement-1).
+    houseId: str
+    slotIndex: int
 
     @field_validator("name")
     @classmethod
@@ -302,6 +379,13 @@ class CreateFarm(BaseModel):
         if len(v) < 2:
             raise ValueError("Название слишком короткое")
         return v[:40]
+
+    @field_validator("slotIndex")
+    @classmethod
+    def slot_ok(cls, v):
+        if v is None or v < 0 or v > 1000:
+            raise ValueError("Некорректный номер слота")
+        return int(v)
 
 
 class InstallBody(BaseModel):
@@ -368,15 +452,75 @@ async def available_parts(current_user: dict = Depends(get_current_user), db: As
     return by_cat
 
 
+@router.get("/houses")
+async def get_mining_houses(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Список домов игрока с подвалом, пригодных для майнинга.
+
+    Возвращает массив объектов:
+      {id, name, rarity, basement, slots: [{index, occupied, farmId, farmName}, ...]}
+
+    Слоты заполняются по существующим фермам игрока, привязанным к этому дому.
+    Дом показывается, даже если у него 0 basement — тогда массив slots пуст,
+    а кнопка «Добавить ферму» недоступна (UI на неё реагирует).
+    """
+    from bson import ObjectId
+    user_id = str(current_user["_id"])
+    # Индекс существующих ферм по (houseId, slotIndex) для быстрого заполнения.
+    farms_by_slot: dict[tuple[str, int], dict] = {}
+    async for f in db.mining_farms.find({"userId": user_id}):
+        hid = f.get("houseId")
+        si = f.get("slotIndex")
+        if hid is None or si is None:
+            continue
+        farms_by_slot[(str(hid), int(si))] = f
+
+    out = []
+    async for a in db.user_assets.find(
+        {"userId": user_id, "type": "realestate", "basement": {"$gt": 0}}
+    ).sort([("rarity", -1), ("created_at", 1)]):
+        basement = int(a.get("basement") or 0)
+        hid = str(a["_id"])
+        slots = []
+        for i in range(basement):
+            farm = farms_by_slot.get((hid, i))
+            slots.append({
+                "index": i,
+                "occupied": bool(farm),
+                "farmId": str(farm["_id"]) if farm else None,
+                "farmName": farm.get("name") if farm else None,
+                "status": farm.get("status") if farm else None,
+            })
+        out.append({
+            "id": hid,
+            "name": a.get("name"),
+            "slug": a.get("slug"),
+            "rarity": a.get("rarity"),
+            "basement": basement,
+            "slots": slots,
+        })
+    return out
+
+
 @router.get("/farms")
-async def get_farms(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_farms(
+    houseId: str = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Список ферм игрока. Опционально фильтруется по дому (houseId)."""
     user_id = str(current_user["_id"])
     market = await _coin_market(db)
     econ = await get_econ(db)
     ec, em = econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0)
     city = await _city_bonus(db, user_id)
+    q: dict = {"userId": user_id}
+    if houseId and ObjectId.is_valid(houseId):
+        q["houseId"] = ObjectId(houseId)
     out = []
-    async for farm in db.mining_farms.find({"userId": user_id}):
+    async for farm in db.mining_farms.find(q):
         missing = _missing_required(farm)
         # Пока ферма не собрана — показатели не рассчитываются (пустые).
         stats = {} if missing else _compute(farm, market, ec, em, city)
@@ -388,10 +532,47 @@ async def get_farms(current_user: dict = Depends(get_current_user), db: AsyncIOM
 
 @router.post("/farms", status_code=status.HTTP_201_CREATED)
 async def create_farm(payload: CreateFarm, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Создать ферму в конкретном слоте подвала выбранного дома.
+
+    Дом должен принадлежать игроку и иметь подвал (basement > 0). Номер слота
+    должен быть в диапазоне [0, basement). Слот ещё не должен быть занят
+    существующей фермой — иначе 400."""
+    from bson import ObjectId
     user_id = str(current_user["_id"])
+    if not ObjectId.is_valid(payload.houseId):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID дома")
+    house = await db.user_assets.find_one(
+        {"_id": ObjectId(payload.houseId), "userId": user_id, "type": "realestate"}
+    )
+    if not house:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Дом не найден")
+    basement = int(house.get("basement") or 0)
+    if basement <= 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "У этого дома нет подвала — майнинг недоступен",
+        )
+    if payload.slotIndex < 0 or payload.slotIndex >= basement:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Слот {payload.slotIndex} вне диапазона (0..{basement - 1})",
+        )
+    # Слот свободен?
+    existing = await db.mining_farms.find_one({
+        "userId": user_id,
+        "houseId": ObjectId(payload.houseId),
+        "slotIndex": payload.slotIndex,
+    })
+    if existing:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Слот {payload.slotIndex} уже занят другой фермой",
+        )
     doc = {
         "userId": user_id, "name": payload.name, "status": "idle", "coin": None,
+        "houseId": ObjectId(payload.houseId), "slotIndex": payload.slotIndex,
         "components": {"gpus": [], "fans": []}, "overclock": 1.0, "condition": 100.0,
+        "coolant": 0, "coolant_until": None,
         "manager": {"type": "player", "level": 0}, "electricity_owed": 0.0,
         "total_earned": 0.0, "total_spent": 0.0, "last_tick": _now(), "created_at": _now(),
     }
@@ -455,13 +636,54 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": payload.category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$push": {f"components.{role_key}": entry}})
     else:
-        # Корпус и стойка — взаимоисключающие варианты размещения: можно
-        # использовать только один. Установка одного снимает другой.
-        PLACEMENT_ALT = {"case": "rack", "rack": "case"}
-        alt = PLACEMENT_ALT.get(role)
-        if alt and comp.get(alt) and comp[alt].get("hwId"):
-            await db.user_hardware.update_one({"_id": ObjectId(comp[alt]["hwId"])}, {"$set": {"farmId": None}})
-            await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{alt}": None}})
+        # Корпус - единый вариант размещения (стоек rack больше нет).
+        # Дополнительно проверяем лимит подвалов: у игрока может быть не
+        # больше корпусов, чем суммарная ёмкость подвалов его домов.
+        if role == "case":
+            # Ферма привязана к слоту подвала дома (см. create_farm), лимит
+            # на количество корпусов теперь автоматически = количеству basement.
+            # Дополнительная защита: ферма должна иметь houseId.
+            if not farm.get("houseId"):
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Ферма не привязана к дому - корпус нельзя установить",
+                )
+        # Совместимость материнской платы и корпуса:
+        #   - при установке материнки: в корпусе должно быть >= слотов;
+        #   - при установке корпуса: в материнке должно быть >= слотов;
+        #   - в обоих случаях нельзя превышать жёсткий лимит CASE_MAX_GPUS (5).
+        if role == "motherboard":
+            mb_slots = int(hw.get("specs", {}).get("gpuSlots", 0) or 0)
+            if mb_slots <= 0:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Материнская плата не имеет слотов для GPU")
+            if mb_slots > CASE_MAX_GPUS:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Материнская плата рассчитана на {mb_slots} GPU - это больше лимита корпуса ({CASE_MAX_GPUS})",
+                )
+            enclosure_slots = _enclosure_slots(comp)
+            if enclosure_slots is not None and mb_slots > enclosure_slots:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Нельзя установить материнскую плату на {mb_slots} GPU: в корпусе только {enclosure_slots} слотов",
+                )
+        elif role == "case":
+            case_slots = int(hw.get("specs", {}).get("slots", 0) or 0)
+            if case_slots <= 0:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Корпус не имеет посадочных мест")
+            if case_slots > CASE_MAX_GPUS:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Корпус рассчитан на {case_slots} GPU - это больше максимума ({CASE_MAX_GPUS})",
+                )
+            mb = comp.get("motherboard")
+            if mb:
+                mb_slots = int(mb.get("specs", {}).get("gpuSlots", 0) or 0)
+                if mb_slots > case_slots:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Нельзя установить корпус на {case_slots} GPU: материнская плата требует {mb_slots} слотов",
+                    )
         # Освобождаем ранее установленный компонент этой роли.
         old = comp.get(role)
         if old and old.get("hwId"):
@@ -484,7 +706,7 @@ async def uninstall_component(farm_id: str, body: dict, current_user: dict = Dep
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Не указан hwId")
     comp = farm.get("components", {})
     changed = False
-    for role in ["motherboard", "cpu", "psu", "ram", "ssd", "cooling", "case", "rack", "ups", "network"]:
+    for role in ["motherboard", "cpu", "psu", "ram", "ssd", "cooling", "case", "ups", "network"]:
         if comp.get(role) and comp[role].get("hwId") == hw_id:
             await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": None}})
             changed = True
@@ -556,6 +778,65 @@ async def set_overclock(farm_id: str, payload: OverclockBody, current_user: dict
     farm = await _load_farm(db, user_id, farm_id)
     await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"overclock": payload.value}})
     return {"ok": True, "overclock": payload.value}
+
+
+@router.post("/farms/{farm_id}/coolant")
+async def add_coolant(farm_id: str, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Заправить охлаждающую жидкость в ферму.
+
+    Списывает 1 ёмкость из инвентаря игрока (user_hardware category='supplies',
+    specs.kind='cooling'). В ферме максимум COOLANT_MAX шт. Каждая добавленная
+    шт. продлевает активный бонус на COOLANT_DURATION_H (12 ч) от now (если
+    бонус ещё активен — от coolant_until). Пока coolant_until не наступил,
+    температура рассчитывается со скидкой 25%.
+    """
+    user_id = str(current_user["_id"])
+    farm = await _load_farm(db, user_id, farm_id)
+    cur_count = int(farm.get("coolant", 0) or 0)
+    if cur_count >= COOLANT_MAX:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"В ферме уже максимум жидкости ({COOLANT_MAX} шт.)",
+        )
+    # Списываем одну шт. из инвентаря игрока. Ищем именно нераспределённую
+    # (farmId не задан). ВАЖНО: обновляем farmId, чтобы при разборке фермы
+    # деталь вернулась в инвентарь.
+    taken = await db.user_hardware.find_one_and_update(
+        {
+            "userId": user_id,
+            "category": "supplies",
+            "specs.kind": "cooling",
+            "$or": [{"farmId": None}, {"farmId": {"$exists": False}}],
+        },
+        {"$set": {"farmId": str(farm["_id"])}},
+        sort=[("created_at", 1)],
+    )
+    if not taken:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Нет охлаждающей жидкости в инвентаре. Купите в магазине.",
+        )
+    now = _now()
+    current_until = farm.get("coolant_until")
+    base = now if (not current_until or current_until < now) else current_until
+    new_until = base + timedelta(hours=COOLANT_DURATION_H)
+    new_count = cur_count + 1
+    await db.mining_farms.update_one(
+        {"_id": farm["_id"]},
+        {"$set": {"coolant": new_count, "coolant_until": new_until}},
+    )
+    farm["coolant"] = new_count
+    farm["coolant_until"] = new_until
+    market = await _coin_market(db)
+    econ = await get_econ(db)
+    city = await _city_bonus(db, user_id)
+    stats = _compute(
+        farm, market,
+        econ.get("energy_cost", 0.12),
+        econ.get("economy_mult", 1.0),
+        city,
+    )
+    return _serialize(farm, stats)
 
 
 @router.post("/farms/{farm_id}/repair")
@@ -679,6 +960,20 @@ async def tick_all(db: AsyncIOMotorDatabase):
             "total_mined_usd": round(farm.get("total_mined_usd", 0.0) + (revenue if coin_qty > 0 else 0.0), 2),
             "total_mined_coins": round(farm.get("total_mined_coins", 0.0) + coin_qty, 8),
         }
+        # Расход охлаждающей жидкости: если бонус истёк — списываем одну шт.
+        cur_coolant = int(farm.get("coolant", 0) or 0)
+        coolant_until = farm.get("coolant_until")
+        if cur_coolant > 0 and coolant_until and coolant_until <= now:
+            new_coolant = cur_coolant - 1
+            if new_coolant > 0:
+                # Продлеваем бонус: при последней шт. оставляем coolant_until=None.
+                set_fields["coolant"] = new_coolant
+                set_fields["coolant_until"] = None
+            else:
+                set_fields["coolant"] = 0
+                set_fields["coolant_until"] = None
+            farm["coolant"] = set_fields["coolant"]
+            farm["coolant_until"] = set_fields["coolant_until"]
 
         # 1) Списываем денежные расходы (если ферма их не тянет — отключаем).
         if costs > 0.01:

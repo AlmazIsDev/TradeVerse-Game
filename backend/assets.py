@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 import random
@@ -18,7 +19,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
 from auth import get_current_user, require_admin
-from database import get_db
+from database import get_db, find_config_by_key
 from ledger import (
     INCOME, EXPENSE, CAT_REALESTATE, CAT_BUSINESS,
     CAT_FACTORY, CAT_SOURCE, CAT_WAREHOUSE,
@@ -694,11 +695,11 @@ def _mining_cost(asset: dict, econ: Optional[dict] = None) -> float:
 
 
 def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
-    """Почасовой доход инфраструктуры (заводы/источники/склады).
+    """Почасовой доход инфраструктуры (заводы/источники).
 
     Завод: meta.outputPerHour × infra_gpu_price (продукция продаётся «на сторону»
-    по фиксированной цене из econ). Источник: meta.resource → цена ресурса.
-    Склад: meta.areaSqm × infra_warehouse_rate (плата за хранение).
+    по фиксированной цене из econ). Источник: meta.resource → цена ресурсa.
+    Склады прибыли НЕ приносят (отключено).
     Коэффициенты берутся из econ; в sync-контексте — дефолты.
     """
     t = asset.get("type")
@@ -713,10 +714,6 @@ def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
             return 0.0
         return round(int(meta.get("outputPerHour") or 0) * float(
             econ.get(key) if econ else DEFAULT_ECON[key]), 2)
-    if t == TYPE_WAREHOUSE:
-        area = int(meta.get("areaSqm") or 0)
-        return round(area * float(
-            econ.get("infra_warehouse_rate") if econ else DEFAULT_ECON["infra_warehouse_rate"]), 2)
     return 0.0
 
 
@@ -1015,6 +1012,66 @@ def _serialize(asset: dict) -> dict:
     }
 
 
+# ── Админские цены (PriceEditorTab) ──────────────────────────────────────────
+#
+# Админ-редактор цен пишет overrides в общий конфиг "shop_prices" (см.
+# shop.py:SHOP_PRICES_KEY). Магазин железа их применяет сам; рынок активов
+# раньше игнорировал их и брал цену напрямую из статичного CATALOG — из-за
+# этого правки в админ-панели не отражались в MarketTab / при покупке.
+#
+# Ключи в конфиге не всегда совпадают с slug актива:
+#   - Недвижимость:  slug="admin-re-1"   -> key="1"   (числовой productId)
+#   - Бизнесы:       slug="admin-biz-1"  -> key="1"
+#   - Заводы/Источники/Склады/Авто: slug идёт как есть (admin-fac-gpu-1, ...).
+#
+# Чтобы маппинг совпадал с frontend/src/utils/adminCatalog.js и
+# frontend/src/utils/shopCatalog.js — см. ADMIN_DEFAULT_PRICES и
+# REAL_ESTATE_PRODUCTS / BUSINESS_PRODUCTS.
+SHOP_PRICES_KEY = "shop_prices"
+_SLUG_TO_PRICE_KEY_CACHE: dict[str, str] = {}
+
+
+def _admin_price_key(slug: str) -> str:
+    """slug актива -> ключ в конфиге shop_prices."""
+    cached = _SLUG_TO_PRICE_KEY_CACHE.get(slug)
+    if cached is not None:
+        return cached
+    key = slug
+    if slug.startswith("admin-re-"):
+        key = slug[len("admin-re-"):]
+    elif slug.startswith("admin-biz-"):
+        key = slug[len("admin-biz-"):]
+    _SLUG_TO_PRICE_KEY_CACHE[slug] = key
+    return key
+
+
+async def _admin_prices(db) -> dict[str, float]:
+    """Админские overrides: {key: price}. Бросает ValueError -> возвращаем {}."""
+    doc = await find_config_by_key(db, SHOP_PRICES_KEY)
+    if not doc:
+        return {}
+    try:
+        raw = json.loads(doc["value"])
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    for k, v in raw.items():
+        if v is None:
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if fv > 0:
+            out[str(k)] = fv
+    return out
+
+
+def _admin_price_for(slug: str, overrides: dict[str, float]) -> float | None:
+    """Цена актива из админ-overrides (None = сброс к базовой из каталога)."""
+    return overrides.get(_admin_price_key(slug))
+
+
 # ── Market ───────────────────────────────────────────────────────────────────
 
 
@@ -1027,10 +1084,11 @@ async def get_market(
     _user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Каталог рынка с ДИНАМИЧЕСКИМИ ценами (спрос/предложение/дрейф/события)."""
+    """Каталог рынка с ДИНАМИЧЕСКИМИ ценами и admin-overrides из редактора цен."""
     await _ensure_asset_market(db)
     await _drift_asset_market(db)
     mults = await _mult_map(db)
+    overrides = await _admin_prices(db)
 
     items = CATALOG
     if type in ASSET_TYPES:
@@ -1042,7 +1100,8 @@ async def get_market(
     out = []
     for c in items:
         mult = mults.get(c["slug"], 1.0)
-        price = round(c["price"] * mult, 2)
+        base = _admin_price_for(c["slug"], overrides) or float(c["price"])
+        price = round(base * mult, 2)
         if min_price is not None and price < min_price:
             continue
         if max_price is not None and price > max_price:
@@ -1052,7 +1111,7 @@ async def get_market(
             "category": c.get("category"), "rarity": c.get("rarity"),
             "rooms": c.get("rooms"), "employees": c.get("employees", 0),
             "price": price,
-            "basePrice": c["price"],
+            "basePrice": base,
             "trend": round((mult - 1) * 100, 1),   # % отклонения цены от базовой
             "incomePerHour": c.get("income_per_hour", 0),
             "upkeepPerHour": c.get("upkeep_per_hour", 0),
@@ -1157,10 +1216,13 @@ async def buy_asset(
         )
 
     user_id = str(current_user["_id"])
-    # Динамическая цена покупки (базовая × текущий рыночный множитель).
+    # Динамическая цена покупки: admin-override (если задан в редакторе цен)
+    # → базовая цена каталога. Затем применяем рыночный множитель.
     await _ensure_asset_market(db)
     mult = await _asset_mult(db, catalog["slug"])
-    pay_price = round(float(catalog["price"]) * mult, 2)
+    overrides = await _admin_prices(db)
+    base_price = _admin_price_for(catalog["slug"], overrides) or float(catalog["price"])
+    pay_price = round(base_price * mult, 2)
 
     new_balance = await adjust_balance(db, user_id, -pay_price)
     if new_balance is None:
@@ -1176,7 +1238,7 @@ async def buy_asset(
         "rooms": catalog.get("rooms"),
         "basement": catalog.get("basement"),   # ёмкость подвала (недвижимость) — для улучшения «Майнинг»
         "employees": catalog.get("employees", 0),
-        "price": float(catalog["price"]),   # базовая цена — для расчёта стоимости/улучшений
+        "price": pay_price,   # базовая цена (учитывает admin-override и рыночный множитель) — для расчёта стоимости/улучшений
         "income_per_hour": catalog.get("income_per_hour", 0),
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
         "level": 1,
@@ -1363,27 +1425,9 @@ async def upgrade_asset(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Улучшить актив: повышает стоимость и доход."""
-    user_id = str(current_user["_id"])
-    asset = await _load_owned(db, user_id, asset_id)
-    # Авто не улучшаются через уровень — у них нет почасового дохода, а стоимость
-    # растят тюнингом деталей (см. /tune). Поэтому уровень авто всегда 1.
-    if asset.get("type") == TYPE_CAR:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
-    cost = _upgrade_cost(asset)
-    new_balance = await adjust_balance(db, user_id, -cost)
-    if new_balance is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
-    await db.user_assets.update_one({"_id": asset["_id"]}, {"$inc": {"level": 1}})
-    cat = _ledger_category(asset)
-    await record_transaction(
-        db, user_id, EXPENSE, cost, cat,
-        f"Улучшение: {asset['name']} → ур.{asset.get('level', 1) + 1}",
-        balance_after=new_balance, meta={"assetId": asset_id},
-    )
-    updated = await db.user_assets.find_one({"_id": asset["_id"]})
-    return {"asset": _serialize(updated), "balance": new_balance}
+    """Улучшение имущества отключено для всех типов активов."""
+    raise HTTPException(status.HTTP_403_FORBIDDEN,
+                        "Улучшение имущества отключено")
 
 
 @router.post("/{asset_id}/tune")

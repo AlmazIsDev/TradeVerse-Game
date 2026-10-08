@@ -273,22 +273,43 @@ async def buy_lot(
 
     total = round(qty * float(lot["pricePerItem"]), 2)
 
+    # Продавец мог быть удалён после создания лота — проверяем до брони, чтобы
+    # не оказаться с деньгами покупателя и без получателя выручки.
+    seller_id = lot["sellerId"]
+    seller = await db.users.find_one({"_id": ObjectId(seller_id)}, {"balance": 1})
+    if not seller:
+        await db.market_lots.update_one({"_id": lot["_id"]},
+                                        {"$set": {"status": "cancelled"}})
+        raise HTTPException(status.HTTP_409_CONFLICT, "Продавец больше недоступен")
+
     # Деньги: у покупателя должно хватить средств, иначе лот возвращается.
     buyer_balance = await adjust_balance(db, user_id, -total)
     if buyer_balance is None:
-        unset_fields = {"$unset": {"buyerId": "", "sold_at": ""}} if lot_status == "sold" else {}
-        await db.market_lots.update_one(
-            {"_id": lot["_id"]},
-            {"$set": {"status": "active", "qty": lot["qty"]}, **unset_fields},
-        )
+        if lot_status == "sold":
+            # remaining == 0 → статус sold, параллельно докупить было нельзя:
+            # честно разворачиваем и бронь, и пометку покупателя.
+            await db.market_lots.update_one(
+                {"_id": lot["_id"], "status": "sold", "buyerId": user_id},
+                {"$set": {"status": "active"}, "$inc": {"qty": qty},
+                 "$unset": {"buyerId": "", "sold_at": ""}},
+            )
+        else:
+            # $inc, а не $set: не затираем бронь, сделанную параллельным покупателем.
+            await db.market_lots.update_one(
+                {"_id": lot["_id"], "status": "active"},
+                {"$inc": {"qty": qty}},
+            )
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
 
-    seller_id = lot["sellerId"]
-    await adjust_balance(db, seller_id, total)
+    seller_balance = await adjust_balance(db, seller_id, total)
 
     if lot["kind"] == "asset":
+        # Повторная проверка передаваемости в момент продажи (при создании лота
+        # актив мог уйти в компанию или в аренду) — иначе покупатель «вырвет»
+        # его у компании/арендатора.
         asset = await db.user_assets.find_one_and_update(
-            {"_id": _oid(lot["itemId"]), "userId": seller_id},
+            {"_id": _oid(lot["itemId"]), "userId": seller_id,
+             "companyId": None, "rental.status": {"$ne": "rented"}},
             {"$set": {"userId": user_id, "companyId": None, "rental": None,
                       "last_collected": _now()},
              "$unset": {"listingId": ""}},
@@ -316,13 +337,31 @@ async def buy_lot(
             await db.market_lots.update_one({"_id": lot["_id"]},
                                             {"$set": {"status": "cancelled"}})
             raise HTTPException(status.HTTP_409_CONFLICT, "Железо больше недоступно")
-        await db.user_hardware.update_many(
-            {"_id": {"$in": [h["_id"] for h in free]}},
+        moved = await db.user_hardware.update_many(
+            # farmId: None в фильтре — между выборкой и апдейтом единицу могли
+            # поставить на ферму; без условия вырвали бы её оттуда.
+            {"_id": {"$in": [h["_id"] for h in free]},
+             "userId": seller_id, "farmId": None},
             {"$set": {"userId": user_id, "farmId": None, "purchased_at": _now()}},
         )
+        if moved.modified_count < qty:
+            # Часть единиц ушла на ферму — откатываем перенос и сделку целиком.
+            # Единицы взаимозаменяемы (один itemId), поэтому возвращаем ровно
+            # столько, сколько реально переехало.
+            if moved.modified_count:
+                await db.user_hardware.update_many(
+                    {"_id": {"$in": [h["_id"] for h in free]},
+                     "userId": user_id},
+                    {"$set": {"userId": seller_id, "farmId": None,
+                              "purchased_at": _now()}},
+                )
+            await adjust_balance(db, user_id, total)
+            await adjust_balance(db, seller_id, -total)
+            await db.market_lots.update_one({"_id": lot["_id"]},
+                                            {"$set": {"status": "cancelled"}})
+            raise HTTPException(status.HTTP_409_CONFLICT, "Железо больше недоступно")
 
     buyer_after = buyer_balance
-    seller = await db.users.find_one({"_id": ObjectId(seller_id)}, {"balance": 1})
     name = lot.get("name") or "лот"
     await record_transaction(
         db, user_id, EXPENSE, total, CAT_MARKET,
@@ -332,7 +371,7 @@ async def buy_lot(
     await record_transaction(
         db, seller_id, INCOME, total, CAT_MARKET,
         f"Продажа на Центральном рынке: {name}" + (f" ×{qty}" if qty > 1 else ""),
-        balance_after=seller.get("balance", 0.0) if seller else None,
+        balance_after=seller_balance,
         meta={"lotId": lot_id, "kind": lot["kind"]},
     )
     try:

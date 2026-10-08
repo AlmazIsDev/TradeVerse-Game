@@ -1,6 +1,7 @@
 .vscode/
 .vscode/settings.json
-backend/__pycache__/
+__pycache__/
+_check_*
 node_modules
 .claude/
 .roo/

@@ -198,7 +198,7 @@ async function loadShopItems(category) {
           {view.map(item => {
             // Цвет по мощности/тиру приходит из каталога (item.color); категорийный — запасной.
             const color = item.color || CAT_COLOR[item.category] || '#0071e3'
-            // busy-флаг не нужен — кнопка открывает BuyModal, покупка асинхронна.
+            // busy-флаг не нужен — кнопка открывает ShopBuyModal, покупка асинхронна.
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
             // Карточка железа: компактная. Бэкенд отдаёт все позиции
             // (включая admin-gpu/cpu/case/supply), кнопка «Купить» всегда активна.

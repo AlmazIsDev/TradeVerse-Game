@@ -159,7 +159,7 @@ MATERIALS_DURATION_H = 6            # действует 6 часов с мом�
 CATALOG = [
     # Недвижимость: аренда как доход, налог как расход. Поле basement — ёмкость
     # подвала в корпусах, определяет цену/доходность улучшения «Майнинг»
-    # (basement * 10 000 за покупку, basement * 100/ч дохода). Подобрано так,
+    # Цена/доход за единицу подвала — из econ (mining_basement_cost/income).
     # чтобы более дорогой дом позволял поставить больше оборудования и быстрее
     # окупать улучшение.
     {"slug": "studio", "type": TYPE_REALESTATE, "name": "Студия", "rarity": "common",
@@ -657,9 +657,9 @@ def _materials_boost(asset: dict) -> float:
 
 # ── Майнинг-улучшение для домов ──────────────────────────────────────────────
 # Подвал дома (поле basement, ёмкость в корпусах) используется как множитель
-# майнинговой фермы. Улучшение «Майнинг» покупается 1 раз: цена = N * 10000,
-# где N — ёмкость подвала. После активации дом начинает приносить пассивный
-# доход от майнинга (N * 100 $/час). Доход включается в общую формулу
+# майнинговой фермы. Улучшение «Майнинг» покупается 1 раз: цена и доход за
+# единицу подвала берутся из econ (mining_basement_cost/income). После
+# активации дом начинает приносить пассивный доход, включаемый в общую формулу
 # _income_per_hour, чтобы он собирался тем же /collect и попадал в
 # /collect-all без отдельной механики. Поле mining хранится на документе актива
 # (bool) — повторная покупка запрещена.
@@ -1480,9 +1480,9 @@ async def buy_mining_upgrade(
     """Купить улучшение «Майнинг» для дома. Доступно только для недвижимости
     с подвалом (basement > 0). Покупается ровно 1 раз — повторные вызовы
     запрещены. Цена всегда пересчитывается сервером от basement (формула
-    N * 10 000) — клиентское значение не используется, чтобы цену нельзя
+    econ.mining_basement_cost) — клиентское значение не используется, чтобы цену нельзя
     было подменить. После покупки дом начинает приносить пассивный доход
-    (basement * $100/ч), который собирается тем же /collect, что и обычный
+    (basement × mining_basement_income $/ч), собирается тем же /collect, что и обычный
     доход недвижимости."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
@@ -1497,14 +1497,23 @@ async def buy_mining_upgrade(
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "У этого дома нет подвала — майнинг недоступен")
     cost = _mining_cost(asset, await get_econ(db))
-    new_balance = await adjust_balance(db, user_id, -cost)
-    if new_balance is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
-    # Активируем улучшение и сбрасываем КД, чтобы доход начал копиться сразу.
-    await db.user_assets.update_one(
-        {"_id": asset["_id"]},
+    # Атомарно занимаем слот улучшения ДО списания: условие mining != True
+    # сработает только у одного из параллельных запросов, двойной оплаты нет.
+    claimed = await db.user_assets.find_one_and_update(
+        {"_id": asset["_id"], "mining": {"$ne": True}},
         {"$set": {"mining": True, "last_collected": _now()}},
     )
+    if not claimed:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Улучшение «Майнинг» уже куплено")
+    new_balance = await adjust_balance(db, user_id, -cost)
+    if new_balance is None:
+        # Денег не хватило — снимаем только что поставленную заявку.
+        await db.user_assets.update_one(
+            {"_id": asset["_id"], "mining": True},
+            {"$unset": {"mining": ""}},
+        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
     await record_transaction(
         db, user_id, EXPENSE, cost, CAT_REALESTATE,
         f"Майнинг-улучшение: {asset.get('name')}", balance_after=new_balance,

@@ -71,7 +71,9 @@
     "cat_business": "Business",
     "cat_car": "Cars",
     "cat_item": "Items",
-    "cat_other": "Other"
+    "cat_other": "Other",
+    "cat_asset": "Assets",
+    "cat_hardware": "Hardware"
   },
   "createLot": {
     "title": "Create lot",
@@ -414,7 +416,8 @@
     "output": "Output",
     "capacity": "Capacity",
     "factories": {
-      "gpuFactory": "GPU Factory"
+      "gpuFactory": "GPU Factory",
+      "gpu": "GPU Factory"
     },
     "sources": {
       "mine": "Mine",
@@ -727,14 +730,9 @@
       "motherboard": "Motherboard",
       "ram": "RAM",
       "ssd": "SSD",
-      "cooling": "Cooler",
-      "psu": "Power supply",
-      "cpu": "CPU",
-      "motherboard": "Motherboard",
-      "ram": "RAM",
-      "ssd": "SSD",
-      "psu": "PSU",
       "cooling": "Cooling",
+      "psu": "PSU",
+      "cpu": "CPU",
       "case": "Case",
       "fan": "Fans",
       "ups": "UPS",
@@ -745,18 +743,14 @@
     "desc": {
       "gpu": "Increases hashrate — the core mining power.",
       "cpu": "Distributes tasks across the GPUs.",
-      "motherboard": "Limits how many GPUs you can attach.",
-      "ram": "Reduces farm downtime.",
-      "ssd": "Speeds up algorithm switching.",
-      "psu": "Affects operational stability.",
-      "cooling": "Lowers hardware temperature.",
-      "fan": "Boosts cooling efficiency.",
-      "case": "Home farm — chassis, up to 5 GPUs.",
-      "ups": "Protects against power outages.",
       "motherboard": "Motherboard — defines the maximum number of GPUs.",
       "ram": "System RAM.",
       "ssd": "Storage for OS and wallets.",
       "psu": "Power supply — must cover the total power draw of all GPUs.",
+      "cooling": "Lowers hardware temperature.",
+      "fan": "Boosts cooling efficiency.",
+      "case": "Home farm — chassis, up to 5 GPUs.",
+      "ups": "Protects against power outages.",
       "network": "Keeps a stable connection to the pool."
     },
     "removeOne": "Remove one part",
@@ -782,20 +776,33 @@
     "slotEmpty": "Empty",
     "openFarm": "Open",
     "newFarmHint": "This name will be used to identify the farm.",
-    "newFarm": "New farm",
     "noFarmsInHouse": "This house has no farms yet",
     "noFarmsInHouseDesc": "Return to the slot view and create a farm in one of the basements.",
-    "created": "Farm created",
     "coolant": "Cooling fluid",
     "coolantAdd": "Refill",
     "coolantPour": "Pour one bottle of cooling fluid from inventory into the farm",
     "coolantActive": "Cuts temperature by 25% for ~{{h}} h more",
     "coolantHint": "Cooling fluid: -25% to temperature, 1 unit per 12 h (max 4 in the farm)",
     "coolantAdded": "Cooling fluid refilled",
-    "warnHighTemp": "Temperature is above the wear threshold (40°C). Hardware degrades faster — add cooling fluid or improve the cooler."
+    "warnHighTemp": "Temperature is above the wear threshold (40°C). Hardware degrades faster — add cooling fluid or improve the cooler.",
+    "upgradeAction": "Upgrade for {{cost}}",
+    "bought": "Mining upgrade installed",
+    "upgradeTitle": "Mining upgrade",
+    "confirm": "Buy the mining upgrade for {{cost}}? The house will generate +{{income}}/h.",
+    "active": "Mining active"
   },
   "confirm": {
-    "dismantle": "Dismantle the farm “{{name}}”? All installed hardware will be returned to inventory and the basement slot will become free again."
+    "collect": "Collect accrued profit ${{amount}}?",
+    "upgrade": "Upgrade this asset for ${{cost}}?",
+    "transfer": "Transfer \"{{name}}\" to your company?",
+    "sell": "Sell \"{{name}}\" for ${{value}}? This cannot be undone.",
+    "cancelRent": "Remove this property from rent?",
+    "buyHardware": "Buy \"{{name}}\" for ${{price}}?",
+    "createFarm": "Create farm \"{{name}}\"?",
+    "dismantle": "Dismantle farm \"{{name}}\"? All components will be lost.",
+    "cryptoTransfer": "Send {{amount}} {{symbol}} to {{recipient}}?",
+    "protect": "Set protection level {{level}} for {{cost}} WC?",
+    "attack": "Attack \"{{name}}\" for {{cost}} WC?"
   },
   "itstudio": {
     "ordered": "Order placed. Ready in ~{{hours}}h.",
@@ -857,7 +864,6 @@
     "gpuPsu": "Power supplies",
     "gpuCases": "Cases",
     "gpuCpusDesc": "Processors of any power and generation",
-    "gpuCases": "Cases",
     "gpuCasesDesc": "Cases for building computers and servers",
     "gpuSupplies": "Supplies",
     "gpuSuppliesDesc": "Thermal paste, cables, fans and other consumables",
@@ -941,7 +947,8 @@
     "quantity": "Quantity",
     "pricePerUnit": "Price per unit",
     "total": "Total",
-    "balance": "Your balance"
+    "balance": "Your balance",
+    "title": "Buy"
   },
   "realestate": {
     "rarity": "Rarity",
@@ -1232,7 +1239,8 @@
       "saved": "Prices saved",
       "noProducts": "No products found",
       "totalProducts": "Total products: {{count}}",
-      "pricesSet": "With price: {{count}}"
+      "pricesSet": "With price: {{count}}",
+      "saveFailed": "Failed to save prices"
     }
   },
   "econ": {
@@ -1267,19 +1275,6 @@
     "new": "New",
     "worldEventStarted": "World event: {{name}}",
     "worldEventEnded": "Ended: {{name}}"
-  },
-  "confirm": {
-    "collect": "Collect accrued profit ${{amount}}?",
-    "upgrade": "Upgrade this asset for ${{cost}}?",
-    "transfer": "Transfer \"{{name}}\" to your company?",
-    "sell": "Sell \"{{name}}\" for ${{value}}? This cannot be undone.",
-    "cancelRent": "Remove this property from rent?",
-    "buyHardware": "Buy \"{{name}}\" for ${{price}}?",
-    "createFarm": "Create farm \"{{name}}\"?",
-    "dismantle": "Dismantle farm \"{{name}}\"? All components will be lost.",
-    "cryptoTransfer": "Send {{amount}} {{symbol}} to {{recipient}}?",
-    "protect": "Set protection level {{level}} for {{cost}} WC?",
-    "attack": "Attack \"{{name}}\" for {{cost}} WC?"
   },
   "landing": {
     "nav": {

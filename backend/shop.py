@@ -952,26 +952,6 @@ async def set_shop_config(
 # «сброс к формуле» и НЕ сохраняется в БД (парсер его отбрасывает).
 
 
-def _canon_id(key: str) -> Optional[str]:
-    """Числовой productId → канонический id каталога. None если не нашли."""
-    if not key.isdigit():
-        return key
-    pid = int(key)
-    if 1 <= pid <= 90:
-        # Без доп. данных непонятно gpu/cpu/case — но редактор шлёт по одному
-        # ключу на позицию в категории. По контексту: если в каталоге есть id
-        # admin-{category}-{pid} — ок. Сначала проверяем gpu (исторически
-        # первый в редакторе), но редактор выбирает категорию — поэтому мы
-        # сохраняем ВСЕ совпадения как «category-pid» при сохранении. На
-        # этапе save_payload обработаем это явно через явное указание категории.
-        return f"pid:{pid}"
-    if pid == 1:
-        return "admin-supply-cooling-fluid"
-    if pid == 2:
-        return "admin-supply-gpu-chip"
-    return None
-
-
 @admin_router.get("/prices")
 async def get_shop_prices(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Все переопределения админских цен. Ключи — канонические id."""

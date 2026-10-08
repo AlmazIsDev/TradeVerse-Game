@@ -1069,6 +1069,11 @@ async def collect_profit(
     except Exception:
         media_factor = 1.0
     revenue_per_h = await company_income_per_hour(db, cid, media_factor)
+    # Бонус штата (staff_factor) применяется к реальному начислению, а не
+    # только к отображению в _serialize — иначе UI обещает то, что не платится.
+    members = await _members(db, cid)
+    staff_factor, _ = await _staff_factor(db, cid, members)
+    revenue_per_h *= staff_factor
     econ = await get_econ(db)
     gross = round(revenue_per_h * hours * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
     # Бонус зданий «Крыши города»: +% к доходу компании (напр. «Бизнес-башня», «Городской банк»).
@@ -1080,7 +1085,6 @@ async def collect_profit(
     except Exception:
         pass
 
-    members = await _members(db, cid)
     members = await _members(db, cid)
     owner_salary = round(company.get("owner_salary", 0.0), 2)
     # ФОТ = зарплаты сотрудников + зарплата владельца (владелец платит её себе из

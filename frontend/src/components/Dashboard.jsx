@@ -12,12 +12,11 @@ import MarketTab from './MarketTab'
 import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
 import MyCompanyTab from './MyCompanyTab'
-// CarsTab — вкладка «Автосалон» (заглушка, наполнение добавим следующим шагом).
+// CarsTab — вкладка «Автосалон» (покупка авто через серверный каталог).
 import CityRoofTab from './CityRoofTab'
 import MiningTab from './MiningTab'
 import CarsTab from './CarsTab'
-// PlayerBusinessesTab — заглушка раздела «Бизнесы игроков». Наполнение
-// добавим следующим шагом (витрина бизнесов игроков с покупкой товаров).
+// PlayerBusinessesTab — витрина бизнесов игроков с покупкой товаров.
 import PlayerBusinessesTab from './PlayerBusinessesTab'
 import SettingsPage from './SettingsPage'
 import AdminPanel from './AdminPanel'

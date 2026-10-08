@@ -96,6 +96,7 @@ function PriceEditorTab() {
   const [searchQuery, setSearchQuery] = useState('')
   const [hasChanges, setHasChanges] = useState(false)
   const [savedMessage, setSavedMessage] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Текущая категория и её продукты. Для gpu/cpu/case/supplies/realestate/
@@ -163,6 +164,18 @@ function PriceEditorTab() {
 
   const handleSave = useCallback(async () => {
     try {
+      // Шлём только реальные оверрайды: бэкенд хранит изменённые админом цены,
+      // а null — сброс к формуле. Дефолты из adminCatalog отправлять нельзя,
+      // иначе фронтовый хардкод станет источником истины и затрёт БД.
+      const overrides = {}
+      for (const [id, value] of Object.entries(prices)) {
+        const def = ADMIN_DEFAULT_PRICES[id]
+        if (value === null || value === undefined) {
+          if (def !== undefined) overrides[id] = null
+        } else if (def === undefined || Math.abs(Number(value) - def) > 1e-9) {
+          overrides[id] = value
+        }
+      }
       const storedUser = localStorage.getItem('tradeverse_user')
       const token = storedUser ? JSON.parse(storedUser).token : null
       const headers = {
@@ -172,22 +185,29 @@ function PriceEditorTab() {
       const resp = await fetch('/api/admin/shop/prices', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ prices, category: activeCategory }),
+        body: JSON.stringify({ prices: overrides, category: activeCategory }),
       })
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}`)
       }
       setHasChanges(false)
+      setSaveError(false)
       setSavedMessage(true)
       setTimeout(() => setSavedMessage(false), 2000)
     } catch (err) {
       console.error('Не удалось сохранить цены:', err)
+      setSavedMessage(false)
+      setSaveError(true)
+      setTimeout(() => setSaveError(false), 3000)
     }
   }, [prices, activeCategory])
 
   const handleReset = useCallback(() => {
     if (!confirm(t('admin.prices.resetConfirm'))) return
-    setPrices({})
+    // null = сброс к формуле на бэкенде, поэтому ключи не удаляем, а зануляем.
+    const reset = {}
+    Object.keys(ADMIN_DEFAULT_PRICES).forEach(k => { reset[k] = null })
+    setPrices(reset)
     setHasChanges(true)
   }, [t])
 
@@ -195,7 +215,7 @@ function PriceEditorTab() {
     if (!confirm(t('admin.prices.resetCategoryConfirm'))) return
     setPrices(prev => {
       const updated = { ...prev }
-      products.forEach(p => { delete updated[p.id] })
+      products.forEach(p => { updated[p.id] = null })
       return updated
     })
     setHasChanges(true)
@@ -282,6 +302,12 @@ function PriceEditorTab() {
       {savedMessage && (
         <div className="price-editor-saved-msg">
           {t('admin.prices.saved')}
+        </div>
+      )}
+
+      {saveError && (
+        <div className="price-editor-saved-msg price-editor-save-error">
+          {t('admin.prices.saveFailed', 'Не удалось сохранить цены')}
         </div>
       )}
 

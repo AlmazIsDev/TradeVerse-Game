@@ -1,6 +1,0 @@
-requesting...
-status: 401
-ACAO: http://localhost:20300
-ACAC: true
-ACAM: None
-body: {"detail":"Требуется авторизация"}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { acceptInvite, declineInvite, acceptApplication, declineApplication } from '../services/api'
 import { Building2, UserPlus, Check, X } from 'lucide-react'
@@ -22,6 +22,12 @@ function NotificationCenter() {
   const { t } = useTranslation()
   const [popups, setPopups] = useState([])   // [{ id, type, title, body, data }]
   const [busyId, setBusyId] = useState(null)
+  const timersRef = useRef([])               // таймеры автоскрытия event-попапов
+
+  useEffect(() => () => {
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current = []
+  }, [])
 
   const dismiss = useCallback((id) => {
     setPopups(prev => prev.filter(p => p.id !== id))

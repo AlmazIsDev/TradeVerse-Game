@@ -4001,6 +4001,12 @@ body {
   animation: price-editor-fade-in 0.3s ease;
 }
 
+.price-editor-saved-msg.price-editor-save-error {
+  background: rgba(255, 69, 58, 0.1);
+  border-color: rgba(255, 69, 58, 0.3);
+  color: #ff453a;
+}
+
 @keyframes price-editor-fade-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }

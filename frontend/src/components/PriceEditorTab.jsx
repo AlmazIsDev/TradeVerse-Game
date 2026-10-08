@@ -103,10 +103,16 @@ function PriceEditorTab() {
   // business — берём исходные объекты (с числовым id). Для новых — нормализованные.
   const currentCategory = PRICE_CATEGORIES.find(c => c.id === activeCategory)
   const rawProducts = currentCategory?.products
-  // Нормализуем в формат «id/name/rarity/meta/category».
+  // Нормализуем в формат «id/name/rarity/meta/category». Дома/бизнесы
+  // ключуются slug'ом (admin-re-N / admin-biz-N), как их хранит бэкенд:
+  // голые числа коллидировали между вкладками — правка цены дома «2»
+  // перезаписывала и цену бизнеса «2».
   const products = rawProducts
     ? rawProducts.map(p => ({
-        id: p.id, name: p.name, rarity: p.rarity,
+        id: activeCategory === 'realestate' ? `admin-re-${p.id}`
+          : activeCategory === 'business' ? `admin-biz-${p.id}`
+          : p.id,
+        name: p.name, rarity: p.rarity,
         meta: null, category: p.category || null, type: null,
       }))
     : (CATALOG_BY_ID[activeCategory] || [])
@@ -164,11 +170,15 @@ function PriceEditorTab() {
 
   const handleSave = useCallback(async () => {
     try {
-      // Шлём только реальные оверрайды: бэкенд хранит изменённые админом цены,
-      // а null — сброс к формуле. Дефолты из adminCatalog отправлять нельзя,
-      // иначе фронтовый хардкод станет источником истины и затрёт БД.
+      // Шлём только реальные оверрайды ТЕКУЩЕЙ вкладки: бэкенд хранит
+      // изменённые админом цены, а null — сброс к формуле. Дефолты из
+      // adminCatalog отправлять нельзя, иначе фронтовый хардкод станет
+      // источником истины и затрёт БД. Без фильтра по вкладке числовые ключи
+      // чужих категорий бэкенд пере-мапил бы в текущую категорию.
+      const validIds = new Set(products.map(p => String(p.id)))
       const overrides = {}
       for (const [id, value] of Object.entries(prices)) {
+        if (!validIds.has(id)) continue
         const def = ADMIN_DEFAULT_PRICES[id]
         if (value === null || value === undefined) {
           if (def !== undefined) overrides[id] = null
@@ -200,7 +210,7 @@ function PriceEditorTab() {
       setSaveError(true)
       setTimeout(() => setSaveError(false), 3000)
     }
-  }, [prices, activeCategory])
+  }, [prices, activeCategory, products])
 
   const handleReset = useCallback(() => {
     if (!confirm(t('admin.prices.resetConfirm'))) return

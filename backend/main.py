@@ -125,6 +125,13 @@ async def lifespan(app: FastAPI):
     await db.user_hardware.create_index("farmId")
     await db.mining_farms.create_index("userId")
     await db.mining_farms.create_index("status")
+    # Слот подвала занимает ровно одна ферма — закрывает check-then-insert
+    # гонку в create_farm (двойной клик по «Создать ферму»). Частичный:
+    # легаси-фермы ботов живут без houseId/slotIndex и в индекс не входят.
+    await db.mining_farms.create_index(
+        [("houseId", 1), ("slotIndex", 1)], unique=True,
+        partialFilterExpression={"houseId": {"$type": "objectId"}},
+    )
     await db.cityroof_sessions.create_index("attackerId")
     await db.cityroof_seasons.create_index("closed_at")
     await db.cityroof_itstudio_jobs.create_index("orderedBy")

@@ -1,12 +1,15 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchMarketLots, createMarketLot, updateMarketLot, cancelMarketLot, buyMarketLot,
   fetchMyAssets, fetchInventory,
 } from '../services/api'
+import { toast } from './Toast'
+import { formatMoney } from './TransactionsPanel'
+import ConfirmDialog from './ConfirmDialog'
 import {
   Plus, Search, X, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Package, Tag, Hash, DollarSign, AlertTriangle, Check, ChevronDown,
+  Package, Tag, Hash, DollarSign, AlertTriangle, ChevronDown,
   Edit3, Trash2, ShoppingCart, User,
 } from 'lucide-react'
 
@@ -24,11 +27,6 @@ const KINDS = [
   { id: 'asset', icon: '🏠' },
   { id: 'hardware', icon: '📦' },
 ]
-
-function fmtMoney(n) {
-  if (n == null || isNaN(n)) return '—'
-  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
-}
 
 function CentralMarketTab() {
   const { t } = useTranslation()
@@ -102,15 +100,6 @@ function CentralMarketTab() {
     return () => window.removeEventListener('tv:realtime', onRt)
   }, [loadLots])
 
-  // ── Тост ────────────────────────────────────────────────────────────────
-  const [toast, setToast] = useState(null)
-  const toastTimerRef = useRef(null)
-  const showToast = useCallback((kind, text) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    setToast({ kind, text })
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500)
-  }, [])
-
   // ── Создание лота ──────────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false)
   const [createKind, setCreateKind] = useState('asset')   // 'asset' | 'hardware'
@@ -148,7 +137,7 @@ function CentralMarketTab() {
     setCreateBusy(true)
     try {
       await createMarketLot({ kind: createKind, itemId: createItemId, qty, pricePerItem: price })
-      showToast('success', t('createLot.success'))
+      toast(t('createLot.success'))
       closeCreate()
       await Promise.all([loadLots(), loadInventory()])
     } catch (e) {
@@ -156,7 +145,7 @@ function CentralMarketTab() {
     } finally {
       setCreateBusy(false)
     }
-  }, [createKind, createItemId, createQty, createPrice, t, showToast, closeCreate, loadLots, loadInventory])
+  }, [createKind, createItemId, createQty, createPrice, t, closeCreate, loadLots, loadInventory])
 
   // ── Редактирование/удаление лота ───────────────────────────────────────
   const [editLot, setEditLot] = useState(null)
@@ -165,6 +154,7 @@ function CentralMarketTab() {
   const [editError, setEditError] = useState(null)
   const [editBusy, setEditBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   const openEdit = useCallback((lot) => {
     setEditLot(lot)
@@ -188,7 +178,7 @@ function CentralMarketTab() {
     setEditBusy(true)
     try {
       await updateMarketLot(editLot.id, { qty, pricePerItem: price })
-      showToast('success', t('centralmarket.editSuccess'))
+      toast(t('centralmarket.editSuccess'))
       closeEdit()
       await loadLots()
     } catch (e) {
@@ -196,18 +186,22 @@ function CentralMarketTab() {
     } finally {
       setEditBusy(false)
     }
-  }, [editLot, editQty, editPrice, t, showToast, closeEdit, loadLots])
+  }, [editLot, editQty, editPrice, t, closeEdit, loadLots])
 
   const doDelete = useCallback(async (lot) => {
+    if (!lot || deleteBusy) return
+    setDeleteBusy(true)
     try {
       await cancelMarketLot(lot.id)
-      showToast('success', t('centralmarket.deleteSuccess'))
+      toast(t('centralmarket.deleteSuccess'))
       setConfirmDelete(null)
       await loadLots()
     } catch (e) {
-      showToast('error', e?.message || t('common.error'))
+      toast(e?.message || t('common.error'), 'error')
+    } finally {
+      setDeleteBusy(false)
     }
-  }, [showToast, t, loadLots])
+  }, [t, loadLots, deleteBusy])
 
   // ── Покупка лота ───────────────────────────────────────────────────────
   // Покупаем весь остаток лота сразу (сервер поддерживает и частичную).
@@ -218,17 +212,17 @@ function CentralMarketTab() {
     setBuyBusy(true)
     try {
       const res = await buyMarketLot(buyLot.id, buyLot.qty)
-      showToast('success', t('centralmarket.buySuccess', { name: buyLot.name, qty: res?.qty ?? buyLot.qty }))
+      toast(t('centralmarket.buySuccess', { name: buyLot.name, qty: res?.qty ?? buyLot.qty }))
       setBuyLot(null)
       await loadLots()
     } catch (e) {
-      showToast('error', e?.message || t('common.error'))
+      toast(e?.message || t('common.error'), 'error')
       setBuyLot(null)
       await loadLots()
     } finally {
       setBuyBusy(false)
     }
-  }, [buyLot, t, showToast, loadLots])
+  }, [buyLot, t, loadLots])
 
   // ── Фильтрация + сортировка ───────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -472,11 +466,11 @@ function CentralMarketTab() {
 
                   <div className="centralmarket-lot-price">
                     <div className="centralmarket-lot-price-unit">
-                      <DollarSign size={12} /> {fmtMoney(lot.pricePerItem)}
+                      <DollarSign size={12} /> {formatMoney(lot.pricePerItem)}
                       <span className="centralmarket-lot-price-suffix">/ {t('centralmarket.perItem')}</span>
                     </div>
                     <div className="centralmarket-lot-price-total">
-                      <Package size={11} /> {t('common.total')}: {fmtMoney(total)}
+                      <Package size={11} /> {t('common.total')}: {formatMoney(total)}
                     </div>
                   </div>
 
@@ -505,7 +499,7 @@ function CentralMarketTab() {
                         onClick={() => setBuyLot(lot)}
                       >
                         <ShoppingCart size={13} /> {t('common.buy')}
-                        <span className="centralmarket-lot-btn-price">{fmtMoney(total)}</span>
+                        <span className="centralmarket-lot-btn-price">{formatMoney(total)}</span>
                       </button>
                     </div>
                   )}
@@ -657,7 +651,7 @@ function CentralMarketTab() {
               <Edit3 size={18} /> {t('centralmarket.editTitle')}
             </h3>
             <p className="centralmarket-modal-subtitle">
-              {editLot.name} · {t('common.total')}: {fmtMoney(editLot.qty * editLot.pricePerItem)}
+              {editLot.name} · {t('common.total')}: {formatMoney(editLot.qty * editLot.pricePerItem)}
             </p>
 
             <div className="centralmarket-field-row">
@@ -711,30 +705,16 @@ function CentralMarketTab() {
       )}
 
       {/* Подтверждение удаления */}
-      {confirmDelete && (
-        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
-          <div className="modal-content centralmarket-modal" onClick={e => e.stopPropagation()}>
-            <h3 className="centralmarket-modal-title">
-              <Trash2 size={18} /> {t('centralmarket.deleteTitle')}
-            </h3>
-            <p className="centralmarket-modal-subtitle">
-              {t('centralmarket.deleteConfirm', { name: confirmDelete.name })}
-            </p>
-            <div className="modal-buttons">
-              <button
-                type="button"
-                className="stock-btn buy-btn centralmarket-btn-danger"
-                onClick={() => doDelete(confirmDelete)}
-              >
-                {t('common.yes')}, {t('centralmarket.delete').toLowerCase()}
-              </button>
-              <button type="button" className="stock-btn cancel-btn" onClick={() => setConfirmDelete(null)}>
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={t('centralmarket.deleteTitle')}
+        message={t('centralmarket.deleteConfirm', { name: confirmDelete?.name ?? '' })}
+        confirmLabel={`${t('common.yes')}, ${t('centralmarket.delete').toLowerCase()}`}
+        danger
+        busy={deleteBusy}
+        onConfirm={() => doDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {/* Подтверждение покупки */}
       {buyLot && (
@@ -744,7 +724,7 @@ function CentralMarketTab() {
               <ShoppingCart size={18} /> {t('common.buy')}
             </h3>
             <p className="centralmarket-modal-subtitle">
-              {buyLot.name} ×{buyLot.qty} · {t('common.total')}: {fmtMoney(buyLot.qty * buyLot.pricePerItem)}
+              {buyLot.name} ×{buyLot.qty} · {t('common.total')}: {formatMoney(buyLot.qty * buyLot.pricePerItem)}
             </p>
             <div className="modal-buttons">
               <button type="button" className="stock-btn buy-btn" onClick={confirmBuy} disabled={buyBusy}>
@@ -755,13 +735,6 @@ function CentralMarketTab() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {toast && (
-        <div className={`centralmarket-toast ${toast.kind}`}>
-          {toast.kind === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}
-          <span>{toast.text}</span>
         </div>
       )}
     </div>

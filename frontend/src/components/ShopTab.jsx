@@ -135,7 +135,7 @@ async function loadShopItems(category) {
       toast(t('market.bought', { defaultValue: 'Куплено' }) + ` — $${formatMoney(total)}`)
       setBuyItem(null)
     } catch (err) {
-      toast(err?.message || t('common.error', { defaultValue: 'Ошибка' }))
+      toast(err?.message || t('common.error', { defaultValue: 'Ошибка' }), 'error')
     } finally {
       setBuyBusy(false)
     }

@@ -32,7 +32,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
 
 from auth import get_current_user
+from bson import ObjectId
 from database import get_db
+from pymongo import ReturnDocument
 from econ import get_econ
 from ledger import CAT_FARM, CAT_SHOP, EXPENSE, INCOME, adjust_balance, record_transaction
 from resources import RESOURCES_BY_ID
@@ -72,12 +74,22 @@ def _as_aware_utc(value) -> datetime | None:
 async def _get_or_create_field(db, user_id: str, asset_id: str) -> dict:
     """Возвращает документ user_fields для (user_id, asset_id).
 
-    Если не существует — создаёт с N клеток стартового размера
-    (cells_per_side²) и пустым storage. Клетки — плоский список; index = y*side + x.
+    Перед созданием проверяет, что актив «Поле» существует и принадлежит
+    игроку. Клетки — плоский список; index = y*side + x.
     """
     cfg = _cfg()
     side = int(cfg["cells_per_side"])
     cell_count = side * side
+    if not ObjectId.is_valid(asset_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID поля")
+    # Владелец поля — только владелец актива «Поле»: без него фриминт клеток
+    # невозможен, а после продажи актива на p2p-рынке работа с полем закрыта.
+    asset = await db.user_assets.find_one({
+        "_id": ObjectId(asset_id), "userId": user_id,
+        "type": "source", "category": "field",
+    })
+    if not asset:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Поле (актив) не найдено")
     doc = await db.user_fields.find_one({"userId": user_id, "assetId": asset_id})
     if doc:
         return doc
@@ -90,15 +102,6 @@ async def _get_or_create_field(db, user_id: str, asset_id: str) -> dict:
     }
     await db.user_fields.insert_one(doc)
     return doc
-
-
-def _cells_to_patch(cells: list[dict], field_side: int) -> dict:
-    """Собирает $set из изменений в клетках. Клетки адресуются по index."""
-    field_dict = {f"cells.{c_index}": {
-        "x": c["x"], "y": c["y"], "status": c["status"],
-        "crop": c["crop"], "planted_at": c["planted_at"], "ready_at": c["ready_at"],
-    } for c_index, c in enumerate(cells)}
-    return field_dict
 
 
 async def _vehicle_for_job(db, user_id: str, kind: str) -> Optional[dict]:
@@ -347,11 +350,14 @@ async def buy_cells(
 
     blocks = max(1, min(int(payload.blocks), int(cb["max_blocks"])))
     doc = await _get_or_create_field(db, user_id, payload.assetId)
-    # Цена текущего блока: base * scale^already_bought.
+    # Цена — сумма экспоненциальной кривой: каждый следующий блок дороже
+    # предыдущего (base * scale^k), а не «цена последнего блока × количество».
     already_bought = max(0, len(doc["cells"]) - cfg["cells_per_side"] ** 2)
     step = int(cb["step"])
-    unit_cost = cb["base_cost"] * (cb["cost_scale"] ** (already_bought / step))
-    total_cost = round(unit_cost * blocks, 2)
+    total_cost = 0.0
+    for i in range(blocks):
+        total_cost += cb["base_cost"] * (cb["cost_scale"] ** ((already_bought + i) / step))
+    total_cost = round(total_cost, 2)
 
     new_balance = await adjust_balance(db, user_id, -total_cost)
     if new_balance is None:
@@ -512,10 +518,6 @@ async def harvest(
             status.HTTP_400_BAD_REQUEST,
             f"Недостаточно топлива: нужно {fuel_cost:.1f} л, есть {current_fuel:.1f} л",
         )
-    await db.users.update_one(
-        {"_id": current_user["_id"]},
-        {"$inc": {"fuel": -fuel_cost}},
-    )
 
     # Пересчитываем склад и очищаем клетки. Группируем по культуре.
     storage = field.setdefault("storage", {})
@@ -541,6 +543,13 @@ async def harvest(
             status.HTTP_400_BAD_REQUEST,
             "Склад поля полон для собираемой культуры — освободите место",
         )
+
+    # Топливо списываем только после того, как убедились, что есть что собирать:
+    # при «склад полон» endpoint раньше сжигал топливо с пустым результатом.
+    await db.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$inc": {"fuel": -fuel_cost}},
+    )
 
     field["cells"] = cells
     field["storage"] = storage
@@ -604,15 +613,20 @@ async def sell_storage(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Продать культуру со склада поля. Берём базовую цену за кг из RESOURCES."""
+    """Продать культуру со склада поля. Берём базовую цену за кг из RESOURCES.
+
+    Атомарно: списание со склада — условный find_one_and_update ($inc при
+    storage.crop >= qty), выплата после фактического списания.
+    """
     user_id = str(current_user["_id"])
+    if payload.cropId not in _cfg()["crops"]:
+        crop_keys = ", ".join(_cfg()["crops"].keys())
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Неизвестная культура (доступно: {crop_keys})")
     field = await db.user_fields.find_one({"userId": user_id, "assetId": payload.assetId})
     if not field:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Поле не найдено")
 
-    storage = field.get("storage") or {}
-    have = float(storage.get(payload.cropId, 0.0) or 0.0)
-    qty = min(float(payload.qty), have)
+    qty = float(payload.qty)
     if qty <= 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет этой культуры на складе")
 
@@ -620,17 +634,29 @@ async def sell_storage(
     unit_price = _crop_unit_price(payload.cropId, econ)
     total = round(qty * unit_price, 2)
 
+    # Атомарное списание: условие «на складе не меньше qty» проверяется в БД,
+    # поэтому двойной клик / гонка не продаст урожай дважды.
+    updated = await db.user_fields.find_one_and_update(
+        {
+            "_id": field["_id"],
+            "$expr": {"$gte": [{"$ifNull": [f"$storage.{payload.cropId}", 0]}, qty]},
+        },
+        {"$inc": {f"storage.{payload.cropId}" : -qty}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет этой культуры на складе")
+    storage = updated.get("storage") or {}
+    if float(storage.get(payload.cropId, 0.0) or 0.0) <= 0.001:
+        await db.user_fields.update_one(
+            {"_id": field["_id"]},
+            {"$unset": {f"storage.{payload.cropId}": ""}},
+        )
+        storage.pop(payload.cropId, None)
+
     new_balance = await adjust_balance(db, user_id, total)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ошибка изменения баланса")
-
-    new_qty = round(have - qty, 2)
-    if new_qty <= 0.001:
-        storage.pop(payload.cropId, None)
-    else:
-        storage[payload.cropId] = new_qty
-    field["storage"] = storage
-    await db.user_fields.replace_one({"_id": field["_id"]}, field)
 
     await record_transaction(
         db, user_id, INCOME, total, "farm",

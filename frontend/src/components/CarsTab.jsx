@@ -70,7 +70,7 @@ function CarsTab({ balance = 0, onBalanceChange }) {
       }))
       setCars(items)
     } catch (e) {
-      toast(e?.message || t('common.error', 'Ошибка'))
+      toast(e?.message || t('common.error', 'Ошибка'), 'error')
     } finally {
       setLoading(false)
     }
@@ -140,7 +140,7 @@ function CarsTab({ balance = 0, onBalanceChange }) {
       arr.sort((a, b) => ((a.price || 0) - (b.price || 0)) * dir)
     }
     return arr
-  }, [cars, section, search, sortBy, sortDir])
+  }, [cars, farmVehicles, section, search, sortBy, sortDir])
 
   // Клик «Купить» — открыть модалку.
   const handleBuy = useCallback((item) => {
@@ -169,7 +169,7 @@ function CarsTab({ balance = 0, onBalanceChange }) {
       if (item.isFarmVehicle) loadFarmVehicles()
       else loadCars()
     } catch (e) {
-      toast(e?.message || t('common.error', 'Ошибка'))
+      toast(e?.message || t('common.error', 'Ошибка'), 'error')
     } finally {
       setBusy(false)
     }

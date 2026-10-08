@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchFarms, fetchMiningHouses, fetchMiningMarket, fetchMiningParts,
-  createFarm, deleteFarm, installComponent,
+  createFarm, deleteFarm, installComponent, installComponentsBatch,
   uninstallComponent, startMining, stopMining, setFarmCoin, setOverclock,
   repairFarm, farmManager, addCoolant,
 } from '../services/api'
@@ -309,7 +309,10 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const installMany = async (cat, hwIds) => {
     setBusy(true)
     try {
-      for (const hwId of hwIds) await installComponent(activeId, cat, hwId)
+      // Один batch-запрос вместо последовательных per-item: N раз быстрее и
+      // одна перезагрузка данных вместо N.
+      const res = await installComponentsBatch(activeId, hwIds.map(hwId => ({ category: cat, hwId })))
+      if (res?.error) flash(res.error, 'error')
     } catch (err) {
       flash(err.message, 'error')
     } finally {

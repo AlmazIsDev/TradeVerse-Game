@@ -52,6 +52,27 @@ def _oid(s: str) -> ObjectId:
     return ObjectId(s)
 
 
+async def _rollback_debit(db, user_id: str, total: float) -> None:
+    """Списание при откате сделки. В отличие от adjust_balance не требует
+    достаточного остатка: откат обязан исполниться — иначе при нехватке
+    средств у продавца сделка «напечатает» деньги (adjust_balance просто
+    no-op'ается и возвращает None). Уводит баланс в минус, если продавец
+    успел потратить выручку.
+    """
+    result = await db.users.find_one_and_update(
+        {"_id": ObjectId(user_id)},
+        {"$inc": {"balance": -total}},
+        return_document=True,
+    )
+    if result:
+        try:
+            from ws import push_to_user
+            await push_to_user(user_id, {"type": "balance",
+                                         "balance": round(float(result.get("balance", 0.0)), 2)})
+        except Exception:
+            pass
+
+
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 
@@ -317,10 +338,24 @@ async def buy_lot(
         if not asset:
             # Товар исчез (продан/арендован в обход лота) — возвращаем деньги.
             await adjust_balance(db, user_id, total)
-            await adjust_balance(db, seller_id, -total)
+            await _rollback_debit(db, seller_id, total)
             await db.market_lots.update_one({"_id": lot["_id"]},
                                             {"$set": {"status": "cancelled"}})
             raise HTTPException(status.HTTP_409_CONFLICT, "Актив больше недоступен")
+
+        # Актив уходит покупателю вместе с привязанным состоянием: майнинг-фермы
+        # подвала (привязаны по houseId) и поля (user_fields по assetId). Без
+        # этого продавец продолжал бы получать доход с проданного подвала/поля,
+        # а вместимость подвала дублировалась бы покупателю.
+        await db.mining_farms.update_many(
+            {"houseId": asset["_id"], "userId": seller_id},
+            {"$set": {"userId": user_id}},
+        )
+        await db.user_fields.update_many(
+            {"assetId": str(asset["_id"]), "userId": seller_id},
+            {"$set": {"userId": user_id}},
+        )
+
         from ws import push_to_user
         try:
             await push_to_user(user_id, {"type": "asset_update", "assetId": str(asset["_id"])})
@@ -333,7 +368,7 @@ async def buy_lot(
         if len(free) < qty:
             # Железа стало меньше, чем обещал лот — возврат средств и откат лота.
             await adjust_balance(db, user_id, total)
-            await adjust_balance(db, seller_id, -total)
+            await _rollback_debit(db, seller_id, total)
             await db.market_lots.update_one({"_id": lot["_id"]},
                                             {"$set": {"status": "cancelled"}})
             raise HTTPException(status.HTTP_409_CONFLICT, "Железо больше недоступно")
@@ -356,7 +391,7 @@ async def buy_lot(
                               "purchased_at": _now()}},
                 )
             await adjust_balance(db, user_id, total)
-            await adjust_balance(db, seller_id, -total)
+            await _rollback_debit(db, seller_id, total)
             await db.market_lots.update_one({"_id": lot["_id"]},
                                             {"$set": {"status": "cancelled"}})
             raise HTTPException(status.HTTP_409_CONFLICT, "Железо больше недоступно")

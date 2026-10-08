@@ -115,7 +115,14 @@ function FarmPanel({ assetId, assetName, onBack, balance, onBalanceChange }) {
   }, [cellsInfo, cellsAlreadyBought, cellsBuyStep])
   const cellsTotalCost = Math.round(cellsUnitCost * cellsBlocks * 100) / 100
   const fuelPrice = catalog?.fuel?.pricePerLiter ?? 0
-  const fuelTotal = Math.round((Number(fuelLiters) || 0) * fuelPrice * 100) / 100
+  // Считаем как бэкенд: литры округляются вверх до пачки (fuel.bundleSize),
+  // иначе превью расходится с реальным списанием.
+  const fuelBundle = catalog?.fuel?.bundleSize ?? 100
+  const fuelLitersRounded = Math.max(
+    fuelBundle,
+    Math.ceil((Number(fuelLiters) || 0) / fuelBundle) * fuelBundle,
+  )
+  const fuelTotal = Math.round(fuelLitersRounded * fuelPrice * 100) / 100
   const storageCap = catalog?.storage?.perResource ?? 4000
 
   // Действия.
@@ -141,10 +148,13 @@ function FarmPanel({ assetId, assetName, onBack, balance, onBalanceChange }) {
     runAction(() => buyFarmCells(assetId, cellsBlocks), t('farm.cellsBought', 'Участок куплен'))
   const doBuyFuel = () =>
     runAction(() => buyFuel(Math.max(1, Math.floor(Number(fuelLiters) || 0))), t('farm.fuelBought', 'Топливо куплено'))
-  const doSellStorage = (cropId) => {
+  const doSellStorage = async (cropId) => {
     const qty = Math.max(0, Number(sellQty[cropId]) || 0)
     if (qty <= 0) return
-    runAction(() => sellStorage(assetId, cropId, qty), t('farm.storageSold', 'Культура продана'))
+    await runAction(() => sellStorage(assetId, cropId, qty), t('farm.storageSold', 'Культура продана'))
+    // Сброс поля: иначе устаревшее число уедет в следующую продажу
+    // (бэкенд при qty > остатка теперь отвечает 400).
+    setSellQty(s => ({ ...s, [cropId]: '' }))
   }
 
   // Статус клетки с локальным пересчётом (растёт 'growing' → 'ready' без

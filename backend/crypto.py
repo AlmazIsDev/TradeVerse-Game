@@ -572,11 +572,17 @@ async def trade_crypto(
     # sell
     if not holding or holding.get("quantity", 0.0) < qty:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно монет")
-    # Компания-эмитент выкупает монеты у продавца ИЗ БЮДЖЕТА. Списание
-    # обязательное и идёт ДО выплаты продавцу: раньше оно было best-effort —
-    # при пустом бюджете условный $inc молча не срабатывал, а продавцу деньги
-    # начислялись. Цикл «купить свои монеты → вывести бюджет → продать монеты»
-    # печатал деньги из воздуха. Зеркалит stocks.trade_stock.
+    # Атомарное списание монет: условие quantity >= qty проверяется в БД, чтобы
+    # две параллельные продажи не продали одни и те же монеты дважды.
+    sold = await db.crypto_holdings.find_one_and_update(
+        {"userId": user_id, "symbol": symbol, "quantity": {"$gte": qty}},
+        {"$inc": {"quantity": -qty}},
+        return_document=True,
+    )
+    if not sold:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно монет")
+    # Компания-эмитент выкупает монеты из бюджета; при нехватке бюджета —
+    # рефанд монет продавцу и отказ. Дебит бюджета после списания монет.
     cid = coin.get("companyId")
     if cid and ObjectId.is_valid(cid):
         budget_paid = await db.companies.find_one_and_update(
@@ -584,18 +590,15 @@ async def trade_crypto(
             {"$inc": {"budget": -total}},
         )
         if not budget_paid:
+            await db.crypto_holdings.update_one(
+                {"userId": user_id, "symbol": symbol},
+                {"$inc": {"quantity": qty}, "$setOnInsert": {"userId": user_id, "symbol": symbol}},
+                upsert=True,
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Компания не может выкупить монеты: недостаточно средств в бюджете",
             )
-    remaining = round(holding["quantity"] - qty, 8)
-    if remaining <= 0:
-        await db.crypto_holdings.delete_one({"userId": user_id, "symbol": symbol})
-    else:
-        await db.crypto_holdings.update_one(
-            {"userId": user_id, "symbol": symbol},
-            {"$set": {"quantity": remaining}},
-        )
     # Продавец получает стоимость за вычетом комиссии.
     proceeds = round(total - fee, 2)
     new_balance = await adjust_balance(db, user_id, proceeds)

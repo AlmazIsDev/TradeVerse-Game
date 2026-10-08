@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   listPropertyForRent, cancelRent, fetchMaterialsPrice, buyMaterials,
-  fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
+  fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap, upgradeAsset,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { assetImage } from '../utils/assetImages'

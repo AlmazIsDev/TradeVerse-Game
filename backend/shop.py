@@ -37,6 +37,7 @@ from auth import get_current_user, require_admin
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_SHOP, adjust_balance, record_transaction
 from econ import get_econ
+from assets import _admin_prices as _assets_admin_prices  # единая реализация
 
 router = APIRouter(prefix="/api/shop", tags=["shop"])
 admin_router = APIRouter(prefix="/api/admin/shop", tags=["shop-admin"])
@@ -743,25 +744,11 @@ async def _shop_config(db) -> dict:
 
 
 async def _admin_prices(db) -> dict[str, float]:
-    """Админские overrides: {id: price}. None в БД = сброс к формуле."""
-    doc = await find_config_by_key(db, SHOP_PRICES_KEY)
-    if not doc:
-        return {}
-    try:
-        raw = json.loads(doc["value"])
-    except Exception:
-        return {}
-    out: dict[str, float] = {}
-    for k, v in raw.items():
-        if v is None:
-            continue
-        try:
-            fv = float(v)
-        except (TypeError, ValueError):
-            continue
-        if fv > 0:
-            out[str(k)] = fv
-    return out
+    """Админские overrides: {id: price}. None в БД = сброс к формуле.
+
+    Реализация одна — в assets.py (там же SHOP_PRICES_KEY и _admin_price_key);
+    тут раньше лежала её копия, расходившаяся при правках."""
+    return await _assets_admin_prices(db)
 
 
 # ── Ценообразование ──────────────────────────────────────────────────────────
@@ -1019,32 +1006,50 @@ async def set_shop_prices(
         "psu": "admin-psu",
         "motherboard": "admin-mb",
         "ssd": "admin-ssd",
+        "realestate": "admin-re",
+        "business": "admin-biz",
         "supplies": "admin-supply",
     }.get(category)
     cat_count = {
         "gpu": 90, "cpu": 90, "case": 20, "ram": 20, "cooling": 20,
         "psu": 20, "motherboard": 20, "ssd": 20,
+        "realestate": 81, "business": 12,
     }.get(category, 90)
 
-    # Категории, где ключ конфига совпадает с ключом из редактора —
-    # числовой id для недвижимости/бизнесов, slug для остальных.
-    # См. _admin_price_key в assets.py и ADMIN_DEFAULT_PRICES в adminCatalog.js.
+    # Категории, где ключ конфига — slug актива (строковые ключи проходят
+    # как есть). См. _admin_price_key в assets.py и ADMIN_DEFAULT_PRICES
+    # в adminCatalog.js.
     passthrough_categories = {"realestate", "business", "factory", "source", "warehouse", "cars"}
 
     def _normalize_key(key: str) -> Optional[str]:
+        # Числовые ключи недвижимости/бизнесов (productId из редактора)
+        # приводятся к admin-re-N / admin-biz-N — раньше обе группы писались
+        # голым 'N' в один документ и затирали цены друг друга.
+        if category in ("realestate", "business") and key.isdigit():
+            pid = int(key)
+            if 1 <= pid <= cat_count and cat_prefix:
+                return f"{cat_prefix}-{pid}"
+            return None
         if category in passthrough_categories:
             return key
-        # gpu/cpu/case/ram/cooling/psu/motherboard/ssd/supplies — числовой
+        # supplies: у покупаемых позиций id вида admin-supply-<kind>
+        # (admin-supply-cooling-fluid / admin-supply-gpu-chip) — числовой
+        # productId редактора мапится именно в них. Ветку нужно ПЕРЕД общей:
+        # иначе ключи уходят под мёртвые admin-supply-1/2, которые покупка
+        # не читает.
+        if category == "supplies" and key.isdigit():
+            pid = int(key)
+            if pid == 1:
+                return "admin-supply-cooling-fluid"
+            if pid == 2:
+                return "admin-supply-gpu-chip"
+            return None
+        # gpu/cpu/case/ram/cooling/psu/motherboard/ssd — числовой
         # productId приводится к admin-<cat>-<pid>.
         if key.isdigit():
             pid = int(key)
             if cat_prefix and 1 <= pid <= cat_count:
                 return f"{cat_prefix}-{pid}"
-            if category == "supplies":
-                if pid == 1:
-                    return "admin-supply-cooling-fluid"
-                if pid == 2:
-                    return "admin-supply-gpu-chip"
             return None
         # Строковые ключи — как есть (admin-fac-*, admin-src-*, admin-wh-*, car-*, ...).
         if key.startswith(("admin-", "car-", "truck-", "trailer-")):
@@ -1068,8 +1073,23 @@ async def set_shop_prices(
             continue
         norm[canon] = fv
 
-    await upsert_config(db, SHOP_PRICES_KEY, json.dumps(norm))
-    return {"ok": True, "count": sum(1 for v in norm.values() if v is not None)}
+    # Мердж, а не замена: сохранение одной вкладки не должно затирать
+    # переопределения цен других категорий. None = сброс к формуле → удаляем ключ.
+    existing: dict = {}
+    doc = await find_config_by_key(db, SHOP_PRICES_KEY)
+    if doc:
+        try:
+            existing = json.loads(doc.get("value") or "{}")
+        except Exception:
+            existing = {}
+    for k, v in norm.items():
+        if v is None:
+            existing.pop(k, None)
+        else:
+            existing[k] = v
+
+    await upsert_config(db, SHOP_PRICES_KEY, json.dumps(existing))
+    return {"ok": True, "count": sum(1 for v in existing.values() if v is not None)}
 
 
 # ── Алиасный роутер для обратной совместимости ────────────────────────────────

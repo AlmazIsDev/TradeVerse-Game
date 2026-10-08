@@ -497,7 +497,9 @@ function _cpuPrice(p) {
   return Math.round((p.maxGpus || 1) * 700 * (p.multiplier || 1))
 }
 function _casePrice(p) {
-  return Math.round((p.maxGpus || 1) * 500)
+  // Как на бэкенде (shop.py: base_price = max_gpus * 800) — иначе дефолт
+  // редактора расходится с реальной ценой покупки.
+  return Math.round((p.maxGpus || 1) * 800)
 }
 
 export const ADMIN_DEFAULT_PRICES = (() => {
@@ -515,17 +517,11 @@ export const ADMIN_DEFAULT_PRICES = (() => {
     else if (p.category === 'upgrade') out[p.id] = 5000
     else out[p.id] = 0
   }
-  // Real estate: ключи = productId (число), 1..81; значения берём
-  // из ADMIN_REAL_ESTATE_CATALOG, у которой id вида `admin-re-<productId>`.
-  for (const item of ADMIN_REAL_ESTATE_CATALOG) {
-    const m = item.id.match(/^admin-re-(\d+)$/)
-    if (m) out[parseInt(m[1], 10)] = item.price
-  }
-  // Business: ключи = productId (число), 1..12.
-  for (const item of ADMIN_BUSINESS_CATALOG) {
-    const m = item.id.match(/^admin-biz-(\d+)$/)
-    if (m) out[parseInt(m[1], 10)] = item.price
-  }
+  // Real estate / Business: ключи = slug (admin-re-N / admin-biz-N), не голое
+  // число — иначе дома и бизнесы с одинаковым productId перезаписывали бы
+  // цены друг друга в общей карте дефолтов.
+  for (const item of ADMIN_REAL_ESTATE_CATALOG) out[item.id] = item.price
+  for (const item of ADMIN_BUSINESS_CATALOG) out[item.id] = item.price
   // Заводы: ключи = slug-строки вида `admin-fac-gpu-1`. Значение — price.
   for (const item of ADMIN_FACTORIES_CATALOG) out[item.slug] = item.price
   // Источники: ключи = slug-строки вида `admin-src-mine-1`.

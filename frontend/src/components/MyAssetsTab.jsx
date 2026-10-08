@@ -5,7 +5,7 @@ import {
   transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
-  collectAllAssets, buyMiningUpgrade,
+  collectAllAssets, buyMiningUpgrade, upgradeAsset,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { assetImage } from '../utils/assetImages'

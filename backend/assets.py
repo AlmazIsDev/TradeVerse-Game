@@ -1104,30 +1104,24 @@ def _serialize(asset: dict) -> dict:
 # раньше игнорировал их и брал цену напрямую из статичного CATALOG — из-за
 # этого правки в админ-панели не отражались в MarketTab / при покупке.
 #
-# Ключи в конфиге не всегда совпадают с slug актива:
-#   - Недвижимость:  slug="admin-re-1"   -> key="1"   (числовой productId)
-#   - Бизнесы:       slug="admin-biz-1"  -> key="1"
-#   - Заводы/Источники/Склады/Авто: slug идёт как есть (admin-fac-gpu-1, ...).
+# Ключи в конфиге совпадают с slug актива (admin-re-N / admin-biz-N /
+# admin-fac-... / car-...): раньше дома и бизнесы схлопывались в один
+# числовой ключ 'N' и перезаписывали цены друг друга.
 #
 # Чтобы маппинг совпадал с frontend/src/utils/adminCatalog.js и
 # frontend/src/utils/shopCatalog.js — см. ADMIN_DEFAULT_PRICES и
 # REAL_ESTATE_PRODUCTS / BUSINESS_PRODUCTS.
 SHOP_PRICES_KEY = "shop_prices"
-_SLUG_TO_PRICE_KEY_CACHE: dict[str, str] = {}
 
 
 def _admin_price_key(slug: str) -> str:
-    """slug актива -> ключ в конфиге shop_prices."""
-    cached = _SLUG_TO_PRICE_KEY_CACHE.get(slug)
-    if cached is not None:
-        return cached
-    key = slug
-    if slug.startswith("admin-re-"):
-        key = slug[len("admin-re-"):]
-    elif slug.startswith("admin-biz-"):
-        key = slug[len("admin-biz-"):]
-    _SLUG_TO_PRICE_KEY_CACHE[slug] = key
-    return key
+    """slug актива -> ключ в конфиге shop_prices.
+
+    Ключ — сам slug: дома (admin-re-N) и бизнесы (admin-biz-N) живут в одном
+    документе, и схлопывание обеих групп в голое 'N' приводило к тому, что
+    цены домов и бизнесов перезаписывали друг друга.
+    """
+    return slug
 
 
 async def _admin_prices(db) -> dict[str, float]:
@@ -1410,7 +1404,8 @@ async def collect_income(
     econ = await get_econ(db)
     city_bonus = await _city_asset_bonus(db, user_id)
     media_factor = await _media_income_factor(db, user_id)
-    amount = await _collect_asset_income(db, user_id, asset, econ, 1.0, city_bonus, media_factor)
+    event_income = await _event_income_factor(db)
+    amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
     new_balance = await adjust_balance(db, user_id, amount)
@@ -1436,6 +1431,16 @@ async def _media_income_factor(db, user_id: str) -> float:
     try:
         from media import active_owner_income_factor
         return await active_owner_income_factor(db, user_id)
+    except Exception:
+        return 1.0
+
+
+async def _event_income_factor(db) -> float:
+    """Множитель пассивного дохода от активных мировых событий
+    (кризис/бум/реформа — market_events.event_shifts['income']; 1.0 — нет событий)."""
+    try:
+        from market_events import event_shifts
+        return float((await event_shifts(db)).get("income", 1.0))
     except Exception:
         return 1.0
 
@@ -1481,13 +1486,18 @@ async def collect_all_income(
     econ = await get_econ(db)
     city_bonus = await _city_asset_bonus(db, user_id)
     media_factor = await _media_income_factor(db, user_id)
+    event_income = await _event_income_factor(db)
 
     total = 0.0
     count = 0
     async for asset in db.user_assets.find({"userId": user_id, "companyId": None}):
         if asset.get("income_per_hour", 0) <= 0:
-            continue
-        amount = await _collect_asset_income(db, user_id, asset, econ, 1.0, city_bonus, media_factor)
+            # У заводов/источников статичный income_per_hour = 0 — они зарабатывают
+            # только динамически (продукция × цена из econ). Не пропускаем их:
+            # раньше «Собрать всё» молча пропускал завод и источник целиком.
+            if _infra_income_per_hour(asset, econ) <= 0 and _mining_income_per_hour(asset, econ) <= 0:
+                continue
+        amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
         if amount <= 0:
             continue
         new_balance = await adjust_balance(db, user_id, amount)
@@ -1653,6 +1663,9 @@ async def buy_mining_upgrade(
     cost = _mining_cost(asset, await get_econ(db))
     # Атомарно занимаем слот улучшения ДО списания: условие mining != True
     # сработает только у одного из параллельных запросов, двойной оплаты нет.
+    # last_collected запоминаем: при откате (не хватило денег) его надо
+    # вернуть, иначе накопленный доход дома молча сотрётся.
+    prev_collected = asset.get("last_collected")
     claimed = await db.user_assets.find_one_and_update(
         {"_id": asset["_id"], "mining": {"$ne": True}},
         {"$set": {"mining": True, "last_collected": _now()}},
@@ -1662,11 +1675,13 @@ async def buy_mining_upgrade(
                             "Улучшение «Майнинг» уже куплено")
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
-        # Денег не хватило — снимаем только что поставленную заявку.
-        await db.user_assets.update_one(
-            {"_id": asset["_id"], "mining": True},
-            {"$unset": {"mining": ""}},
-        )
+        # Денег не хватило — снимаем заявку и восстанавливаем окно сбора.
+        rollback = {"$unset": {"mining": ""}}
+        if prev_collected is None:
+            rollback["$unset"]["last_collected"] = ""
+        else:
+            rollback["$set"] = {"last_collected": prev_collected}
+        await db.user_assets.update_one({"_id": asset["_id"]}, rollback)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
     await record_transaction(
         db, user_id, EXPENSE, cost, CAT_REALESTATE,

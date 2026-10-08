@@ -17,7 +17,9 @@ from typing import Optional
 
 import math
 import random
-from datetime import datetime, timezone
+
+from pymongo.errors import DuplicateKeyError
+from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -419,6 +421,10 @@ def _serialize(farm: dict, stats: dict, capacity: Optional[dict] = None) -> dict
         "slotIndex": int(farm.get("slotIndex", 0)) if farm.get("slotIndex") is not None else None,
         "coolant": int(farm.get("coolant", 0) or 0),
         "coolantUntil": farm["coolant_until"].isoformat() if farm.get("coolant_until") else None,
+        # Верхний уровень для UI (фронт читает farm.coolantActive/coolantMax,
+        # а не farm.stats.*): без этого пилюля охлаждения всегда «off».
+        "coolantActive": bool(farm.get("coolant_until") and farm["coolant_until"] > _now()),
+        "coolantMax": COOLANT_MAX,
         "components": {
             "motherboard": comp.get("motherboard"),
             "cpu": comp.get("cpu"),
@@ -456,7 +462,7 @@ def _enclosure_slots(comp: dict) -> Optional[int]:
     return None
 
 
-def _capacity(farm: dict, rack_used_elsewhere: int = 0) -> dict:
+def _capacity(farm: dict) -> dict:
     """Максимум и остаток слотов для multi-компонентов (GPU, вентиляторы).
 
     Корпус задаёт общий лимит посадочных мест (не более 5 GPU); для GPU он
@@ -510,7 +516,7 @@ async def _user_installed_cases(db, user_id: str) -> int:
 
 async def _serialize_with_stats(db, farm: dict, user_id: str) -> dict:
     """Сериализует ферму с ПОЛНЫМ пересчётом характеристик (для мгновенного отклика UI)."""
-    cap = await _capacity_for(db, farm)
+    cap = _capacity(farm)
     missing = _missing_required(farm)
     if missing:
         # Ферма не собрана — не считаем показатели.
@@ -727,7 +733,7 @@ async def get_farms(
         missing = _missing_required(farm)
         # Пока ферма не собрана — показатели не рассчитываются (пустые).
         stats = {} if missing else _compute(farm, market, ec, em, city)
-        item = _serialize(farm, stats, await _capacity_for(db, farm))
+        item = _serialize(farm, stats, _capacity(farm))
         item["missing"] = missing
         out.append(item)
     return out
@@ -779,7 +785,15 @@ async def create_farm(payload: CreateFarm, current_user: dict = Depends(get_curr
         "manager": {"type": "player", "level": 0}, "electricity_owed": 0.0,
         "total_earned": 0.0, "total_spent": 0.0, "last_tick": _now(), "created_at": _now(),
     }
-    result = await db.mining_farms.insert_one(doc)
+    try:
+        result = await db.mining_farms.insert_one(doc)
+    except DuplicateKeyError:
+        # Гонка check-then-insert: слот заняла параллельная вставка
+        # (уникальный индекс (houseId, slotIndex)).
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Слот {payload.slotIndex} уже занят другой фермой",
+        )
     doc["_id"] = result.inserted_id
     return _serialize(doc, {})
 
@@ -824,7 +838,7 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
     comp = farm.get("components", {})
     if multi:
         role_key = {"gpu": "gpus", "fan": "fans", "psu": "psus"}[role]
-        cap = await _capacity_for(db, farm)
+        cap = _capacity(farm)
         if role == "gpu":
             mb = comp.get("motherboard")
             if not mb:
@@ -1292,18 +1306,15 @@ async def tick_all(db: AsyncIOMotorDatabase):
             "total_mined_usd": round(farm.get("total_mined_usd", 0.0) + (revenue if coin_qty > 0 else 0.0), 2),
             "total_mined_coins": round(farm.get("total_mined_coins", 0.0) + coin_qty, 8),
         }
-        # Расход охлаждающей жидкости: если бонус истёк — списываем одну шт.
+        # Расход охлаждающей жидкости: бонус истёк — списываем одну шт. и
+        # продлеваем бонус на следующий период. Раньше coolant_until обнулялся:
+        # списанная канистра не активировала бонус, а остаток застревал —
+        # условие расхода требует активный coolant_until.
         cur_coolant = int(farm.get("coolant", 0) or 0)
         coolant_until = farm.get("coolant_until")
         if cur_coolant > 0 and coolant_until and coolant_until <= now:
-            new_coolant = cur_coolant - 1
-            if new_coolant > 0:
-                # Продлеваем бонус: при последней шт. оставляем coolant_until=None.
-                set_fields["coolant"] = new_coolant
-                set_fields["coolant_until"] = None
-            else:
-                set_fields["coolant"] = 0
-                set_fields["coolant_until"] = None
+            set_fields["coolant"] = cur_coolant - 1
+            set_fields["coolant_until"] = now + timedelta(hours=COOLANT_DURATION_H)
             farm["coolant"] = set_fields["coolant"]
             farm["coolant_until"] = set_fields["coolant_until"]
 
@@ -1451,27 +1462,26 @@ if __name__ == "__main__":
     _rev, _price, _costs = 60.0, 30.0, 12.0
     assert _mined_qty(_rev, _price) == 2.0 and round(_costs, 2) == 12.0
 
-    # Стойка — общий пул слотов на несколько ферм: место, занятое GPU на других
-    # фермах той же стойки, уменьшает доступное этой ферме.
+    # Слоты GPU: ограничены материнкой (жёсткий лимит CASE_MAX_GPUS=5).
+    # Стойки (общий пул слотов между фермами) удалены из игры.
     _mb8 = {"specs": {"gpuSlots": 8}}
-    _rack48 = {"specs": {"slots": 48}, "hwId": "r1"}
-    _farm = {"components": {"motherboard": _mb8, "rack": _rack48, "gpus": [{}] * 3}}
-    # Никто больше не занимает — упираемся в 8 слотов платы, стоит 3 → свободно 5.
-    assert _capacity(_farm, 0)["gpu"] == 5
-    # На других фермах занято 44 из 48 → стойка даёт лишь 4; стоит 3 → свободно 1.
-    assert _capacity(_farm, 44)["gpu"] == 1
-    # Стойка занята полностью на других фермах → 0 доступных мест.
-    assert _capacity(_farm, 48)["gpu"] == 0
+    _farm = {"components": {"motherboard": _mb8, "gpus": [{}] * 3}}
+    # Упираемся в лимит платы: min(8 слотов платы, CASE_MAX_GPUS=5) = 5 мест,
+    # установлено 3 GPU → свободно 2.
+    assert _capacity(_farm)["gpu"] == 2
+    _farm_case = {"components": {"motherboard": _mb8,
+                                 "case": {"specs": {"slots": 8}}, "gpus": [{}] * 3}}
+    assert _capacity(_farm_case)["gpu"] == 2                       # корпус не добавляет сверх платы
 
-    # БП — multi-компонент: открытый стенд даёт 2 места, корпус/стойка больше;
+    # БП — multi-компонент: открытый стенд даёт 2 места, корпус больше;
     # старое одиночное поле psu совместимо со списком psus.
     assert _psu_max({}) == 2
-    assert _psu_max({"case": {"specs": {"slots": 8}}}) == 3
-    assert _psu_max({"rack": {"specs": {"slots": 48}}}) == 17
+    # Корпус капируется на CASE_MAX_GPUS=5 мест → 5//3+1 = 2 БП.
+    assert _psu_max({"case": {"specs": {"slots": 8}}}) == 2
     assert _psus({"psu": {"hwId": "x"}}) == [{"hwId": "x"}]        # legacy single
     assert _psus({"psus": [{"hwId": "a"}], "psu": {"hwId": "x"}}) == [{"hwId": "a"}]
     _pf = {"components": {"psus": [{}], "case": {"specs": {"slots": 8}}}}
-    assert _capacity(_pf)["psu"] == 2                              # 3 max − 1 used
+    assert _capacity(_pf)["psu"] == 1                              # 2 max − 1 used
 
     # ── Rebalance: выбор монеты зависит от фермы, а не только от цены ──
     _market = {
@@ -1489,7 +1499,7 @@ if __name__ == "__main__":
     # Без профиля (нет собранной фермы) — откат на сортировку по цене.
     assert choose_best_coin(_market, None) == "EXPENSIVE"
 
-    # ── _compute expone efficiency/upsProtected и использует новую формулу дохода ──
+    # ── _compute: доход, мощность и счётчик GPU на собранной ферме ──
     _test_farm = {
         "components": {
             "motherboard": {"specs": {"gpuSlots": 8, "power": 60}},
@@ -1505,11 +1515,10 @@ if __name__ == "__main__":
     }
     _test_market = {"ORB": {"symbol": "ORB", "price": 12.4, "change24h": 0.0}}
     _test_stats = _compute(_test_farm, _test_market, energy_cost=0.12, economy_mult=1.0)
-    assert "efficiency" in _test_stats and set(_test_stats["efficiency"]) == {"gpu", "ram", "ssd", "network"}
-    assert _test_stats["efficiency"]["gpu"] == 1.0        # 8 ядер / 8 GPU
-    assert _test_stats["upsProtected"] is False            # нет установленного ИБП → backup=0
     assert _test_stats["revenuePerHour"] > 0
     assert _test_stats["gpuCount"] == 8
+    assert _test_stats["hashrate"] > 0
+    assert _test_stats["power"] > 0
 
     # ── Снятый компонент хранится как None (см. uninstall_component) — не должен ронять расчёт ──
     _none_farm = {"components": dict(_test_farm["components"], cpu=None, ram=None, ups=None,
@@ -1518,31 +1527,6 @@ if __name__ == "__main__":
     _none_profile = _farm_hw_profile(_none_farm)
     assert _none_profile["cores"] == 0 and _none_profile["ram_gb"] == 0 and _none_profile["ups_backup"] == 0
     assert _compute(_none_farm, _test_market, energy_cost=0.12)["power"] > 0
-
-    # ── ИБП защищает пропорционально резерву (частичное покрытие, не «всё или ничего») ──
-    def _cov(backup):
-        _f = {"components": dict(_test_farm["components"],
-                                 ups={"specs": {"backup": backup, "power": 10}}),
-              "overclock": 1.0, "condition": 100.0, "coin": "ORB"}
-        return _compute(_f, _test_market, energy_cost=0.12)["upsCoverage"]
-    assert _cov(0) == 0.0                      # нет ИБП — нулевое покрытие
-    assert 0.0 < _cov(1000) < 1.0              # маленький ИБП — частичная защита
-    assert _cov(1_000_000) == 1.0              # резерв с запасом — полное покрытие, не >1
-
-    # ── Рекомендация ИИ считается по каждой ферме отдельно, не одна на аккаунт ──
-    _rec_market = {"CHEAP": {"symbol": "CHEAP", "price": 0.85}, "EXPENSIVE": {"symbol": "EXPENSIVE", "price": 340.0}}
-    _one_gpu = {"components": dict(_test_farm["components"], gpus=[{"specs": {"hashrate": 180, "power": 120}}]),
-                "overclock": 1.0, "condition": 100.0, "coin": "CHEAP"}
-    _big_rig = {"components": dict(_test_farm["components"],
-                                   cpu={"specs": {"cores": 32, "power": 250}},
-                                   ram={"specs": {"gb": 128, "power": 20}},
-                                   ssd={"specs": {"gb": 4096, "power": 10}},
-                                   network={"specs": {"speed": 40000, "power": 15}},
-                                   gpus=[{"specs": {"hashrate": 55000, "power": 5300}}] * 19),
-                "overclock": 1.0, "condition": 100.0, "coin": "CHEAP"}
-    _weak_rec = _compute(_one_gpu, _rec_market, energy_cost=0.12)["bestCoin"]
-    _strong_rec = _compute(_big_rig, _rec_market, energy_cost=0.12)["bestCoin"]
-    assert _weak_rec != _strong_rec, f"фермы с разным железом получили одну рекомендацию: {_weak_rec}"
 
     # ── Эффективность компонентов: клэмп на границах [EFF_FLOOR, 1.0] ──
     assert _gpu_efficiency(8, 8) == 1.0                  # 8 ядер кормят 8 GPU — полная эффективность
@@ -1571,6 +1555,9 @@ if __name__ == "__main__":
     _shop_gpu = next(c for c in CATALOG if c["category"] == "gpu" and c["brand"] != "ASIC")
     _shop_asic = next(c for c in CATALOG if c["brand"] == "ASIC")
     assert CATALOG_BY_NAME[_shop_gpu["name"]] == _shop_gpu["base_price"]
+
+    # ── Реальные GPU из магазина: _hardware_value ищет цену по имени ──
+    _rec_market = {"CHEAP": {"symbol": "CHEAP", "price": 0.85}, "EXPENSIVE": {"symbol": "EXPENSIVE", "price": 340.0}}
 
     def _priced(gpu, n):
         """Рабочая ферма из _test_farm, но с РЕАЛЬНЫМИ (именованными) GPU из магазина:

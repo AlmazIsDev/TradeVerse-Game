@@ -369,7 +369,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
       const detail = err?.status
         ? `[${err.status}] ${err.message || ''}`
         : (err?.message || t('common.error', 'Ошибка'))
-      toast(detail)
+      toast(detail, 'error')
     } finally {
       setBusy(prev => ({ ...prev, [item.slug]: false }))
     }

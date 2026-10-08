@@ -5,7 +5,8 @@
 const COOLING_BY_CAP = { 400: 'air', 800: 'tower', 1600: 'liquid', 4000: 'immersion' }
 const CASE_BY_SLOTS = { 2: 'mini', 4: 'midi', 8: 'full' }
 const FAN_BY_CAP = { 200: 'set120', 320: 'set140', 700: 'industrial' }
-const NETWORK_BY_SPEED = { 1000: 'router', 10000: 'switch', 40000: 'rack' }
+// Стойки rack в майнинге удалены; «сетевая стойка» осталась в network.
+const NETWORK_BY_SPEED = { 1000: 'router', 10000: 'switch' }
 
 export function hwName(item, t) {
   const { category, specs = {}, name } = item || {}
@@ -16,7 +17,6 @@ export function hwName(item, t) {
     case 'ram': return t('shop.ramName', { gb: specs.gb, defaultValue: name })
     case 'ssd': return t('shop.ssdName', { gb: specs.gb, defaultValue: name })
     case 'ups': return t('shop.upsName', { w: specs.backup, defaultValue: name })
-    case 'rack': return t(specs.industrial ? 'shop.rackIndName' : 'shop.rackName', { slots: specs.slots, defaultValue: name })
     case 'cooling': {
       const key = COOLING_BY_CAP[specs.cooling]
       return key ? t(`shop.coolingName.${key}`, name) : name

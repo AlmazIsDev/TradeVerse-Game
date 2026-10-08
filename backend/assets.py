@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 import random
@@ -18,9 +19,10 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
 from auth import get_current_user, require_admin
-from database import get_db
+from database import get_db, find_config_by_key
 from ledger import (
     INCOME, EXPENSE, CAT_REALESTATE, CAT_BUSINESS,
+    CAT_FACTORY, CAT_SOURCE, CAT_WAREHOUSE,
     adjust_balance, record_transaction,
 )
 from notifications import push_notification
@@ -32,7 +34,41 @@ router = APIRouter(prefix="/api/assets", tags=["assets"])
 TYPE_REALESTATE = "realestate"
 TYPE_BUSINESS = "business"
 TYPE_CAR = "car"
-ASSET_TYPES = {TYPE_REALESTATE, TYPE_BUSINESS, TYPE_CAR}
+# Инфраструктурные типы: заводы (factory), источники ресурсов (source) и
+# склады (warehouse). Согласованы с frontend/src/utils/adminCatalog.js
+# (ADMIN_FACTORIES_CATALOG, ADMIN_SOURCES_CATALOG, ADMIN_WAREHOUSES_CATALOG)
+# и с категориями витрины MarketTab. Изначально витрина магазина отдавала
+# slug-и admin-fac-*/admin-src-*/admin-wh-*, а бэкенд их не знал - поэтому
+# покупка отвечала 404 «Актив не найден». После добавления этих типов в
+# CATALOG и ASSET_TYPES покупка корректно создаёт запись в user_assets и
+# инвентаре игрока.
+TYPE_FACTORY = "factory"
+TYPE_SOURCE = "source"
+TYPE_WAREHOUSE = "warehouse"
+ASSET_TYPES = {TYPE_REALESTATE, TYPE_BUSINESS, TYPE_CAR, TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE}
+
+# Маппер типа актива -> категория реестра (ledger). Используется в buy/sell/
+# upgrade/collect, чтобы покупка завода попадала в категорию CAT_FACTORY, а не
+# в CAT_REALESTATE (старое поведение тернарника). Для типов без отдельной
+# категории фолбэк - CAT_REALESTATE (например, авто идут как realestate -
+# раньше так и было).
+_ASSET_CATEGORY = {
+    TYPE_BUSINESS: CAT_BUSINESS,
+    TYPE_FACTORY: CAT_FACTORY,
+    TYPE_SOURCE: CAT_SOURCE,
+    TYPE_WAREHOUSE: CAT_WAREHOUSE,
+    TYPE_REALESTATE: CAT_REALESTATE,
+    TYPE_CAR: CAT_REALESTATE,
+}
+
+
+def _ledger_category(asset_or_type) -> str:
+    """Категория реестра по типу актива/словарю. Не зависит от регистра."""
+    if isinstance(asset_or_type, dict):
+        t = asset_or_type.get("type")
+    else:
+        t = asset_or_type
+    return _ASSET_CATEGORY.get(t, CAT_REALESTATE)
 
 SELL_RATE = 0.7          # возврат при продаже — 70% текущей стоимости
 MAX_ACCRUAL_HOURS = 24   # максимум накопленного дохода за один сбор
@@ -153,19 +189,23 @@ MATERIALS_COST_PER_INCOME_H = 1.6
 # (см. buy_asset) — на пике рынка актив и стоит, и приносит больше.
 
 CATALOG = [
-    # Недвижимость: аренда как доход, налог как расход
+    # Недвижимость: аренда как доход, налог как расход. Поле basement — ёмкость
+    # подвала в корпусах, определяет цену/доходность улучшения «Майнинг»
+    # Цена/доход за единицу подвала — из econ (mining_basement_cost/income).
+    # чтобы более дорогой дом позволял поставить больше оборудования и быстрее
+    # окупать улучшение.
     {"slug": "studio", "type": TYPE_REALESTATE, "name": "Студия", "rarity": "common",
-     "price": 5000, "income_per_hour": 50, "upkeep_per_hour": 12, "rooms": 1, "meta": {"tax": 12}},
+     "price": 5000, "income_per_hour": 50, "upkeep_per_hour": 12, "rooms": 1, "basement": 2, "meta": {"tax": 12}},
     {"slug": "flat2", "type": TYPE_REALESTATE, "name": "Двухкомнатная квартира", "rarity": "common",
-     "price": 14000, "income_per_hour": 140, "upkeep_per_hour": 35, "rooms": 2, "meta": {"tax": 35}},
+     "price": 14000, "income_per_hour": 140, "upkeep_per_hour": 35, "rooms": 2, "basement": 3, "meta": {"tax": 35}},
     {"slug": "townhouse", "type": TYPE_REALESTATE, "name": "Таунхаус", "rarity": "uncommon",
-     "price": 45000, "income_per_hour": 469, "upkeep_per_hour": 117, "rooms": 4, "meta": {"tax": 117}},
+     "price": 45000, "income_per_hour": 469, "upkeep_per_hour": 117, "rooms": 4, "basement": 6, "meta": {"tax": 117}},
     {"slug": "villa", "type": TYPE_REALESTATE, "name": "Вилла у моря", "rarity": "rare",
-     "price": 160000, "income_per_hour": 1733, "upkeep_per_hour": 433, "rooms": 6, "meta": {"tax": 433}},
+     "price": 160000, "income_per_hour": 1733, "upkeep_per_hour": 433, "rooms": 6, "basement": 10, "meta": {"tax": 433}},
     {"slug": "penthouse", "type": TYPE_REALESTATE, "name": "Пентхаус", "rarity": "epic",
-     "price": 480000, "income_per_hour": 5600, "upkeep_per_hour": 1400, "rooms": 8, "meta": {"tax": 1400}},
+     "price": 480000, "income_per_hour": 5600, "upkeep_per_hour": 1400, "rooms": 8, "basement": 16, "meta": {"tax": 1400}},
     {"slug": "castle", "type": TYPE_REALESTATE, "name": "Замок", "rarity": "legendary",
-     "price": 1500000, "income_per_hour": 18750, "upkeep_per_hour": 4688, "rooms": 20, "meta": {"tax": 4688}},
+     "price": 1500000, "income_per_hour": 18750, "upkeep_per_hour": 4688, "rooms": 20, "basement": 24, "meta": {"tax": 4688}},
     # Бизнесы: доход и расходы, есть сотрудники. rarity — экономический класс
     # бизнеса (отдельно от category, которая отвечает только за тематику/иконку).
     {"slug": "shawarma", "type": TYPE_BUSINESS, "name": "Шаурмечная", "category": "retail", "rarity": "common",
@@ -202,7 +242,243 @@ CATALOG = [
      "price": 600000, "income_per_hour": 0, "upkeep_per_hour": 0, "meta": {"prestige": 200}},
 ]
 
+# ── Расширенный каталог недвижимости и бизнесов (admin-re-1..81, admin-biz-1..12) ──
+# Добавлено для согласования с frontend/src/utils/adminCatalog.js:
+# витрина в MarketTab показывает 81 дом и 12 бизнесов. Цены, income, basement
+# и employees рассчитаны по тем же формулам, что и в adminCatalog.js, чтобы
+# карточки в «Рынке» и реальный покупаемый каталог совпадали.
+# Цены admin-re поднимаются плавной лестницей по rarity (5 ступеней × 81 дом),
+# цены admin-biz — лестницей по category (4 ступени × 3 объекта).
+
+_ADMIN_MARKET_HOUSES = [
+    {"slug": "admin-re-1", "type": TYPE_REALESTATE, "name": "Sunny Cottage", "rarity": "common", "price": 5000, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 1, "basement": 1, "meta": {"tax": 5}},
+    {"slug": "admin-re-2", "type": TYPE_REALESTATE, "name": "Green Nest", "rarity": "common", "price": 5225, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 1, "basement": 1, "meta": {"tax": 5}},
+    {"slug": "admin-re-3", "type": TYPE_REALESTATE, "name": "Little Oak", "rarity": "common", "price": 5450, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 1, "basement": 1, "meta": {"tax": 5}},
+    {"slug": "admin-re-4", "type": TYPE_REALESTATE, "name": "Rose House", "rarity": "common", "price": 5675, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 1, "basement": 2, "meta": {"tax": 5}},
+    {"slug": "admin-re-5", "type": TYPE_REALESTATE, "name": "Maple Home", "rarity": "common", "price": 5959, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 2, "meta": {"tax": 5}},
+    {"slug": "admin-re-6", "type": TYPE_REALESTATE, "name": "Silver Cottage", "rarity": "common", "price": 6186, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 2, "meta": {"tax": 5}},
+    {"slug": "admin-re-7", "type": TYPE_REALESTATE, "name": "Forest View", "rarity": "common", "price": 6414, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 2, "meta": {"tax": 5}},
+    {"slug": "admin-re-8", "type": TYPE_REALESTATE, "name": "Pine Residence", "rarity": "common", "price": 6641, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 3, "meta": {"tax": 5}},
+    {"slug": "admin-re-9", "type": TYPE_REALESTATE, "name": "Golden Nest", "rarity": "common", "price": 6868, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 3, "meta": {"tax": 5}},
+    {"slug": "admin-re-10", "type": TYPE_REALESTATE, "name": "Blue Horizon", "rarity": "common", "price": 7095, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 3, "meta": {"tax": 5}},
+    {"slug": "admin-re-11", "type": TYPE_REALESTATE, "name": "Stone Cottage", "rarity": "common", "price": 7322, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 3, "meta": {"tax": 5}},
+    {"slug": "admin-re-12", "type": TYPE_REALESTATE, "name": "Autumn House", "rarity": "common", "price": 7550, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 2, "basement": 4, "meta": {"tax": 5}},
+    {"slug": "admin-re-13", "type": TYPE_REALESTATE, "name": "Meadow Home", "rarity": "common", "price": 7854, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 4, "meta": {"tax": 5}},
+    {"slug": "admin-re-14", "type": TYPE_REALESTATE, "name": "Oak Residence", "rarity": "common", "price": 8084, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 4, "meta": {"tax": 5}},
+    {"slug": "admin-re-15", "type": TYPE_REALESTATE, "name": "Cherry Cottage", "rarity": "common", "price": 8313, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 4, "meta": {"tax": 5}},
+    {"slug": "admin-re-16", "type": TYPE_REALESTATE, "name": "Birch House", "rarity": "common", "price": 8542, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 4, "meta": {"tax": 5}},
+    {"slug": "admin-re-17", "type": TYPE_REALESTATE, "name": "Morning Villa", "rarity": "common", "price": 8772, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 5, "meta": {"tax": 5}},
+    {"slug": "admin-re-18", "type": TYPE_REALESTATE, "name": "Hill Cottage", "rarity": "common", "price": 9002, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 5, "meta": {"tax": 5}},
+    {"slug": "admin-re-19", "type": TYPE_REALESTATE, "name": "River House", "rarity": "common", "price": 9231, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 5, "meta": {"tax": 5}},
+    {"slug": "admin-re-20", "type": TYPE_REALESTATE, "name": "Sunset Home", "rarity": "common", "price": 9460, "income_per_hour": 26, "upkeep_per_hour": 5, "rooms": 3, "basement": 5, "meta": {"tax": 5}},
+    {"slug": "admin-re-21", "type": TYPE_REALESTATE, "name": "Crystal Garden", "rarity": "uncommon", "price": 46350, "income_per_hour": 116, "upkeep_per_hour": 21, "rooms": 4, "basement": 6, "meta": {"tax": 23}},
+    {"slug": "admin-re-22", "type": TYPE_REALESTATE, "name": "Lake Breeze", "rarity": "uncommon", "price": 48436, "income_per_hour": 116, "upkeep_per_hour": 21, "rooms": 4, "basement": 6, "meta": {"tax": 23}},
+    {"slug": "admin-re-23", "type": TYPE_REALESTATE, "name": "Amber Villa", "rarity": "uncommon", "price": 50522, "income_per_hour": 116, "upkeep_per_hour": 21, "rooms": 4, "basement": 6, "meta": {"tax": 23}},
+    {"slug": "admin-re-24", "type": TYPE_REALESTATE, "name": "Willow Manor", "rarity": "uncommon", "price": 52607, "income_per_hour": 116, "upkeep_per_hour": 21, "rooms": 4, "basement": 6, "meta": {"tax": 23}},
+    {"slug": "admin-re-25", "type": TYPE_REALESTATE, "name": "Mountain Rest", "rarity": "uncommon", "price": 54693, "income_per_hour": 116, "upkeep_per_hour": 21, "rooms": 4, "basement": 7, "meta": {"tax": 23}},
+    {"slug": "admin-re-26", "type": TYPE_REALESTATE, "name": "Emerald Home", "rarity": "uncommon", "price": 56779, "income_per_hour": 116, "upkeep_per_hour": 21, "rooms": 4, "basement": 7, "meta": {"tax": 23}},
+    {"slug": "admin-re-27", "type": TYPE_REALESTATE, "name": "Harmony House", "rarity": "uncommon", "price": 58864, "income_per_hour": 116, "upkeep_per_hour": 21, "rooms": 4, "basement": 7, "meta": {"tax": 23}},
+    {"slug": "admin-re-28", "type": TYPE_REALESTATE, "name": "Royal Cottage", "rarity": "uncommon", "price": 61542, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 7, "meta": {"tax": 24}},
+    {"slug": "admin-re-29", "type": TYPE_REALESTATE, "name": "Garden Estate", "rarity": "uncommon", "price": 63648, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 8, "meta": {"tax": 24}},
+    {"slug": "admin-re-30", "type": TYPE_REALESTATE, "name": "Windy Hill", "rarity": "uncommon", "price": 65754, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 8, "meta": {"tax": 24}},
+    {"slug": "admin-re-31", "type": TYPE_REALESTATE, "name": "Golden Villa", "rarity": "uncommon", "price": 67860, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 8, "meta": {"tax": 24}},
+    {"slug": "admin-re-32", "type": TYPE_REALESTATE, "name": "Ocean View", "rarity": "uncommon", "price": 69966, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 8, "meta": {"tax": 24}},
+    {"slug": "admin-re-33", "type": TYPE_REALESTATE, "name": "Snow Peak", "rarity": "uncommon", "price": 72072, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 9, "meta": {"tax": 24}},
+    {"slug": "admin-re-34", "type": TYPE_REALESTATE, "name": "Silver Lake", "rarity": "uncommon", "price": 74178, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 9, "meta": {"tax": 24}},
+    {"slug": "admin-re-35", "type": TYPE_REALESTATE, "name": "Crystal Peak", "rarity": "uncommon", "price": 76284, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 9, "meta": {"tax": 24}},
+    {"slug": "admin-re-36", "type": TYPE_REALESTATE, "name": "Rose Manor", "rarity": "uncommon", "price": 78390, "income_per_hour": 118, "upkeep_per_hour": 21, "rooms": 5, "basement": 10, "meta": {"tax": 24}},
+    {"slug": "admin-re-37", "type": TYPE_REALESTATE, "name": "Royal Garden", "rarity": "uncommon", "price": 81270, "income_per_hour": 120, "upkeep_per_hour": 22, "rooms": 6, "basement": 10, "meta": {"tax": 24}},
+    {"slug": "admin-re-38", "type": TYPE_REALESTATE, "name": "Moonlight Villa", "rarity": "uncommon", "price": 83396, "income_per_hour": 120, "upkeep_per_hour": 22, "rooms": 6, "basement": 10, "meta": {"tax": 24}},
+    {"slug": "admin-re-39", "type": TYPE_REALESTATE, "name": "Green Palace", "rarity": "uncommon", "price": 85522, "income_per_hour": 120, "upkeep_per_hour": 22, "rooms": 6, "basement": 10, "meta": {"tax": 24}},
+    {"slug": "admin-re-40", "type": TYPE_REALESTATE, "name": "Diamond Cottage", "rarity": "uncommon", "price": 87649, "income_per_hour": 120, "upkeep_per_hour": 22, "rooms": 6, "basement": 10, "meta": {"tax": 24}},
+    {"slug": "admin-re-41", "type": TYPE_REALESTATE, "name": "Imperial Home", "rarity": "rare", "price": 168000, "income_per_hour": 458, "upkeep_per_hour": 82, "rooms": 6, "basement": 11, "meta": {"tax": 92}},
+    {"slug": "admin-re-42", "type": TYPE_REALESTATE, "name": "Ruby Manor", "rarity": "rare", "price": 175560, "income_per_hour": 458, "upkeep_per_hour": 82, "rooms": 6, "basement": 11, "meta": {"tax": 92}},
+    {"slug": "admin-re-43", "type": TYPE_REALESTATE, "name": "Forest Palace", "rarity": "rare", "price": 183120, "income_per_hour": 458, "upkeep_per_hour": 82, "rooms": 6, "basement": 11, "meta": {"tax": 92}},
+    {"slug": "admin-re-44", "type": TYPE_REALESTATE, "name": "Sunrise Estate", "rarity": "rare", "price": 190680, "income_per_hour": 458, "upkeep_per_hour": 82, "rooms": 6, "basement": 12, "meta": {"tax": 92}},
+    {"slug": "admin-re-45", "type": TYPE_REALESTATE, "name": "North Residence", "rarity": "rare", "price": 200128, "income_per_hour": 465, "upkeep_per_hour": 84, "rooms": 7, "basement": 12, "meta": {"tax": 93}},
+    {"slug": "admin-re-46", "type": TYPE_REALESTATE, "name": "Sky House", "rarity": "rare", "price": 207760, "income_per_hour": 465, "upkeep_per_hour": 84, "rooms": 7, "basement": 12, "meta": {"tax": 93}},
+    {"slug": "admin-re-47", "type": TYPE_REALESTATE, "name": "Aurora Villa", "rarity": "rare", "price": 215392, "income_per_hour": 465, "upkeep_per_hour": 84, "rooms": 7, "basement": 13, "meta": {"tax": 93}},
+    {"slug": "admin-re-48", "type": TYPE_REALESTATE, "name": "Prestige Manor", "rarity": "rare", "price": 223024, "income_per_hour": 465, "upkeep_per_hour": 84, "rooms": 7, "basement": 13, "meta": {"tax": 93}},
+    {"slug": "admin-re-49", "type": TYPE_REALESTATE, "name": "King's Home", "rarity": "rare", "price": 230656, "income_per_hour": 465, "upkeep_per_hour": 84, "rooms": 7, "basement": 13, "meta": {"tax": 93}},
+    {"slug": "admin-re-50", "type": TYPE_REALESTATE, "name": "Elite Residence", "rarity": "rare", "price": 238288, "income_per_hour": 465, "upkeep_per_hour": 84, "rooms": 7, "basement": 14, "meta": {"tax": 93}},
+    {"slug": "admin-re-51", "type": TYPE_REALESTATE, "name": "Majestic Villa", "rarity": "rare", "price": 248240, "income_per_hour": 473, "upkeep_per_hour": 85, "rooms": 8, "basement": 14, "meta": {"tax": 95}},
+    {"slug": "admin-re-52", "type": TYPE_REALESTATE, "name": "Royal Heights", "rarity": "rare", "price": 255944, "income_per_hour": 473, "upkeep_per_hour": 85, "rooms": 8, "basement": 14, "meta": {"tax": 95}},
+    {"slug": "admin-re-53", "type": TYPE_REALESTATE, "name": "Silver Crown", "rarity": "rare", "price": 263648, "income_per_hour": 473, "upkeep_per_hour": 85, "rooms": 8, "basement": 15, "meta": {"tax": 95}},
+    {"slug": "admin-re-54", "type": TYPE_REALESTATE, "name": "Golden Ridge", "rarity": "rare", "price": 271352, "income_per_hour": 473, "upkeep_per_hour": 85, "rooms": 8, "basement": 15, "meta": {"tax": 95}},
+    {"slug": "admin-re-55", "type": TYPE_REALESTATE, "name": "Crimson Estate", "rarity": "rare", "price": 279056, "income_per_hour": 473, "upkeep_per_hour": 85, "rooms": 8, "basement": 15, "meta": {"tax": 95}},
+    {"slug": "admin-re-56", "type": TYPE_REALESTATE, "name": "Azure Palace", "rarity": "rare", "price": 286760, "income_per_hour": 473, "upkeep_per_hour": 85, "rooms": 8, "basement": 16, "meta": {"tax": 95}},
+    {"slug": "admin-re-57", "type": TYPE_REALESTATE, "name": "Ivory Manor", "rarity": "rare", "price": 294464, "income_per_hour": 473, "upkeep_per_hour": 85, "rooms": 8, "basement": 16, "meta": {"tax": 95}},
+    {"slug": "admin-re-58", "type": TYPE_REALESTATE, "name": "Stormwatch Villa", "rarity": "epic", "price": 518400, "income_per_hour": 1487, "upkeep_per_hour": 268, "rooms": 9, "basement": 16, "meta": {"tax": 297}},
+    {"slug": "admin-re-59", "type": TYPE_REALESTATE, "name": "Dragonspire House", "rarity": "epic", "price": 541728, "income_per_hour": 1487, "upkeep_per_hour": 268, "rooms": 9, "basement": 17, "meta": {"tax": 297}},
+    {"slug": "admin-re-60", "type": TYPE_REALESTATE, "name": "Obsidian Hall", "rarity": "epic", "price": 565056, "income_per_hour": 1487, "upkeep_per_hour": 268, "rooms": 9, "basement": 17, "meta": {"tax": 297}},
+    {"slug": "admin-re-61", "type": TYPE_REALESTATE, "name": "Titan Crest", "rarity": "epic", "price": 588384, "income_per_hour": 1487, "upkeep_per_hour": 268, "rooms": 9, "basement": 18, "meta": {"tax": 297}},
+    {"slug": "admin-re-62", "type": TYPE_REALESTATE, "name": "Eclipse Estate", "rarity": "epic", "price": 611712, "income_per_hour": 1487, "upkeep_per_hour": 268, "rooms": 9, "basement": 18, "meta": {"tax": 297}},
+    {"slug": "admin-re-63", "type": TYPE_REALESTATE, "name": "Starforge Manor", "rarity": "epic", "price": 635040, "income_per_hour": 1487, "upkeep_per_hour": 268, "rooms": 9, "basement": 18, "meta": {"tax": 297}},
+    {"slug": "admin-re-64", "type": TYPE_REALESTATE, "name": "Celestial Home", "rarity": "epic", "price": 664464, "income_per_hour": 1511, "upkeep_per_hour": 272, "rooms": 10, "basement": 19, "meta": {"tax": 302}},
+    {"slug": "admin-re-65", "type": TYPE_REALESTATE, "name": "Nightfall Villa", "rarity": "epic", "price": 688008, "income_per_hour": 1511, "upkeep_per_hour": 272, "rooms": 10, "basement": 19, "meta": {"tax": 302}},
+    {"slug": "admin-re-66", "type": TYPE_REALESTATE, "name": "Thunder Peak", "rarity": "epic", "price": 711552, "income_per_hour": 1511, "upkeep_per_hour": 272, "rooms": 10, "basement": 20, "meta": {"tax": 302}},
+    {"slug": "admin-re-67", "type": TYPE_REALESTATE, "name": "Phoenix Residence", "rarity": "epic", "price": 735096, "income_per_hour": 1511, "upkeep_per_hour": 272, "rooms": 10, "basement": 20, "meta": {"tax": 302}},
+    {"slug": "admin-re-68", "type": TYPE_REALESTATE, "name": "Ironwind Estate", "rarity": "epic", "price": 758640, "income_per_hour": 1511, "upkeep_per_hour": 272, "rooms": 10, "basement": 20, "meta": {"tax": 302}},
+    {"slug": "admin-re-69", "type": TYPE_REALESTATE, "name": "Lunar Fortress", "rarity": "epic", "price": 782184, "income_per_hour": 1511, "upkeep_per_hour": 272, "rooms": 10, "basement": 21, "meta": {"tax": 302}},
+    {"slug": "admin-re-70", "type": TYPE_REALESTATE, "name": "Solar Mansion", "rarity": "epic", "price": 805728, "income_per_hour": 1511, "upkeep_per_hour": 272, "rooms": 10, "basement": 21, "meta": {"tax": 302}},
+    {"slug": "admin-re-71", "type": TYPE_REALESTATE, "name": "Astral Palace", "rarity": "legendary", "price": 1650000, "income_per_hour": 4956, "upkeep_per_hour": 892, "rooms": 11, "basement": 21, "meta": {"tax": 991}},
+    {"slug": "admin-re-72", "type": TYPE_REALESTATE, "name": "Void Castle", "rarity": "legendary", "price": 1724250, "income_per_hour": 4956, "upkeep_per_hour": 892, "rooms": 11, "basement": 22, "meta": {"tax": 991}},
+    {"slug": "admin-re-73", "type": TYPE_REALESTATE, "name": "Infinity House", "rarity": "legendary", "price": 1798500, "income_per_hour": 4956, "upkeep_per_hour": 892, "rooms": 11, "basement": 22, "meta": {"tax": 991}},
+    {"slug": "admin-re-74", "type": TYPE_REALESTATE, "name": "Nebula Citadel", "rarity": "legendary", "price": 1872750, "income_per_hour": 4956, "upkeep_per_hour": 892, "rooms": 11, "basement": 22, "meta": {"tax": 991}},
+    {"slug": "admin-re-75", "type": TYPE_REALESTATE, "name": "Quantum Villa", "rarity": "legendary", "price": 1964700, "income_per_hour": 5032, "upkeep_per_hour": 906, "rooms": 12, "basement": 23, "meta": {"tax": 1006}},
+    {"slug": "admin-re-76", "type": TYPE_REALESTATE, "name": "Godfall Residence", "rarity": "legendary", "price": 2039625, "income_per_hour": 5032, "upkeep_per_hour": 906, "rooms": 12, "basement": 23, "meta": {"tax": 1006}},
+    {"slug": "admin-re-77", "type": TYPE_REALESTATE, "name": "Eternal Palace", "rarity": "legendary", "price": 2114550, "income_per_hour": 5032, "upkeep_per_hour": 906, "rooms": 12, "basement": 24, "meta": {"tax": 1006}},
+    {"slug": "admin-re-78", "type": TYPE_REALESTATE, "name": "Supreme Nexus", "rarity": "legendary", "price": 2189475, "income_per_hour": 5032, "upkeep_per_hour": 906, "rooms": 12, "basement": 24, "meta": {"tax": 1006}},
+    {"slug": "admin-re-79", "type": TYPE_REALESTATE, "name": "Hyperion Tower Home", "rarity": "legendary", "price": 2264400, "income_per_hour": 5032, "upkeep_per_hour": 906, "rooms": 12, "basement": 24, "meta": {"tax": 1006}},
+    {"slug": "admin-re-80", "type": TYPE_REALESTATE, "name": "Omega Estate", "rarity": "legendary", "price": 2339325, "income_per_hour": 5032, "upkeep_per_hour": 906, "rooms": 12, "basement": 24, "meta": {"tax": 1006}},
+    {"slug": "admin-re-81", "type": TYPE_REALESTATE, "name": "Final Crown House", "rarity": "legendary", "price": 2414250, "income_per_hour": 5032, "upkeep_per_hour": 906, "rooms": 12, "basement": 24, "meta": {"tax": 1006}},
+]
+
+_ADMIN_MARKET_BUSINESSES = [
+    {"slug": "admin-biz-1", "type": TYPE_BUSINESS, "name": "Pixel Store", "category": "retail", "rarity": "common", "price": 6000, "income_per_hour": 60, "upkeep_per_hour": 19, "employees": 4},
+    {"slug": "admin-biz-2", "type": TYPE_BUSINESS, "name": "GPU Market", "category": "tech", "rarity": "common", "price": 50000, "income_per_hour": 400, "upkeep_per_hour": 128, "employees": 6},
+    {"slug": "admin-biz-3", "type": TYPE_BUSINESS, "name": "CoreTech Shop", "category": "tech", "rarity": "common", "price": 55000, "income_per_hour": 440, "upkeep_per_hour": 141, "employees": 8},
+    {"slug": "admin-biz-4", "type": TYPE_BUSINESS, "name": "Neon Hardware", "category": "tech", "rarity": "common", "price": 60000, "income_per_hour": 480, "upkeep_per_hour": 154, "employees": 10},
+    {"slug": "admin-biz-5", "type": TYPE_BUSINESS, "name": "Quantum GPUs", "category": "tech", "rarity": "common", "price": 65000, "income_per_hour": 520, "upkeep_per_hour": 166, "employees": 2},
+    {"slug": "admin-biz-6", "type": TYPE_BUSINESS, "name": "Street Kiosk", "category": "retail", "rarity": "common", "price": 6600, "income_per_hour": 66, "upkeep_per_hour": 21, "employees": 4},
+    {"slug": "admin-biz-7", "type": TYPE_BUSINESS, "name": "Mini Market", "category": "retail", "rarity": "common", "price": 7200, "income_per_hour": 72, "upkeep_per_hour": 23, "employees": 6},
+    {"slug": "admin-biz-8", "type": TYPE_BUSINESS, "name": "Urban Shop", "category": "retail", "rarity": "common", "price": 7800, "income_per_hour": 78, "upkeep_per_hour": 25, "employees": 8},
+    {"slug": "admin-biz-9", "type": TYPE_BUSINESS, "name": "Fashion Store", "category": "retail", "rarity": "common", "price": 8400, "income_per_hour": 84, "upkeep_per_hour": 27, "employees": 10},
+    {"slug": "admin-biz-10", "type": TYPE_BUSINESS, "name": "Tech Repair", "category": "service", "rarity": "common", "price": 18000, "income_per_hour": 150, "upkeep_per_hour": 48, "employees": 2},
+    {"slug": "admin-biz-11", "type": TYPE_BUSINESS, "name": "Overclock Lab", "category": "service", "rarity": "common", "price": 19800, "income_per_hour": 165, "upkeep_per_hour": 53, "employees": 4},
+    {"slug": "admin-biz-12", "type": TYPE_BUSINESS, "name": "Crypto Office", "category": "office", "rarity": "common", "price": 28000, "income_per_hour": 250, "upkeep_per_hour": 80, "employees": 6},
+]
+
+# ── Каталог инфраструктурных активов (заводы, источники, склады) ──────────────
+# Соответствует frontend/src/utils/adminCatalog.js → ADMIN_FACTORIES_CATALOG /
+# ADMIN_SOURCES_CATALOG / ADMIN_WAREHOUSES_CATALOG. Без этих записей бэкенд
+# отвечал 404 «Актив не найден» на покупку (MarketTab отправлял slug-и
+# admin-fac-*/admin-src-*/admin-wh-*, которые раньше игнорировались). Цены
+# и характеристики согласованы с фронтом: при покупке клиентское значение
+# цены не используется — сервер пересчитывает итог от базовой цены каталога.
+_ADMIN_MARKET_FACTORIES = [
+    {"slug": "admin-fac-gpu-1", "type": TYPE_FACTORY, "category": "gpu", "name": "Завод видеокарт",
+     "rarity": "rare", "price": 250000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 24, "meta": {"produces": "gpu", "outputPerHour": 4}},
+]
+
+_ADMIN_MARKET_SOURCES = [
+    {"slug": "admin-src-mine-1", "type": TYPE_SOURCE, "category": "mine", "name": "Шахта",
+     "rarity": "common", "price": 35000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 8, "meta": {"resource": "metal", "outputPerHour": 6, "capacity": 500}},
+    {"slug": "admin-src-field-1", "type": TYPE_SOURCE, "category": "field", "name": "Поле",
+     "rarity": "common", "price": 22000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 6, "meta": {"resource": "food", "outputPerHour": 8, "capacity": 600}},
+    {"slug": "admin-src-sawmill-1", "type": TYPE_SOURCE, "category": "sawmill", "name": "Лесопилка",
+     "rarity": "uncommon", "price": 48000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 10, "meta": {"resource": "wood", "outputPerHour": 5, "capacity": 450}},
+]
+
+# 16 складов с логарифмической шкалой площади 50..100000 м². Цена и rarity
+# рассчитаны по той же формуле, что и в adminCatalog.js → _warehousePrice.
+import math as _math
+
+def _wh_price(area: int) -> int:
+    return int(round(1200 * area * (1 + 0.5 * _math.log10(area / 50))))
+
+def _wh_rarity(area: int) -> str:
+    if area < 500: return "common"
+    if area < 2000: return "uncommon"
+    if area < 10000: return "rare"
+    if area < 50000: return "epic"
+    return "legendary"
+
+_WAREHOUSE_AREAS = [50, 80, 120, 200, 300, 500, 800, 1200, 2000, 3500,
+                    6000, 10000, 18000, 35000, 60000, 100000]
+_ADMIN_MARKET_WAREHOUSES = [
+    {"slug": f"admin-wh-{i + 1}", "type": TYPE_WAREHOUSE, "category": "warehouse",
+     "name": f"Склад {area:,} м²".replace(",", " "), "rarity": _wh_rarity(area),
+     "price": _wh_price(area), "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": max(2, round(area / 200)),
+     "meta": {"areaSqm": area, "storageCap": area * 20, "slots": 1}}
+    for i, area in enumerate(_WAREHOUSE_AREAS)
+]
+
+# ── Автосалон (cars/trucks/trailers) ─────────────────────────────────────────
+# Согласовано с frontend/src/utils/carsCatalog.js (CarsTab): те же слаги,
+# цены и редкость. Все идут как TYPE_CAR (общая логика владения/тюнинга),
+# категория (car/truck/trailer) и характеристики — в category/meta.
+# При покупке клиентская цена не используется — сервер берёт цену отсюда.
+_CAR_CATALOG = [
+    # Легковые
+    {"slug": "car-hatchback-1", "type": TYPE_CAR, "category": "car", "name": "Хэтчбек «Старт»",
+     "rarity": "common", "price": 12000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 6.5, "cargoKg": 350, "maxSpeed": 160}},
+    {"slug": "car-sedan-1", "type": TYPE_CAR, "category": "car", "name": "Седан «Комфорт»",
+     "rarity": "common", "price": 22000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 7.2, "cargoKg": 450, "maxSpeed": 180}},
+    {"slug": "car-suv-1", "type": TYPE_CAR, "category": "car", "name": "Кроссовер «Тропик»",
+     "rarity": "uncommon", "price": 38000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 8.5, "cargoKg": 600, "maxSpeed": 190}},
+    {"slug": "car-sport-1", "type": TYPE_CAR, "category": "car", "name": "Спорткар «Вихрь»",
+     "rarity": "rare", "price": 95000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 11.0, "cargoKg": 220, "maxSpeed": 280}},
+    {"slug": "car-premium-1", "type": TYPE_CAR, "category": "car", "name": "Премиум «Империал»",
+     "rarity": "epic", "price": 220000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 9.4, "cargoKg": 500, "maxSpeed": 250}},
+    # Фуры (тягачи): hookable — какие прицепы можно цеплять
+    {"slug": "truck-light-1", "type": TYPE_CAR, "category": "truck", "name": "Фура «Курьер»",
+     "rarity": "common", "price": 65000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 18.0, "cargoKg": 1500, "maxSpeed": 110,
+              "hookable": ["trailer-small", "trailer-medium"]}},
+    {"slug": "truck-mid-1", "type": TYPE_CAR, "category": "truck", "name": "Фура «Магистраль»",
+     "rarity": "uncommon", "price": 130000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 26.0, "cargoKg": 3000, "maxSpeed": 100,
+              "hookable": ["trailer-small", "trailer-medium", "trailer-large"]}},
+    {"slug": "truck-heavy-1", "type": TYPE_CAR, "category": "truck", "name": "Фура «Тяжеловоз»",
+     "rarity": "rare", "price": 240000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 38.0, "cargoKg": 6000, "maxSpeed": 90,
+              "hookable": ["trailer-medium", "trailer-large", "trailer-jumbo"]}},
+    # Прицепы
+    {"slug": "trailer-small", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Малый»",
+     "rarity": "common", "price": 9000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 2000, "maxSpeed": 110}},
+    {"slug": "trailer-medium", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Средний»",
+     "rarity": "uncommon", "price": 22000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 6000, "maxSpeed": 100}},
+    {"slug": "trailer-large", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Большой»",
+     "rarity": "rare", "price": 55000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 15000, "maxSpeed": 90}},
+    {"slug": "trailer-jumbo", "type": TYPE_CAR, "category": "trailer", "name": "Прицеп «Джамбо»",
+     "rarity": "epic", "price": 130000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "meta": {"fuelPer100km": 0, "cargoKg": 30000, "maxSpeed": 80}},
+]
+
+CATALOG = (CATALOG + _ADMIN_MARKET_HOUSES + _ADMIN_MARKET_BUSINESSES
+           + _ADMIN_MARKET_FACTORIES + _ADMIN_MARKET_SOURCES + _ADMIN_MARKET_WAREHOUSES
+           + _CAR_CATALOG)
 CATALOG_BY_SLUG = {c["slug"]: c for c in CATALOG}
+CATALOG_BY_SLUG_CI = {c["slug"].lower(): c for c in CATALOG}
+CATALOG_BY_NAME = {c["name"].strip().lower(): c for c in CATALOG}
+
+
+# Индекс по `id` записи (раньше фронт отправлял slug, а в части старых
+# позиций id и slug различались — это приводило к «Актив не найден» при покупке).
+_CATALOG_BY_ID = {c.get("id", c["slug"]): c for c in CATALOG}
+
+
+def _find_catalog(slug: str):
+    """Найти позицию каталога по slug/id (с учётом регистра) или точному имени.
+
+    Поиск ведётся по нескольким ключам, потому что витрина домов/бизнесов
+    исторически шлёт то `admin-re-1` (slug), то `id` записи из
+    ``adminCatalog.js``. Любой из них должен находить каталог.
+    """
+    s = (slug or "").strip()
+    if not s:
+        return None
+    return (
+        CATALOG_BY_SLUG.get(s)
+        or CATALOG_BY_SLUG_CI.get(s.lower())
+        or _CATALOG_BY_ID.get(s)
+        or _CATALOG_BY_ID.get(s.lower())
+        or CATALOG_BY_NAME.get(s.lower())
+    )
 
 # ── Динамическая экономика рынка ─────────────────────────────────────────────
 # Цена каждого товара = базовая × множитель. Множитель двигается от спроса
@@ -236,14 +512,6 @@ async def _drift_asset_market(db: AsyncIOMotorDatabase):
         if (_now() - la).total_seconds() < ASSET_MARKET_TICK_S:
             return
 
-    # Мировые события (могут стартовать/завершаться).
-    try:
-        from market_events import maybe_autostart, event_shifts, slug_event_shift
-        await maybe_autostart(db)
-        ev = await event_shifts(db)
-    except Exception:
-        ev = {"shifts": {}}
-
     econ = await get_econ(db)
     inflation = float(econ.get("inflation", 0.0))
 
@@ -265,6 +533,14 @@ async def _drift_asset_market(db: AsyncIOMotorDatabase):
         users += 1
         total_cash += float(u.get("balance", 0) or 0)
     supply_factor = max(-0.10, min(0.20, (total_cash / users / 50000.0) * 0.10)) if users else 0.0
+
+    # Мировые события (могут стартовать/завершаться).
+    try:
+        from market_events import maybe_autostart, event_shifts, slug_event_shift
+        await maybe_autostart(db)
+        ev = await event_shifts(db)
+    except Exception:
+        ev = {"shifts": {}}
 
     for m in [x async for x in db.asset_market.find({})]:
         slug = m.get("slug")
@@ -313,6 +589,14 @@ async def _bump_demand(db: AsyncIOMotorDatabase, slug: str, delta: float):
 
 class BuyRequest(BaseModel):
     slug: str
+
+    @field_validator("slug")
+    @classmethod
+    def slug_ok(cls, v):
+        s = (v or "").strip()
+        if not s:
+            raise ValueError("Не указан актив")
+        return s
 
 
 class TuneBody(BaseModel):
@@ -414,7 +698,69 @@ def _materials_boost(asset: dict) -> float:
     return float(m.get("boostPct", 0.0))
 
 
-def _income_per_hour(asset: dict) -> float:
+# ── Майнинг-улучшение для домов ──────────────────────────────────────────────
+# Подвал дома (поле basement, ёмкость в корпусах) используется как множитель
+# майнинговой фермы. Улучшение «Майнинг» покупается 1 раз: цена и доход за
+# единицу подвала берутся из econ (mining_basement_cost/income). После
+# активации дом начинает приносить пассивный доход, включаемый в общую формулу
+# _income_per_hour, чтобы он собирался тем же /collect и попадал в
+# /collect-all без отдельной механики. Поле mining хранится на документе актива
+# (bool) — повторная покупка запрещена.
+# Коэффициенты майнинг-подвала и инфраструктуры берутся из econ (DEFAULT_ECON),
+# поэтому показываются и списываются одними и теми же числами. В sync-контекстах
+# (_serialize/_income_per_hour без econ) используются значения по умолчанию;
+# расхождение возможно только сразу после смены коэффициента админом.
+from econ import DEFAULT_ECON
+
+
+def _mining_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
+    """Доход от майнинг-улучшения в час. 0, если улучшение не куплено или
+    актив — не недвижимость / без подвала."""
+    if not asset.get("mining"):
+        return 0.0
+    if asset.get("type") != TYPE_REALESTATE:
+        return 0.0
+    basement = int(asset.get("basement") or 0)
+    if basement <= 0:
+        return 0.0
+    rate = float(econ.get("mining_basement_income")) if econ else DEFAULT_ECON["mining_basement_income"]
+    return round(basement * rate, 2)
+
+
+def _mining_cost(asset: dict, econ: Optional[dict] = None) -> float:
+    """Цена улучшения «Майнинг» = basement × mining_basement_cost (из econ).
+    Подвал 0 → улучшение недоступно (дублируется проверкой в эндпоинте покупки)."""
+    basement = int(asset.get("basement") or 0)
+    if basement <= 0:
+        return 0.0
+    cost_per = float(econ.get("mining_basement_cost")) if econ else DEFAULT_ECON["mining_basement_cost"]
+    return float(basement * cost_per)
+
+
+def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
+    """Почасовой доход инфраструктуры (заводы/источники).
+
+    Завод: meta.outputPerHour × infra_gpu_price (продукция продаётся «на сторону»
+    по фиксированной цене из econ). Источник: meta.resource → цена ресурсa.
+    Склады прибыли НЕ приносят (отключено).
+    Коэффициенты берутся из econ; в sync-контексте — дефолты.
+    """
+    t = asset.get("type")
+    meta = asset.get("meta") or {}
+    if t == TYPE_FACTORY:
+        return round(int(meta.get("outputPerHour") or 0) * float(
+            econ.get("infra_gpu_price") if econ else DEFAULT_ECON["infra_gpu_price"]), 2)
+    if t == TYPE_SOURCE:
+        resource = str(meta.get("resource") or "")
+        key = {"metal": "infra_metal_price", "food": "infra_food_price", "wood": "infra_wood_price"}.get(resource)
+        if not key:
+            return 0.0
+        return round(int(meta.get("outputPerHour") or 0) * float(
+            econ.get(key) if econ else DEFAULT_ECON[key]), 2)
+    return 0.0
+
+
+def _income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
     # Авто не приносят почасового пассивного дохода — только аренда (см. _is_rentable).
     # Их «уровень» не качается через upgrade, прогресс идёт через тюнинг/престиж.
     if asset.get("type") == TYPE_CAR:
@@ -424,6 +770,12 @@ def _income_per_hour(asset: dict) -> float:
     value = base * (1 + 0.25 * (level - 1)) * _price_mult(asset)
     if asset.get("type") == TYPE_BUSINESS:
         value *= (1 + _materials_boost(asset))
+    # Майнинг-улучшение дома: пассивный доход от оборудования в подвале,
+    # складывается с базовым почасовым доходом (у большинства домов он уже 0,
+    # а у арендных моделей база ненулевая — суммирование уместно).
+    value += _mining_income_per_hour(asset, econ)
+    # Инфраструктура (завод/источник/склад): доход от продукции/хранения.
+    value += _infra_income_per_hour(asset, econ)
     return round(value, 2)
 
 
@@ -519,7 +871,7 @@ def _upgrade_plan(asset: dict, steps: int) -> list[dict]:
     return plan
 
 
-def _accrued(asset: dict) -> float:
+def _accrued(asset: dict, econ: Optional[dict] = None) -> float:
     """Чистый накопленный доход (доход − расход) с последнего сбора, cap 24ч."""
     last = asset.get("last_collected")
     if not isinstance(last, datetime):
@@ -529,7 +881,7 @@ def _accrued(asset: dict) -> float:
     hours = min((_now() - last).total_seconds() / 3600.0, MAX_ACCRUAL_HOURS)
     if hours <= 0:
         return 0.0
-    net = (_income_per_hour(asset) - _upkeep_per_hour(asset)) * hours
+    net = (_income_per_hour(asset, econ) - _upkeep_per_hour(asset)) * hours
     return round(max(0.0, net), 2)
 
 
@@ -584,7 +936,7 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
         ends_at = to_aware(r.get("ends_at"))
         if ends_at and now >= ends_at:
             payout = round(float(r.get("price", 0)), 2)
-            # Админ-коэффициент аренды + влияние мировых событий (напр. туристический сезон).
+            # Админ-коэффициент аренды.
             try:
                 econ = await get_econ(db)
                 payout = round(payout * econ.get("rent_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
@@ -696,6 +1048,23 @@ def _studio_view(asset: dict) -> Optional[dict]:
     return studio_progress(tier, asset.get("studioXp", 0), asset.get("itstudioMaterials", {}))
 
 
+def _mining_view(asset: dict) -> Optional[dict]:
+    """Информация об улучшении «Майнинг» для UI. Доступно только для
+    недвижимости; для остальных типов None. Включается в _serialize чтобы
+    клиент мог показать кнопку покупки/статус без отдельного эндпоинта."""
+    if asset.get("type") != TYPE_REALESTATE:
+        return None
+    basement = int(asset.get("basement") or 0)
+    cost = _mining_cost(asset)   # basement × mining_basement_cost (из econ)
+    return {
+        "available": basement > 0,
+        "purchased": bool(asset.get("mining")),
+        "basement": basement,
+        "cost": cost,
+        "incomePerHour": _mining_income_per_hour(asset),
+    }
+
+
 def _serialize(asset: dict) -> dict:
     return {
         "id": str(asset["_id"]),
@@ -705,6 +1074,7 @@ def _serialize(asset: dict) -> dict:
         "category": asset.get("category"),
         "rarity": asset.get("rarity"),
         "rooms": asset.get("rooms"),
+        "basement": asset.get("basement"),
         "employees": asset.get("employees", 0),
         "level": asset.get("level", 1),
         "price": asset.get("price", 0),
@@ -722,8 +1092,69 @@ def _serialize(asset: dict) -> dict:
         "tuneMaxLevel": TUNE_MAX_LEVEL,
         "materialsBoostPct": _materials_boost(asset),
         "studio": _studio_view(asset),
+        "mining": _mining_view(asset),
         "purchasedAt": asset.get("purchased_at").isoformat() if isinstance(asset.get("purchased_at"), datetime) else None,
     }
+
+
+# ── Админские цены (PriceEditorTab) ──────────────────────────────────────────
+#
+# Админ-редактор цен пишет overrides в общий конфиг "shop_prices" (см.
+# shop.py:SHOP_PRICES_KEY). Магазин железа их применяет сам; рынок активов
+# раньше игнорировал их и брал цену напрямую из статичного CATALOG — из-за
+# этого правки в админ-панели не отражались в MarketTab / при покупке.
+#
+# Ключи в конфиге не всегда совпадают с slug актива:
+#   - Недвижимость:  slug="admin-re-1"   -> key="1"   (числовой productId)
+#   - Бизнесы:       slug="admin-biz-1"  -> key="1"
+#   - Заводы/Источники/Склады/Авто: slug идёт как есть (admin-fac-gpu-1, ...).
+#
+# Чтобы маппинг совпадал с frontend/src/utils/adminCatalog.js и
+# frontend/src/utils/shopCatalog.js — см. ADMIN_DEFAULT_PRICES и
+# REAL_ESTATE_PRODUCTS / BUSINESS_PRODUCTS.
+SHOP_PRICES_KEY = "shop_prices"
+_SLUG_TO_PRICE_KEY_CACHE: dict[str, str] = {}
+
+
+def _admin_price_key(slug: str) -> str:
+    """slug актива -> ключ в конфиге shop_prices."""
+    cached = _SLUG_TO_PRICE_KEY_CACHE.get(slug)
+    if cached is not None:
+        return cached
+    key = slug
+    if slug.startswith("admin-re-"):
+        key = slug[len("admin-re-"):]
+    elif slug.startswith("admin-biz-"):
+        key = slug[len("admin-biz-"):]
+    _SLUG_TO_PRICE_KEY_CACHE[slug] = key
+    return key
+
+
+async def _admin_prices(db) -> dict[str, float]:
+    """Админские overrides: {key: price}. Бросает ValueError -> возвращаем {}."""
+    doc = await find_config_by_key(db, SHOP_PRICES_KEY)
+    if not doc:
+        return {}
+    try:
+        raw = json.loads(doc["value"])
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    for k, v in raw.items():
+        if v is None:
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if fv > 0:
+            out[str(k)] = fv
+    return out
+
+
+def _admin_price_for(slug: str, overrides: dict[str, float]) -> float | None:
+    """Цена актива из админ-overrides (None = сброс к базовой из каталога)."""
+    return overrides.get(_admin_price_key(slug))
 
 
 # ── Market ───────────────────────────────────────────────────────────────────
@@ -738,10 +1169,11 @@ async def get_market(
     _user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Каталог рынка с ДИНАМИЧЕСКИМИ ценами (спрос/предложение/дрейф/события)."""
+    """Каталог рынка с ДИНАМИЧЕСКИМИ ценами и admin-overrides из редактора цен."""
     await _ensure_asset_market(db)
     await _drift_asset_market(db)
     mults = await _mult_map(db)
+    overrides = await _admin_prices(db)
 
     items = CATALOG
     if type in ASSET_TYPES:
@@ -753,7 +1185,8 @@ async def get_market(
     out = []
     for c in items:
         mult = mults.get(c["slug"], 1.0)
-        price = round(c["price"] * mult, 2)
+        base = _admin_price_for(c["slug"], overrides) or float(c["price"])
+        price = round(base * mult, 2)
         if min_price is not None and price < min_price:
             continue
         if max_price is not None and price > max_price:
@@ -763,7 +1196,7 @@ async def get_market(
             "category": c.get("category"), "rarity": c.get("rarity"),
             "rooms": c.get("rooms"), "employees": c.get("employees", 0),
             "price": price,
-            "basePrice": c["price"],
+            "basePrice": base,
             "trend": round((mult - 1) * 100, 1),   # % отклонения цены от базовой
             "incomePerHour": c.get("income_per_hour", 0),
             "upkeepPerHour": c.get("upkeep_per_hour", 0),
@@ -774,6 +1207,79 @@ async def get_market(
     return out
 
 
+# ── Заводы/Источники/Склады на лету (фолбэк для старого каталога) ────────────
+# Дублируем определения, чтобы покупка работала даже если в коде на сервере
+# ещё не подхвачены _ADMIN_MARKET_FACTORIES / _ADMIN_MARKET_SOURCES /
+# _ADMIN_MARKET_WAREHOUSES (например, в кэшированном процессе). При наличии
+# каталожной записи в CATALOG используется она (приоритет).
+
+
+def _fallback_factory(slug: str) -> Optional[dict]:
+    if slug == "admin-fac-gpu-1":
+        return {"slug": slug, "type": TYPE_FACTORY, "category": "gpu",
+                "name": "Завод видеокарт", "rarity": "rare", "price": 250000,
+                "income_per_hour": 0, "upkeep_per_hour": 0, "employees": 24,
+                "meta": {"produces": "gpu", "outputPerHour": 4}}
+
+
+def _fallback_source(slug: str) -> Optional[dict]:
+    SRC = {
+        "admin-src-mine-1": ("Шахта", "common", 35000, 8, "metal", 6, 500),
+        "admin-src-field-1": ("Поле", "common", 22000, 6, "food", 8, 600),
+        "admin-src-sawmill-1": ("Лесопилка", "uncommon", 48000, 10, "wood", 5, 450),
+    }
+    info = SRC.get(slug)
+    if not info:
+        return None
+    name, rarity, price, employees, resource, out, cap = info
+    return {"slug": slug, "type": TYPE_SOURCE, "category": _src_category(slug),
+            "name": name, "rarity": rarity, "price": price,
+            "income_per_hour": 0, "upkeep_per_hour": 0, "employees": employees,
+            "meta": {"resource": resource, "outputPerHour": out, "capacity": cap}}
+
+
+def _src_category(slug: str) -> str:
+    if "mine" in slug: return "mine"
+    if "field" in slug: return "field"
+    if "sawmill" in slug: return "sawmill"
+    return "source"
+
+
+def _fallback_warehouse(slug: str) -> Optional[dict]:
+    # Слаги admin-wh-1..16 → площадь по WAREHOUSE_AREAS.
+    if not slug.startswith("admin-wh-"):
+        return None
+    try:
+        i = int(slug[len("admin-wh-"):]) - 1
+    except ValueError:
+        return None
+    if i < 0 or i >= len(_WAREHOUSE_AREAS):
+        return None
+    area = _WAREHOUSE_AREAS[i]
+    return {"slug": slug, "type": TYPE_WAREHOUSE, "category": "warehouse",
+            "name": f"Склад {area:,} м²".replace(",", " "),
+            "rarity": _wh_rarity(area), "price": _wh_price(area),
+            "income_per_hour": 0, "upkeep_per_hour": 0,
+            "employees": max(2, round(area / 200)),
+            "meta": {"areaSqm": area, "storageCap": area * 20, "slots": 1}}
+
+
+def _fallback_catalog(slug: str) -> Optional[dict]:
+    """Собрать каталожную запись на лету для инфраструктурных slug-ов.
+    Используется, если _find_catalog вернул None (например, в кэшированном
+    процессе бэкенда ещё не подхвачены _ADMIN_MARKET_FACTORIES/_SOURCES/
+    _WAREHOUSES). Без этого фолбэка покупка отвечала 404 «Актив не найден»."""
+    if not slug:
+        return None
+    if slug.startswith("admin-fac-"):
+        return _fallback_factory(slug)
+    if slug.startswith("admin-src-"):
+        return _fallback_source(slug)
+    if slug.startswith("admin-wh-"):
+        return _fallback_warehouse(slug)
+    return None
+
+
 @router.post("/buy", status_code=status.HTTP_201_CREATED)
 async def buy_asset(
     payload: BuyRequest,
@@ -781,15 +1287,27 @@ async def buy_asset(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка актива с рынка: списывает баланс, создаёт экземпляр во владении."""
-    catalog = CATALOG_BY_SLUG.get(payload.slug)
+    catalog = _find_catalog(payload.slug)
     if not catalog:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
+        # Фолбэк: если slug относится к инфраструктуре (factory/source/
+        # warehouse) и почему-то не попал в CATALOG, собираем запись на лету.
+        catalog = _fallback_catalog(payload.slug)
+    if not catalog:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"Актив «{payload.slug}» не найден в каталоге. "
+            "Если вы только что обновили игру — перезапустите бэкенд, "
+            "чтобы подхватить новые позиции рынка.",
+        )
 
     user_id = str(current_user["_id"])
-    # Динамическая цена покупки (базовая × текущий рыночный множитель).
+    # Динамическая цена покупки: admin-override (если задан в редакторе цен)
+    # → базовая цена каталога. Затем применяем рыночный множитель.
     await _ensure_asset_market(db)
     mult = await _asset_mult(db, catalog["slug"])
-    pay_price = round(float(catalog["price"]) * mult, 2)
+    overrides = await _admin_prices(db)
+    base_price = _admin_price_for(catalog["slug"], overrides) or float(catalog["price"])
+    pay_price = round(base_price * mult, 2)
 
     new_balance = await adjust_balance(db, user_id, -pay_price)
     if new_balance is None:
@@ -803,6 +1321,7 @@ async def buy_asset(
         "category": catalog.get("category"),
         "rarity": catalog.get("rarity"),
         "rooms": catalog.get("rooms"),
+        "basement": catalog.get("basement"),   # ёмкость подвала (недвижимость) — для улучшения «Майнинг»
         "employees": catalog.get("employees", 0),
         "price": float(catalog["price"]),   # базовая цена — для расчёта стоимости/улучшений
         # Куплено дороже/дешевле базы → доход и расход экземпляра масштабируются
@@ -811,6 +1330,7 @@ async def buy_asset(
         "income_per_hour": catalog.get("income_per_hour", 0),
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
         "level": 1,
+        "mining": False,         # улучшение «Майнинг» ещё не куплено
         "meta": catalog.get("meta", {}),
         "companyId": None,      # None = личный актив; иначе принадлежит компании
         "rental": None,         # активное объявление/аренда (см. rental)
@@ -820,7 +1340,7 @@ async def buy_asset(
     result = await db.user_assets.insert_one(doc)
     doc["_id"] = result.inserted_id
 
-    cat = CAT_BUSINESS if catalog["type"] == TYPE_BUSINESS else CAT_REALESTATE
+    cat = _ledger_category(catalog)
     await record_transaction(
         db, user_id, EXPENSE, pay_price, cat,
         f"Покупка: {catalog['name']}", balance_after=new_balance,
@@ -888,28 +1408,19 @@ async def collect_income(
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Актив принадлежит компании — доход идёт в бюджет компании")
     econ = await get_econ(db)
-    event_income = await _event_income_shift(db)
     city_bonus = await _city_asset_bonus(db, user_id)
     media_factor = await _media_income_factor(db, user_id)
-    amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
+    amount = await _collect_asset_income(db, user_id, asset, econ, 1.0, city_bonus, media_factor)
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
     new_balance = await adjust_balance(db, user_id, amount)
-    cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
+    cat = _ledger_category(asset)
     await record_transaction(
         db, user_id, INCOME, amount, cat,
         f"Доход: {asset['name']}", balance_after=new_balance,
         meta={"slug": asset.get("slug"), "assetId": asset_id},
     )
     return {"collected": amount, "balance": new_balance}
-
-
-async def _event_income_shift(db) -> float:
-    try:
-        from market_events import event_shifts
-        return (await event_shifts(db)).get("income", 1.0)
-    except Exception:
-        return 1.0
 
 
 async def _city_asset_bonus(db, user_id: str) -> float:
@@ -950,7 +1461,7 @@ async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
     )
     if matched.modified_count == 0:
         return 0.0  # накопление уже присвоено параллельным запросом
-    amount = _accrued(asset)
+    amount = _accrued(asset, econ)
     amount = round(amount * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
     amount = round(amount * event_income, 2)
     if city_bonus:
@@ -968,7 +1479,6 @@ async def collect_all_income(
     """Собрать накопленный доход со всех личных активов игрока разом."""
     user_id = str(current_user["_id"])
     econ = await get_econ(db)
-    event_income = await _event_income_shift(db)
     city_bonus = await _city_asset_bonus(db, user_id)
     media_factor = await _media_income_factor(db, user_id)
 
@@ -977,11 +1487,11 @@ async def collect_all_income(
     async for asset in db.user_assets.find({"userId": user_id, "companyId": None}):
         if asset.get("income_per_hour", 0) <= 0:
             continue
-        amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
+        amount = await _collect_asset_income(db, user_id, asset, econ, 1.0, city_bonus, media_factor)
         if amount <= 0:
             continue
         new_balance = await adjust_balance(db, user_id, amount)
-        cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
+        cat = _ledger_category(asset)
         await record_transaction(
             db, user_id, INCOME, amount, cat,
             f"Доход: {asset['name']}", balance_after=new_balance,
@@ -1115,6 +1625,63 @@ async def tune_asset(
     return {"asset": _serialize(updated), "balance": new_balance, "cost": cost}
 
 
+@router.post("/{asset_id}/mining/buy")
+async def buy_mining_upgrade(
+    asset_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Купить улучшение «Майнинг» для дома. Доступно только для недвижимости
+    с подвалом (basement > 0). Покупается ровно 1 раз — повторные вызовы
+    запрещены. Цена всегда пересчитывается сервером от basement (формула
+    econ.mining_basement_cost) — клиентское значение не используется, чтобы цену нельзя
+    было подменить. После покупки дом начинает приносить пассивный доход
+    (basement × mining_basement_income $/ч), собирается тем же /collect, что и обычный
+    доход недвижимости."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("type") != TYPE_REALESTATE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Улучшение «Майнинг» доступно только для домов")
+    if asset.get("mining"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Улучшение «Майнинг» уже куплено")
+    basement = int(asset.get("basement") or 0)
+    if basement <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "У этого дома нет подвала — майнинг недоступен")
+    cost = _mining_cost(asset, await get_econ(db))
+    # Атомарно занимаем слот улучшения ДО списания: условие mining != True
+    # сработает только у одного из параллельных запросов, двойной оплаты нет.
+    claimed = await db.user_assets.find_one_and_update(
+        {"_id": asset["_id"], "mining": {"$ne": True}},
+        {"$set": {"mining": True, "last_collected": _now()}},
+    )
+    if not claimed:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Улучшение «Майнинг» уже куплено")
+    new_balance = await adjust_balance(db, user_id, -cost)
+    if new_balance is None:
+        # Денег не хватило — снимаем только что поставленную заявку.
+        await db.user_assets.update_one(
+            {"_id": asset["_id"], "mining": True},
+            {"$unset": {"mining": ""}},
+        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+    await record_transaction(
+        db, user_id, EXPENSE, cost, CAT_REALESTATE,
+        f"Майнинг-улучшение: {asset.get('name')}", balance_after=new_balance,
+        meta={"assetId": asset_id, "basement": basement},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(user_id, {"type": "asset_update", "assetId": asset_id})
+    except Exception:
+        pass
+    return {"asset": _serialize(updated), "balance": new_balance, "cost": cost}
+
+
 @router.post("/{asset_id}/sell")
 async def sell_asset(
     asset_id: str,
@@ -1135,7 +1702,7 @@ async def sell_asset(
     payout = round(market_value * SELL_RATE + _accrued(asset), 2)
     await db.user_assets.delete_one({"_id": asset["_id"]})
     new_balance = await adjust_balance(db, user_id, payout)
-    cat = CAT_BUSINESS if asset["type"] == TYPE_BUSINESS else CAT_REALESTATE
+    cat = _ledger_category(asset)
     await record_transaction(
         db, user_id, INCOME, payout, cat,
         f"Продажа: {asset['name']}", balance_after=new_balance,

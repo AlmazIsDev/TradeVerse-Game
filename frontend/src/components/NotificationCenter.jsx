@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { acceptInvite, declineInvite, acceptApplication, declineApplication } from '../services/api'
-import { Building2, UserPlus, Check, X, Globe } from 'lucide-react'
+import { Building2, UserPlus, Check, X } from 'lucide-react'
 
 const ACTIONABLE = new Set(['company_invite', 'company_application'])
+
 const EVENT_POPUP_TTL_MS = 7000
 
 /**
@@ -21,7 +22,12 @@ function NotificationCenter() {
   const { t } = useTranslation()
   const [popups, setPopups] = useState([])   // [{ id, type, title, body, data }]
   const [busyId, setBusyId] = useState(null)
-  const timersRef = useRef([])   // активные таймеры автоскрытия — чистим при unmount
+  const timersRef = useRef([])               // таймеры автоскрытия event-попапов
+
+  useEffect(() => () => {
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current = []
+  }, [])
 
   const dismiss = useCallback((id) => {
     setPopups(prev => prev.filter(p => p.id !== id))
@@ -31,11 +37,10 @@ function NotificationCenter() {
     const onRealtime = (ev) => {
       const data = ev.detail
       if (!data) return
-      // Мировое экономическое событие (backend/market_events.py) — шлётся всем
-      // игрокам broadcast'ом, раньше нигде не показывалось на фронте.
+      // Мировое экономическое событие (backend/market_events.py) — broadcast
+      // всем игрокам при старте/завершении события.
       if (data.type === 'event' || data.type === 'event_ended') {
         const started = data.type === 'event'
-        // Дедуп по типу+имени: повторный broadcast того же события не плодит попапы.
         const key = `${data.type}-${data.name}`
         const popup = {
           id: `${key}-${Date.now()}`,
@@ -64,8 +69,6 @@ function NotificationCenter() {
     window.addEventListener('tv:realtime', onRealtime)
     return () => {
       window.removeEventListener('tv:realtime', onRealtime)
-      timersRef.current.forEach(clearTimeout)
-      timersRef.current = []
     }
   }, [t, dismiss])
 
@@ -94,8 +97,8 @@ function NotificationCenter() {
   return (
     <div className="tv-popup-stack">
       {popups.map(p => {
-        const isEvent = p.kind === 'event'
         const isInvite = p.type === 'company_invite'
+        const isEvent = p.kind === 'event'
         const busy = busyId === p.id
         return (
           <div key={p.id} className={`tv-popup-card ${isEvent ? 'tv-popup-event' : ''}`}>
@@ -103,7 +106,9 @@ function NotificationCenter() {
               <X size={16} />
             </button>
             <div className="tv-popup-icon">
-              {isEvent ? (p.icon || <Globe size={22} />) : isInvite ? <UserPlus size={22} /> : <Building2 size={22} />}
+              {isEvent
+                ? <span style={{ fontSize: 24 }}>{p.icon || '🌐'}</span>
+                : isInvite ? <UserPlus size={22} /> : <Building2 size={22} />}
             </div>
             <div className="tv-popup-body">
               <span className="tv-popup-title">{p.title}</span>

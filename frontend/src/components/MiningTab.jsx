@@ -1,26 +1,27 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchFarms, fetchMiningMarket, fetchMiningParts, createFarm, deleteFarm, installComponent,
-  installComponentsBatch,
+  fetchFarms, fetchMiningHouses, fetchMiningMarket, fetchMiningParts,
+  createFarm, deleteFarm, installComponent,
   uninstallComponent, startMining, stopMining, setFarmCoin, setOverclock,
-  repairFarm, farmManager,
+  repairFarm, farmManager, addCoolant,
 } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
-import { toast } from './Toast'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
-  Plus, X, AlertTriangle, Bot, TrendingUp, HardDrive, Server, Cpu,
+  Plus, X, AlertTriangle, Check, Bot, TrendingUp, HardDrive, Server, Cpu,
+  Home, ChevronLeft, ChevronRight, Droplet,
 } from 'lucide-react'
 
 // Категории компонентов: обязательные помечены req; multi — можно несколько.
+// Стойки rack удалены: в майнинге только корпуса (case), до 5 GPU каждый.
 const CATS = [
-  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true, multi: true },
+  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true },
   { cat: 'ram', req: true }, { cat: 'ssd', req: true }, { cat: 'cooling', req: true },
   { cat: 'gpu', req: true, multi: true }, { cat: 'fan', multi: true },
-  { cat: 'case' }, { cat: 'rack' }, { cat: 'ups' }, { cat: 'network' },
+  { cat: 'case' }, { cat: 'ups' }, { cat: 'network' },
 ]
 
 // Краткая характеристика детали для выпадающего списка.
@@ -34,12 +35,9 @@ function partSpec(cat, s = {}, t) {
   return ''
 }
 
-// Ползунок разгона: во время перетаскивания меняет только локальное значение
-// (без сети), а коммитит на сервер один раз — при отпускании. Иначе каждый шаг
-// перетаскивания слал бы POST + полный reload вкладки (шторм запросов, гонки).
+// Ползунок разгона.
 function OverclockSlider({ value, disabled, label, onCommit }) {
   const [local, setLocal] = useState(value)
-  // Синхронизируемся с внешним значением, когда пользователь не тянет ползунок.
   useEffect(() => { setLocal(value) }, [value])
   const commit = () => { if (local !== value) onCommit(local) }
   return (
@@ -56,106 +54,366 @@ function OverclockSlider({ value, disabled, label, onCommit }) {
   )
 }
 
+// ── Экран выбора дома ──────────────────────────────────────────────────────
+function HousesView({ houses, onPickHouse, onBack }) {
+  const { t } = useTranslation()
+  if (houses.length === 0) {
+    return (
+      <div className="crypto-onboard mining-onboard">
+        <div className="crypto-onboard-icon"><Home size={56} /></div>
+        <h3>{t('mining.noHousesTitle', 'Нет подходящих домов')}</h3>
+        <p>{t('mining.noHousesDesc', 'Майнинг работает только в подвалах домов. Купите дом с подвалом на вкладке «Рынок» — чем больше basement, тем больше корпусов можно разместить.')}</p>
+        {onBack && (
+          <button className="crypto-open-btn" onClick={onBack}>
+            <ChevronLeft size={18} /> {t('common.back', 'Назад')}
+          </button>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div className="mining-houses">
+      <h3><Home size={18} /> {t('mining.chooseHouse', 'Выберите дом для майнинга')}</h3>
+      <p className="mining-hint">{t('mining.housesHint', 'Каждый слот подвала = отдельный корпус с собственной фермой.')}</p>
+      <div className="mining-houses-grid">
+        {houses.map(h => {
+          const free = h.slots.filter(s => !s.occupied).length
+          const used = h.slots.filter(s => s.occupied).length
+          return (
+            <button key={h.id} className="mining-house-card" onClick={() => onPickHouse(h)}>
+              <div className="mining-house-head">
+                <Home size={22} className="icon" />
+                <span className="mining-house-name">{h.name}</span>
+                <span className={`rarity-badge rarity-${h.rarity || 'common'}`}>{h.rarity}</span>
+              </div>
+              <div className="mining-house-info">
+                <div className="mining-house-info-row">
+                  <span>{t('mining.basementLabel', 'Подвал (слоты корпусов)')}</span>
+                  <b>{h.basement}</b>
+                </div>
+                <div className="mining-house-info-row">
+                  <span>{t('mining.slotsUsed', 'Занято фермами')}</span>
+                  <b>{used} / {h.basement}</b>
+                </div>
+                <div className="mining-house-info-row">
+                  <span>{t('mining.slotsFree', 'Свободно')}</span>
+                  <b className="up">{free}</b>
+                </div>
+              </div>
+              <div className="mining-house-cta">
+                <ChevronRight size={16} /> {t('mining.openHouse', 'Открыть')}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Экран выбора слота в доме ─────────────────────────────────────────────
+function SlotsView({ house, onPickSlot, onNewSlot, onBack }) {
+  const { t } = useTranslation()
+  return (
+    <div className="mining-slots-view">
+      <div className="mining-nav-row">
+        <button className="asset-interact-btn" onClick={onBack}>
+          <ChevronLeft size={16} /> {t('mining.toHouses', 'К домам')}
+        </button>
+        <h3 className="mining-nav-title"><Home size={18} /> {house.name}</h3>
+        <span className={`rarity-badge rarity-${house.rarity || 'common'}`}>{house.rarity}</span>
+      </div>
+      <p className="mining-hint">{t('mining.slotsHint', 'В этом доме {{n}} слотов. Нажмите на слот, чтобы открыть ферму, или на пустой — чтобы создать новую.').replace('{{n}}', String(house.basement))}</p>
+      <div className="mining-slots-grid">
+        {house.slots.map(s => {
+          const free = !s.occupied
+          return (
+            <button
+              key={s.index}
+              className={`mining-slot-card ${free ? 'free' : 'occupied'}`}
+              onClick={() => free ? onNewSlot(s.index) : onPickSlot(s)}
+            >
+              <div className="mining-slot-num">#{s.index + 1}</div>
+              {free ? (
+                <>
+                  <Plus size={28} className="icon" />
+                  <span className="mining-slot-label">{t('mining.slotEmpty', 'Пусто')}</span>
+                  <span className="mining-slot-cta">{t('mining.createFarm', 'Создать ферму')}</span>
+                </>
+              ) : (
+                <>
+                  <Server size={28} className="icon" />
+                  <span className="mining-slot-label">{s.farmName || t('mining.farm', 'Ферма')}</span>
+                  <span className={`mining-slot-status status-${s.status || 'idle'}`}>
+                    {t(`mining.state.${s.status || 'idle'}`, s.status || 'idle')}
+                  </span>
+                  <span className="mining-slot-cta">{t('mining.openFarm', 'Открыть')}</span>
+                </>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Модалка создания фермы в выбранном слоте (по центру экрана) ─────────
+function NewFarmModal({ open, slotIndex, houseName, busy, onConfirm, onCancel }) {
+  const { t } = useTranslation()
+  const [name, setName] = useState('')
+  useEffect(() => {
+    if (open) setName(`Ферма #${(slotIndex ?? 0) + 1}`)
+  }, [open, slotIndex])
+  if (!open) return null
+  const submit = () => {
+    const v = name.trim()
+    if (v.length < 2) return
+    onConfirm(v)
+  }
+  return (
+    <div className="modal-overlay tv-confirm-overlay" onClick={() => !busy && onCancel?.()}>
+      <div className="modal-content tv-confirm new-farm-modal" onClick={e => e.stopPropagation()}>
+        <button className="crypto-modal-close" onClick={() => onCancel?.()} disabled={busy} aria-label="close">
+          <X size={18} />
+        </button>
+        <div className="tv-confirm-icon">
+          <Server size={26} />
+        </div>
+        <h3 className="tv-confirm-title">
+          {t('mining.createFarm', 'Создать ферму')} #{slotIndex + 1}
+        </h3>
+        {houseName && (
+          <p className="tv-confirm-message">
+            {t('mining.modalHouse', { house: houseName, defaultValue: `Дом: ${houseName}` })}
+          </p>
+        )}
+        <p className="tv-confirm-message">
+          {t('mining.newFarmHint', 'Используйте это имя для идентификации фермы.')}
+        </p>
+        <input
+          className="tx-input new-farm-name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit() }}
+          maxLength={40}
+          autoFocus
+          placeholder={t('mining.farmName', 'Название фермы')}
+        />
+        <div className="tv-confirm-buttons">
+          <button
+            className="tv-confirm-btn primary"
+            disabled={busy || name.trim().length < 2}
+            onClick={submit}
+          >
+            {busy ? t('bank.processing') : t('common.create', 'Создать')}
+          </button>
+          <button className="tv-confirm-btn cancel" disabled={busy} onClick={() => onCancel?.()}>
+            {t('common.cancel', 'Отмена')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Главный компонент вкладки «Майнинг» ───────────────────────────────────
 function MiningTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
+  // view: 'houses' → выбор дома; 'slots' → выбор слота в доме; 'farm' → ферма
+  const [view, setView] = useState('houses')
+  const [houses, setHouses] = useState([])
+  const [currentHouse, setCurrentHouse] = useState(null)
   const [farms, setFarms] = useState([])
   const [market, setMarket] = useState({ coins: [], best: null })
   const [parts, setParts] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [newName, setNewName] = useState('')
-  const [busy, setBusy] = useState(false)
   const [activeId, setActiveId] = useState(null)
-  const [confirm, setConfirm] = useState(null)   // { title, message, danger, onConfirm }
-  const [cartQty, setCartQty] = useState({}) // `${cat}::${modelKey}` -> сколько ставить оптом (gpu/fan)
-  const [openAdd, setOpenAdd] = useState({}) // `${farmId}::${cat}` -> раскрыт ли выбор детали (иначе зелёная «+»)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const [confirm, setConfirm] = useState(null)
+  const [installQty, setInstallQty] = useState({})
+  const [newFarmSlot, setNewFarmSlot] = useState(null)
 
-  const load = useCallback(async () => {
+  // ── Загрузка списка домов
+  const loadHouses = useCallback(async () => {
+    try {
+      const hs = await fetchMiningHouses()
+      setHouses(hs || [])
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    }
+  }, [])
+
+  // ── Загрузка ферм конкретного дома + служебных данных
+  const loadFarmData = useCallback(async (houseId) => {
+    setLoading(true)
     try {
       const [f, m, p] = await Promise.all([
-        fetchFarms(),
+        fetchFarms(houseId),
         fetchMiningMarket().catch(() => ({ coins: [], best: null })),
         fetchMiningParts().catch(() => ({})),
       ])
-      setFarms(f)
+      setFarms(f || [])
       setMarket(m)
       setParts(p)
-      setActiveId(prev => (prev && f.some(x => x.id === prev)) ? prev : (f[0]?.id ?? null))
+      setActiveId(prev => (prev && (f || []).some(x => x.id === prev)) ? prev : ((f || [])[0]?.id ?? null))
     } catch (err) {
-      toast(err.message, 'error')
+      setMsg({ type: 'error', text: err.message })
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
-
-  // Realtime: события фермы по WebSocket + резервный поллинг (реже, чтобы не грузить).
+  // При входе во вкладку — показываем дома.
   useEffect(() => {
-    const onRt = (e) => { if (e.detail?.type === 'mining') load() }
-    window.addEventListener('tv:realtime', onRt)
-    const id = setInterval(load, 20000)
-    return () => { window.removeEventListener('tv:realtime', onRt); clearInterval(id) }
-  }, [load])
+    if (view === 'houses') {
+      setLoading(true)
+      loadHouses().finally(() => setLoading(false))
+    }
+  }, [view, loadHouses])
 
+  // При переходе к фермам — грузим их.
+  useEffect(() => {
+    if (view === 'farm' && currentHouse) {
+      loadFarmData(currentHouse.id)
+    }
+  }, [view, currentHouse, loadFarmData])
+
+  // Realtime: события фермы по WebSocket + резервный поллинг.
+  useEffect(() => {
+    if (view !== 'farm') return undefined
+    const onRt = (e) => { if (e.detail?.type === 'mining') loadFarmData(currentHouse.id) }
+    window.addEventListener('tv:realtime', onRt)
+    const id = setInterval(() => loadFarmData(currentHouse.id), 20000)
+    return () => { window.removeEventListener('tv:realtime', onRt); clearInterval(id) }
+  }, [view, currentHouse, loadFarmData])
+
+  const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 2400) }
 
   const run = async (fn, okKey) => {
     setBusy(true)
     try {
       const res = await fn()
       if (res?.balance != null) onBalanceChange?.(res.balance)
-      if (okKey) toast(t(okKey))
-      await load()
+      if (okKey) flash(t(okKey))
+      await loadFarmData(currentHouse.id)
       return res
     } catch (err) {
-      toast(err.message, 'error')
+      flash(err.message, 'error')
     } finally {
       setBusy(false)
     }
   }
 
-  // Массовая установка одинаковых деталей (GPU/вентиляторы): один batch-запрос,
-  // сервер валидирует и ставит каждую по очереди.
   const installMany = async (cat, hwIds) => {
     setBusy(true)
     try {
-      const res = await installComponentsBatch(farm.id, hwIds.map(hwId => ({ category: cat, hwId })))
-      if (res?.error) toast(res.error, 'error')
+      for (const hwId of hwIds) await installComponent(activeId, cat, hwId)
     } catch (err) {
-      toast(err.message, 'error')
+      flash(err.message, 'error')
     } finally {
       setBusy(false)
-      await load()
+      await loadFarmData(currentHouse.id)
     }
   }
 
-  // Массовое снятие одинаковых деталей: снимаем по одной (сервер валидирует каждую).
-  const removeMany = async (hwIds) => {
+  const pickHouse = (house) => { setCurrentHouse(house); setView('slots') }
+  const pickSlot = (slot) => {
+    setActiveId(slot.farmId)
+    setView('farm')
+  }
+  const openNewSlot = (slotIndex) => setNewFarmSlot(slotIndex)
+  const confirmNewFarm = async (name) => {
+    if (newFarmSlot == null || !currentHouse) return
     setBusy(true)
     try {
-      for (const hwId of hwIds) await uninstallComponent(farm.id, hwId)
+      const farm = await createFarm(name, currentHouse.id, newFarmSlot)
+      setNewFarmSlot(null)
+      // После создания — сразу идём к ферме и обновляем дома.
+      setActiveId(farm.id)
+      setView('farm')
+      await loadHouses()
+      flash(t('mining.created', 'Ферма создана'))
     } catch (err) {
-      toast(err.message, 'error')
+      flash(err.message, 'error')
     } finally {
       setBusy(false)
-      await load()
     }
   }
-
-  const askCreate = () => setConfirm({
-    title: t('mining.createFarm'),
-    message: t('confirm.createFarm', { name: newName.trim() }),
-    onConfirm: () => run(() => createFarm(newName.trim()), 'mining.created').then(() => setNewName('')),
-  })
 
   const askDismantle = (f) => setConfirm({
     danger: true,
-    title: t('mining.dismantle'),
+    title: t('mining.dismantle', 'Разобрать ферму'),
     message: t('confirm.dismantle', { name: f.name }),
-    onConfirm: () => run(() => deleteFarm(f.id)),
+    onConfirm: async () => {
+      await run(() => deleteFarm(f.id))
+      // После удаления — обновить дома и выйти к слотам, если ферм не осталось.
+      await loadHouses()
+      if (farms.length <= 1) {
+        setView('slots')
+        setActiveId(null)
+        const h = await fetchMiningHouses().catch(() => [])
+        const fresh = (h || []).find(x => x.id === currentHouse?.id)
+        if (fresh) setCurrentHouse(fresh)
+      }
+    },
   })
 
   const tempClass = (temp) => (temp >= 85 ? 'crit' : temp >= 70 ? 'warn' : 'ok')
 
+  // ── Рендер по состояниям ────────────────────────────────────────────────
+  if (view === 'houses') {
+    return (
+      <div className="mining-tab">
+        <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
+        {msg && (
+          <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
+            {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
+          </div>
+        )}
+        {loading ? (
+          <div className="asset-card skeleton" style={{ height: 220 }} />
+        ) : (
+          <HousesView
+            houses={houses}
+            onPickHouse={pickHouse}
+          />
+        )}
+      </div>
+    )
+  }
+
+  if (view === 'slots') {
+    return (
+      <div className="mining-tab">
+        <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
+        {msg && (
+          <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
+            {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
+          </div>
+        )}
+        {currentHouse ? (
+          <SlotsView
+            house={currentHouse}
+            onPickSlot={pickSlot}
+            onNewSlot={openNewSlot}
+            onBack={() => { setView('houses'); setCurrentHouse(null) }}
+          />
+        ) : null}
+        <NewFarmModal
+          open={newFarmSlot != null}
+          slotIndex={newFarmSlot || 0}
+          houseName={currentHouse?.name}
+          busy={busy}
+          onConfirm={confirmNewFarm}
+          onCancel={() => { if (!busy) setNewFarmSlot(null) }}
+        />
+      </div>
+    )
+  }
+
+  // view === 'farm'
   if (loading) {
     return (
       <div className="mining-tab">
@@ -164,33 +422,18 @@ function MiningTab({ balance = 0, onBalanceChange }) {
       </div>
     )
   }
-
-  // ── Нет ферм: красивая карточка-приглашение ──
   if (farms.length === 0) {
     return (
       <div className="mining-tab">
         <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
         <div className="crypto-onboard mining-onboard">
           <div className="crypto-onboard-icon"><Server size={56} /></div>
-          <h3>{t('mining.onboardTitle')}</h3>
-          <p>{t('mining.onboardDesc')}</p>
-          <div className="mining-onboard-form">
-            <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('mining.farmName')} maxLength={40} />
-            <button className="crypto-open-btn" disabled={busy || newName.trim().length < 2}
-              onClick={askCreate}>
-              <Plus size={18} /> {t('mining.createFarm')}
-            </button>
-          </div>
+          <h3>{t('mining.noFarmsInHouse', 'В этом доме ещё нет ферм')}</h3>
+          <p>{t('mining.noFarmsInHouseDesc', 'Вернитесь к выбору слота и создайте ферму в одном из подвалов.')}</p>
+          <button className="crypto-open-btn" onClick={() => setView('slots')}>
+            <ChevronLeft size={18} /> {t('mining.toSlots', 'К слотам')}
+          </button>
         </div>
-        <ConfirmDialog
-          open={!!confirm}
-          danger={confirm?.danger}
-          busy={busy}
-          title={confirm?.title}
-          message={confirm?.message}
-          onConfirm={() => { confirm?.onConfirm?.(); setConfirm(null) }}
-          onCancel={() => setConfirm(null)}
-        />
       </div>
     )
   }
@@ -204,21 +447,41 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     <div className="mining-tab">
       <div className="leaderboard-title-row"><Server size={22} className="icon" /><h2 className="tab-title">{t('nav.mining')}</h2></div>
 
+      {msg && (
+        <div className={`transfer-feedback ${msg.type}`} style={{ marginBottom: 'var(--spacing-md)' }}>
+          {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
+        </div>
+      )}
 
-      {/* Селектор ферм + добавление новой */}
+      {/* Хлебные крошки: назад к слотам, потом к домам */}
+      <div className="mining-breadcrumbs">
+        <button className="asset-interact-btn" onClick={() => { setView('houses'); setActiveId(null); setCurrentHouse(null) }}>
+          <Home size={14} /> {t('mining.toHouses', 'К домам')}
+        </button>
+        <span>›</span>
+        <button className="asset-interact-btn" onClick={() => { setView('slots'); setActiveId(null) }}>
+          {currentHouse?.name || t('mining.house', 'Дом')}
+        </button>
+        <span>›</span>
+        <span className="mining-breadcrumb-current">{farm.name}</span>
+      </div>
+
+      {/* Селектор ферм внутри дома + кнопка добавления новой.
+          Кнопка «+» появляется только если в этом доме ещё есть свободный слот. */}
       <div className="mining-farm-tabs">
         {farms.map(f => (
           <button key={f.id} className={`mining-farm-tab ${f.id === activeId ? 'active' : ''}`} onClick={() => setActiveId(f.id)}>
             <span className={`mining-status ${f.status}`} /> {f.name}
           </button>
         ))}
-        <div className="mining-add-farm">
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('mining.newFarm')} maxLength={40} />
-          <button className="asset-act upgrade" disabled={busy || newName.trim().length < 2}
-            onClick={askCreate}>
-            <Plus size={15} />
+        {currentHouse?.slots?.some(s => !s.occupied) && (
+          <button className="asset-act upgrade mining-new-farm" onClick={() => {
+            const free = currentHouse.slots.find(s => !s.occupied)
+            if (free) openNewSlot(free.index)
+          }}>
+            <Plus size={14} /> {t('mining.newFarm', 'Новая ферма')}
           </button>
-        </div>
+        )}
       </div>
 
       {/* Панель управления фермой + правая статистика успехов */}
@@ -231,13 +494,29 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             {farm.coin && <span className="mining-coin">{farm.coin}</span>}
             <span className={`mining-state-badge ${farm.status}`}>{t(`mining.state.${farm.status}`, farm.status)}</span>
           </div>
+          <div className="mph-meta">
+            <span className={`mining-coolant-pill ${farm.coolantActive ? 'on' : 'off'}`} title={t('mining.coolantHint', 'Снижает температуру на 25%, 1 шт. на 12 ч')}>
+              <Droplet size={12} /> {farm.coolant || 0}/{farm.coolantMax || 4}
+              {farm.coolantActive && farm.coolantUntil && (
+                <em className="mining-coolant-remaining">{Math.max(0, Math.ceil((new Date(farm.coolantUntil).getTime() - Date.now()) / 3600000))}ч</em>
+              )}
+            </span>
+          </div>
+          {/* Иконки-кнопки действий: фиксированная ширина, без растягивания */}
           <div className="mph-actions">
             {mining ? (
-              <button className="asset-act sell" disabled={busy} onClick={() => run(() => stopMining(farm.id))}><Square size={14} /> {t('mining.stop')}</button>
+              <button className="mining-icon-btn" disabled={busy} onClick={() => run(() => stopMining(farm.id))} title={t('mining.stop')}>
+                <Square size={14} />
+              </button>
             ) : (
-              <button className="asset-act collect" disabled={busy || !assembled} onClick={() => run(() => startMining(farm.id), 'mining.started')}><Play size={14} /> {t('mining.start')}</button>
+              <button className="mining-icon-btn primary" disabled={busy || !assembled}
+                onClick={() => run(() => startMining(farm.id), 'mining.started')} title={t('mining.start')}>
+                <Play size={14} />
+              </button>
             )}
-            <button className="asset-act sell" disabled={busy} onClick={() => askDismantle(farm)}><Trash2 size={14} /> {t('mining.dismantle')}</button>
+            <button className="mining-icon-btn danger" disabled={busy} onClick={() => askDismantle(farm)} title={t('mining.dismantle')}>
+              <Trash2 size={14} />
+            </button>
           </div>
         </div>
 
@@ -245,7 +524,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <div className="mining-missing"><AlertTriangle size={14} /> {t('mining.missing')}: {farm.missing.map(m => t(`mining.comp.${m}`, m)).join(', ')}</div>
         )}
 
-        {/* Мониторинг — только для собранной фермы (иначе показатели не считаются). */}
+        {/* Мониторинг */}
         {assembled ? (
           <>
           <div className="mining-stat-cards">
@@ -257,21 +536,30 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             <div className="msc"><Zap size={16} /><span>{t('mining.elecHr')}</span><b className="down">${formatMoney(s.electricityPerHour)}</b></div>
             <div className="msc"><TrendingUp size={16} /><span>{t('mining.profitHr')}</span><b className={s.profitPerHour >= 0 ? 'up' : 'down'}>${formatMoney(s.profitPerHour)}</b></div>
             <div className="msc"><HardDrive size={16} /><span>{t('mining.earned')}</span><b>${formatCompact(farm.totalEarned)}</b></div>
+            <div className={`msc msc-coolant ${farm.coolantActive ? 'coolant-on' : ''}`}>
+              <Droplet size={16} />
+              <span>{t('mining.coolant', 'Охлаждающая жидкость')}</span>
+              <b>{farm.coolant || 0} / {farm.coolantMax || 4}</b>
+              <button
+                className="asset-act compact msc-btn"
+                disabled={busy || (farm.coolant || 0) >= (farm.coolantMax || 4)}
+                onClick={() => run(() => addCoolant(farm.id), 'mining.coolantAdded')}
+                title={t('mining.coolantPour', 'Заправить охлаждающую жидкость')}
+              >
+                <Plus size={12} /> {t('mining.coolantAdd', 'Заправить')}
+              </button>
+              {farm.coolantActive && farm.coolantUntil && (
+                <small className="msc-meta">{t('mining.coolantActive', 'Снижает температуру на 25% ещё ~{{h}} ч')
+                  .replace('{{h}}', String(Math.max(0, Math.ceil((new Date(farm.coolantUntil).getTime() - Date.now()) / 3600000))))}</small>
+              )}
+            </div>
           </div>
-          <div className="mining-eff-row">
-            {['gpu', 'ram', 'ssd', 'network'].map(k => (
-              <span key={k} className={`mining-eff-badge ${(s.efficiency?.[k] ?? 1) < 0.5 ? 'low' : ''}`}>
-                {t(`mining.eff.${k}`)}: {Math.round((s.efficiency?.[k] ?? 1) * 100)}%
-              </span>
-            ))}
-            {farm.components?.ups && (
-              <span className={`mining-eff-badge ${s.upsProtected ? 'ok' : 'warn'}`}>
-                {t('mining.upsStatus')}: {s.upsProtected
-                  ? t('mining.upsOk')
-                  : `${t('mining.upsWeak')} ${Math.round((s.upsCoverage ?? 0) * 100)}%`}
-              </span>
-            )}
-          </div>
+          {Number(s.temperature) >= Number(s.tempWearThreshold || 40) && (
+            <div className="mining-warn-temp">
+              <AlertTriangle size={14} />
+              {t('mining.warnHighTemp', 'Температура выше порога износа — детали изнашиваются быстрее.')}
+            </div>
+          )}
           </>
         ) : (
           <div className="mining-not-assembled">
@@ -287,7 +575,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
               <option value="">{t('mining.selectCoin')}</option>
               {market.coins.map(c => <option key={c.symbol} value={c.symbol}>{c.symbol} · ${formatMoney(c.price)}</option>)}
             </select>
-            {(s.bestCoin || market.best) && <small className="mining-best">{t('mining.aiBest')}: <b>{s.bestCoin || market.best}</b></small>}
+            {market.best && <small className="mining-best">{t('mining.aiBest')}: <b>{market.best}</b></small>}
           </label>
           <OverclockSlider
             value={farm.overclock}
@@ -340,22 +628,15 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <h4><Cpu size={16} /> {t('mining.assembly')}</h4>
           <div className="mining-slots">
             {CATS.map(({ cat, req, multi }) => {
-              const multiKey = cat === 'gpu' ? 'gpus' : cat === 'fan' ? 'fans' : 'psus'
               const installed = multi
-                ? (farm.components?.[multiKey]) || []
+                ? (cat === 'gpu' ? farm.components?.gpus : farm.components?.fans) || []
                 : (farm.components?.[cat] ? [farm.components[cat]] : [])
               const avail = parts[cat] || []
-              // Корпус и стойка — взаимоисключающие способы размещения (см.
-              // backend/mining.py install_component): пока стоит один, другой недоступен.
-              const altPlacement = cat === 'case' ? 'rack' : cat === 'rack' ? 'case' : null
-              const blockedByAlt = altPlacement && farm.components?.[altPlacement]
-              // Ёмкость размещения: сколько ещё компонентов этой роли влезет
-              // (сервер валидирует повторно — см. install_component).
-              const capLeft = multi ? (farm.capacity?.[cat] ?? null) : null
+              const altPlacement = null
+              const blockedByAlt = false
+              const capLeft = multi ? (farm.capacity?.[cat === 'gpu' ? 'gpu' : 'fan'] ?? null) : null
               const capFull = capLeft != null && capLeft <= 0
               const canAdd = (multi || installed.length === 0) && !blockedByAlt && !capFull
-              // Группируем одинаковые детали (по имени+специфике), чтобы не плодить
-              // 13 строк «Промышленные вентиляторы» — показываем «… ×13».
               const groups = []
               for (const it of installed) {
                 const key = hwName(it, t) + partSpec(cat, it.specs, t)
@@ -374,87 +655,46 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                   {groups.map(g => (
                     <div key={g.key} className="mslot-item">
                       <span>{g.label}{g.items.length > 1 && <b className="mslot-item-qty"> ×{g.items.length}</b>}</span>
-                      <span className="mslot-item-actions">
-                        {multi && g.items.length > 1 && (
-                          <button className="mslot-rm mslot-rm-all" disabled={busy}
-                            title={t('mining.removeAll', 'Удалить все')}
-                            onClick={() => removeMany(g.items.map(it => it.hwId))}>
-                            <X size={12} />{g.items.length}
-                          </button>
-                        )}
-                        <button className="mslot-rm" disabled={busy}
-                          title={g.items.length > 1 ? t('mining.removeOne') : ''}
-                          onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
-                      </span>
+                      <button className="mslot-rm" disabled={busy}
+                        title={g.items.length > 1 ? t('mining.removeOne') : ''}
+                        onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
                     </div>
                   ))}
                   {blockedByAlt ? (
                     <span className="mslot-empty">{t('mining.placementTaken', { other: t(`mining.comp.${altPlacement}`, altPlacement) })}</span>
                   ) : capFull ? (
                     <span className="mslot-empty">{t('mining.capacityFull')}</span>
-                  ) : canAdd && (() => {
-                    const addKey = `${farm.id}::${cat}`
-                    if (!openAdd[addKey]) {
-                      return (
-                        <button className="mslot-add-badge" disabled={busy}
-                          title={t('mining.addComponent', 'Добавить')}
-                          onClick={() => setOpenAdd(o => ({ ...o, [addKey]: true }))}>
-                          <Plus size={14} /> {t('mining.addComponent', 'Добавить')}
-                        </button>
-                      )
-                    }
-                    return (
+                  ) : canAdd && (
                     avail.length > 0 ? (
-                      multi ? (
-                        <div className="mslot-cart">
-                          {(() => {
-                            // Группируем доступные детали по модели (имя+спека), чтобы
-                            // показать одну строку на модель с полем количества.
-                            const availGroups = []
-                            for (const p of avail) {
-                              const key = hwName(p, t) + partSpec(cat, p.specs, t)
-                              const g = availGroups.find(x => x.key === key)
-                              if (g) g.items.push(p)
-                              else availGroups.push({ key, label: hwName(p, t), spec: partSpec(cat, p.specs, t), items: [p] })
-                            }
-                            return availGroups.map(g => {
-                              const qtyKey = `${cat}::${g.key}`
-                              const maxQty = Math.min(g.items.length, capLeft ?? Infinity)
-                              const qty = cartQty[qtyKey] ?? 1
-                              return (
-                                <div key={g.key} className="mslot-cart-row">
-                                  <span className="mslot-cart-label">{g.label}{g.spec}</span>
-                                  <span className="mslot-cart-stock" title={t('mining.inStock', 'В наличии')}>{g.items.length}</span>
-                                  <input className="mslot-cart-qty" inputMode="numeric" disabled={busy}
-                                    value={qty}
-                                    onChange={e => {
-                                      const v = parseInt(e.target.value, 10)
-                                      setCartQty(q => ({ ...q, [qtyKey]: isNaN(v) ? 1 : Math.max(1, Math.min(maxQty, v)) }))
-                                    }} />
-                                  <button className="mslot-cart-btn" disabled={busy}
-                                    onClick={() => {
-                                      const want = Math.max(1, Math.min(cartQty[qtyKey] ?? 1, maxQty))
-                                      installMany(cat, g.items.slice(0, want).map(p => p.hwId))
-                                    }}>
-                                    {t('mining.install', 'Поставить')}
-                                  </button>
-                                </div>
-                              )
-                            })
-                          })()}
-                        </div>
-                      ) : (
+                      <div className="mslot-pick-row">
                         <select className="mslot-pick" disabled={busy} value=""
-                          onChange={e => { if (e.target.value) run(() => installComponent(farm.id, cat, e.target.value)) }}>
+                          onChange={e => {
+                            if (!e.target.value) return
+                            const picked = avail.find(p => p.hwId === e.target.value)
+                            if (multi) {
+                              const want = Math.max(1, Math.min(installQty[cat] || 1, capLeft ?? Infinity))
+                              const key = hwName(picked, t) + partSpec(cat, picked.specs, t)
+                              const ids = avail.filter(p => hwName(p, t) + partSpec(cat, p.specs, t) === key).slice(0, want).map(p => p.hwId)
+                              installMany(cat, ids.length ? ids : [picked.hwId])
+                            } else {
+                              run(() => installComponent(farm.id, cat, e.target.value))
+                            }
+                          }}>
                           <option value="">{t('mining.pickPart')}</option>
                           {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>)}
                         </select>
-                      )
+                        {multi && (
+                          <span className="mslot-qty">
+                            <input type="number" min="1" max={capLeft ?? 999} disabled={busy}
+                              value={installQty[cat] || 1}
+                              onChange={e => setInstallQty(q => ({ ...q, [cat]: Math.max(1, Math.min(capLeft ?? 999, parseInt(e.target.value, 10) || 1)) }))} />
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className="mslot-empty">{t('mining.noParts')}</span>
                     )
-                    )
-                  })()}
+                  )}
                 </div>
               )
             })}
@@ -463,7 +703,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-        {/* Правая панель — успехи добычи (lifetime + live). */}
+        {/* Правая панель — успехи добычи */}
         <div className="mining-success">
           <h4><TrendingUp size={16} /> {t('mining.successTitle')}</h4>
           <div className="mining-success-row"><span>{t('mining.totalMinedCoins')}</span><b>{formatCompact(farm.totalMinedCoins || 0)}{farm.coin ? ` ${farm.coin}` : ''}</b></div>

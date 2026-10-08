@@ -1,0 +1,281 @@
+/* ── FarmPanel: управление полем (сетка клеток + панели управления) ────────── */
+.farm-panel {
+  display: flex; flex-direction: column; gap: var(--spacing-lg);
+}
+.farm-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--spacing-sm);
+}
+.farm-summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.farm-summary-card span {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--color-muted);
+}
+.farm-summary-card b { font-size: 15px; color: var(--color-text); }
+
+.farm-body {
+  display: grid;
+  grid-template-columns: 320px 360px;
+  gap: var(--spacing-lg);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .farm-body { grid-template-columns: 1fr; }
+}
+
+.farm-grid-wrap {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex; flex-direction: column; gap: var(--spacing-sm);
+}
+.farm-grid {
+  display: grid;
+  gap: 2px;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.farm-cell {
+  background: rgba(132, 204, 22, 0.08);
+  border: 1px solid rgba(132, 204, 22, 0.18);
+  border-radius: 2px;
+  position: relative;
+  transition: background .2s;
+}
+.farm-cell.empty { background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.06); }
+.farm-cell.growing { background: rgba(34, 197, 94, 0.28); border-color: rgba(34, 197, 94, 0.5); }
+.farm-cell.ready {
+  background: rgba(250, 204, 21, 0.35);
+  border-color: rgba(250, 204, 21, 0.7);
+  animation: farm-ready-pulse 2.5s ease-in-out infinite;
+}
+.farm-cell-emoji {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; line-height: 1;
+  pointer-events: none;
+}
+@keyframes farm-ready-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(250,204,21,0); }
+  50% { box-shadow: 0 0 4px rgba(250,204,21,0.5); }
+}
+
+.farm-grid-legend {
+  display: flex; gap: var(--spacing-md); justify-content: center;
+  font-size: 12px; color: var(--color-muted);
+  flex-wrap: wrap;
+}
+.farm-grid-legend > span {
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.farm-legend-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.farm-legend-dot.empty { background: rgba(255,255,255,0.06); }
+.farm-legend-dot.growing { background: rgba(34, 197, 94, 0.4); border-color: rgba(34,197,94,0.7); }
+.farm-legend-dot.ready { background: rgba(250, 204, 21, 0.5); border-color: rgba(250,204,21,0.8); }
+
+.farm-side {
+  display: flex; flex-direction: column; gap: var(--spacing-md);
+}
+.farm-block {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex; flex-direction: column; gap: var(--spacing-sm);
+}
+.farm-block h3 {
+  margin: 0;
+  font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; gap: 6px;
+  color: var(--color-text);
+}
+.farm-block h3 svg { color: var(--color-accent); }
+
+.farm-crop-picker {
+  display: flex; flex-wrap: wrap; gap: var(--spacing-xs);
+}
+.farm-crop-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--color-surface-2, rgba(255,255,255,0.04));
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text);
+  transition: background .15s, border-color .15s;
+}
+.farm-crop-chip:hover { background: rgba(255,255,255,0.08); }
+.farm-crop-chip.active {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: var(--color-accent);
+}
+
+.farm-btn {
+  background: var(--color-surface-2, rgba(255,255,255,0.06));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background .15s, opacity .15s;
+}
+.farm-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+.farm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.farm-btn.primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #0b1220;
+}
+.farm-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 88%, white);
+}
+
+.farm-hint {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--color-muted);
+  margin: 0;
+}
+.farm-price {
+  font-size: 13px; color: var(--color-muted); margin: 0;
+}
+.farm-price b { color: var(--color-text); }
+.farm-price .up { color: var(--color-success, #22c55e); }
+
+.farm-input-row {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+}
+.farm-input-row label {
+  font-size: 13px; color: var(--color-muted);
+}
+.farm-input-row input {
+  flex: 1;
+  max-width: 120px;
+  background: var(--color-surface-2, rgba(255,255,255,0.04));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.farm-storage-list {
+  display: flex; flex-direction: column; gap: var(--spacing-xs);
+}
+.farm-storage-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--spacing-sm);
+  align-items: center;
+  font-size: 13px;
+}
+.farm-storage-name {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--color-text);
+}
+.farm-storage-qty {
+  color: var(--color-muted); font-variant-numeric: tabular-nums;
+}
+.farm-storage-actions {
+  display: flex; gap: 4px; align-items: center;
+}
+.farm-storage-actions input {
+  background: var(--color-surface-2, rgba(255,255,255,0.04));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+
+/* ── Прогресс-полоски (клетки growing + занятость машин) ────────────────── */
+.farm-cell-progress {
+  position: absolute;
+  left: 0; bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(250, 204, 21, 0.95), rgba(34, 197, 94, 0.95));
+  border-radius: 0 2px 2px 0;
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(250, 204, 21, 0.6);
+  transition: width 0.4s linear;
+}
+.farm-bar {
+  margin-top: 4px;
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.farm-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent, #eab308), #22c55e);
+  transition: width 0.3s linear;
+  animation: farm-bar-pulse 1.6s ease-in-out infinite;
+}
+@keyframes farm-bar-pulse {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+}
+.farm-crops-progress .farm-summary-card span {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: var(--color-text);
+}
+.farm-crops-progress .farm-summary-card b {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent, #eab308);
+}
+
+
+/* Текстовая сводка поля (заменяет 50x50 сетку) */
+.farm-text-summary {
+  display: flex; flex-direction: column; gap: 8px;
+  font-size: 14px;
+  color: var(--color-text);
+  padding: 8px 0;
+}
+.farm-text-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--color-surface-2, rgba(255,255,255,0.04));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.farm-text-label {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.farm-text-val {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  color: var(--color-text);
+}
+.farm-text-ready {
+  color: var(--color-accent, #eab308);
+}
+

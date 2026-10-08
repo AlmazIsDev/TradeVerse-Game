@@ -9,10 +9,15 @@ import CryptoTab from './CryptoTab'
 import ShopTab from './ShopTab'
 import LeaderboardTab from './LeaderboardTab'
 import MarketTab from './MarketTab'
+import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
 import MyCompanyTab from './MyCompanyTab'
+// CarsTab — вкладка «Автосалон» (покупка авто через серверный каталог).
 import CityRoofTab from './CityRoofTab'
 import MiningTab from './MiningTab'
+import CarsTab from './CarsTab'
+// PlayerBusinessesTab — витрина бизнесов игроков с покупкой товаров.
+import PlayerBusinessesTab from './PlayerBusinessesTab'
 import SettingsPage from './SettingsPage'
 import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
@@ -156,10 +161,16 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <CryptoTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'realestate':
         return <MarketTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'centralmarket':
+        return <CentralMarketTab />
       case 'myhomes':
         return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} />
       case 'mycompany':
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'cars':
+        return <CarsTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'playerbusinesses':
+        return <PlayerBusinessesTab />
       case 'leaderboard':
         return <LeaderboardTab currentUserId={user?.id} />
       case 'settings':

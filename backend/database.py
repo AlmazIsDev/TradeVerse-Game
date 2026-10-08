@@ -10,9 +10,12 @@ from timeutil import now_utc
 
 load_dotenv()
 
-MONGODB_URL = os.getenv("MONGODB_URL")
-
-DATABASE_NAME = "tradeverse"
+# ── Настройки БД (всё из backend/.env) ───────────────────────────────────────
+# MONGODB_URL   — строка подключения. Дефолт: mongodb://localhost:27017/
+# DATABASE_NAME — имя базы. Дефолт: tradeverse
+# DB_ENGINE     — только для скрипта start_db.py (docker|native), database.py его не читает.
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "tradeverse")
 
 # tz_aware=True: Mongo хранит даты в UTC, но без этого флага драйвер отдаёт их
 # naive — и isoformat() уходит в API без смещения, из-за чего браузер трактует

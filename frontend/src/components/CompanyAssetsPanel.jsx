@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  listPropertyForRent, cancelRent, upgradeAsset, fetchMaterialsPrice, buyMaterials,
+  listPropertyForRent, cancelRent, fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
@@ -12,7 +12,7 @@ import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
 import {
-  LayoutGrid, Home, Car, Briefcase, KeyRound, X, TrendingUp, Users,
+  LayoutGrid, Home, Car, Briefcase, KeyRound, X, Check, AlertTriangle, TrendingUp, Users,
   ArrowUpCircle, Package, Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Newspaper,
 } from 'lucide-react'
 

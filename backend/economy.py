@@ -190,3 +190,5 @@ async def get_active_world_events(
     from market_events import get_active_events, _serialize
     events = await get_active_events(db)
     return {"active": [_serialize(e) for e in events]}
+
+

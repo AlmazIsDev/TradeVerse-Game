@@ -1866,9 +1866,6 @@ body {
     right: -8px;
   }
 
-  .world-event-icon {
-    font-size: 22px;
-  }
 }
 
 /* ===================== LOADING / ERROR / EMPTY STATES ===================== */
@@ -3514,6 +3511,21 @@ body {
   opacity: 0.85;
 }
 
+/* Позиции из админ-редактора цен, для которых бэкенд ещё не дописан:
+   карточка отображается, но покупка/продажа отключены (кнопка «Скоро»). */
+.gpu-card-buy-soon {
+  background: rgba(148, 163, 184, 0.18) !important;
+  color: var(--color-text-secondary, #94a3b8) !important;
+  cursor: not-allowed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.gpu-card-buy-soon:disabled {
+  opacity: 1;
+}
+
 .gpu-card-top {
   display: flex;
   align-items: center;
@@ -3775,6 +3787,176 @@ body {
   transform: translateY(0);
 }
 
+/* ── Модалка подтверждения покупки на вкладке «Рынок» ─────────────────── */
+.market-buy-modal {
+  max-width: 420px;
+  width: min(420px, 94vw);
+  padding: 22px 22px 18px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.market-buy-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--fill-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.06));
+}
+.market-buy-modal-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 26px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+.market-buy-modal-emoji { line-height: 1; }
+.market-buy-modal-item-text { min-width: 0; flex: 1; }
+.market-buy-modal-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--color-text-tertiary, #94a3b8);
+  margin-bottom: 2px;
+}
+.market-buy-modal-name {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+.market-buy-modal-subtitle {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+.market-buy-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--fill-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.06));
+}
+.market-buy-modal-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.market-buy-modal-row-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+.market-buy-modal-row-price .market-buy-modal-row-value {
+  color: var(--color-accent);
+}
+.market-buy-modal-buy {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
+.market-buy-modal-buy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.market-buy-modal-buy:active:not(:disabled) {
+  transform: translateY(0);
+}
+.market-buy-modal-buy:disabled {
+  background: var(--fill-soft);
+  color: var(--color-text-tertiary, #94a3b8);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Степпер количества внутри модалки покупки (ShopBuyModal). */
+.market-buy-modal-qty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--fill-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.06));
+}
+.market-buy-modal-qty-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.market-buy-modal-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.market-buy-modal-stepper-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.market-buy-modal-stepper-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.1);
+}
+.market-buy-modal-stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.market-buy-modal-stepper-input {
+  width: 64px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+  -moz-appearance: textfield;
+}
+.market-buy-modal-stepper-input::-webkit-outer-spin-button,
+.market-buy-modal-stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.market-buy-modal-stepper-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
 .gpu-card-multiplier {
   font-size: 12px;
   font-weight: 600;
@@ -3896,6 +4078,12 @@ body {
   font-weight: 500;
   text-align: center;
   animation: price-editor-fade-in 0.3s ease;
+}
+
+.price-editor-saved-msg.price-editor-save-error {
+  background: rgba(255, 69, 58, 0.1);
+  border-color: rgba(255, 69, 58, 0.3);
+  color: #ff453a;
 }
 
 @keyframes price-editor-fade-in {
@@ -4440,4 +4628,503 @@ textarea:focus {
 @media (max-width: 600px) {
   .upgrade-step { min-width: 96px; }
   .upgrade-arrow { width: 28px; }
+}
+
+/* ===================== CENTRAL MARKET TAB ===================== */
+
+.centralmarket-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 12px);
+}
+
+.centralmarket-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md, 12px);
+  flex-wrap: wrap;
+}
+
+.centralmarket-subtitle {
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.centralmarket-create-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  background: var(--color-accent, #0071e3);
+  color: #fff;
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) ease, transform var(--dur-fast, 120ms) ease,
+    box-shadow var(--dur-fast, 120ms) ease;
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.25);
+}
+.centralmarket-create-btn:hover { background: var(--color-accent-hover, #005bb5); transform: translateY(-1px); }
+.centralmarket-create-btn:active { transform: translateY(0); }
+
+/* Верхняя полоса: [тогглер фильтров] [кнопка сортировки] [поиск] */
+.centralmarket-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.centralmarket-toolbar-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.centralmarket-toolbar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 220px;
+  min-width: 180px;
+  justify-content: flex-end;
+}
+.centralmarket-search {
+  width: 100%;
+  max-width: 320px;
+}
+
+/* Иконка-кнопка тогглера фильтров (ширина × 1.2 от 36px = 43.2px) */
+.centralmarket-filters-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 43px;
+  height: 43px;
+  padding: 0;
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.1));
+  border-radius: 11px;
+  color: var(--color-text-primary, inherit);
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) ease, border-color var(--dur-fast, 120ms) ease;
+}
+.centralmarket-filters-toggle:hover { background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.08)); }
+.centralmarket-filters-toggle.is-open { border-color: var(--color-accent, #0071e3); }
+
+.centralmarket-filters-chev {
+  transition: transform var(--dur-med, 200ms) var(--ease-out, ease);
+}
+.centralmarket-filters-chev.rot { transform: rotate(180deg); }
+
+/* Кнопка сортировки (3 состояния через классы) */
+.centralmarket-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.1));
+  border-radius: 10px;
+  color: var(--color-text-primary, inherit);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) ease, border-color var(--dur-fast, 120ms) ease, color var(--dur-fast, 120ms) ease;
+}
+.centralmarket-sort-btn:hover { background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.08)); }
+.centralmarket-sort-btn.sort-price_asc,
+.centralmarket-sort-btn.sort-price_desc {
+  border-color: var(--color-accent, #0071e3);
+  color: var(--color-accent, #0071e3);
+}
+.centralmarket-sort-btn.sort-default {
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+/* Выпадающая панель фильтров (категория + цена/кол-во) */
+.centralmarket-filters {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+}
+.centralmarket-filters-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.centralmarket-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.centralmarket-filters-row--numeric {
+  align-items: flex-end;
+}
+
+.centralmarket-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.centralmarket-filter--numeric { min-width: 220px; }
+.centralmarket-filter--search  { min-width: 220px; flex: 1 1 240px; }
+
+.centralmarket-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+.centralmarket-cat-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.centralmarket-num-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.centralmarket-num-dash {
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.5));
+}
+.centralmarket-num-input {
+  width: 88px;
+  padding: 6px 10px;
+  background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  color: var(--color-text-primary, inherit);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.centralmarket-num-input:focus {
+  border-color: var(--color-accent, #0071e3);
+  outline: none;
+}
+
+.centralmarket-search { min-width: 220px; }
+
+.centralmarket-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-end;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.7));
+  border: 1px dashed var(--hairline, rgba(255, 255, 255, 0.18));
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: color var(--dur-fast, 120ms) ease, border-color var(--dur-fast, 120ms) ease;
+}
+.centralmarket-reset:hover { color: var(--color-text-primary, #fff); border-color: var(--color-accent, #0071e3); }
+
+/* Список лотов */
+.centralmarket-lots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.centralmarket-lots-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+.centralmarket-lots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.centralmarket-lot {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  grid-template-areas: "icon main price" "icon main actions";
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px;
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  transition: transform var(--dur-fast, 120ms) ease, border-color var(--dur-fast, 120ms) ease,
+    background var(--dur-fast, 120ms) ease;
+}
+.centralmarket-lot:hover {
+  transform: translateY(-1px);
+  border-color: rgba(0, 113, 227, 0.4);
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.06));
+}
+.centralmarket-lot.is-own {
+  border-color: rgba(0, 113, 227, 0.35);
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.06), rgba(0, 113, 227, 0.02));
+}
+
+.centralmarket-lot-icon {
+  grid-area: icon;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.08));
+  font-size: 24px;
+}
+
+.centralmarket-lot-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.centralmarket-lot-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.centralmarket-lot-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.centralmarket-lot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.06));
+  border-radius: 999px;
+}
+
+.centralmarket-lot-seller {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.centralmarket-lot-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.centralmarket-lot-price-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-accent, #0071e3);
+}
+.centralmarket-lot-price-suffix {
+  font-size: 11px;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.55));
+  font-weight: 400;
+}
+.centralmarket-lot-price-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+/* Модалка создания лота */
+.centralmarket-modal {
+  max-width: 480px;
+  width: 100%;
+}
+.centralmarket-modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.centralmarket-modal-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+  margin-bottom: 14px;
+}
+
+.centralmarket-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.centralmarket-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.7));
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.centralmarket-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.centralmarket-input,
+.centralmarket-select {
+  padding: 8px 10px;
+  background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  color: var(--color-text-primary, inherit);
+  font-size: 14px;
+  font-family: inherit;
+}
+.centralmarket-input:focus,
+.centralmarket-select:focus {
+  border-color: var(--color-accent, #0071e3);
+  outline: none;
+}
+
+/* Тост */
+.centralmarket-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-bg-secondary, rgba(20, 22, 28, 0.95));
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--color-text-primary, #fff);
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.centralmarket-toast.success { border-color: rgba(34, 197, 94, 0.4); }
+.centralmarket-toast.error   { border-color: rgba(239, 68, 68, 0.4); }
+
+/* Пустое состояние списка лотов */
+.centralmarket-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 36px 20px;
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.03));
+  border: 1px dashed var(--hairline, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  gap: 6px;
+}
+.centralmarket-empty-icon { font-size: 40px; line-height: 1; }
+.centralmarket-empty-title { font-size: 18px; font-weight: 700; margin: 4px 0 0; }
+.centralmarket-empty-text {
+  font-size: 13px;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+  max-width: 360px;
+  margin: 0 0 10px;
+}
+.centralmarket-empty-cta { margin-top: 4px; }
+
+/* Действия на карточке лота (Купить / Редактировать+Удалить) */
+.centralmarket-lot-actions {
+  grid-area: actions;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.centralmarket-lot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--dur-fast, 120ms) ease, border-color var(--dur-fast, 120ms) ease,
+    transform var(--dur-fast, 120ms) ease;
+}
+.centralmarket-lot-btn:active { transform: translateY(0); }
+.centralmarket-lot-btn-price {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+}
+.centralmarket-lot-btn--buy {
+  background: var(--color-accent, #0071e3);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.25);
+}
+.centralmarket-lot-btn--buy:hover { background: var(--color-accent-hover, #005bb5); transform: translateY(-1px); }
+.centralmarket-lot-btn--edit {
+  background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.08));
+  color: var(--color-text-primary, inherit);
+  border-color: var(--hairline, rgba(255, 255, 255, 0.12));
+}
+.centralmarket-lot-btn--edit:hover { border-color: var(--color-accent, #0071e3); color: var(--color-accent, #0071e3); }
+.centralmarket-lot-btn--danger {
+  background: transparent;
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+  padding: 6px 8px;
+}
+.centralmarket-lot-btn--danger:hover { background: rgba(239, 68, 68, 0.12); border-color: #ef4444; }
+.centralmarket-btn-danger {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+.centralmarket-btn-danger:hover { background: rgba(239, 68, 68, 0.25) !important; }
+
+/* Пилюли выбора источника в форме */
+.centralmarket-source-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
 }

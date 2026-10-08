@@ -354,21 +354,16 @@ def _wallet_address(user_id: str) -> str:
 
 
 async def _credit_company_budget(db: AsyncIOMotorDatabase, coin: dict, amount: float):
-    """Перечисляет выручку/списывает выкуп по монете компании в бюджет эмитента.
+    """Перечисляет выручку от покупки монеты компании в бюджет эмитента.
 
     Монеты с привязкой к компании (`companyId`) — инструмент привлечения капитала:
-    покупка на бирже пополняет бюджет, продажа выкупает у рынка из бюджета
-    (не уводя его в минус). Зеркалит stocks._credit_company_budget."""
+    покупка на бирже пополняет бюджет. Выкуп при продаже делается в trade_crypto
+    обязательным гейтом до выплаты продавцу — не здесь (раньше условный $inc
+    молча не срабатывал при пустом бюджете, что позволяло печатать деньги)."""
     cid = coin.get("companyId")
     if not cid or not ObjectId.is_valid(cid):
         return
-    if amount >= 0:
-        await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
-    else:
-        await db.companies.update_one(
-            {"_id": ObjectId(cid), "budget": {"$gte": round(-amount, 2)}},
-            {"$inc": {"budget": round(amount, 2)}},
-        )
+    await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
 
 
 # ── Account ──────────────────────────────────────────────────────────────────
@@ -577,6 +572,22 @@ async def trade_crypto(
     # sell
     if not holding or holding.get("quantity", 0.0) < qty:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно монет")
+    # Компания-эмитент выкупает монеты у продавца ИЗ БЮДЖЕТА. Списание
+    # обязательное и идёт ДО выплаты продавцу: раньше оно было best-effort —
+    # при пустом бюджете условный $inc молча не срабатывал, а продавцу деньги
+    # начислялись. Цикл «купить свои монеты → вывести бюджет → продать монеты»
+    # печатал деньги из воздуха. Зеркалит stocks.trade_stock.
+    cid = coin.get("companyId")
+    if cid and ObjectId.is_valid(cid):
+        budget_paid = await db.companies.find_one_and_update(
+            {"_id": ObjectId(cid), "budget": {"$gte": total}},
+            {"$inc": {"budget": -total}},
+        )
+        if not budget_paid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Компания не может выкупить монеты: недостаточно средств в бюджете",
+            )
     remaining = round(holding["quantity"] - qty, 8)
     if remaining <= 0:
         await db.crypto_holdings.delete_one({"userId": user_id, "symbol": symbol})
@@ -594,8 +605,7 @@ async def trade_crypto(
         balance_after=new_balance, meta={"quantity": qty, "action": "sell", "fee": fee},
     )
     await _apply_trade_impact(db, symbol, "sell", qty * ref_price)
-    # Монета компании: рынок продаёт обратно эмитенту — выкуп из бюджета.
-    await _credit_company_budget(db, coin, -total)
+    # Выкуп из бюджета компании уже выполнен выше — гейтом перед выплатой.
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
             "price": price, "total": total, "fee": fee, "balance": new_balance}
 

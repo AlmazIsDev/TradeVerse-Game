@@ -29,6 +29,18 @@ CAT_DIVIDEND = "dividend"
 CAT_SHOP = "shop"
 CAT_MINING = "mining"
 CAT_SYSTEM = "system"
+CAT_MARKET = "market"
+# Категории для «инфраструктурных» активов рынка: заводы (factory), источники
+# ресурсов (source) и склады (warehouse). Покупка/продажа проходят через те же
+# /api/assets/buy и /api/assets/{id}/sell, но в реестре помечаются отдельно —
+# чтобы в аналитике и истории операций можно было отфильтровать только такие
+# покупки. Не заменяют CAT_BUSINESS/CAT_REALESTATE, а дополняют их.
+CAT_FACTORY = "factory"
+CAT_SOURCE = "source"
+CAT_WAREHOUSE = "warehouse"
+# Ферма (см. farm.py): продажа культур со склада поля и покупка топлива.
+CAT_FARM = "farm"
+CAT_FUEL = "fuel"
 
 VALID_DIRECTIONS = {INCOME, EXPENSE}
 

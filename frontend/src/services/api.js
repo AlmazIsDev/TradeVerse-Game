@@ -281,7 +281,12 @@ async function request(endpoint, options = {}) {
     return await response.json()
   } catch (error) {
     if (error instanceof ApiError) throw error
-    throw new ApiError(i18n.t('errors.networkError'), 0)
+    // Сетевая/transport-ошибка (TypeError: Failed to fetch, ECONNREFUSED,
+    // обрыв во время dev-reload, CORS preflight abort и т.п.). Добавляем
+    // endpoint и причину — иначе в UI видно только общее «проверьте
+    // подключение» и непонятно, что именно отвалилось.
+    const cause = error?.message || error?.name || 'network error'
+    throw new ApiError(`${i18n.t('errors.networkError')} (${endpoint}: ${cause})`, 0)
   }
 }
 
@@ -573,22 +578,6 @@ export async function updateEconomyConfig(data) {
   return request('/api/admin/economy/config', { method: 'POST', body: JSON.stringify(data) })
 }
 
-export async function fetchEconomyEvents() {
-  return request('/api/admin/economy/events')
-}
-
-export async function startEconomyEvent(type) {
-  return request('/api/admin/economy/events/start', { method: 'POST', body: JSON.stringify({ type }) })
-}
-
-export async function stopEconomyEvent(eventId) {
-  return request(`/api/admin/economy/events/${encodeURIComponent(eventId)}/stop`, { method: 'POST' })
-}
-
-export async function fetchActiveWorldEvents() {
-  return request('/api/events/active')
-}
-
 // ── Crypto API ────────────────────────────────────────────────────────────────
 
 export async function openCryptoAccount() {
@@ -719,6 +708,61 @@ export async function fetchMyAssets(type) {
   return request(`/api/assets/mine${q}`)
 }
 
+// Активные мировые события (backend/market_events.py) — баннер на «Обзоре»
+// и попапы в NotificationCenter.
+export async function fetchActiveWorldEvents() {
+  return request('/api/events/active')
+}
+
+export async function fetchEconomyEvents() {
+  return request('/api/admin/economy/events')
+}
+
+export async function startEconomyEvent(type) {
+  return request('/api/admin/economy/events/start', { method: 'POST', body: JSON.stringify({ type }) })
+}
+
+export async function stopEconomyEvent(eventId) {
+  return request(`/api/admin/economy/events/${encodeURIComponent(eventId)}/stop`, { method: 'POST' })
+}
+
+// ── Центральный рынок: лоты игроков (p2p) ───────────────────────────────────
+// kind: "asset" (itemId = _id актива из «Моих активов», qty всегда 1)
+//     | "hardware" (itemId = id железа из магазина, qty ≤ кол-ва свободных штук).
+// Режим «свободный предмет» не поддерживается сервером: продавать можно только
+// то, чем владеешь. Сервер возвращает лот: {id, kind, itemId, name, qty,
+// pricePerItem, sellerId, seller, createdAt}.
+
+export async function fetchMarketLots() {
+  return request('/api/market/lots')
+}
+
+export async function createMarketLot({ kind, itemId, qty = 1, pricePerItem }) {
+  return request('/api/market/lots', {
+    method: 'POST',
+    body: JSON.stringify({ kind, itemId, qty, pricePerItem }),
+  })
+}
+
+export async function updateMarketLot(lotId, { qty, pricePerItem }) {
+  return request(`/api/market/lots/${encodeURIComponent(lotId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ qty, pricePerItem }),
+  })
+}
+
+export async function cancelMarketLot(lotId) {
+  return request(`/api/market/lots/${encodeURIComponent(lotId)}`, { method: 'DELETE' })
+}
+
+// Покупка qty штук из лота. Вернёт 409, если лот уже купил кто-то другой.
+export async function buyMarketLot(lotId, qty = 1) {
+  return request(`/api/market/lots/${encodeURIComponent(lotId)}/buy`, {
+    method: 'POST',
+    body: JSON.stringify({ qty }),
+  })
+}
+
 export async function collectAsset(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/collect`, { method: 'POST' })
 }
@@ -753,6 +797,11 @@ export async function transferAssetToPlayer(id, toUsername) {
 
 export async function tuneCar(id, part) {
   return request(`/api/assets/${encodeURIComponent(id)}/tune`, { method: 'POST', body: JSON.stringify({ part }) })
+}
+
+// Улучшение «Майнинг» для дома: покупается 1 раз, цена = basement * 10 000.
+export async function buyMiningUpgrade(id) {
+  return request(`/api/assets/${encodeURIComponent(id)}/mining/buy`, { method: 'POST' })
 }
 
 export async function listPropertyForRent(id, minHours) {
@@ -1048,10 +1097,22 @@ export async function fetchInventory() {
 
 // ── Mining farms ────────────────────────────────────────────────────────────────
 
-export async function fetchFarms() { return request('/api/mining/farms') }
+export async function fetchFarms(houseId) {
+  const q = houseId ? `?houseId=${encodeURIComponent(houseId)}` : ''
+  return request(`/api/mining/farms${q}`)
+}
+// Список домов игрока с подвалом, у каждого — basement и массив слотов
+// (свободные/занятые, farmId/farmName если занят).
+export async function fetchMiningHouses() { return request('/api/mining/houses') }
 export async function fetchMiningMarket() { return request('/api/mining/market') }
 export async function fetchMiningParts() { return request('/api/mining/parts') }
-export async function createFarm(name) { return request('/api/mining/farms', { method: 'POST', body: JSON.stringify({ name }) }) }
+export async function createFarm(name, houseId, slotIndex) {
+  return request('/api/mining/farms', {
+    method: 'POST',
+    body: JSON.stringify({ name, houseId, slotIndex }),
+  })
+}
+export async function addCoolant(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/coolant`, { method: 'POST' }) }
 export async function deleteFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
 export async function installComponent(id, category, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category, hwId }) }) }
 export async function installComponentsBatch(id, items) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install-batch`, { method: 'POST', body: JSON.stringify({ items }) }) }
@@ -1062,6 +1123,30 @@ export async function setFarmCoin(id, symbol) { return request(`/api/mining/farm
 export async function setOverclock(id, value) { return request(`/api/mining/farms/${encodeURIComponent(id)}/overclock`, { method: 'POST', body: JSON.stringify({ value }) }) }
 export async function repairFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/repair`, { method: 'POST' }) }
 export async function farmManager(id, action) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action }) }) }
+
+// ── Ферма: поле, культуры, машины, топливо ──────────────────────────────────
+
+export async function fetchFarmCatalog() { return request('/api/farm/catalog') }
+export async function fetchMyFarm() { return request('/api/farm/my') }
+export async function buyFarmCells(assetId, blocks = 1) {
+  return request('/api/farm/cells/buy', { method: 'POST', body: JSON.stringify({ assetId, blocks }) })
+}
+export async function farmPlant(assetId, cropId, cellIndices = []) {
+  return request('/api/farm/plant', { method: 'POST', body: JSON.stringify({ assetId, cropId, cellIndices }) })
+}
+export async function farmHarvest(assetId, cellIndices = []) {
+  return request('/api/farm/harvest', { method: 'POST', body: JSON.stringify({ assetId, cellIndices }) })
+}
+export async function buyFuel(liters) {
+  return request('/api/farm/fuel/buy', { method: 'POST', body: JSON.stringify({ liters }) })
+}
+export async function sellStorage(assetId, cropId, qty) {
+  return request('/api/farm/sell-storage', { method: 'POST', body: JSON.stringify({ assetId, cropId, qty }) })
+}
+export async function fetchFarmVehicles() { return request('/api/farm/vehicles') }
+export async function buyFarmVehicle(vehicleId, quantity = 1) {
+  return request('/api/farm/vehicles/buy', { method: 'POST', body: JSON.stringify({ vehicleId, quantity }) })
+}
 
 export {
   API_BASE_URL,

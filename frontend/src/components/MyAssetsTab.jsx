@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchMyAssets, collectAsset, upgradeAsset, sellAsset, fetchCompany,
+  fetchMyAssets, collectAsset, sellAsset, fetchCompany,
   transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
-  collectAllAssets,
+  collectAllAssets, buyMiningUpgrade,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { assetImage } from '../utils/assetImages'
@@ -14,10 +14,12 @@ import { toast } from './Toast'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
 import UpgradeModal from './UpgradeModal'
+import FarmPanel from './FarmPanel'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
-  TrendingUp, Users, Wallet, Building2, KeyRound, X, Gauge, LayoutGrid, Wrench, Package,
-  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, Send, Newspaper, Info,
+  TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
+  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, ChevronLeft, Send, Newspaper, Info,
+  Pickaxe, Factory, Mountain, Warehouse, Sprout,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -28,6 +30,13 @@ const TYPE_TABS = [
   { id: 'realestate', icon: Home },
   { id: 'car', icon: Car },
   { id: 'business', icon: Briefcase },
+  // Инфраструктурные активы (покупаются на вкладке «Рынок»): заводы, источники
+  // ресурсов, склады. Без этих вкладок купленные активы не отображались в
+  // «Моём имуществе», хотя записи создавались в user_assets — выглядело как
+  // «покупка не сработала». Согласовано с backend/assets.py ASSET_TYPES.
+  { id: 'factory', icon: Factory },
+  { id: 'source', icon: Mountain },
+  { id: 'warehouse', icon: Warehouse },
 ]
 
 // «Изображения» объектов (эмодзи-баннеры вместо фото — работает без внешних ассетов)
@@ -37,7 +46,10 @@ const ASSET_EMOJI = {
   itstudio_basic: '💻', itstudio_medium: '💻', itstudio_advanced: '💻', itstudio_premium: '💻',
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
 }
-const TYPE_EMOJI = { realestate: '🏠', business: '🏢', car: '🚗' }
+const TYPE_EMOJI = {
+  realestate: '🏠', business: '🏢', car: '🚗',
+  factory: '🏭', source: '⛏️', warehouse: '🏬',
+}
 
 // Пресеты срока аренды (в часах) — кнопки в модалке сдачи в аренду.
 const RENT_DURATIONS = [
@@ -83,6 +95,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [giftModal, setGiftModal] = useState(null)               // актив, передаваемый игроку
   const [giftName, setGiftName] = useState('')
   const [mediaModal, setMediaModal] = useState(false)            // разоблачение в СМИ (актив «Медиахолдинг»)
+  const [fieldModal, setFieldModal] = useState(null)             // актив-поле с открытой панелью управления
   const menuRef = useRef(null)
 
   // Закрытие меню «Взаимодействие» по клику вне него.
@@ -253,7 +266,8 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
 
   // IT-студия: единая закупка комплектующих. Открывает модалку с обоими
   // видами закупки (материалы дохода бизнеса + расходники студии) — источник
-  // цен: fetchMaterialsPrice (доход) и studio.material (студия).
+// Закупка IT-студии временно отключена, но openSupplies оставлен на случай возврата механики.
+  // eslint-disable-next-line no-unused-vars
   const openSupplies = async (asset) => {
     const studio = studios.find(x => x.assetId === asset.id) || null
     setSuppliesModal({ asset, studio })
@@ -298,8 +312,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
   }
 
-  // Атака/защита требуют карты «Крыши города» (список целей + актуальный
-  // конфиг цены/материалов) — подгружаем лениво, только когда открывают заказ.
+// Атака/защита IT-студии временно отключены в меню имущества (см. buildActions),
+// но openOrder + ItStudioOrderModal/инфраструктура оставлены — чтобы быстро
+// вернуть механику без восстановления импортов и логики.
+  // eslint-disable-next-line no-unused-vars
   const openOrder = async (mode) => {
     setOrderModal({ mode })
     if (!cityMap) {
@@ -366,6 +382,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const buildActions = (a) => {
     const busy = busyId === a.id
     const isCar = a.type === 'car'
+    const isRealEstate = a.type === 'realestate'
     const actions = []
 
     if (!isCar && a.profitPerHour > 0) {
@@ -388,29 +405,25 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => setTuneModal(a),
       })
     }
+    // Улучшение «Майнинг» для дома: покупается ровно 1 раз, цена basement*10000.
+    // Показывается только при наличии подвала (available) и только если ещё не куплено.
+    if (isRealEstate && a.mining?.available && !a.mining?.purchased) {
+      actions.push({
+        key: 'mining-buy', className: 'upgrade', disabled: busy,
+        icon: <Pickaxe size={15} />,
+        label: t('mining.upgradeAction', { cost: formatMoney(a.mining.cost) }),
+        onClick: () => askAct(a.id, buyMiningUpgrade, 'mining.bought', {
+          title: t('mining.upgradeTitle'),
+          message: t('mining.confirm', { cost: formatMoney(a.mining.cost), income: formatMoney(a.mining.incomePerHour) }),
+        }),
+      })
+    }
     if (a.type === 'business' && !a.slug?.startsWith('itstudio_')) {
       actions.push({
         key: 'materials', disabled: busy, icon: <Package size={15} />,
         label: t('materials.buy') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
         onClick: () => openMaterials(a),
       })
-    }
-    if (a.slug?.startsWith('itstudio_')) {
-      const s = studios.find(x => x.assetId === a.id)
-      if (s?.pendingJob) {
-        actions.push({ key: 'itstudio-pending', disabled: true, info: true, icon: <Package size={13} />, label: t('itstudio.pending') })
-      } else {
-        // IT-студия: единая закупка комплектующих объединяет материалы для
-        // буста дохода бизнеса и расходники для атак/защиты студии — оба
-        // эффекта сохраняются (см. openSupplies / suppliesModal).
-        actions.push({
-          key: 'itstudio-supplies', disabled: busy, icon: <Package size={15} />,
-          label: t('itstudio.buySupplies') + (a.materialsBoostPct > 0 ? ` (+${Math.round(a.materialsBoostPct * 100)}%)` : ''),
-          onClick: () => openSupplies(a),
-        })
-        actions.push({ key: 'itstudio-attack', disabled: busy, icon: <Swords size={15} />, label: t('itstudio.attack'), onClick: () => openOrder('attack') })
-        actions.push({ key: 'itstudio-defense', disabled: busy, icon: <ShieldPlus size={15} />, label: t('itstudio.defense'), onClick: () => openOrder('defense') })
-      }
     }
     // Медиахолдинг: заказ разоблачения в СМИ против компании-конкурента.
     if (a.slug === 'media_holding') {
@@ -420,7 +433,16 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => { setMediaModal(true); setMenuOpenId(null) },
       })
     }
-    if (isCompanyOwner) {
+    // Поле (источник category='field'): кнопка «Управление полем» — заглушка,
+    // панель управления пока пустая (см. below по fieldModal).
+    if (a.type === 'source' && a.category === 'field') {
+      actions.push({
+        key: 'manage-field', disabled: busy, icon: <Sprout size={15} />,
+        label: t('field.manage'),
+        onClick: () => { setFieldModal(a); setMenuOpenId(null) },
+      })
+    }
+    if (isCompanyOwner && a.type !== 'realestate') {
       actions.push({
         key: 'toCompany', disabled: busy, icon: <Building2 size={15} />, label: t('myassets.toCompany'),
         onClick: () => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) }),
@@ -477,6 +499,21 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
           <b>{s.material.qty}</b>
         </div>
       </div>
+    )
+  }
+
+  // Панель управления полем: когда открыта (fieldModal), заменяем весь список
+  // активов полной панелью фермы (сетка клеток, склад, топливо, машины).
+  // Кнопка «Назад» внутри панели возвращает к списку источников.
+  if (fieldModal) {
+    return (
+      <FarmPanel
+        assetId={fieldModal.id}
+        assetName={t(`assetNames.${fieldModal.slug}`, fieldModal.name)}
+        onBack={() => setFieldModal(null)}
+        balance={balance}
+        onBalanceChange={onBalanceChange}
+      />
     )
   }
 
@@ -554,6 +591,9 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                     </>
                   )}
                   {a.rooms != null && <div className="asset-stat"><span>{t('realestate.rooms')}</span><b>{a.rooms}</b></div>}
+                  {a.basement != null && a.basement > 0 && (
+                    <div className="asset-stat"><span>{t('realestate.basement')}</span><b>{a.basement}</b></div>
+                  )}
                   {a.meta?.tax != null && <div className="asset-stat"><span>{t('myassets.tax')}</span><b className="down">${a.meta.tax}{t('units.perHour')}</b></div>}
                   {a.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{a.meta.prestige}</b></div>}
                   {isCar && <div className="asset-stat"><span><Gauge size={12} /> {t('car.condition')}</span><b className="up">{t(`car.cond_${Math.min(a.level, 3)}`, t('car.cond_1'))}</b></div>}
@@ -566,7 +606,12 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   <div className="asset-hint" title={t('car.rentalOnlyHint')}><Info size={13} /> {t('car.rentalOnly')}</div>
                 )}
                 {renderRentalStatus(a)}
-                {renderStudio(a)}
+                {a.type === 'realestate' && a.mining?.purchased && (
+                  <div className="asset-rental rented" title={t('mining.active')}>
+                    <Pickaxe size={13} /> {t('mining.active')} · +${formatMoney(a.mining.incomePerHour)}{t('units.perHour')}
+                  </div>
+                )}
+                {a.slug?.startsWith('itstudio_') ? null : renderStudio(a)}
 
                 <div className="asset-interact" ref={menuOpenId === a.id ? menuRef : null}>
                   <button className="asset-interact-btn" disabled={busy}

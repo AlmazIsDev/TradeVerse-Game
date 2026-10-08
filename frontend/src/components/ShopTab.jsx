@@ -1,53 +1,66 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// NEXUS · Магазин оборудования.
+// Доступные категории: gpu, cpu, case, supplies (расходники).
+// Дома и бизнесы живут на отдельной вкладке «Рынок» (MarketTab).
+// Источник каталога: GET /api/shop/catalog — бэкенд отдаёт и базовые
+// позиции (gpu-cc-0-0, psu-500, …), и полные админские серии
+// (admin-gpu-1..90, admin-cpu-1..90, admin-case-1..90, admin-supply-*).
+// Имена и id согласованы с frontend/src/utils/shopCatalog.js.
+// Карточка компактная: иконка, категория, имя, характеристика, цена и кнопка
+// «Купить». Количество/итоговая цена/баланс — в модалке BuyModal.
+// Покупка железа → POST /api/shop/buy.
+// ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchShopCatalog, buyHardware, sellHardware, fetchInventory } from '../services/api'
-import { formatMoney } from './TransactionsPanel'
-import { hwName } from '../utils/hwName'
-import ConfirmDialog from './ConfirmDialog'
-import { toast } from './Toast'
 import {
-  Monitor, Cpu, HardDrive, Zap, Fan, Box, Server, Battery, Network,
-  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart, Minus, Plus,
+  fetchShopCatalog,
+  buyHardware,
+} from '../services/api'
+import { formatMoney } from './TransactionsPanel'
+// Модалка покупки в едином стиле с рынком: товар → количество → баланс → цена
+// за шт. → итого → кнопка «Купить». Старая BuyModal.jsx больше не используется
+// (если где-то ещё — не трогаем).
+import { hwName } from '../utils/hwName'
+import ShopBuyModal from './ShopBuyModal'
+import { toast } from './Toast'
+// ── Иконки (lucide-react). ───────────────────────────────────────────────
+import {
+  Monitor, Cpu, Box, Package, MemoryStick, HardDrive, Snowflake, Zap, CircuitBoard,
+  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
 } from 'lucide-react'
 
-// Магазин оборудования NEXUS — единый каталог всех комплектующих.
-// Реиспользует существующий backend /api/shop (каталог + покупка).
+// Фильтр-пилюли: категории магазина (дома убраны — они на «Рынке»).
+// "supplies" — расходники с бэкенда (см. /api/shop/catalog).
 const CATEGORIES = [
-  { id: '', icon: ShoppingCart },        // Все
+  { id: '', icon: ShoppingCart },            // Все
   { id: 'gpu', icon: Monitor },
   { id: 'cpu', icon: Cpu },
-  { id: 'motherboard', icon: Cpu },
-  { id: 'ram', icon: HardDrive },
+  { id: 'motherboard', icon: CircuitBoard },
+  { id: 'ram', icon: MemoryStick },
   { id: 'ssd', icon: HardDrive },
+  { id: 'cooling', icon: Snowflake },
   { id: 'psu', icon: Zap },
-  { id: 'cooling', icon: Fan },
   { id: 'case', icon: Box },
-  { id: 'rack', icon: Server },
-  { id: 'fan', icon: Fan },
-  { id: 'ups', icon: Battery },
-  { id: 'network', icon: Network },
+  { id: 'supplies', icon: Package },
 ]
 
 const CAT_COLOR = {
-  gpu: '#818cf8', cpu: '#a855f7', motherboard: '#0ea5e9', ram: '#22d3ee',
-  ssd: '#34d399', psu: '#eab308', cooling: '#06b6d4', case: '#94a3b8',
-  rack: '#64748b', fan: '#38bdf8', ups: '#f59e0b', network: '#818cf8',
+  gpu: '#818cf8', cpu: '#a855f7', motherboard: '#06b6d4', ram: '#10b981',
+  ssd: '#eab308', cooling: '#0ea5e9', psu: '#f59e0b', case: '#94a3b8',
+  supplies: '#f97316',
 }
 
 function specLine(cat, s = {}, t) {
   switch (cat) {
     case 'gpu': return `${s.hashrate >= 1000 ? (s.hashrate / 1000).toFixed(1) + 'k' : s.hashrate} H/s · ${s.power}W`
     case 'cpu': return `${t('units.cores', { count: s.cores })} · ${s.power}W`
-    case 'motherboard': return `${t('units.gpuSlots', { count: s.gpuSlots })}`
-    case 'ram': return `${s.gb} ${t('units.gb')}`
-    case 'ssd': return `${s.gb} ${t('units.gb')}`
-    case 'psu': return `${s.power} W`
-    case 'cooling': return `${s.cooling} ${t('units.cooling')}`
-    case 'fan': return `${s.cooling} ${t('units.cooling')} · ${s.power}W`
+    case 'motherboard': return `${s.gpuSlots || 0} GPU · ${s.power || 0}W`
+    case 'ram': return `${s.gb} ГБ · ${s.power || 0}W`
+    case 'ssd': return `${s.gb} ГБ · ${s.power || 0}W`
+    case 'cooling': return `${s.cooling || 0} Вт охл. · ${s.power || 0}W`
+    case 'psu': return `${s.power || 0}W`
     case 'case': return `${t('units.slots', { count: s.slots })}`
-    case 'rack': return `${s.slots} ${t('units.gpuCap')}${s.industrial ? ' · ' + t('units.industrial') : ''}`
-    case 'ups': return `${s.backup} VA`
-    case 'network': return `${s.speed >= 1000 ? (s.speed / 1000) + ' ' + t('units.gbit') : s.speed + ' ' + t('units.mbit')}`
+    case 'supplies': return t(`supplies.${s.kind}`, s.kind || '')
     default: return ''
   }
 }
@@ -61,31 +74,37 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState('asc')
-  const [busyId, setBusyId] = useState(null)
-  const [confirm, setConfirm] = useState(null)   // { item, qty } awaiting purchase confirmation
-  const [sellConfirm, setSellConfirm] = useState(null) // { item, qty } awaiting sale
-  const [qty, setQty] = useState({})              // itemId -> quantity to buy
-  const [owned, setOwned] = useState({})          // itemId -> count in inventory
+  // ShopBuyModal: выбранный товар (открывает модалку покупки) или null.
+  // Продажи в магазине больше нет — упращено: карточка показывает только
+  // кнопку «Купить», которая открывает ShopBuyModal.
+  const [buyItem, setBuyItem] = useState(null)
+  // busy — пока идёт POST /api/shop/buy (блокирует кнопку и крестик модалки).
+  const [buyBusy, setBuyBusy] = useState(false)
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 250)
     return () => clearTimeout(id)
   }, [searchInput])
 
-  const qtyOf = (id) => Math.max(1, Math.min(1000, qty[id] || 1))
-  const setItemQty = (id, v) => setQty(q => ({ ...q, [id]: Math.max(1, Math.min(1000, v || 1)) }))
+  // Локальный qty-стейт упразднён — см. handleBuyConfirm ниже.
 
-  const loadInventory = useCallback(async () => {
-    try {
-      const inv = await fetchInventory()
-      setOwned(Object.fromEntries((inv || []).map(i => [i.itemId, i.count])))
-    } catch { /* инвентарь необязателен для магазина */ }
-  }, [])
+  // loadInventory упразднён: карточка больше не показывает «В наличии» /
+  // «Продать» — это переехало в MyAssetsTab.
+// ── Загрузка каталога ──────────────────────────────────────────────
+// Железо/расходники: fetchShopCatalog(category) — бэкенд отдаёт и базовые
+// позиции (gpu-cc-0-0, psu-500, …), и полные админские серии
+// (admin-gpu-1..90, admin-cpu-1..90, admin-case-1..90, admin-supply-*).
+// Дома и бизнесы в магазине больше не продаются — они на «Рынке» (MarketTab).
+async function loadShopItems(category) {
+  // Бэкенд отдаёт и базовые, и админские позиции (см. backend/shop.py).
+  return await fetchShopCatalog(category || undefined)
+}
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setItems(await fetchShopCatalog(category || undefined))
+      const items = await loadShopItems(category)
+      setItems(items)
       setError(null)
     } catch (err) {
       setError(err.message)
@@ -95,38 +114,41 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   }, [category])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { loadInventory() }, [loadInventory])
+  // loadInventory удалён: карточка больше не показывает инвентарь.
 
-  const buy = async (item, n) => {
-    setBusyId(item.id)
+// Покупка: вызывает бэкенд (POST /api/shop/buy для железа/расходников) и
+// обновляет баланс игрока после успешной транзакции. Дома/бизнесы покупаются
+// на вкладке «Рынок» (MarketTab), здесь их нет.
+  const handleBuyConfirm = async (qty) => {
+    const item = buyItem
+    if (!item) return
+    // Не закрываем модалку сразу — пусть крутится «Загрузка…», и только после
+    // успешного ответа сервера закрываем. Если ошибка — модалка остаётся
+    // открытой, чтобы игрок мог повторить или скорректировать количество.
+    setBuyBusy(true)
     try {
-      const res = await buyHardware(item.id, n)
-      onBalanceChange?.(res.balance)
-      toast(t('market.bought'))
-      await Promise.all([load(), loadInventory()])   // цены могли сдвинуться
+      const res = await buyHardware(item.id, qty)
+      if (res && typeof res.balance === 'number' && onBalanceChange) {
+        onBalanceChange(res.balance)
+      }
+      const total = res?.total != null ? res.total : (item.price * qty)
+      toast(t('market.bought', { defaultValue: 'Куплено' }) + ` — $${formatMoney(total)}`)
+      setBuyItem(null)
     } catch (err) {
-      toast(err.message, 'error')
+      toast(err?.message || t('common.error', { defaultValue: 'Ошибка' }))
     } finally {
-      setBusyId(null)
+      setBuyBusy(false)
     }
   }
 
-  const sell = async (item, n) => {
-    setBusyId(item.id)
-    try {
-      const res = await sellHardware(item.id, n)
-      onBalanceChange?.(res.balance)
-      toast(t('shop.sold', { qty: res.quantity, refund: formatMoney(res.refund) }))
-      await Promise.all([load(), loadInventory()])
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setBusyId(null)
-    }
-  }
+  // Категории, которые показываются в магазине. Дома/бизнесы отсеиваются —
+  // они на «Рынке» (MarketTab).
+  const SHOP_CATEGORIES = new Set([
+    'gpu', 'cpu', 'motherboard', 'ram', 'ssd', 'cooling', 'psu', 'case', 'supplies',
+  ])
 
   const view = useMemo(() => {
-    let r = items
+    let r = items.filter(i => SHOP_CATEGORIES.has(i.category))
     if (search) r = r.filter(i => (i.name || '').toLowerCase().includes(search))
     return [...r].sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price)
   }, [items, search, sortOrder])
@@ -137,7 +159,6 @@ function ShopTab({ balance = 0, onBalanceChange }) {
         <ShoppingCart size={22} className="icon" />
         <h2 className="tab-title">NEXUS · {t('nav.shop')}</h2>
       </div>
-      <p className="shop-subtitle">{t('shop.nexusDesc')}</p>
 
       <div className="market-toolbar">
         <div className="market-cats">
@@ -177,70 +198,41 @@ function ShopTab({ balance = 0, onBalanceChange }) {
           {view.map(item => {
             // Цвет по мощности/тиру приходит из каталога (item.color); категорийный — запасной.
             const color = item.color || CAT_COLOR[item.category] || '#0071e3'
-            const n = qtyOf(item.id)
-            const affordable = balance >= item.price * n
-            const have = owned[item.id] || 0
+            // busy-флаг не нужен — кнопка открывает ShopBuyModal, покупка асинхронна.
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
-            const busy = busyId === item.id
+            // Карточка железа: компактная. Бэкенд отдаёт все позиции
+            // (включая admin-gpu/cpu/case/supply), кнопка «Купить» всегда активна.
+            const affordable = balance >= item.price
             return (
-              <div key={item.id} className="gpu-card" style={{ borderColor: `${color}55` }}>
+              <div key={item.id} className="gpu-card gpu-card-compact" style={{ borderColor: `${color}55` }}>
                 <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={20} /></span>
                 <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
                 <span className="gpu-card-name">{hwName(item, t)}</span>
                 <div className="gpu-card-specs"><span>{specLine(item.category, item.specs, t)}</span></div>
-                {item.specs?.power > 0 && (
-                  <div className="gpu-card-spec-row"><Zap size={11} style={{ color }} /> {t('shop.powerRow', { w: item.specs.power })}</div>
-                )}
-                {item.specs?.cooling > 0 && (
-                  <div className="gpu-card-spec-row"><Fan size={11} style={{ color }} /> {item.coolingLabel || t('shop.coolingRow', { w: item.specs.cooling })}</div>
-                )}
-                {have > 0 && <div className="gpu-card-owned">{t('shop.owned', { count: have })}</div>}
                 <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
-                <div className="gpu-card-qty">
-                  <button type="button" className="gpu-qty-btn" disabled={busy || n <= 1} onClick={() => setItemQty(item.id, n - 1)}><Minus size={12} /></button>
-                  <input type="number" min="1" max="1000" value={n} disabled={busy}
-                    onChange={e => setItemQty(item.id, parseInt(e.target.value, 10))} />
-                  <button type="button" className="gpu-qty-btn" disabled={busy || n >= 1000} onClick={() => setItemQty(item.id, n + 1)}><Plus size={12} /></button>
-                </div>
                 <button
                   className="gpu-card-buy"
                   style={{ background: affordable ? color : undefined }}
-                  disabled={!affordable || busy}
-                  onClick={() => setConfirm({ item, qty: n })}
+                  disabled={!affordable}
+                  onClick={() => setBuyItem(item)}
                 >
-                  {busy ? t('bank.processing') : affordable ? `${t('common.buy')}${n > 1 ? ` ×${n}` : ''}` : t('stocks.insufficientFunds')}
+                  {affordable ? t('common.buy') : t('stocks.insufficientFunds')}
                 </button>
-                {have > 0 && (
-                  <button className="gpu-card-sell" disabled={busy}
-                    onClick={() => setSellConfirm({ item, qty: Math.min(n, have) })}>
-                    {t('shop.sell')}
-                  </button>
-                )}
               </div>
             )
           })}
         </div>
       )}
 
-      <ConfirmDialog
-        open={!!confirm}
-        busy={busyId === confirm?.item?.id}
-        title={t('common.buy')}
-        message={confirm ? t('confirm.buyHardware', { name: hwName(confirm.item, t), price: formatMoney(confirm.item.price * confirm.qty) }) : ''}
-        confirmLabel={t('common.buy')}
-        onConfirm={async () => { const c = confirm; setConfirm(null); await buy(c.item, c.qty) }}
-        onCancel={() => setConfirm(null)}
-      />
-
-      <ConfirmDialog
-        open={!!sellConfirm}
-        danger
-        busy={busyId === sellConfirm?.item?.id}
-        title={t('shop.sell')}
-        message={sellConfirm ? t('shop.confirmSell', { qty: sellConfirm.qty, name: hwName(sellConfirm.item, t) }) : ''}
-        confirmLabel={t('shop.sell')}
-        onConfirm={async () => { const c = sellConfirm; setSellConfirm(null); await sell(c.item, c.qty) }}
-        onCancel={() => setSellConfirm(null)}
+      {/* Модалка покупки в едином стиле с рынком:
+          товар → количество → баланс → цена/шт. → итого → «Купить». */}
+      <ShopBuyModal
+        open={!!buyItem}
+        item={buyItem}
+        balance={balance}
+        busy={buyBusy}
+        onConfirm={handleBuyConfirm}
+        onCancel={() => { if (!buyBusy) setBuyItem(null) }}
       />
     </div>
   )

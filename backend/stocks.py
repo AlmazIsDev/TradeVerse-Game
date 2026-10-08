@@ -475,22 +475,16 @@ async def get_events(
 
 
 async def _credit_company_budget(db, stock: dict, amount: float):
-    """Перечисляет выручку/списывает выкуп по бирже в бюджет компании-эмитента.
+    """Перечисляет выручку от покупки акции компании в бюджет эмитента.
 
     Акции с привязкой к компании (`companyId`) — инструмент привлечения капитала:
-    покупка на бирже пополняет бюджет (amount>0), продажа выкупает у рынка из
-    бюджета (amount<0, но не уводит бюджет в минус)."""
+    покупка на бирже пополняет бюджет. Выкуп при продаже делается в trade_stock
+    обязательным гейтом до выплаты продавцу — не здесь (раньше условный $inc
+    молча не срабатывал при пустом бюджете, что позволяло печатать деньги)."""
     cid = stock.get("companyId")
     if not cid or not ObjectId.is_valid(cid):
         return
-    if amount >= 0:
-        await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
-    else:
-        # Выкуп у продавца: не даём бюджету уйти в минус (условный $inc).
-        await db.companies.update_one(
-            {"_id": ObjectId(cid), "budget": {"$gte": round(-amount, 2)}},
-            {"$inc": {"budget": round(amount, 2)}},
-        )
+    await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": round(amount, 2)}})
 
 
 @router.post("/trade")
@@ -578,12 +572,32 @@ async def trade_stock(
         # (привлечение капитала). Деньги не «сгорают», а перетекают эмитенту.
         await _credit_company_budget(db, stock, cost)
     else:  # sell
+        # Компания-эмитент выкупает акции у продавца ИЗ БЮДЖЕТА. Списание
+        # обязательное и идёт ДО выплаты продавцу: раньше оно было best-effort —
+        # при пустом бюджете условный $inc молча не срабатывал, а продавцу деньги
+        # начислялись. Цикл «купить свои акции → вывести бюджет → продать акции»
+        # печатал деньги из воздуха.
+        cid = stock.get("companyId")
+        if cid and ObjectId.is_valid(cid):
+            budget_paid = await db.companies.find_one_and_update(
+                {"_id": ObjectId(cid), "budget": {"$gte": cost}},
+                {"$inc": {"budget": -cost}},
+            )
+            if not budget_paid:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Компания не может выкупить акции: недостаточно средств в бюджете",
+                )
+
         updated_holding = await db.stock_holdings.find_one_and_update(
             {"userId": user_id, "symbol": symbol, "quantity": {"$gte": quantity}},
             {"$inc": {"quantity": -quantity, "invested": -cost}},
             return_document=True,
         )
         if not updated_holding:
+            if cid and ObjectId.is_valid(cid):
+                # Страховка от гонки (должно быть поймано выше) — не теряем деньги бюджета.
+                await db.companies.update_one({"_id": ObjectId(cid)}, {"$inc": {"budget": cost}})
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно акций для продажи")
 
         proceeds = round(cost - fee, 2)
@@ -606,8 +620,7 @@ async def trade_stock(
             f"Продажа {quantity} {symbol}", symbol=symbol, price=fill_price,
             balance_after=new_balance, meta={"quantity": quantity, "action": "sell", "fee": fee},
         )
-        # Акция компании: рынок продаёт обратно эмитенту — выкуп из бюджета.
-        await _credit_company_budget(db, stock, -cost)
+        # Выкуп из бюджета компании уже выполнен выше — гейтом перед выплатой.
 
     await db.stock_events.insert_one({
         "symbol": symbol,

@@ -644,13 +644,6 @@ body {
   object-fit: cover;
 }
 
-/* SIDEBAR FOOTER (Настройки) */
-.sidebar-footer {
-  margin-top: auto;
-  padding: var(--spacing-md) var(--spacing-md) 0;
-  border-top: 1px solid var(--hairline);
-}
-
 /* DASHBOARD CONTENT */
 .dashboard-content {
   flex: 1;
@@ -1763,9 +1756,13 @@ body {
     width: 52px;
     padding: 0;
   }
+  .sidebar-footer {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 
   .sidebar-logo {
-    margin: var(--spacing-xl) 0;
+    margin: var(--spacing-md) 0;
     padding: 0;
     justify-content: center;
   }
@@ -4282,7 +4279,7 @@ body {
 
 .sidebar-footer {
   margin-top: auto;
-  padding: 0;
+  padding: var(--spacing-md) var(--spacing-md) 0;
   border-top: 1px solid var(--hairline);
 }
 

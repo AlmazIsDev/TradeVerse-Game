@@ -265,9 +265,10 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
     const price = prices[res] || 0
     return (
       <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-        <input type="number" min="0" step="0.1" style={{ width: 64 }}
+        <input type="number" min="0" step="0.1" style={{ width: 84 }}
           value={sellQty[`${unitId}:${res}`] ?? ''}
-          placeholder={`${t('prod.sell', 'Продать')} ($${formatMoney(price)})`}
+          placeholder={formatMoney(price)}
+          title={`${t('prod.sell', 'Продать')} — ${formatMoney(price)} $/${t('units.kg', 'кг')}`}
           onChange={e => setSellQty(s => ({ ...s, [`${unitId}:${res}`]: e.target.value }))} />
         <button className="farm-btn" disabled={busy}
           onClick={() => {

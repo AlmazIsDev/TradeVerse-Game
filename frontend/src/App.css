@@ -430,7 +430,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-xl);
+  padding: var(--spacing-sm) var(--spacing-xl);
   background: var(--glass-bg);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
@@ -476,6 +476,8 @@ body {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
+  /* После удаления логотипа хедер — один флекс-чайлд; прижимаем блок к правому краю. */
+  margin-left: auto;
 }
 
 .header-icon-btn {
@@ -502,7 +504,7 @@ body {
   background: linear-gradient(135deg, rgba(0, 113, 227, 0.12), rgba(0, 113, 227, 0.04));
   border: 1px solid rgba(0, 113, 227, 0.2);
   border-radius: var(--radius-md);
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
@@ -550,7 +552,7 @@ body {
 /* Profile Card Visibility Button */
 .profile-card-visibility-btn {
   position: absolute;
-  top: 8px;
+  top: 2px;
   right: 8px;
   width: 28px;
   height: 28px;
@@ -1879,14 +1881,21 @@ body {
     overflow-y: auto;
   }
 
-  /* Dropdown уведомлений на телефонах: фиксированная панель под шапкой во всю
-     ширину (позиционирование от кнопки-колокольчика выталкивало панель за
-     левый край узкого экрана). Высота шапки фикс: 2×10px паддинг + 38px ряд. */
+  /* Dropdown уведомлений на телефонах: раскрываем от шапки во всю её ширину.
+     ВАЖНО: position: fixed здесь нельзя — backdrop-filter шапки делает её
+     содержащим блоком для fixed-потомков, и панель «fixed» позиционируется
+     от хедера, а не от вьюпорта (отсюда вылет за экран и боковой скролл).
+     Обёртке колокольчика снимаем position: relative, тогда absolute-панель
+     привязывается к самой шапке и обрезается по её краям. */
+  .notification-wrapper {
+    position: static;
+  }
+
   .notification-dropdown {
-    position: fixed;
-    top: 64px;
-    left: 10px;
-    right: 10px;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 8px;
+    right: 8px;
     width: auto;
   }
 }

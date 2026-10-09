@@ -29,15 +29,22 @@ function formatMoney(n) {
   })
 }
 
-/** Компактный формат для больших сумм (12.3M, 4.5B) — чтобы числа не вылезали из блоков. */
+/** Компактный формат для больших сумм (3,5 млн, 12,30 трлн) — чтобы числа не вылезали из блоков. */
 function formatCompact(n) {
   const v = Number(n || 0)
   const abs = Math.abs(v)
-  if (abs >= 1e12) return (v / 1e12).toFixed(2) + 'T'
-  if (abs >= 1e9) return (v / 1e9).toFixed(2) + 'B'
-  if (abs >= 1e6) return (v / 1e6).toFixed(2) + 'M'
-  if (abs >= 1e5) return (v / 1e3).toFixed(1) + 'K'
+  const s = (x) => String(x).replace('.', ',')
+  if (abs >= 1e12) return s((v / 1e12).toFixed(2)) + ' трлн'
+  if (abs >= 1e9) return s((v / 1e9).toFixed(2)) + ' млрд'
+  if (abs >= 1e6) return s((v / 1e6).toFixed(2)) + ' млн'
+  if (abs >= 1e5) return s((v / 1e3).toFixed(1)) + ' тыс'
   return v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** Полная сумма до миллиона, компактная (млн/млрд) выше — числа не переносятся по цифрам. */
+function formatMoneyShort(n) {
+  const v = Number(n || 0)
+  return Math.abs(v) >= 1e6 ? formatCompact(v) + ' $' : formatMoney(v) + ' $'
 }
 
 /**
@@ -50,10 +57,17 @@ function formatCompact(n) {
 function formatQty(n) {
   const v = Number(n || 0)
   if (!Number.isFinite(v)) return '0'
-  if (Number.isInteger(v)) return v.toLocaleString('ru-RU')
+  if (Number.isInteger(v)) {
+    // Целые с хвостом нулей (3 500 000) компактно: «3,50 млн» вместо «3,5e+6».
+    if (Math.abs(v) >= 1e6) return formatCompact(v)
+    return v.toLocaleString('ru-RU')
+  }
   const [int, frac = ''] = v.toFixed(8).replace(/0+$/, '').split('.')
   // Пыль меньше 1e-8 округлилась бы в ноль — показываем значащие цифры как есть.
-  if (!frac && v !== 0) return v.toPrecision(2).replace('.', ',')
+  if (!frac && v !== 0) {
+    if (Math.abs(v) >= 1e6) return formatCompact(v)
+    return v.toPrecision(2).replace('.', ',')
+  }
   const intPart = Number(int).toLocaleString('ru-RU')
   return frac ? `${intPart},${frac}` : intPart
 }
@@ -229,5 +243,5 @@ function TransactionsPanel({ refreshKey = 0, category, companyId }) {
   )
 }
 
-export { formatMoney, formatCompact, formatQty, formatDateTime }
+export { formatMoney, formatMoneyShort, formatCompact, formatQty, formatDateTime }
 export default TransactionsPanel

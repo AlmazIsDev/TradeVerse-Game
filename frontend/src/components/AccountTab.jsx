@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchWeeklyAnalytics, fetchActiveWorldEvents } from '../services/api'
 import { useApiOnMount } from '../hooks/useApi'
-import TransactionsPanel, { formatMoney } from './TransactionsPanel'
+import TransactionsPanel, { formatMoneyShort } from './TransactionsPanel'
 import AnalyticsChart from './AnalyticsChart'
 import {
   TrendingUp, TrendingDown, DollarSign, Activity, AlertTriangle,
@@ -57,21 +57,21 @@ function AccountTab({ balance = 0 }) {
           <div className="stat-icon"><DollarSign size={24} className="icon" /></div>
           <div className="stat-info">
             <span className="stat-label">{t('account.balance')}</span>
-            <span className="stat-value">{formatMoney(displayBalance)} $</span>
+            <span className="stat-value">{formatMoneyShort(displayBalance)}</span>
           </div>
         </div>
         <div className="stat-card stat-income">
           <div className="stat-icon"><TrendingUp size={24} className="icon" /></div>
           <div className="stat-info">
             <span className="stat-label">{t('account.earned')}</span>
-            <span className="stat-value">+{formatMoney(analytics.income)} $</span>
+            <span className="stat-value">+{formatMoneyShort(analytics.income)}</span>
           </div>
         </div>
         <div className="stat-card stat-expense">
           <div className="stat-icon"><TrendingDown size={24} className="icon" /></div>
           <div className="stat-info">
             <span className="stat-label">{t('account.spent')}</span>
-            <span className="stat-value">-{formatMoney(analytics.expense)} $</span>
+            <span className="stat-value">-{formatMoneyShort(analytics.expense)}</span>
           </div>
         </div>
         <div className={`stat-card ${netPositive ? 'stat-income' : 'stat-expense'}`}>
@@ -79,7 +79,7 @@ function AccountTab({ balance = 0 }) {
           <div className="stat-info">
             <span className="stat-label">{t('account.netChange')}</span>
             <span className="stat-value">
-              {netPositive ? '+' : '−'}{formatMoney(Math.abs(analytics.net))} $
+              {netPositive ? '+' : '−'}{formatMoneyShort(Math.abs(analytics.net))}
             </span>
             <span className="stat-sub">{t('account.operations')}: {analytics.operations}</span>
           </div>

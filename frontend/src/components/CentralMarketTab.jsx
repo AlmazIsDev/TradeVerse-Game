@@ -470,7 +470,7 @@ function CentralMarketTab() {
                       <span className="centralmarket-lot-price-suffix">/ {t('centralmarket.perItem')}</span>
                     </div>
                     <div className="centralmarket-lot-price-total">
-                      <Package size={11} /> {t('common.total')}: {formatMoney(total)}
+                      <Package size={11} /> {t('common.total')}: {formatMoney(total)} $
                     </div>
                   </div>
 
@@ -499,7 +499,7 @@ function CentralMarketTab() {
                         onClick={() => setBuyLot(lot)}
                       >
                         <ShoppingCart size={13} /> {t('common.buy')}
-                        <span className="centralmarket-lot-btn-price">{formatMoney(total)}</span>
+                        <span className="centralmarket-lot-btn-price">{formatMoney(total)} $</span>
                       </button>
                     </div>
                   )}

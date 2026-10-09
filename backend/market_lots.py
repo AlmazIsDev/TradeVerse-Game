@@ -34,6 +34,7 @@ from admin_perms import get_current_user, require_allowed
 from database import get_db
 from ledger import INCOME, EXPENSE, CAT_MARKET, adjust_balance, record_transaction
 from notifications import push_notification
+from shop import CATALOG_BY_ID
 
 router = APIRouter(prefix="/api/market/lots", tags=["central-market"])
 
@@ -125,13 +126,28 @@ async def _serialize_lots(db, lots: list[dict]) -> list[dict]:
             {"_id": {"$in": [ObjectId(s) for s in seller_ids]}}, {"username": 1}
         ):
             users[str(u["_id"])] = u.get("username", "—")
+    # Старые лоты могли сохраниться без name — добираем: железо из каталога
+    # витрины, активы из user_assets (одним запросом).
+    asset_ids = [
+        ObjectId(l["itemId"]) for l in lots
+        if l.get("kind") == "asset" and not l.get("name") and ObjectId.is_valid(l.get("itemId", ""))
+    ]
+    asset_names = {}
+    if asset_ids:
+        async for a in db.user_assets.find({"_id": {"$in": asset_ids}}, {"name": 1, "slug": 1}):
+            asset_names[str(a["_id"])] = a.get("name") or a.get("slug")
     out = []
     for l in lots:
+        name = l.get("name")
+        if not name and l.get("kind") == "hardware":
+            name = (CATALOG_BY_ID.get(l.get("itemId")) or {}).get("name")
+        if not name and l.get("kind") == "asset":
+            name = asset_names.get(l.get("itemId"))
         out.append({
             "id": str(l["_id"]),
             "kind": l.get("kind"),
             "itemId": l.get("itemId"),
-            "name": l.get("name"),
+            "name": name or l.get("itemId") or "—",
             "qty": l.get("qty", 1),
             "pricePerItem": l.get("pricePerItem"),
             "sellerId": l.get("sellerId"),

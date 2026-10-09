@@ -171,34 +171,39 @@ class MarketDataService:
 
     @staticmethod
     async def stats(db, market: str, symbol: str) -> dict:
-        """Изменение за 24ч/7д/1м/1г, ATH/ATL по накопленной истории."""
-        symbol = symbol.upper()
-        rows = [r async for r in db.price_history.find({"market": market, "symbol": symbol}).sort("ts", 1)]
-        if not rows:
-            return {"ath": None, "atl": None, "changes": {}}
-        prices = [(_aware(r["ts"]), r["price"]) for r in rows]
-        latest = prices[-1][1]
-        ath = max(p for _, p in prices)
-        atl = min(p for _, p in prices)
+        """Изменение за 24ч/7д/1м/1г, ATH/ATL по накопленной истории.
 
-        def change(window: timedelta) -> Optional[float]:
-            cutoff = _now() - window
-            base = None
-            for ts, p in prices:
-                if ts >= cutoff:
-                    base = p
-                    break
-            if base is None or base == 0:
+        Считается агрегацией и точечными выборками по индексу (market, symbol, ts),
+        а НЕ полной выгрузкой истории символа в Python: с бэкфиллом-годом и
+        накопленными снимками у символа тысячи документов, и прежняя выгрузка
+        всей коллекции на каждый /api/market/asset тормозила открытие карточки.
+        """
+        symbol = symbol.upper()
+        base_q = {"market": market, "symbol": symbol}
+        extrema = await db.price_history.aggregate([
+            {"$match": base_q},
+            {"$group": {"_id": None, "ath": {"$max": "$price"}, "atl": {"$min": "$price"}}},
+        ]).to_list(1)
+        if not extrema:
+            return {"ath": None, "atl": None, "changes": {}}
+        latest = await db.price_history.find_one(base_q, {"price": 1}, sort=[("ts", -1)])
+
+        async def change(window: timedelta) -> Optional[float]:
+            # Первая цена в окне — та же семантика, что и у полной выгрузки.
+            base = await db.price_history.find_one(
+                {**base_q, "ts": {"$gte": _now() - window}}, {"price": 1}, sort=[("ts", 1)],
+            )
+            if not base or not base["price"]:
                 return None
-            return round((latest - base) / base * 100, 2)
+            return round((latest["price"] - base["price"]) / base["price"] * 100, 2)
 
         return {
-            "ath": round(ath, 6), "atl": round(atl, 6),
+            "ath": round(extrema[0]["ath"], 6), "atl": round(extrema[0]["atl"], 6),
             "changes": {
-                "24h": change(timedelta(hours=24)),
-                "7d": change(timedelta(days=7)),
-                "1m": change(timedelta(days=30)),
-                "1y": change(timedelta(days=365)),
+                "24h": await change(timedelta(hours=24)),
+                "7d": await change(timedelta(days=7)),
+                "1m": await change(timedelta(days=30)),
+                "1y": await change(timedelta(days=365)),
             },
         }
 

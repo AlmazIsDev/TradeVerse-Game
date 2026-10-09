@@ -1156,6 +1156,8 @@ export {
   logoutUser,
   saveTokens,
   getRefreshToken,
+  getTokenExpiryMs,
+  refreshAndReschedule,
   startTokenRefresh,
   stopTokenRefresh,
 }

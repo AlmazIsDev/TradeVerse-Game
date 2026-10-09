@@ -23,7 +23,7 @@ import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
 import LegalFooter from './LegalFooter'
 import ToastHost from './Toast'
-import { fetchCurrentUser, API_BASE_URL } from '../services/api'
+import { fetchCurrentUser, API_BASE_URL, getTokenExpiryMs, refreshAndReschedule } from '../services/api'
 import { Shield } from 'lucide-react'
 
 const STORAGE_KEY = 'tradeverse_user'
@@ -60,6 +60,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
     let debounce
     let reconnectTimer
     let cancelled = false
+    let reconnectAttempts = 0
     // Всплески событий (напр. серия тиков майнинга) схлопываем в один запрос
     // за баланс/обновление — иначе fetchCurrentUser бил бы на каждое сообщение.
     const scheduleSync = () => {
@@ -70,14 +71,25 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         setRtKey(k => k + 1)
       }, 1200)
     }
-    const connect = () => {
+    const connect = async () => {
       if (cancelled) return
       try {
-        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-        const token = stored.token
+        let stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+        let token = stored.token
         if (!token) return
+        // Истёкший access-токен сервер отклонит сокет (403). Раньше реконнект
+        // каждые 5с с мёртвым токеном зацикливался и сыпал 403 в логи часами —
+        // поэтому перед подключением обновляем токен, если он истёк/истекает.
+        if ((getTokenExpiryMs(token) ?? Infinity) <= Date.now() + 1000) {
+          if (!stored.refresh_token) return   // сессия мертва — forceLogout уже сработал
+          await refreshAndReschedule()
+          stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+          token = stored.token
+          if (!token || (getTokenExpiryMs(token) ?? Infinity) <= Date.now()) return
+        }
         const url = API_BASE_URL.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(token)
         socket = new WebSocket(url)
+        socket.onopen = () => { reconnectAttempts = 0 }
         socket.onmessage = (ev) => {
           let data = null
           try { data = JSON.parse(ev.data) } catch { /* ignore */ }
@@ -102,7 +114,9 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
           clearInterval(ping)
           if (cancelled) return
           // Переподключаемся с актуальным (возможно, уже обновлённым) токеном.
-          reconnectTimer = setTimeout(connect, 5000)
+          // Экспоненциальный backoff (макс. 30с): не долбим сервер при его
+          // недоступности или отклонении сокета.
+          reconnectTimer = setTimeout(connect, Math.min(30000, 1000 * 2 ** reconnectAttempts++))
         }
       } catch { /* ignore — останется polling */ }
     }

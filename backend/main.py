@@ -3,13 +3,14 @@ from __future__ import annotations
 import logging
 import random
 import re
+import time
 from bson import ObjectId
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Query, status
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -167,6 +168,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Access-лог с таймингами ──────────────────────────────────────────────────
+
+
+@app.middleware("http")
+async def access_log_with_timing(request: Request, call_next):
+    """Лог каждого HTTP-запроса: метод, путь, статус и время исполнения (мс).
+
+    Заменяет стандартный access-лог uvicorn (тот не показывает длительность и
+    потому глушится ниже). OPTIONS-preflight не логируем — это шум CORS.
+    """
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    path = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    logger.info("%s %s -> %s (%.0f ms)", request.method, path, response.status_code, elapsed_ms)
+    return response
+
+
+# Увирикний access-лог дублирует middleware выше, но без таймингов.
+logging.getLogger("uvicorn.access").disabled = True
 
 # Роутеры модулей
 app.include_router(economy_router)

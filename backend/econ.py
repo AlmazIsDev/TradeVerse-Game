@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
-from auth import require_admin
+from admin_perms import require_admin
 from database import get_db, find_config_by_key, upsert_config
 
 router = APIRouter(prefix="/api/admin/economy", tags=["economy-admin"])
@@ -75,14 +75,14 @@ class EconConfigUpdate(BaseModel):
 
 
 @router.get("/config")
-async def get_config(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_config(_admin=Depends(require_admin("economy_view")), db: AsyncIOMotorDatabase = Depends(get_db)):
     return await get_econ(db)
 
 
 @router.post("/config")
 async def set_config(
     payload: EconConfigUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("economy_config")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     cfg = await get_econ(db)
@@ -98,16 +98,28 @@ def _asset_value(a: dict) -> float:
 
 
 async def compute_analytics(db: AsyncIOMotorDatabase) -> dict:
-    """Полная сводка состояния экономики проекта."""
+    """Полная сводка состояния экономики проекта.
+
+    Служебные аккаунты (роль admin, legacy-бот) из статистики исключены:
+    их тестовые балансы и обороты раздували капитал, денежную массу и
+    «объём сделок» синтетическими операциями на квадриллионы.
+    """
     # Цены.
     stock_prices = {s["symbol"]: float(s.get("price", 0.0)) async for s in db.stocks.find({}, {"symbol": 1, "price": 1})}
     crypto_prices = {c["symbol"]: float(c.get("price", 0.0)) async for c in db.crypto_assets.find({}, {"symbol": 1, "price": 1})}
+
+    # Служебные аккаунты — не игроки.
+    admin_ids = {str(u["_id"]) async for u in db.users.find({"role": "admin"})}
+    admin_ids.add("bot")  # legacy-идентификатор сделок ботов
+    not_admin = {"userId": {"$nin": list(admin_ids)}}
 
     # Пользователи и наличные.
     users_count = 0
     total_cash = 0.0
     total_warcoin = 0.0
-    async for u in db.users.find({}, {"balance": 1, "warcoin": 1}):
+    async for u in db.users.find({}, {"balance": 1, "warcoin": 1, "role": 1}):
+        if str(u["_id"]) in admin_ids:
+            continue
         users_count += 1
         total_cash += float(u.get("balance", STARTING_BALANCE))
         total_warcoin += float(u.get("warcoin", 0) or 0)
@@ -115,30 +127,30 @@ async def compute_analytics(db: AsyncIOMotorDatabase) -> dict:
     # Позиции.
     stock_value = 0.0
     stock_holdings = 0
-    async for h in db.stock_holdings.find({"quantity": {"$gt": 0}}):
+    async for h in db.stock_holdings.find({"quantity": {"$gt": 0}, **not_admin}):
         stock_holdings += 1
         stock_value += h.get("quantity", 0) * stock_prices.get(h.get("symbol"), 0.0)
     crypto_value = 0.0
-    async for h in db.crypto_holdings.find({"quantity": {"$gt": 0}}):
+    async for h in db.crypto_holdings.find({"quantity": {"$gt": 0}, **not_admin}):
         crypto_value += h.get("quantity", 0.0) * crypto_prices.get(h.get("symbol"), 0.0)
 
     # Физические активы.
     counts = {"realestate": 0, "business": 0, "car": 0}
     asset_value = 0.0
-    async for a in db.user_assets.find({}):
+    async for a in db.user_assets.find(not_admin):
         counts[a.get("type", "realestate")] = counts.get(a.get("type", "realestate"), 0) + 1
         asset_value += _asset_value(a)
 
-    companies_count = await db.companies.count_documents({})
+    companies_count = await db.companies.count_documents({"ownerId": {"$nin": list(admin_ids)}})
     company_budgets = 0.0
-    async for c in db.companies.find({}, {"budget": 1}):
+    async for c in db.companies.find({"ownerId": {"$nin": list(admin_ids)}}, {"budget": 1}):
         company_budgets += float(c.get("budget", 0.0))
 
-    # Объём сделок за 24ч.
+    # Объём сделок за 24ч (без синтетического оборота служебных аккаунтов).
     since = datetime.now(timezone.utc) - timedelta(hours=24)
     daily_volume = 0.0
     daily_ops = 0
-    async for tx in db.transactions.find({"timestamp": {"$gte": since}}, {"amount": 1}):
+    async for tx in db.transactions.find({"timestamp": {"$gte": since}, **not_admin}, {"amount": 1}):
         daily_ops += 1
         daily_volume += float(tx.get("amount", 0.0))
 
@@ -168,5 +180,5 @@ async def compute_analytics(db: AsyncIOMotorDatabase) -> dict:
 
 
 @router.get("/analytics")
-async def analytics(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def analytics(_admin=Depends(require_admin("economy_view")), db: AsyncIOMotorDatabase = Depends(get_db)):
     return await compute_analytics(db)

@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_MINING, adjust_balance, record_transaction
 from econ import get_econ
@@ -740,7 +740,7 @@ async def get_farms(
 
 
 @router.post("/farms", status_code=status.HTTP_201_CREATED)
-async def create_farm(payload: CreateFarm, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def create_farm(payload: CreateFarm, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Создать ферму в конкретном слоте подвала выбранного дома.
 
     Дом должен принадлежать игроку и иметь подвал (basement > 0). Номер слота
@@ -925,7 +925,7 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
 
 
 @router.post("/farms/{farm_id}/install")
-async def install_component(farm_id: str, payload: InstallBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def install_component(farm_id: str, payload: InstallBody, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Установить в ферму свободное оборудование выбранной категории."""
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
@@ -935,7 +935,7 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
 
 
 @router.post("/farms/{farm_id}/install-batch")
-async def install_components_batch(farm_id: str, payload: InstallBatchBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def install_components_batch(farm_id: str, payload: InstallBatchBody, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Установить несколько компонентов одним запросом.
 
     Каждый ставится по очереди (ёмкость зависит от уже установленного), ферма
@@ -986,7 +986,7 @@ async def uninstall_component(farm_id: str, body: dict, current_user: dict = Dep
 
 
 @router.post("/farms/{farm_id}/start")
-async def start_mining(farm_id: str, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def start_mining(farm_id: str, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
     missing = _missing_required(farm)
@@ -1019,7 +1019,7 @@ async def start_mining(farm_id: str, current_user: dict = Depends(get_current_us
 
 
 @router.post("/farms/{farm_id}/stop")
-async def stop_mining(farm_id: str, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def stop_mining(farm_id: str, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
     await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"status": "idle"}})
@@ -1027,7 +1027,7 @@ async def stop_mining(farm_id: str, current_user: dict = Depends(get_current_use
 
 
 @router.post("/farms/{farm_id}/coin")
-async def set_coin(farm_id: str, payload: CoinBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def set_coin(farm_id: str, payload: CoinBody, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
     coin = await db.crypto_assets.find_one({"symbol": payload.symbol.upper()})
@@ -1038,7 +1038,7 @@ async def set_coin(farm_id: str, payload: CoinBody, current_user: dict = Depends
 
 
 @router.post("/farms/{farm_id}/overclock")
-async def set_overclock(farm_id: str, payload: OverclockBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def set_overclock(farm_id: str, payload: OverclockBody, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
     await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"overclock": payload.value}})
@@ -1046,7 +1046,7 @@ async def set_overclock(farm_id: str, payload: OverclockBody, current_user: dict
 
 
 @router.post("/farms/{farm_id}/coolant")
-async def add_coolant(farm_id: str, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def add_coolant(farm_id: str, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Заправить охлаждающую жидкость в ферму.
 
     Списывает 1 ёмкость из инвентаря игрока (user_hardware category='supplies',
@@ -1105,7 +1105,7 @@ async def add_coolant(farm_id: str, current_user: dict = Depends(get_current_use
 
 
 @router.post("/farms/{farm_id}/repair")
-async def repair_farm(farm_id: str, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def repair_farm(farm_id: str, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
     cost = _repair_cost(farm)
@@ -1120,7 +1120,7 @@ async def repair_farm(farm_id: str, current_user: dict = Depends(get_current_use
 
 
 @router.post("/farms/{farm_id}/manager")
-async def manage_manager(farm_id: str, payload: ManagerBody, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def manage_manager(farm_id: str, payload: ManagerBody, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Нанять/повысить/уволить ИИ-управляющего."""
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
@@ -1377,7 +1377,7 @@ async def _load_any_farm(db: AsyncIOMotorDatabase, farm_id: str) -> dict:
 async def admin_update_farm(
     farm_id: str,
     payload: AdminFarmUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     farm = await _load_any_farm(db, farm_id)
@@ -1399,7 +1399,7 @@ async def admin_update_farm(
 @router.delete("/admin/farms/{farm_id}")
 async def admin_delete_farm(
     farm_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     farm = await _load_any_farm(db, farm_id)
@@ -1417,7 +1417,7 @@ async def admin_delete_farm(
 async def admin_transfer_farm(
     farm_id: str,
     payload: AdminTransferBody,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     farm = await _load_any_farm(db, farm_id)

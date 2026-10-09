@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from admin_perms import get_current_user, require_allowed
 from database import get_db
 from ledger import INCOME, EXPENSE, CAT_MARKET, adjust_balance, record_transaction
 from notifications import push_notification
@@ -163,7 +163,7 @@ async def list_lots(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_lot(
     payload: LotCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("centralmarket")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Выставить лот. Владение и количество проверяются на сервере."""
@@ -207,7 +207,7 @@ async def create_lot(
 async def update_lot(
     lot_id: str,
     payload: LotUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("centralmarket")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Изменить свой лот (количество/цена). Количество перепроверяется по инвентарю."""
@@ -258,7 +258,7 @@ async def cancel_lot(
 async def buy_lot(
     lot_id: str,
     payload: LotBuy,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("centralmarket")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить из лота qty штук. Атомарно по лоту; деньги — только через ledger.

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
-from auth import require_admin
+from admin_perms import require_admin
 from database import get_db
 
 router = APIRouter(prefix="/api/admin/economy", tags=["economy-events"])
@@ -129,7 +129,7 @@ class StartEvent(BaseModel):
 
 
 @router.get("/events")
-async def list_events(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def list_events(_admin=Depends(require_admin("economy_view")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Активные события, история и доступные типы (для админ-панели)."""
     await get_active_events(db)  # авто-завершение просроченных
     active = [_serialize(e) async for e in db.market_events.find({"active": True}).sort("started_at", -1)]
@@ -142,7 +142,7 @@ async def list_events(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = 
 @router.post("/events/start")
 async def admin_start_event(
     payload: StartEvent,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("market_events")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     if payload.type not in EVENT_TYPES:
@@ -154,7 +154,7 @@ async def admin_start_event(
 @router.post("/events/{event_id}/stop")
 async def admin_stop_event(
     event_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("market_events")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     if not ObjectId.is_valid(event_id):

@@ -165,6 +165,7 @@ class AdminUserUpdate(BaseModel):
     username: Optional[str] = None
     balance: Optional[float] = None
     role: Optional[str] = None
+    admin_level: Optional[int] = None
     card_number: Optional[str] = None
     hidden_from_leaderboard: Optional[bool] = None
     leaderboard_lock: Optional[bool] = None
@@ -174,6 +175,13 @@ class AdminUserUpdate(BaseModel):
     def role_must_be_valid(cls, v):
         if v is not None and v not in ("user", "admin"):
             raise ValueError("Роль может быть только 'user' или 'admin'")
+        return v
+
+    @field_validator("admin_level")
+    @classmethod
+    def admin_level_must_be_valid(cls, v):
+        if v is not None and v not in (1, 2, 3, 4):
+            raise ValueError("Уровень админки: 1, 2, 3 или 4")
         return v
 
     @field_validator("balance")

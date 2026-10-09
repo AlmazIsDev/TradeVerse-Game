@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_config_by_key
 from ledger import (
     INCOME, EXPENSE, CAT_REALESTATE, CAT_BUSINESS,
@@ -1277,7 +1277,7 @@ def _fallback_catalog(slug: str) -> Optional[dict]:
 @router.post("/buy", status_code=status.HTTP_201_CREATED)
 async def buy_asset(
     payload: BuyRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка актива с рынка: списывает баланс, создаёт экземпляр во владении."""
@@ -1558,7 +1558,7 @@ async def upgrade_preview(
 async def upgrade_asset(
     asset_id: str,
     payload: UpgradeBody = UpgradeBody(),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Улучшить актив: повышает стоимость и доход."""
@@ -1598,7 +1598,7 @@ async def upgrade_asset(
 async def tune_asset(
     asset_id: str,
     payload: TuneBody,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Тюнинг автомобиля: улучшает деталь, повышает престиж и стоимость авто."""
@@ -1638,7 +1638,7 @@ async def tune_asset(
 @router.post("/{asset_id}/mining/buy")
 async def buy_mining_upgrade(
     asset_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить улучшение «Майнинг» для дома. Доступно только для недвижимости
@@ -1700,7 +1700,7 @@ async def buy_mining_upgrade(
 @router.post("/{asset_id}/sell")
 async def sell_asset(
     asset_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Продать актив обратно (70% текущей стоимости) + невыбранный доход."""
@@ -1732,7 +1732,7 @@ async def sell_asset(
 @router.post("/{asset_id}/transfer-to-company")
 async def transfer_to_company(
     asset_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Передать актив своей компании — доход с него начнёт получать компания."""
@@ -1755,7 +1755,7 @@ async def transfer_to_company(
 async def transfer_to_player(
     asset_id: str,
     payload: TransferToPlayer,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Подарить личный актив другому игроку по нику. Актив уходит целиком
@@ -1793,7 +1793,7 @@ async def transfer_to_player(
 async def rent_list(
     asset_id: str,
     payload: RentListing,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Выставить недвижимость/авто/бизнес в аренду на произвольный срок (в часах).
@@ -1830,7 +1830,7 @@ async def rent_list(
 @router.post("/{asset_id}/rent/cancel")
 async def rent_cancel(
     asset_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Снять объявление об аренде (пока арендатор не заселился)."""
@@ -1894,7 +1894,7 @@ async def materials_price(
 async def buy_materials(
     asset_id: str,
     payload: MaterialsBuy,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Закупить материалы для бизнеса — временно (на MATERIALS_DURATION_H)
@@ -1940,7 +1940,7 @@ async def _load_any(db: AsyncIOMotorDatabase, asset_id: str) -> dict:
 async def admin_update_asset(
     asset_id: str,
     payload: AdminAssetUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     asset = await _load_any(db, asset_id)
@@ -1960,7 +1960,7 @@ async def admin_update_asset(
 @router.delete("/admin/{asset_id}")
 async def admin_delete_asset(
     asset_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     asset = await _load_any(db, asset_id)
@@ -1977,7 +1977,7 @@ async def admin_delete_asset(
 async def admin_transfer_asset(
     asset_id: str,
     payload: AdminTransferBody,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     asset = await _load_any(db, asset_id)

@@ -5,8 +5,10 @@ import {
   adminListCollections, adminListDocuments, adminCreateDocument, adminUpdateDocument, adminDeleteDocument,
   adminListTransactions, adminTxFilterOptions,
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
+  fetchAdminPermissions, updateAdminPermissions, adminUpdateUserBans,
 } from '../services/api'
 import TxFilters, { TX_FIELDS } from './TxFilters'
+import { formatCompact } from './TransactionsPanel'
 import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import UserPropertyModal from './UserPropertyModal'
@@ -67,9 +69,34 @@ function DbDocPreview({ doc, refs = {} }) {
 const DB_PAGE_SIZE = 50
 const TX_PAGE_SIZE = 50
 
+// Сортировки списка пользователей (клиентские — список и так полный).
+const USER_SORTS = [
+  { key: 'created_at', defOrder: -1 },
+  { key: 'username', defOrder: 1 },
+  { key: 'balance', defOrder: -1 },
+  { key: 'netWorth', defOrder: -1 },
+]
+// Разбивка денег под именем — те же чипы, что в таблице лидеров.
+const USER_MONEY_CHIPS = [
+  { key: 'balance', col: 'cash' },
+  { key: 'stocks', col: 'stocks' },
+  { key: 'crypto', col: 'crypto' },
+  { key: 'assets', col: 'assets' },
+  { key: 'company', col: 'company' },
+]
+// Игровые функции, отключаемые игроку (зеркало PLAYER_FUNCTIONS бэкенда).
+const PLAYER_BAN_FUNCS = ['transfer', 'crypto', 'stocks', 'shop', 'assets',
+  'centralmarket', 'mining', 'farm', 'company', 'cityroof', 'media']
+const ADMIN_LEVELS = [1, 2, 3, 4]
+
 
 function AdminPanel({ user, onClose }) {
   const { t } = useTranslation()
+
+  // Разрешения текущего админа (из get_me → user.adminFunctions). Пока данных
+  // нет (старый localStorage) — не режем UI, бэкенд всё равно проверит.
+  const can = (func) => !func || !user?.adminFunctions || user.adminFunctions.includes(func)
+  const canEditAdmins = (user?.adminLevel || 0) >= 4
 
   // Защита на уровне компонента: если пользователь не админ — показываем сообщение
   if (user?.role !== 'admin') {
@@ -121,6 +148,8 @@ function AdminPanel({ user, onClose }) {
   // Состояние для редактирования пользователя
   const [editingUser, setEditingUser] = useState(null)
   const [userSearch, setUserSearch] = useState('')
+  const [userSort, setUserSort] = useState('created_at')
+  const [userOrder, setUserOrder] = useState(-1)
   const [stockSearch, setStockSearch] = useState('')
   const [editForm, setEditForm] = useState({
     username: '',
@@ -132,6 +161,12 @@ function AdminPanel({ user, onClose }) {
   })
   const [editErrors, setEditErrors] = useState({})
   const [propertyUser, setPropertyUser] = useState(null)
+  // ── Состояние раздела «Доступы» (только L4) ──────────────────────────────
+  const [perms, setPerms] = useState(null)
+  const [permsSaving, setPermsSaving] = useState(false)
+  // ── Баны: черновик {func: {on, reason, until}} ───────────────────────────
+  const [banDraft, setBanDraft] = useState({})
+  const [bansSaving, setBansSaving] = useState(false)
 
   // ── Состояние для вкладки "База данных" ─────────────────────────────────
   const [dbCollections, setDbCollections] = useState([])
@@ -157,6 +192,14 @@ function AdminPanel({ user, onClose }) {
   useEffect(() => {
     loadData()
   }, [activeSection])
+
+  // Если пришёл срез прав без текущего раздела — переключаем на первый доступный.
+  useEffect(() => {
+    if (user?.adminFunctions && !can(activeSection)) {
+      const first = sections.filter(s => can(s.perm))[0]
+      if (first) setActiveSection(first.id)
+    }
+  }, [user?.adminFunctions])
 
   // Сброс на первую страницу при смене коллекции, поиска или сортировки.
   useEffect(() => { setDbPage(0) }, [dbActiveCollection, dbSearch, dbSort, dbOrder])
@@ -278,6 +321,9 @@ function AdminPanel({ user, onClose }) {
       } else if (activeSection === 'users') {
         const data = await request('/api/admin/users')
         setUsers(data)
+      } else if (activeSection === 'perms') {
+        const data = await fetchAdminPermissions()
+        setPerms(data)
       } else if (activeSection === 'transactions') {
         // Транзакции грузит отдельный effect; здесь — справочник значений фильтров.
         adminTxFilterOptions().then(setTxOptions).catch(() => {})
@@ -347,10 +393,14 @@ function AdminPanel({ user, onClose }) {
       username: u.username || '',
       balance: u.balance != null ? String(u.balance) : '',
       role: u.role || 'user',
+      admin_level: u.admin_level || 4,
       card_number: u.card_number || '',
       hidden_from_leaderboard: !!u.hidden_from_leaderboard,
       leaderboard_lock: !!u.leaderboard_lock,
     })
+    setBanDraft(Object.fromEntries(
+      Object.entries(u.bans || {}).map(([k, v]) => [k, { on: true, reason: v.reason || '', until: (v.until || '').slice(0, 10) }]),
+    ))
     setEditErrors({})
   }
 
@@ -360,10 +410,12 @@ function AdminPanel({ user, onClose }) {
       username: '',
       balance: '',
       role: 'user',
+      admin_level: 4,
       card_number: '',
       hidden_from_leaderboard: false,
       leaderboard_lock: false,
     })
+    setBanDraft({})
     setEditErrors({})
   }
 
@@ -374,6 +426,7 @@ function AdminPanel({ user, onClose }) {
       username: editForm.username.trim(),
       balance: parseFloat(editForm.balance),
       role: editForm.role,
+      admin_level: editForm.role === 'admin' ? Number(editForm.admin_level) : undefined,
       hidden_from_leaderboard: editForm.hidden_from_leaderboard,
       leaderboard_lock: editForm.leaderboard_lock,
     }
@@ -401,6 +454,40 @@ function AdminPanel({ user, onClose }) {
       loadData()
     } catch (err) {
       toast(t('admin.error') + ': ' + err.message, 'error')
+    }
+  }
+
+  // Сохранение банов: полный срез — не отмеченные функции = бан снят.
+  const handleSaveBans = async () => {
+    if (!editingUser) return
+    setBansSaving(true)
+    try {
+      const bans = {}
+      for (const f of ['account', ...PLAYER_BAN_FUNCS]) {
+        if (banDraft[f]?.on) {
+          bans[f] = { reason: banDraft[f].reason || null, until: banDraft[f].until ? `${banDraft[f].until}T23:59:59` : null }
+        }
+      }
+      await adminUpdateUserBans(editingUser, bans)
+      toast(t('admin.banSaved'))
+      loadData()
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    }
+  }
+
+  // Сохранение распределения функций по уровням (раздел «Доступы», L4).
+  const handleSavePerms = async () => {
+    setPermsSaving(true)
+    try {
+      const levels = {}
+      perms.functions.forEach(f => { levels[f.id] = f.level })
+      await updateAdminPermissions(levels)
+      toast(t('adminPerms.saved'))
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    } finally {
+      setPermsSaving(false)
     }
   }
 
@@ -648,14 +735,15 @@ function AdminPanel({ user, onClose }) {
   }
 
   const sections = [
-    { id: 'stocks', label: t('admin.stocks'), icon: Package },
-    { id: 'crypto', label: t('admin.crypto.title'), icon: Coins },
-    { id: 'prices', label: t('admin.prices.title'), icon: DollarSign },
-    { id: 'users', label: t('admin.users'), icon: Users },
-    { id: 'transactions', label: t('admin.transactions'), icon: ArrowLeftRight },
-    { id: 'economy', label: t('econ.tab'), icon: Activity },
-    { id: 'config', label: t('admin.config'), icon: Settings },
-    { id: 'database', label: t('admin.database.title'), icon: Database },
+    { id: 'stocks', perm: 'stocks', label: t('admin.stocks'), icon: Package },
+    { id: 'crypto', perm: 'crypto', label: t('admin.crypto.title'), icon: Coins },
+    { id: 'prices', perm: 'catalog_prices', label: t('admin.prices.title'), icon: DollarSign },
+    { id: 'users', perm: 'users_view', label: t('admin.users'), icon: Users },
+    { id: 'transactions', perm: 'transactions_view', label: t('admin.transactions'), icon: ArrowLeftRight },
+    { id: 'economy', perm: 'economy_view', label: t('econ.tab'), icon: Activity },
+    { id: 'config', perm: 'config', label: t('admin.config'), icon: Settings },
+    { id: 'database', perm: 'database', label: t('admin.database.title'), icon: Database },
+    { id: 'perms', perm: 'admin_perms', label: t('adminPerms.title'), icon: ShieldAlert },
   ]
 
   return (
@@ -670,7 +758,7 @@ function AdminPanel({ user, onClose }) {
 
       <div className="admin-body">
         <aside className="admin-sidebar">
-          {sections.map(s => (
+          {sections.filter(s => can(s.perm)).map(s => (
             <button
               key={s.id}
               className={`admin-nav-item ${activeSection === s.id ? 'active' : ''}`}
@@ -685,7 +773,7 @@ function AdminPanel({ user, onClose }) {
         <div className={`admin-content${editingUser && activeSection === 'users' ? ' has-panel' : ''}`}>
         {loading && activeSection !== 'economy' && <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>}
 
-        {activeSection === 'economy' && <EconomyAdmin />}
+        {activeSection === 'economy' && <EconomyAdmin canEditConfig={can('economy_config')} />}
 
         {!loading && activeSection === 'stocks' && (
           <div>
@@ -1095,33 +1183,67 @@ function AdminPanel({ user, onClose }) {
                   <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder={t('admin.searchUsers')} /></div>
                 <span className="admin-count">{t('admin.totalUsers')}: {users.length}</span>
               </div>
-              {users.filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase())).map(u => (
+              {[...users]
+                .filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase()))
+                .sort((a, b) => {
+                  const dir = userOrder >= 0 ? 1 : -1
+                  const av = a[userSort], bv = b[userSort]
+                  if (typeof av === 'string' || typeof bv === 'string') {
+                    return String(av ?? '').localeCompare(String(bv ?? '')) * dir
+                  }
+                  return ((av ?? 0) - (bv ?? 0)) * dir
+                })
+                .map(u => (
                 <div key={u.id} className={`admin-user-item${editingUser === u.id ? ' editing' : ''}`}>
                   <div className="admin-user-info">
                     <div>
                       <strong>{u.username}</strong>
                       <span className={`user-role ${u.role || 'user'}`}>{u.role || 'user'}</span>
+                      {u.role === 'admin' && (
+                        <span className="user-role user" title={t('adminPerms.levelTitle')}>L{u.admin_level || 4}</span>
+                      )}
+                      {Object.keys(u.bans || {}).length > 0 && (
+                        <span className="user-role admin" title={Object.keys(u.bans).join(', ')}>
+                          <ShieldAlert size={12} />
+                        </span>
+                      )}
                       {u.hidden_from_leaderboard && (
                         <span className="user-role admin" title={t('admin.fieldHiddenFromLeaderboard')}>
                           <EyeOff size={12} />
                         </span>
                       )}
                     </div>
+                    <span className="lb-breakdown admin-user-money">
+                      {USER_MONEY_CHIPS.map(c => (
+                        <span key={c.key} className={`lb-chip${userSort === c.key ? ' active' : ''}`}
+                          title={`$${(u[c.key] ?? 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}`}>
+                          {t(`leaderboard.col_${c.col}`)} <b>${formatCompact(u[c.key] ?? 0)}</b>
+                        </span>
+                      ))}
+                    </span>
                     <div className="admin-user-meta">
-                      <span className="user-balance">${u.balance != null ? u.balance.toFixed(2) : '0.00'}</span>
                       <span className="user-date">{u.created_at}</span>
                     </div>
                   </div>
+                  <span className="admin-user-capital" title={`$${(u.netWorth ?? 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}`}>
+                    ${formatCompact(u.netWorth ?? 0)}
+                  </span>
                   <div className="user-actions">
-                    <button className="admin-btn" onClick={() => setPropertyUser(u)} title={t('admin.property.title')}>
-                      <Briefcase size={14} />
-                    </button>
-                    <button className="admin-btn" onClick={() => handleStartEditUser(u)}>
-                      <Edit3 size={14} />
-                    </button>
-                    <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteUser(u.id, u.username)}>
-                      <Trash2 size={14} />
-                    </button>
+                    {can('users_property') && (
+                      <button className="admin-btn" onClick={() => setPropertyUser(u)} title={t('admin.property.title')}>
+                        <Briefcase size={14} />
+                      </button>
+                    )}
+                    {can('users_edit') && (
+                      <button className="admin-btn" onClick={() => handleStartEditUser(u)}>
+                        <Edit3 size={14} />
+                      </button>
+                    )}
+                    {can('users_delete') && (
+                      <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteUser(u.id, u.username)}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1160,6 +1282,18 @@ function AdminPanel({ user, onClose }) {
                       </select>
                       {editErrors.role && <span className="admin-field-error">{editErrors.role}</span>}
                     </div>
+                    {editForm.role === 'admin' && (
+                      <div className="admin-field-group">
+                        <label>{t('adminPerms.levelTitle')}</label>
+                        <select value={editForm.admin_level}
+                          onChange={e => setEditForm({ ...editForm, admin_level: Number(e.target.value) })}
+                          className="admin-input">
+                          {ADMIN_LEVELS.map(l => (
+                            <option key={l} value={l}>L{l} — {t(`adminPerms.level${l}`)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="admin-field-group">
                       <label>{t('admin.fieldCardNumber')}</label>
                       <input type="text" value={editForm.card_number}
@@ -1183,6 +1317,37 @@ function AdminPanel({ user, onClose }) {
                       </label>
                     </div>
                   </div>
+                  <div className="admin-field-group admin-bans-block">
+                    <label>{t('admin.bansTitle')}</label>
+                    {['account', ...PLAYER_BAN_FUNCS].map(f => {
+                      const d = banDraft[f] || {}
+                      return (
+                        <label key={f} className="admin-ban-row">
+                          <input type="checkbox" checked={!!d.on}
+                            onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, on: e.target.checked } })} />
+                          <span>{t(f === 'account' ? 'admin.banAccount' : `banFunc.${f}`)}</span>
+                          {d.on && (
+                            <input type="date" className="admin-input admin-ban-until" value={d.until || ''}
+                              title={t('admin.banUntil')}
+                              onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, until: e.target.value } })} />
+                          )}
+                        </label>
+                      )
+                    })}
+                    <input type="text" className="admin-input" placeholder={t('admin.banReason')}
+                      value={banDraft.account?.reason || banDraft.crypto?.reason || ''}
+                      onChange={e => {
+                        const v = e.target.value
+                        const next = { ...banDraft }
+                        for (const f of ['account', ...PLAYER_BAN_FUNCS]) {
+                          if (next[f]?.on) next[f] = { ...next[f], reason: v }
+                        }
+                        setBanDraft(next)
+                      }} />
+                    <button className="admin-btn" disabled={bansSaving} onClick={handleSaveBans}>
+                      <ShieldAlert size={14} /> {t('admin.banSave')}
+                    </button>
+                  </div>
                   <div className="user-edit-panel-actions">
                     <button className="admin-btn admin-btn-primary" onClick={handleSaveUser}>
                       <Save size={14} /> {t('admin.save')}
@@ -1195,6 +1360,43 @@ function AdminPanel({ user, onClose }) {
               )
             })()}
           </>
+        )}
+
+        {!loading && activeSection === 'perms' && (
+          <div>
+            <div className="admin-section-divider">
+              <h3>{t('adminPerms.title')}</h3>
+              <p className="admin-section-hint">{t('adminPerms.hint')}</p>
+            </div>
+            <div className="admin-list">
+              {(perms?.functions || []).map(f => (
+                <div key={f.id} className="admin-stock-item">
+                  <div className="stock-info">
+                    <strong>{t(f.label)}</strong>
+                    {f.fixed && <span className="user-role admin" title={t('adminPerms.fixedHint')}>fixed L4</span>}
+                  </div>
+                  <select
+                    className="admin-input"
+                    style={{ width: 220 }}
+                    value={f.level}
+                    disabled={f.fixed}
+                    onChange={e => setPerms({
+                      ...perms,
+                      functions: perms.functions.map(x => x.id === f.id ? { ...x, level: Number(e.target.value) } : x),
+                    })}
+                  >
+                    {ADMIN_LEVELS.map(l => <option key={l} value={l}>L{l} — {t(`adminPerms.level${l}`)}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="admin-toolbar">
+              <button className="admin-btn admin-btn-primary" disabled={permsSaving} onClick={handleSavePerms}>
+                <Save size={14} /> {t('econ.save')}
+              </button>
+              <span className="admin-count">{t('adminPerms.hintLevels')}</span>
+            </div>
+          </div>
         )}
 
         {!loading && activeSection === 'transactions' && (() => {
@@ -1253,7 +1455,7 @@ function AdminPanel({ user, onClose }) {
                       <span className="tx-num tx-balance">{tx.balanceAfter != null ? fmtMoney(tx.balanceAfter) : '—'}</span>
                       <span className="tx-time">{fmtTs(tx.timestamp)}</span>
                       <span className="tx-act">
-                        {tx.source === 'user'
+                        {tx.source === 'user' && can('transactions_delete')
                           ? <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteTransaction(tx.id)}><Trash2 size={14} /></button>
                           : <span className="tx-dash">—</span>}
                       </span>

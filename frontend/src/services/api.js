@@ -406,6 +406,27 @@ export async function adminUpdateUser(userId, data) {
   })
 }
 
+/** Реестр админ-функций с уровнями (только админ 4 уровня). */
+export async function fetchAdminPermissions() {
+  return request('/api/admin/permissions')
+}
+
+/** Сохранить распределение админ-функций по уровням 1–4. */
+export async function updateAdminPermissions(levels) {
+  return request('/api/admin/permissions', {
+    method: 'POST',
+    body: JSON.stringify({ levels }),
+  })
+}
+
+/** Баны/отстранения игрока: {func: {reason, until}|null} — полный срез. */
+export async function adminUpdateUserBans(userId, bans) {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/bans`, {
+    method: 'PATCH',
+    body: JSON.stringify({ bans }),
+  })
+}
+
 export async function adminDeleteUser(userId) {
   return request(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: 'DELETE',

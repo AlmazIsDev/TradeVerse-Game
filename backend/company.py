@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_COMPANY, CAT_DIVIDEND, CAT_TRADE, CAT_CRYPTO,
@@ -517,7 +517,7 @@ async def get_my_company(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_company(
     payload: CompanyCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     user_id = str(current_user["_id"])
@@ -677,7 +677,7 @@ async def disband_company(
 @router.post("/invite", status_code=status.HTTP_201_CREATED)
 async def invite_employee(
     payload: InviteCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Пригласить игрока в компанию (он должен принять приглашение)."""
@@ -743,7 +743,7 @@ async def _load_invite(db, invite_id, user_id):
 @router.post("/invites/{invite_id}/accept")
 async def accept_invite(
     invite_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Принять приглашение — стать сотрудником компании."""
@@ -928,7 +928,7 @@ async def list_companies(
 @router.post("/apply/{company_id}")
 async def apply_to_company(
     company_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Подать заявку на вступление в компанию (руководитель одобряет/отклоняет)."""
@@ -1130,7 +1130,7 @@ async def collect_profit(
 @router.post("/deposit")
 async def deposit_to_budget(
     payload: AmountBody,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     user_id = str(current_user["_id"])
@@ -1151,7 +1151,7 @@ async def deposit_to_budget(
 @router.post("/withdraw")
 async def withdraw_from_budget(
     payload: AmountBody,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     user_id = str(current_user["_id"])
@@ -1190,7 +1190,7 @@ FOUNDER_SHARE_PCT = 0.2     # доля владельца при размеще�
 @router.post("/ipo", status_code=status.HTTP_201_CREATED)
 async def company_ipo(
     payload: CompanyIpo,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Разместить акцию компании на бирже (IPO).
@@ -1278,7 +1278,7 @@ async def company_ipo(
 @router.post("/dividend")
 async def company_pay_dividend(
     payload: CompanyDividend,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Выплатить дивиденды держателям акции компании ИЗ БЮДЖЕТА компании.
@@ -1331,7 +1331,7 @@ async def company_pay_dividend(
 
 @router.post("/stock/recall")
 async def company_recall_stock(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Отозвать акцию компании с биржи: выкуп держателей из бюджета, делистинг."""
@@ -1350,7 +1350,7 @@ CRYPTO_LISTING_FEE = 3000.0     # сбор за эмиссию монеты (и�
 @router.post("/crypto", status_code=status.HTTP_201_CREATED)
 async def company_issue_crypto(
     payload: CompanyCrypto,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Выпустить монету компании на биржу (аналог IPO).
@@ -1423,7 +1423,7 @@ async def company_issue_crypto(
 
 @router.post("/crypto/recall")
 async def company_recall_crypto(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Отозвать монету компании с биржи: выкуп держателей из бюджета, делистинг."""
@@ -1473,7 +1473,7 @@ async def _load_any_company(db: AsyncIOMotorDatabase, company_id: str) -> dict:
 async def admin_update_company(
     company_id: str,
     payload: AdminCompanyUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     company = await _load_any_company(db, company_id)
@@ -1494,7 +1494,7 @@ async def admin_update_company(
 @router.delete("/admin/{company_id}")
 async def admin_delete_company(
     company_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     company = await _load_any_company(db, company_id)
@@ -1513,7 +1513,7 @@ async def admin_delete_company(
 async def admin_transfer_company(
     company_id: str,
     payload: AdminTransferBody,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Передать право владения компанией другому игроку."""

@@ -2656,6 +2656,12 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   min-width: 90px;
 }
 .admin-user-sorts { justify-content: flex-start; }
+
+/* Баны/отстранения в панели редактирования юзера. */
+.admin-bans-block { gap: 6px; }
+.admin-bans-block > label:first-child { font-weight: 600; color: var(--color-text-secondary); font-size: 13px; }
+.admin-ban-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-primary); }
+.admin-ban-row input[type="date"] { width: auto; padding: 4px 8px; font-size: 12px; }
 @media (max-width: 720px) {
   .admin-user-capital { min-width: 0; }
 }

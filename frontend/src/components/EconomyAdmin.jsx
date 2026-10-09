@@ -20,7 +20,7 @@ const CONFIG_FIELDS = [
   { key: 'wc_price', step: 1 },
 ]
 
-function EconomyAdmin() {
+function EconomyAdmin({ canEditConfig = true }) {
   const { t } = useTranslation()
   const [analytics, setAnalytics] = useState(null)
   const [config, setConfig] = useState(null)
@@ -31,7 +31,8 @@ function EconomyAdmin() {
     setLoading(true)
     try {
       const [a, c] = await Promise.all([
-        fetchEconomyAnalytics(), fetchEconomyConfig(),
+        fetchEconomyAnalytics(),
+        canEditConfig ? fetchEconomyConfig() : Promise.resolve(null),
       ])
       setAnalytics(a)
       setConfig(c)
@@ -115,8 +116,10 @@ function EconomyAdmin() {
         })}
       </div>
 
-      <h3 className="econ-title"><Save size={16} /> {t('econ.coefficients')}</h3>
-      <div className="econ-config">
+      {canEditConfig && (
+        <>
+          <h3 className="econ-title"><Save size={16} /> {t('econ.coefficients')}</h3>
+          <div className="econ-config">
         {config && CONFIG_FIELDS.map(f => (
           <label key={f.key} className="econ-field">
             <span>{t(`econ.${f.key}`)}</span>
@@ -128,9 +131,11 @@ function EconomyAdmin() {
           </label>
         ))}
       </div>
-      <button className="admin-btn admin-btn-primary" onClick={save} disabled={saving}>
-        <Save size={15} /> {saving ? t('bank.processing') : t('econ.save')}
-      </button>
+          <button className="admin-btn admin-btn-primary" onClick={save} disabled={saving}>
+            <Save size={15} /> {saving ? t('bank.processing') : t('econ.save')}
+          </button>
+        </>
+      )}
     </div>
   )
 }

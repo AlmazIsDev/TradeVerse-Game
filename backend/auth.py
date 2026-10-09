@@ -182,16 +182,29 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Пользователь не найден",
         )
+
+    # Полный бан аккаунта (bans.account). Проверка здесь — единая точка:
+    # блокирует и вход по JWT, и refresh (refresh выдаёт токен, которым
+    # всё равно пользуется get_current_user). Баны отдельных функций
+    # проверяет require_allowed (admin_perms.py) на игровых эндпоинтах.
+    ban = (user.get("bans") or {}).get("account")
+    if ban:
+        until = ban.get("until")
+        active = True
+        if until:
+            if isinstance(until, str):
+                try:
+                    until = datetime.fromisoformat(until)
+                except ValueError:
+                    until = None
+            if isinstance(until, datetime):
+                if until.tzinfo is None:
+                    until = until.replace(tzinfo=timezone.utc)
+                active = until > datetime.now(timezone.utc)
+        if active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Аккаунт заблокирован администрацией" +
+                       (f": {ban['reason']}" if ban.get("reason") else ""),
+            )
     return user
-
-
-async def require_admin(
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    """Dependency: требует, чтобы текущий пользователь имел роль 'admin'."""
-    if current_user.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещён: требуются права администратора",
-        )
-    return current_user

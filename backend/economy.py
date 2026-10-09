@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from admin_perms import get_current_user, require_allowed
 from database import get_db
 from ledger import (
     EXPENSE,
@@ -58,7 +58,7 @@ class TransferCreate(BaseModel):
 @router.post("/transfers", status_code=status.HTTP_201_CREATED)
 async def create_transfer(
     payload: TransferCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("transfer")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Банковский перевод денег другому игроку.

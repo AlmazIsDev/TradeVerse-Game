@@ -33,7 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_SHOP, adjust_balance, record_transaction
 from econ import get_econ
@@ -825,7 +825,7 @@ class BuyHardware(BaseModel):
 @router.post("/buy", status_code=status.HTTP_201_CREATED)
 async def buy_hardware(
     payload: BuyHardware,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("shop")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка железа/расходников. Цена всегда пересчитывается сервером:
@@ -889,7 +889,7 @@ def _resale_refund(purchase_prices: list[float]) -> float:
 @router.post("/sell")
 async def sell_hardware(
     payload: SellHardware,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("shop")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Продажа лишнего железа обратно магазину с уценкой (RESALE_RATIO)."""
@@ -943,14 +943,14 @@ class ShopConfigUpdate(BaseModel):
 
 
 @router.get("/config")
-async def shop_config(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def shop_config(_admin=Depends(require_admin("shop_config")), db: AsyncIOMotorDatabase = Depends(get_db)):
     return await _shop_config(db)
 
 
 @router.post("/config")
 async def set_shop_config(
     payload: ShopConfigUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("shop_config")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     cfg = await _shop_config(db)
@@ -974,7 +974,7 @@ async def set_shop_config(
 
 
 @admin_router.get("/prices")
-async def get_shop_prices(_admin=Depends(require_admin), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def get_shop_prices(_admin=Depends(require_admin("catalog_prices")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Все переопределения админских цен. Ключи — канонические id."""
     return {"prices": await _admin_prices(db)}
 
@@ -982,7 +982,7 @@ async def get_shop_prices(_admin=Depends(require_admin), db: AsyncIOMotorDatabas
 @admin_router.post("/prices")
 async def set_shop_prices(
     payload: dict,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("catalog_prices")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Сохранить админские цены. Body: {"prices": {id: price|null, ...},
@@ -1101,11 +1101,11 @@ async def set_shop_prices(
 # регистрируем те же функции ещё раз через add_api_route.
 alias_admin_router.add_api_route(
     "/prices", get_shop_prices, methods=["GET"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_admin("catalog_prices"))],
 )
 alias_admin_router.add_api_route(
     "/prices", set_shop_prices, methods=["POST"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_admin("catalog_prices"))],
 )
 
 

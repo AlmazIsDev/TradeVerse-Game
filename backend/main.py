@@ -26,13 +26,22 @@ from init_db import init as init_db
 
 from auth import (
     get_current_user,
-    require_admin,
     hash_password,
     verify_password,
     create_access_token,
     create_refresh_token,
     use_refresh_token,
     delete_refresh_token,
+)
+from admin_perms import (
+    require_admin,
+    get_admin_levels,
+    save_admin_levels,
+    admin_level_of,
+    ban_active,
+    PLAYER_FUNCTIONS,
+    ADMIN_FUNCTIONS,
+    FIXED_ADMIN_FUNCTIONS,
 )
 from economy import router as economy_router
 from crypto import router as crypto_router
@@ -69,7 +78,6 @@ from database import (
     find_leaderboard,
     delete_transaction,
     delete_stock_by_symbol,
-    find_all_users,
 )
 from schemas import (
     UserCreate,
@@ -98,6 +106,12 @@ async def lifespan(app: FastAPI):
     await db.app_config.create_index("key", unique=True)
     await db.transactions.create_index("userId")
     await db.transactions.create_index([("userId", 1), ("timestamp", -1)])
+    # timestamp — выборки «за 24ч» (аналитика экономики, profit за 7д);
+    # (category, timestamp) — фильтр по категориям в админ-таблице транзакций
+    # с сортировкой по времени: без него матч по category сканирует всю
+    # коллекцию и блокирующе сортирует результат (секунды на ответ).
+    await db.transactions.create_index("timestamp")
+    await db.transactions.create_index([("category", 1), ("timestamp", -1)])
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
     await db.crypto_assets.create_index("symbol", unique=True)
@@ -378,10 +392,16 @@ async def logout(
 
 
 @app.get("/api/user/me")
-async def get_me(current_user: dict = Depends(get_current_user)):
-    """Возвращает полные данные текущего пользователя (из БД)."""
+async def get_me(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Возвращает полные данные текущего пользователя (из БД).
+
+    Админам дополнительно отдаёт уровень и список разрешённых функций —
+    фронтенд фильтрует по ним разделы/кнопки админки."""
     created_at = current_user.get("created_at")
-    return {
+    out = {
         "id": str(current_user["_id"]),
         "username": current_user["username"],
         "role": current_user.get("role", "user"),
@@ -395,6 +415,13 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "leaderboardLock": bool(current_user.get("leaderboard_lock", False)),
         "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
     }
+    if out["role"] == "admin":
+        out["adminLevel"] = admin_level_of(current_user)
+        levels = await get_admin_levels(db)
+        out["adminFunctions"] = sorted(
+            fid for fid, lvl in levels.items() if out["adminLevel"] >= lvl
+        )
+    return out
 
 
 @app.patch("/api/user/card-visibility")
@@ -441,7 +468,7 @@ async def get_stock(
 )
 async def create_or_update_stock(
     stock_data: StockCreate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("stocks")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     stock = await upsert_stock(db, stock_data.model_dump())
@@ -480,7 +507,7 @@ async def get_config(
 @app.post("/api/config", response_model=ConfigResponse)
 async def update_config(
     config_data: ConfigUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("config")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     config = await upsert_config(db, config_data.key, config_data.value)
@@ -736,7 +763,7 @@ async def get_public_profile(
 @app.delete("/api/stocks/{symbol}")
 async def admin_delete_stock(
     symbol: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("stocks")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     deleted = await delete_stock_by_symbol(db, symbol)
@@ -750,18 +777,47 @@ async def admin_delete_stock(
 
 @app.get("/api/admin/users")
 async def admin_get_users(
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_view")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    users = await find_all_users(db)
-    return users
+    """Список пользователей для админки + разбивка капитала (как в таблице лидеров).
+
+    Сортировку делает клиент: список и так полный, а значит сортируется
+    мгновенно без перезапроса. Аватары не отдаём — base64 на каждого
+    пользователя раздувает ответ до мегабайт, в списке они не нужны.
+    """
+    by_uid = {e["userId"]: e for e in await _compute_leaderboard_entries(db, {})}
+    out = []
+    async for u in db.users.find({}, {"username": 1, "role": 1, "balance": 1, "created_at": 1,
+                                      "card_number": 1, "hidden_from_leaderboard": 1, "leaderboard_lock": 1,
+                                      "admin_level": 1, "bans": 1}):
+        e = by_uid.get(str(u["_id"]), {})
+        out.append({
+            "id": str(u["_id"]),
+            "username": u.get("username", ""),
+            "role": u.get("role", "user"),
+            "admin_level": int(u.get("admin_level") or 4) if u.get("role") == "admin" else None,
+            "bans": u.get("bans") or {},
+            "balance": float(u.get("balance", 0.0) or 0.0),
+            "created_at": u.get("created_at").isoformat() if isinstance(u.get("created_at"), datetime) else u.get("created_at"),
+            "card_number": u.get("card_number"),
+            "hidden_from_leaderboard": bool(u.get("hidden_from_leaderboard", False)),
+            "leaderboard_lock": bool(u.get("leaderboard_lock", False)),
+            "stocks": e.get("stocks", 0.0),
+            "crypto": e.get("crypto", 0.0),
+            "assets": e.get("assets", 0.0),
+            "company": e.get("company", 0.0),
+            "warcoin": e.get("warcoin", 0.0),
+            "netWorth": e.get("netWorth", float(u.get("balance", 0.0) or 0.0)),
+        })
+    return out
 
 
 @app.patch("/api/admin/users/{user_id}")
 async def admin_update_user(
     user_id: str,
     update_data: AdminUserUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_edit")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Редактирование пользователя администратором."""
@@ -786,6 +842,19 @@ async def admin_update_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Нет полей для обновления",
         )
+
+    # Назначать админство и уровень админки может только админ 4 уровня.
+    if ("role" in update_fields or "admin_level" in update_fields) and admin_level_of(_admin) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Изменять роль и уровень админки может только админ 4 уровня",
+        )
+
+    # Снятие админства — забираем уровень; новый админ без явного уровня = L4.
+    if update_fields.get("role") == "user":
+        update_fields["admin_level"] = None
+    elif update_fields.get("role") == "admin" and "admin_level" not in update_fields:
+        update_fields["admin_level"] = 4
 
     # Проверяем уникальность username, если он меняется
     if "username" in update_fields:
@@ -828,7 +897,7 @@ async def admin_update_user(
 @app.delete("/api/admin/users/{user_id}")
 async def admin_delete_user(
     user_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_delete")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Удаление пользователя администратором."""
@@ -859,10 +928,86 @@ async def admin_delete_user(
     return {"message": f"Пользователь {existing.get('username', user_id)} удалён"}
 
 
+# ── Уровни админки и баны игроков ────────────────────────────────────────────
+
+
+@app.get("/api/admin/permissions")
+async def admin_get_permissions(
+    _admin=Depends(require_admin("admin_perms")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Реестр админ-функций с текущими уровнями (только админ 4 уровня)."""
+    levels = await get_admin_levels(db)
+    return {
+        "functions": [
+            {"id": fid, "label": key, "default": lvl, "level": levels[fid], "fixed": False}
+            for fid, lvl, key in ADMIN_FUNCTIONS
+        ] + [
+            {"id": fid, "label": "adminPerms.func_admin_perms", "default": 4,
+             "level": 4, "fixed": True}
+            for fid in FIXED_ADMIN_FUNCTIONS
+        ]
+    }
+
+
+@app.post("/api/admin/permissions")
+async def admin_set_permissions(
+    payload: dict,
+    _admin=Depends(require_admin("admin_perms")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Сохраняет распределение функций по уровням 1-4 (только админ 4 уровня). Body: {"levels": {func_id: 1..4}}."""
+    levels = payload.get("levels")
+    if not isinstance(levels, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ожидается {levels: {...}}")
+    await save_admin_levels(db, levels)
+    return {"message": "Права сохранены", "levels": await get_admin_levels(db)}
+
+
+@app.patch("/api/admin/users/{user_id}/bans")
+async def admin_set_user_bans(
+    user_id: str,
+    payload: dict,
+    _admin=Depends(require_admin("bans")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Баны/отстранения игрока по функциям.
+
+    Body: {"bans": {func: {reason, until}|None}} - полный срез банов юзера;
+    отсутствующая функция = бан снят. `account` - полный бан аккаунта.
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+    if target.get("role") == "admin":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Админов банить нельзя")
+    bans_in = payload.get("bans")
+    if not isinstance(bans_in, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ожидается {bans: {...}}")
+    now = datetime.now(timezone.utc)
+    clean = {}
+    for func, b in bans_in.items():
+        if not b:
+            continue
+        reason = str(b.get("reason") or "").strip() or None
+        until = b.get("until") or None
+        clean[func] = {"reason": reason, "until": until, "by": _admin.get("username"), "at": now.isoformat()}
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"bans": clean}})
+    try:
+        from ws import push_to_user, push_to_admins
+        await push_to_user(user_id, {"type": "banned", "bans": {k: 1 for k in clean}})
+        await push_to_admins(db, {"type": "admin_user_modified", "userId": user})
+    except Exception:
+        pass
+    return {"message": "Баны обновлены", "bans": clean}
+
+
 @app.get("/api/admin/users/{user_id}/property")
 async def admin_get_user_property(
     user_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Полный список имущества игрока для админ-панели: активы, майнинг-фермы,
@@ -975,7 +1120,7 @@ def build_tx_filters(f: dict, names: dict) -> tuple[dict | None, dict]:
 
 @app.get("/api/admin/transactions/filters")
 async def admin_transaction_filter_options(
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("transactions_view")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Справочник значений для мультифильтров таблицы транзакций."""
@@ -1004,7 +1149,7 @@ async def admin_get_all_transactions(
     ts_from: str = Query(None), ts_to: str = Query(None),
     sort: str = Query("timestamp"),
     order: int = Query(-1),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("transactions_view")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Единый поток операций реестра и сделок ботов.
@@ -1102,12 +1247,15 @@ async def admin_get_all_transactions(
         return out
 
     def fast_branch(stages: list) -> list:
-        # Быстрый путь дефолтного вида: сортируем ДО $project, тогда сортировка
-        # видит сырое поле timestamp и опирается на индекс (~0.6с вместо ~2с).
-        head = stages[:-1]
+        # Быстрый путь: pre_match + сортировка ДО $project, ранний $limit.
+        # Сортировка видит сырое поле timestamp и опирается на индекс
+        # (userId/category+timestamp), top-K не требует блокирующей сортировки
+        # всего матча. Корректно, только если после $project ничего не
+        # фильтруется (tail пуст) — иначе подрезка до limit исказила бы результат.
+        head = ([{"$match": pre_match}] if pre_match is not None else []) + stages[:-1]
         return head + [sort_stage, {"$limit": take}, stages[-1]]
 
-    pick = fast_branch if (not match and not post_match and pre_match is None and sort_key == "timestamp") else branch
+    pick = fast_branch if (not match and not post_match and sort_key == "timestamp") else branch
     # Логи сделок ботов вырезаны — фильтр kind="bot" всегда пуст.
     pipeline: list = [{"$match": {"_id": None}}] if kind == "bot" else pick(ledger_stage)
     pipeline += [sort_stage, {"$skip": skip}, {"$limit": limit + 1}]
@@ -1126,7 +1274,7 @@ async def admin_get_all_transactions(
 @app.delete("/api/admin/transactions/{tx_id}")
 async def admin_delete_transaction(
     tx_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("transactions_delete")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     deleted = await delete_transaction(db, tx_id)

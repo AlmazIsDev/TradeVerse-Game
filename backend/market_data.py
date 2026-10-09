@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db
 from providers import CoinGeckoProvider
 
@@ -487,7 +487,7 @@ async def admin_list_price_history(
     q: str = Query(None),
     sort: str = Query("ts"),
     order: int = Query(-1),
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("price_history")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     if market not in VALID_MARKETS:
@@ -522,7 +522,7 @@ async def admin_list_price_history(
 @router.post("/admin/price-history", status_code=status.HTTP_201_CREATED)
 async def admin_add_price_point(
     payload: PricePointBody,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("price_history")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     if payload.market not in VALID_MARKETS:
@@ -540,7 +540,7 @@ async def admin_add_price_point(
 async def admin_update_price_point(
     point_id: str,
     payload: PricePointUpdate,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("price_history")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     fields = payload.model_dump(exclude_unset=True)
@@ -560,7 +560,7 @@ async def admin_update_price_point(
 @router.delete("/admin/price-history/{point_id}")
 async def admin_delete_price_point(
     point_id: str,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("price_history")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     result = await db.price_history.delete_one({"_id": ObjectId(point_id)})
@@ -572,7 +572,7 @@ async def admin_delete_price_point(
 @router.post("/admin/price-history/regenerate")
 async def admin_regenerate_price_history(
     payload: RegenerateBody,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("price_history")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     if payload.market not in VALID_MARKETS:

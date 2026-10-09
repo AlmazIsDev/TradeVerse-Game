@@ -17,7 +17,7 @@ from bson import json_util, ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from auth import require_admin
+from admin_perms import require_admin
 from database import get_db
 
 router = APIRouter(prefix="/api/admin/db", tags=["admin-db"])
@@ -86,7 +86,7 @@ def _filter_for(doc_id: str) -> dict:
 
 @router.get("/collections")
 async def list_collections(
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("database")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     return sorted(await db.list_collection_names())
@@ -100,7 +100,7 @@ async def list_documents(
     limit: int = Query(50, ge=1, le=LIST_LIMIT_CAP),
     sort: str = Query(None),
     order: int = Query(-1),
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("database")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     coll = db[name]
@@ -149,7 +149,7 @@ async def list_documents(
 async def get_document(
     name: str,
     doc_id: str,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("database")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     doc = await db[name].find_one(_filter_for(doc_id))
@@ -162,7 +162,7 @@ async def get_document(
 async def create_document(
     name: str,
     request: Request,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("database")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     body = json_util.loads(await request.body())
@@ -177,7 +177,7 @@ async def update_document(
     name: str,
     doc_id: str,
     request: Request,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("database")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     body = json_util.loads(await request.body())
@@ -196,7 +196,7 @@ async def update_document(
 async def delete_document(
     name: str,
     doc_id: str,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("database")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     result = await db[name].delete_one(_filter_for(doc_id))

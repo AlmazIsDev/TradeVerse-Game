@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db
 from ledger import (
     INCOME, EXPENSE, CAT_CRYPTO,
@@ -380,7 +380,7 @@ async def _credit_company_budget(db: AsyncIOMotorDatabase, coin: dict, amount: f
 
 @router.post("/account/open", status_code=status.HTTP_201_CREATED)
 async def open_crypto_account(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("crypto")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Открывает криптосчёт игроку. Идемпотентно возвращает уже открытый счёт."""
@@ -516,7 +516,7 @@ async def quote_crypto(
 @router.post("/trade")
 async def trade_crypto(
     payload: CryptoTrade,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("crypto")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка/продажа криптовалюты. Требует открытого криптосчёта."""
@@ -628,7 +628,7 @@ async def trade_crypto(
 @router.post("/transfer")
 async def transfer_crypto(
     payload: CryptoTransfer,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("crypto")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Перевод криптовалюты другому игроку по адресу кошелька или нику.
@@ -769,7 +769,7 @@ class CryptoAdminCreate(BaseModel):
 async def admin_update_coin(
     symbol: str,
     payload: CryptoAdminUpdate,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("crypto")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Точечное редактирование монеты. marketCap задаёт supply = marketCap/price;
@@ -800,7 +800,7 @@ async def admin_update_coin(
 @router.post("/admin", status_code=status.HTTP_201_CREATED)
 async def admin_create_coin(
     payload: CryptoAdminCreate,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("crypto")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     symbol = payload.symbol.upper()
@@ -825,7 +825,7 @@ async def admin_create_coin(
 @router.delete("/admin/{symbol}")
 async def admin_delete_coin(
     symbol: str,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("crypto")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Удаляет монету. ponytail: не каскадит crypto_holdings/price_history —

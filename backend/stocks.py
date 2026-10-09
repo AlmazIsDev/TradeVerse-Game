@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_all_stocks, find_stock_by_symbol
 from ledger import (
     INCOME, EXPENSE, CAT_TRADE, CAT_DIVIDEND,
@@ -519,7 +519,7 @@ async def get_orders(
 @router.get("/bot-orders")
 async def get_bot_orders(
     limit: int = Query(100, ge=1, le=500),
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin("transactions_view")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Лента сделок ботов-покупателей (только для админов)."""
@@ -655,7 +655,7 @@ async def quote_stock(
 @router.post("/trade")
 async def trade_stock(
     trade: StockTradeRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("stocks")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка/продажа акций с атомарным изменением баланса и цены."""
@@ -824,7 +824,7 @@ async def trade_stock(
 async def update_stock_config(
     symbol: str,
     config_update: StockConfigUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("stocks")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Обновляет overrides рыночной конфигурации акции (admin)."""
@@ -849,7 +849,7 @@ async def update_stock_config(
 @router.post("/issue", status_code=status.HTTP_201_CREATED)
 async def issue_stock(
     payload: StockIssue,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("stocks")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Игрок выпускает собственную акцию (IPO).
@@ -917,7 +917,7 @@ async def issue_stock(
 async def pay_dividend(
     symbol: str,
     payload: DividendBody,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("stocks")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Эмитент выплачивает дивиденды всем держателям (кроме себя)."""

@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user, require_admin
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_CITYROOF, adjust_balance, record_transaction
 from notifications import push_notification
@@ -649,7 +649,7 @@ async def my_studios(
 @router.post("/itstudio/materials/buy")
 async def buy_studio_materials(
     payload: ItStudioMaterialsBuy,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("cityroof")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Закупить материалы тира студии — тип материала и цена всегда
@@ -678,7 +678,7 @@ async def buy_studio_materials(
 @router.post("/itstudio/order")
 async def order_itstudio(
     payload: ItStudioOrder,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("cityroof")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Заказать атаку или защиту силами собственной IT-студии. Через 1–3ч
@@ -951,7 +951,7 @@ async def sweep_business_income(db: AsyncIOMotorDatabase):
 @router.post("/warcoin/buy")
 async def buy_warcoin(
     payload: BuyWarcoin,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("cityroof")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить WarCoin за $ по цене лиги."""
@@ -978,7 +978,7 @@ async def buy_warcoin(
 @router.post("/attack/{business_id}")
 async def attack_business(
     business_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("cityroof")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Оплатить попытку захвата (10 WC) и начать мини-игру."""
@@ -1019,7 +1019,7 @@ async def attack_business(
 @router.post("/guess")
 async def submit_guess(
     payload: GuessBody,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("cityroof")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Проверить комбинацию. Возвращает подсказку (exact/present) и статус."""
@@ -1108,7 +1108,7 @@ async def submit_guess(
 async def protect_business(
     business_id: str,
     payload: ProtectBody,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("cityroof")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить защиту бизнеса (уровни 1–5). Сбрасывает прогресс атакующих."""
@@ -1165,7 +1165,7 @@ async def get_seasons(
 
 @router.post("/admin/season/close")
 async def admin_close_season(
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Принудительно закрыть текущий сезон (admin)."""
@@ -1196,7 +1196,7 @@ async def _load_any_business(db: AsyncIOMotorDatabase, business_id: str) -> dict
 async def admin_update_business(
     business_id: str,
     payload: AdminBusinessUpdate,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     business = await _load_any_business(db, business_id)
@@ -1216,7 +1216,7 @@ async def admin_update_business(
 @router.post("/admin/businesses/{business_id}/vacate")
 async def admin_vacate_business(
     business_id: str,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Освободить бизнес: снять владельца и защиту (слот на карте не удаляется)."""
@@ -1248,7 +1248,7 @@ async def admin_vacate_business(
 async def admin_transfer_business(
     business_id: str,
     payload: AdminTransferBody,
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Передать бизнес другому игроку (защита и КД дохода сохраняются)."""

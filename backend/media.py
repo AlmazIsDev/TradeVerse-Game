@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from auth import get_current_user
+from admin_perms import get_current_user, require_allowed
 from database import get_db
 from ledger import EXPENSE, CAT_BUSINESS, adjust_balance, record_transaction
 from notifications import push_notification
@@ -227,7 +227,7 @@ async def media_feed(
 @router.post("/expose")
 async def expose_company(
     payload: ExposeBody,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("media")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Заказать разоблачение против компании или игрока (новость готовится 15 мин–2 ч)."""

@@ -143,6 +143,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         onUserUpdate?.({
           balance: data.balance, username: data.username,
           avatar: data.avatar, created_at: data.created_at,
+          role: data.role, adminLevel: data.adminLevel,
+          adminFunctions: data.adminFunctions,
         })
       })
       .catch(() => {})

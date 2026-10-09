@@ -6,6 +6,7 @@ import {
   adminListTransactions, adminTxFilterOptions,
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
   fetchAdminPermissions, updateAdminPermissions, adminUpdateUserBans,
+  fetchSyntheticConfig, saveSyntheticConfig, triggerSynthetic, fetchSyntheticOrders,
 } from '../services/api'
 import TxFilters, { TX_FIELDS } from './TxFilters'
 import { formatCompact } from './TransactionsPanel'
@@ -16,7 +17,7 @@ import PriceHistoryEditor from './PriceHistoryEditor'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
-  Database, Coins, ChevronLeft, ChevronRight,
+  Database, Coins, ChevronLeft, ChevronRight, Bot,
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 import { toast } from './Toast'
@@ -88,6 +89,11 @@ const USER_MONEY_CHIPS = [
 const PLAYER_BAN_FUNCS = ['transfer', 'crypto', 'stocks', 'shop', 'assets',
   'centralmarket', 'mining', 'farm', 'company', 'cityroof', 'media']
 const ADMIN_LEVELS = [1, 2, 3, 4]
+// Поля конфига ботов по рынкам (зеркало DEFAULT_SYNTHETIC бэкенда).
+const SYNTH_FIELDS = {
+  stocks: ['probability', 'minShares', 'maxShares', 'roundsPerTick', 'buyBiasMin', 'buyBiasMax'],
+  crypto: ['probability', 'minVolumeUsd', 'maxVolumeUsd', 'roundsPerTick', 'buyBiasMin', 'buyBiasMax'],
+}
 
 
 function AdminPanel({ user, onClose }) {
@@ -188,6 +194,14 @@ function AdminPanel({ user, onClose }) {
   const [showAddCoinForm, setShowAddCoinForm] = useState(false)
   const [newCoin, setNewCoin] = useState({ symbol: '', name: '', price: '', volatility: '0.05', color: '#6366f1', supply: '', description: '' })
   const [chartAsset, setChartAsset] = useState(null) // { market, symbol } | null — открывает PriceHistoryEditor
+
+  // ── Состояние раздела «Синтетика» (боты-маркетмейкеры) ──────────────────
+  // Драфт параметров: числовые поля строками, enabled — булево.
+  const [synthForm, setSynthForm] = useState(null) // { stocks: {enabled, ...}, crypto: {...} }
+  const [synthStats, setSynthStats] = useState(null)
+  const [synthOrders, setSynthOrders] = useState([])
+  const [synthManual, setSynthManual] = useState({ symbol: '', side: '', quantity: '' })
+  const [synthBusy, setSynthBusy] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -336,9 +350,20 @@ function AdminPanel({ user, onClose }) {
         // Документы грузит отдельный effect (по dbActiveCollection/page/sort/search).
       } else if (activeSection === 'crypto') {
         const data = await fetchCryptoMarket()
-        // Прячем API-монеты (CoinGecko) — их всё равно перезатирает рефреш;
-        // админ управляет только игровыми и компанийными монетами.
+        // Прячем API-монеты (COINGECKO-монеты перезатираются рефрешем,
+        // ботам там делать нечего — цены с реального рынка).
         setCoins(data.filter(c => c.source !== 'coingecko'))
+      } else if (activeSection === 'synthetic') {
+        const [cfg, orders] = await Promise.all([
+          fetchSyntheticConfig(),
+          fetchSyntheticOrders(50).catch(() => []),
+        ])
+        setSynthForm({
+          stocks: Object.fromEntries(Object.entries(cfg.stocks).map(([k, v]) => [k, typeof v === 'boolean' ? v : String(v)])),
+          crypto: Object.fromEntries(Object.entries(cfg.crypto).map(([k, v]) => [k, typeof v === 'boolean' ? v : String(v)])),
+        })
+        setSynthStats(cfg.stats || null)
+        setSynthOrders(orders)
       } else if (activeSection === 'config') {
         const keys = ['sidebar_menu', 'header_title', 'app_version']
         const items = []
@@ -734,10 +759,62 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
+  // ── Синтетические транзакции (боты) ──────────────────────────────────────
+
+  const handleSaveSynthetic = async () => {
+    setSynthBusy(true)
+    try {
+      // Числовые поля ушли в драфт строками — конвертируем обратно.
+      const payload = { stocks: {}, crypto: {} }
+      for (const market of ['stocks', 'crypto']) {
+        const src = synthForm[market] || {}
+        payload[market] = {
+          enabled: !!src.enabled,
+          ...Object.fromEntries(SYNTH_FIELDS[market].map(k => [k, parseFloat(src[k]) || 0])),
+        }
+        // Целочисленные поля (для крипты min/maxShares не существует).
+        for (const k of ['minShares', 'maxShares', 'roundsPerTick']) {
+          if (k in payload[market]) payload[market][k] = Math.round(payload[market][k])
+        }
+      }
+      await saveSyntheticConfig(payload)
+      toast(t('admin.synthetic.saved'))
+      loadData()
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    } finally {
+      setSynthBusy(false)
+    }
+  }
+
+  const handleTriggerSynthetic = async (manual) => {
+    setSynthBusy(true)
+    try {
+      let body = {}
+      if (manual) {
+        body = {
+          market: 'all',
+          symbol: synthManual.symbol.trim().toUpperCase() || undefined,
+          side: synthManual.side || undefined,
+          quantity: synthManual.quantity !== '' ? parseFloat(synthManual.quantity) : undefined,
+        }
+      }
+      const res = await triggerSynthetic(body)
+      const ex = res.executed || {}
+      toast(t('admin.synthetic.triggered', { stocks: ex.stocks ?? 0, crypto: ex.crypto ?? 0 }))
+      loadData()
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    } finally {
+      setSynthBusy(false)
+    }
+  }
+
   const sections = [
     { id: 'stocks', perm: 'stocks', label: t('admin.stocks'), icon: Package },
     { id: 'crypto', perm: 'crypto', label: t('admin.crypto.title'), icon: Coins },
     { id: 'prices', perm: 'catalog_prices', label: t('admin.prices.title'), icon: DollarSign },
+    { id: 'synthetic', perm: 'synthetic', label: t('admin.synthetic.title'), icon: Bot },
     { id: 'users', perm: 'users_view', label: t('admin.users'), icon: Users },
     { id: 'transactions', perm: 'transactions_view', label: t('admin.transactions'), icon: ArrowLeftRight },
     { id: 'economy', perm: 'economy_view', label: t('econ.tab'), icon: Activity },
@@ -1025,6 +1102,119 @@ function AdminPanel({ user, onClose }) {
             </div>
           </div>
         )}
+
+        {!loading && activeSection === 'synthetic' && synthForm && (() => {
+          const fmtTs = (ts) => {
+            if (!ts) return '—'
+            const d = new Date(ts)
+            if (isNaN(d.getTime())) return ts
+            const p = n => String(n).padStart(2, '0')
+            return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+          }
+          const fmtQty = (q) => {
+            const n = Number(q) || 0
+            return n >= 1 ? n.toLocaleString('ru-RU', { maximumFractionDigits: 0 })
+                          : n.toLocaleString('ru-RU', { maximumFractionDigits: 8 })
+          }
+          return (
+          <div>
+            <div className="admin-section-divider">
+              <h3>{t('admin.synthetic.title')}</h3>
+              <p className="admin-section-hint">{t('admin.synthetic.hint')}</p>
+            </div>
+            {['stocks', 'crypto'].map(market => (
+              <div key={market} className="admin-add-form">
+                <h3>{t(market === 'stocks' ? 'admin.synthetic.marketStocks' : 'admin.synthetic.marketCrypto')}</h3>
+                <div className="admin-field-checkbox">
+                  <label>
+                    <input type="checkbox" checked={!!synthForm[market].enabled}
+                      onChange={e => setSynthForm({
+                        ...synthForm,
+                        [market]: { ...synthForm[market], enabled: e.target.checked },
+                      })} />
+                    {t('admin.synthetic.enabled')}
+                  </label>
+                </div>
+                {SYNTH_FIELDS[market].map(key => (
+                  <div key={key} className="config-field">
+                    <label title={key === 'probability' ? t('admin.synthetic.probabilityHelp')
+                      : ['buyBiasMin', 'buyBiasMax'].includes(key) ? t('admin.synthetic.biasHelp')
+                      : key === 'roundsPerTick' ? t('admin.synthetic.roundsHelp') : undefined}>
+                      {t(`admin.synthetic.${key}`)}
+                    </label>
+                    <input type="number" step="any" min="0" value={synthForm[market][key] ?? ''}
+                      onChange={e => setSynthForm({
+                        ...synthForm,
+                        [market]: { ...synthForm[market], [key]: e.target.value },
+                      })} />
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="admin-toolbar">
+              <button className="admin-btn admin-btn-primary" disabled={synthBusy} onClick={handleSaveSynthetic}>
+                <Save size={14} /> {t('admin.synthetic.save')}
+              </button>
+              <button className="admin-btn" disabled={synthBusy} onClick={() => handleTriggerSynthetic(false)}>
+                <RefreshCw size={14} /> {t('admin.synthetic.triggerRound')}
+              </button>
+              {synthStats && (
+                <span className="admin-count">
+                  {t('admin.synthetic.stats24h', { stocks: synthStats.stocks24h ?? 0, crypto: synthStats.crypto24h ?? 0 })}
+                </span>
+              )}
+            </div>
+
+            <div className="admin-add-form">
+              <h3>{t('admin.synthetic.manualTitle')}</h3>
+              <p className="admin-section-hint">{t('admin.synthetic.manualHint')}</p>
+              <div className="form-row">
+                <input placeholder={t('admin.synthetic.symbolPh')} value={synthManual.symbol}
+                  onChange={e => setSynthManual({ ...synthManual, symbol: e.target.value })} className="admin-input" />
+                <select value={synthManual.side} onChange={e => setSynthManual({ ...synthManual, side: e.target.value })} className="admin-input">
+                  <option value="">{t('admin.synthetic.sideRandom')}</option>
+                  <option value="buy">{t('admin.synthetic.sideBuy')}</option>
+                  <option value="sell">{t('admin.synthetic.sideSell')}</option>
+                </select>
+                <input placeholder={t('admin.synthetic.quantityPh')} type="number" step="any" min="0" value={synthManual.quantity}
+                  onChange={e => setSynthManual({ ...synthManual, quantity: e.target.value })} className="admin-input" />
+                <button className="admin-btn admin-btn-primary" disabled={synthBusy || !synthManual.symbol.trim()}
+                  onClick={() => handleTriggerSynthetic(true)}>
+                  <Bot size={14} /> {t('admin.synthetic.doTrade')}
+                </button>
+              </div>
+            </div>
+
+            <div className="admin-section-divider">
+              <h3>{t('admin.synthetic.feedTitle')}</h3>
+              <div className="stock-actions">
+                <span className="admin-count">{synthOrders.length}</span>
+                <button className="admin-btn" onClick={loadData} title={t('admin.synthetic.refresh')}>
+                  <RefreshCw size={14} />
+                </button>
+              </div>
+            </div>
+            <div className="admin-list">
+              {synthOrders.map(o => (
+                <div key={o.id} className="admin-stock-item">
+                  <div className="stock-info">
+                    <strong>{o.symbol}</strong>
+                    <span>{t(o.market === 'stocks' ? 'admin.synthetic.marketStocks' : 'admin.synthetic.marketCrypto')}</span>
+                    <span className={`tx-type ${o.action === 'buy' ? 'income' : 'expense'}`}>
+                      {t(o.action === 'buy' ? 'admin.synthetic.sideBuy' : 'admin.synthetic.sideSell')}
+                    </span>
+                    <span className="admin-count">{fmtQty(o.quantity)} × ${o.price != null ? Number(o.price).toLocaleString('ru-RU', { maximumFractionDigits: 6 }) : '—'}</span>
+                  </div>
+                  <div className="stock-actions">
+                    <span className="user-date">{fmtTs(o.timestamp)}</span>
+                  </div>
+                </div>
+              ))}
+              {synthOrders.length === 0 && <p className="empty-state">{t('admin.synthetic.feedEmpty')}</p>}
+            </div>
+          </div>
+          )
+        })()}
 
         {editingCoin && (
           <div className="modal-overlay" onClick={() => setEditingCoin(null)}>

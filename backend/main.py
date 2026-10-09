@@ -61,6 +61,7 @@ from admin_db import router as admin_db_router
 from media import router as media_router
 from farm import router as farm_router
 from production import router as production_router
+from synthetic import router as synthetic_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
 
@@ -122,6 +123,8 @@ async def lifespan(app: FastAPI):
     await db.stock_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
     await db.stock_events.create_index("symbol")
     await db.stock_events.create_index("timestamp")
+    await db.crypto_events.create_index("symbol")
+    await db.crypto_events.create_index("timestamp")
     await db.user_assets.create_index("userId")
     await db.asset_market.create_index("slug", unique=True)
     await db.companies.create_index("ownerId", unique=True)
@@ -236,6 +239,7 @@ app.include_router(ws_router)
 # Ферма: поле, культуры, машины (комбайн/трактор), топливо (см. backend/farm.py).
 app.include_router(farm_router)
 app.include_router(production_router)
+app.include_router(synthetic_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────

@@ -55,18 +55,18 @@ FOUNDER_SHARE_PCT = 0.2     # доля основателя при эмисси�
 TRADE_FEE_RATE = 0.005      # торговая комиссия (спред) на сделки — «сгорает»
 
 # ── Боты-покупатели ──────────────────────────────────────────────────────────
-# Заменяют реальный рыночный фид: на каждом тике планировщика с вероятностью
-# BOT_TRADE_PROBABILITY каждая системная акция получает симулированную
-# buy/sell-сделку, которая двигает цену той же формулой ΔP, что и игроки.
+# Заменяют реальный рыночный фид: на каждом тике планировщика с настраиваемой
+# вероятностью (admin: app_config["synthetic_config"]) каждая системная акция
+# получает симулированную buy/sell-сделку, которая двигает цену той же формулой
+# ΔP, что и игроки. Параметры и ручной запуск — backend/synthetic.py.
 BOT_USER_ID = "bot"
-BOT_TRADE_PROBABILITY = 0.4
-BOT_MIN_SHARES = 1
-BOT_MAX_ORDER_SHARES = 1_000_000   # верхняя граница случайного объёма сделки бота
-# Планировщик тикает раз в 60с, но боты должны торговать ~каждые 10с. Поэтому за
-# один тик прогоняем несколько раундов ботов (60/10 = 6), не ускоряя остальные
-# фоновые задачи. Перед каждым раундом перечитываем акции — иначе условный
-# update по free_shares не совпадёт и сделки не «наложатся».
-BOT_ROUNDS_PER_TICK = 6
+# Сделка бота строго в рамках свободных акций: покупка режется по free_shares
+# (бот не может выкупить больше выпуска), продажа — по купленному ботом ранее
+# (total_shares − free_shares): бот продаёт только то, что сам купил.
+# Планировщик тикает раз в 60с, но боты должны торговать ~каждые 10с, поэтому за
+# тик прогоняется несколько раундов (roundsPerTick). Перед каждым раундом акции
+# перечитываем — иначе условный update по free_shares не совпадёт и сделки не
+# «наложатся».
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -242,64 +242,107 @@ async def list_stocks(
     return out
 
 
-async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
-    """Боты-покупатели: имитируют рыночную активность по системным акциям.
+async def _bot_stock_trade(
+    db: AsyncIOMotorDatabase, s: dict, cfg: dict,
+    side: Optional[str] = None, quantity: Optional[int] = None,
+) -> bool:
+    """Одна синтетическая сделка по акции. False — сделка не состоялась.
 
     Только для системных тикеров (issuer пуст) — пользовательские эмиссии
     двигают только реальные игроки. Сам бот не имеет баланса/портфеля: сделка
     просто двигает цену и пул свободных акций, как buy/sell от игрока.
+    quantity/side фиксируются при ручном запуске из админки (synthetic.trigger);
+    объём всегда режется по свободному остатку (см. константы блока ботов).
     """
-    for s in stocks:
-        if s.get("issuer"):
-            continue
-        if random.random() > BOT_TRADE_PROBABILITY:
-            continue
+    if s.get("issuer"):
+        return False
 
-        cfg = _resolve_config(s)
-        total_shares = cfg["total_shares"]
-        price = float(s.get("price", 0))
-        if total_shares <= 0 or price <= 0:
-            continue
-        free_shares = s.get("free_shares", total_shares)
+    mcfg = _resolve_config(s)
+    total_shares = mcfg["total_shares"]
+    price = float(s.get("price", 0))
+    if total_shares <= 0 or price <= 0:
+        return False
+    free_shares = s.get("free_shares", total_shares)
 
-        max_qty = min(BOT_MAX_ORDER_SHARES, random.randint(1, 1_000_000))
-        # ponytail: случайный bias вместо фиксированных 50/50 — иначе покупки и
-        # продажи взаимно гасятся и цена стоит на месте. Каждый тик тянем свою
-        # вероятность покупки из [0.3, 0.7], поэтому возникают трендовые серии.
-        # Эвристика: диапазон подобран так, чтобы цена дрейфовала, но не взрывалась.
-        buy_prob = random.uniform(0.3, 0.7)
-        action = "buy" if random.random() < buy_prob else "sell"
+    max_qty = random.randint(int(cfg["minShares"]), max(int(cfg["minShares"]), int(cfg["maxShares"])))
+    # ponytail: случайный bias вместо фиксированных 50/50 — иначе покупки и
+    # продажи взаимно гасятся и цена стоит на месте. Каждый тик тянем свою
+    # вероятность покупки из [buyBiasMin, buyBiasMax], поэтому возникают
+    # трендовые серии. Диапазон подобран так, чтобы цена дрейфовала, не взрываясь.
+    buy_prob = random.uniform(cfg["buyBiasMin"], cfg["buyBiasMax"])
+    action = side or ("buy" if random.random() < buy_prob else "sell")
 
-        if action == "buy":
-            qty = min(max_qty, free_shares)
-            if qty < BOT_MIN_SHARES:
+    if action == "buy":
+        qty = int(min(quantity if quantity is not None else max_qty, max_qty, free_shares))
+        if qty < 1:
+            return False
+        delta = price * mcfg["volatility_k"] * (qty / total_shares)
+        new_price = round(price + delta, 2)
+        update = {"$inc": {"free_shares": -qty}, "$set": {"price": new_price}}
+    else:
+        qty = int(min(quantity if quantity is not None else max_qty, max_qty, total_shares - free_shares))
+        if qty < 1:
+            return False
+        delta = price * mcfg["volatility_k"] * (qty / total_shares)
+        new_price = round(max(0.01, price - delta), 2)
+        update = {"$inc": {"free_shares": qty}, "$set": {"price": new_price}}
+
+    update["$set"].update({
+        "change": round(new_price - price, 2),
+        "changePercent": round((new_price - price) / price * 100, 2) if price else 0.0,
+        "updated_at": datetime.now(timezone.utc),
+    })
+    res = await db.stocks.update_one({"symbol": s["symbol"], "free_shares": free_shares}, update)
+    if not res.modified_count:
+        return False
+    await MarketDataService.record_snapshot(db, "stock", s["symbol"], new_price, force=True)
+    change = ((new_price - price) / price * 100) if price else 0.0
+    await db.stock_events.insert_one({
+        "symbol": s["symbol"],
+        "type": action,
+        "quantity": qty,
+        "priceBefore": price,
+        "priceAfter": new_price,
+        "userId": BOT_USER_ID,
+        "timestamp": datetime.now(timezone.utc),
+    })
+    await broadcast({
+        "type": "price_tick",
+        "market": "stock",
+        "symbol": s["symbol"],
+        "price": new_price,
+        "changePercent": round(change, 2),
+    })
+    return True
+
+
+async def run_bots(
+    db: AsyncIOMotorDatabase, cfg: dict,
+    symbol: Optional[str] = None, side: Optional[str] = None,
+    quantity: Optional[float] = None,
+) -> int:
+    """Раунды ботов по системным акциям. Возвращает число сделок.
+
+    cfg — синтетическая конфигурация рынка акций (synthetic.get_synthetic_config).
+    Без symbol — roundsPerTick раундов с вероятностью probability (фоновый тик и
+    ручной «запустить раунд»); с symbol — одна разовая сделка (side/quantity
+    из админки), всё равно в пределах свободных акций.
+    """
+    if not cfg.get("enabled", True) or cfg["roundsPerTick"] <= 0:
+        return 0
+    executed = 0
+    qty = int(quantity) if quantity is not None else None
+    rounds = 1 if symbol else int(cfg["roundsPerTick"])
+    for _ in range(rounds):
+        stocks_list = await find_all_stocks(db)
+        for s in stocks_list:
+            if symbol and s["symbol"] != symbol.upper():
                 continue
-            delta = price * cfg["volatility_k"] * (qty / total_shares)
-            new_price = round(price + delta, 2)
-            update = {"$inc": {"free_shares": -qty}, "$set": {"price": new_price}}
-        else:
-            qty = min(max_qty, total_shares - free_shares)
-            if qty < BOT_MIN_SHARES:
+            if not symbol and random.random() > cfg["probability"]:
                 continue
-            delta = price * cfg["volatility_k"] * (qty / total_shares)
-            new_price = round(max(0.01, price - delta), 2)
-            update = {"$inc": {"free_shares": qty}, "$set": {"price": new_price}}
-
-        update["$set"].update({
-            "change": round(new_price - price, 2),
-            "changePercent": round((new_price - price) / price * 100, 2) if price else 0.0,
-            "updated_at": datetime.now(timezone.utc),
-        })
-        await db.stocks.update_one({"symbol": s["symbol"], "free_shares": free_shares}, update)
-        await MarketDataService.record_snapshot(db, "stock", s["symbol"], new_price, force=True)
-        change = ((new_price - price) / price * 100) if price else 0.0
-        await broadcast({
-            "type": "price_tick",
-            "market": "stock",
-            "symbol": s["symbol"],
-            "price": new_price,
-            "changePercent": round(change, 2),
-        })
+            if await _bot_stock_trade(db, s, cfg, side=side, quantity=qty):
+                executed += 1
+    return executed
 
 
 CATALOG_ANCHOR_PULL = 0.1   # доля сближения цены акции компании с фундаменталом за тик
@@ -439,9 +482,11 @@ async def maintain_stock_market(db: AsyncIOMotorDatabase):
     # выходил пустым и market_update по акциям не рассылался вообще.
     before = {s["symbol"]: float(s.get("price", 0)) for s in stocks}
     await _walk_system_stocks(db)
-    # Несколько раундов ботов за тик ≈ торговля каждые 10с (см. BOT_ROUNDS_PER_TICK).
-    for _ in range(BOT_ROUNDS_PER_TICK):
-        await _run_bots(db, await find_all_stocks(db))
+    # Несколько раундов ботов за тик ≈ торговля каждые 10с (см. run_bots);
+    # параметры и вкл/выкл — app_config["synthetic_config"] (админка → synthetic).
+    from synthetic import get_synthetic_config
+    synth = await get_synthetic_config(db)
+    await run_bots(db, synth["stocks"])
     await _revalue_company_stocks(db)
     updates = []
     for s in await find_all_stocks(db):
@@ -976,11 +1021,17 @@ async def get_stock_v2(
 
 if __name__ == "__main__":
     # Мини-проверка новой математики объёмов/потолка (без БД, без сервера).
+    # Объём ордера бота: случайный в [minShares, maxShares] и всегда ≥ 1.
+    import synthetic as _synth
+    scfg = _synth.DEFAULT_SYNTHETIC["stocks"]
     for _ in range(10_000):
-        qty = min(BOT_MAX_ORDER_SHARES, random.randint(1, 1_000_000))
-        assert 1 <= qty <= 1_000_000, qty
-        p = random.uniform(0.3, 0.7)
-        assert 0.3 <= p <= 0.7
+        mx = random.randint(int(scfg["minShares"]), int(scfg["maxShares"]))
+        assert 1 <= mx <= scfg["maxShares"], mx
+        p = random.uniform(scfg["buyBiasMin"], scfg["buyBiasMax"])
+        assert scfg["buyBiasMin"] <= p <= scfg["buyBiasMax"]
+    # Сделка бота режется по свободному остатку: buy ≤ free, sell ≤ total−free.
+    free, total, want = 100, 1_000, 10_000
+    assert min(want, free) == free and min(want, total - free) == total - free
     # Потолок ордера пропускает до 10 млн и режет больше.
     assert MAX_ORDER_SHARES == 10_000_000
     assert 10_000_000 <= MAX_ORDER_SHARES         # ровно 10 млн проходит

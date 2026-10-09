@@ -14,3 +14,4 @@ docs/superpowers/
 # Секреты
 backend/.env
 frontend/.env
+tools

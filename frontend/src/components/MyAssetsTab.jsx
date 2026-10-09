@@ -15,6 +15,7 @@ import ItStudioOrderModal from './ItStudioOrderModal'
 import MediaExposeModal from './MediaExposeModal'
 import UpgradeModal from './UpgradeModal'
 import FarmPanel from './FarmPanel'
+import ProductionPanel from './ProductionPanel'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
@@ -45,11 +46,14 @@ const ASSET_EMOJI = {
   shawarma: '🌯', coffee: '☕', carwash: '🚿', factory: '🏭',
   itstudio_basic: '💻', itstudio_medium: '💻', itstudio_advanced: '💻', itstudio_premium: '💻',
   citycar: '🚗', sedan: '🚙', sport: '🏎️', super: '🏎️',
+  'admin-fac-bakery-1': '🍞',
 }
 const TYPE_EMOJI = {
   realestate: '🏠', business: '🏢', car: '🚗',
   factory: '🏭', source: '⛏️', warehouse: '🏬',
 }
+// Иконка источника по категории: поле — пшеница, шахта — кирка, лесопилка — бревно.
+const SRC_CAT_EMOJI = { mine: '⛏️', field: '🌾', sawmill: '🪵' }
 
 // Пресеты срока аренды (в часах) — кнопки в модалке сдачи в аренду.
 const RENT_DURATIONS = [
@@ -96,6 +100,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [giftName, setGiftName] = useState('')
   const [mediaModal, setMediaModal] = useState(false)            // разоблачение в СМИ (актив «Медиахолдинг»)
   const [fieldModal, setFieldModal] = useState(null)             // актив-поле с открытой панелью управления
+  const [productionModal, setProductionModal] = useState(null)   // источник/пекарня/склад — панель производства
   const menuRef = useRef(null)
 
   // Закрытие меню «Взаимодействие» по клику вне него.
@@ -362,7 +367,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const totalProfit = list.reduce((s, a) => s + (a.profitPerHour || 0), 0)
   const totalAccrued = list.reduce((s, a) => s + (a.accrued || 0), 0)
 
-  const emojiFor = (a) => ASSET_EMOJI[a.slug] || TYPE_EMOJI[a.type] || '📦'
+  const emojiFor = (a) => ASSET_EMOJI[a.slug] || (a.type === 'source' ? (SRC_CAT_EMOJI[a.category] || '⛏️') : null) || TYPE_EMOJI[a.type] || '📦'
   const imgFor = (a) => assetImage(a.slug, a.type)
 
   // Статус аренды — только инфо-бейдж; сами кнопки (сдать/отменить) вынесены
@@ -433,13 +438,23 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => { setMediaModal(true); setMenuOpenId(null) },
       })
     }
-    // Поле (источник category='field'): кнопка «Управление полем» — заглушка,
-    // панель управления пока пустая (см. below по fieldModal).
+    // Поле (источник category='field'): кнопка «Управление полем» — панель фермы.
     if (a.type === 'source' && a.category === 'field') {
       actions.push({
         key: 'manage-field', disabled: busy, icon: <Sprout size={15} />,
         label: t('field.manage'),
         onClick: () => { setFieldModal(a); setMenuOpenId(null) },
+      })
+    }
+    // Шахта/лесопилка, пекарня (завод produces='bread') и склад: панель
+    // производства — работники, еда, хранилище, фуры, получатель, продажа.
+    const isBakery = a.type === 'factory' && a.meta?.produces === 'bread'
+    if ((a.type === 'source' && a.category !== 'field') || isBakery || a.type === 'warehouse') {
+      actions.push({
+        key: 'manage-production', disabled: busy,
+        icon: isBakery ? <Package size={15} /> : (a.type === 'warehouse' ? <Warehouse size={15} /> : <Pickaxe size={15} />),
+        label: t('prod.manage', 'Управление производством'),
+        onClick: () => { setProductionModal(a); setMenuOpenId(null) },
       })
     }
     if (isCompanyOwner && a.type !== 'realestate') {
@@ -511,6 +526,18 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         assetId={fieldModal.id}
         assetName={t(`assetNames.${fieldModal.slug}`, fieldModal.name)}
         onBack={() => setFieldModal(null)}
+        onOpenProduction={() => setProductionModal(fieldModal)}
+        balance={balance}
+        onBalanceChange={onBalanceChange}
+  />
+    )
+  }
+
+  if (productionModal) {
+    return (
+      <ProductionPanel
+        unitId={productionModal.id}
+        onBack={() => setProductionModal(null)}
         balance={balance}
         onBalanceChange={onBalanceChange}
       />

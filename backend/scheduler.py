@@ -61,6 +61,12 @@ async def _tick():
         await mining.tick_all(db)
     except Exception as exc:
         logger.warning("mining tick failed: %s", exc, exc_info=True)
+    # 4b) Производство: источники/пекарня/фуры (см. production.py).
+    try:
+        from production import tick as production_tick
+        await production_tick(db)
+    except Exception as exc:
+        logger.warning("production tick failed: %s", exc, exc_info=True)
     # 5) Крыша города: автосбор дохода со зданий (персональный КД у бизнеса).
     try:
         await cityroof.sweep_business_income(db)

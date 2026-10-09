@@ -1169,6 +1169,40 @@ export async function buyFarmVehicle(vehicleId, quantity = 1) {
   return request('/api/farm/vehicles/buy', { method: 'POST', body: JSON.stringify({ vehicleId, quantity }) })
 }
 
+// ── Производство: источники → фуры → склады/пекарня (backend/production.py) ──
+export async function fetchProductionOverview() { return request('/api/production/overview') }
+export async function setProductionConfig(unitId, { destinationId, inputId } = {}) {
+  return request(`/api/production/${unitId}/config`, {
+    method: 'POST', body: JSON.stringify({ destinationId, inputId }),
+  })
+}
+export async function setProductionTrucks(unitId, slot, truckIds) {
+  return request(`/api/production/${unitId}/trucks`, {
+    method: 'POST', body: JSON.stringify({ slot, truckIds }),
+  })
+}
+export async function setProductionWorkers(unitId, workers) {
+  return request(`/api/production/${unitId}/workers`, {
+    method: 'POST', body: JSON.stringify({ workers }),
+  })
+}
+export async function buyProductionFood(unitId, qty) {
+  return request(`/api/production/${unitId}/food`, {
+    method: 'POST', body: JSON.stringify({ qty }),
+  })
+}
+export async function upgradeProductionStorage(unitId) {
+  return request(`/api/production/${unitId}/storage-upgrade`, { method: 'POST' })
+}
+export async function sellProductionResource(unitId, resource, qty) {
+  return request(`/api/production/${unitId}/sell`, {
+    method: 'POST', body: JSON.stringify({ resource, qty }),
+  })
+}
+export async function productionHaulNow(unitId) {
+  return request(`/api/production/${unitId}/haul-now`, { method: 'POST' })
+}
+
 export {
   API_BASE_URL,
   ApiError,

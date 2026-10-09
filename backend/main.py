@@ -60,6 +60,7 @@ from mining import router as mining_router
 from admin_db import router as admin_db_router
 from media import router as media_router
 from farm import router as farm_router
+from production import router as production_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
 
@@ -160,6 +161,9 @@ async def lifespan(app: FastAPI):
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
     await init_db()
     await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
+    await mining_module.dismantle_orphan_farms(db)   # разбор ферм без дома (не видны в новой системе)
+    from production import migrate_owned_infra
+    await migrate_owned_infra(db)   # синхронизация цен/meta купленных источников и складов
     start_scheduler()   # единый фоновый планировщик всех систем
     yield
     await stop_scheduler()
@@ -231,6 +235,7 @@ app.include_router(media_router)
 app.include_router(ws_router)
 # Ферма: поле, культуры, машины (комбайн/трактор), топливо (см. backend/farm.py).
 app.include_router(farm_router)
+app.include_router(production_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────

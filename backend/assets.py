@@ -360,18 +360,29 @@ _ADMIN_MARKET_FACTORIES = [
     {"slug": "admin-fac-gpu-1", "type": TYPE_FACTORY, "category": "gpu", "name": "Завод видеокарт",
      "rarity": "rare", "price": 250000, "income_per_hour": 0, "upkeep_per_hour": 0,
      "employees": 24, "meta": {"produces": "gpu", "outputPerHour": 4}},
+    # Пекарня: перерабатывает пшеницу в хлеб (физические ресурсы, не деньги).
+    # Пшеницу возят фуры с поля или со склада (prod.inputId), хлеб вывозится
+    # на склад (prod.destinationId). Механика в production.py.
+    {"slug": "admin-fac-bakery-1", "type": TYPE_FACTORY, "category": "bakery", "name": "Пекарня",
+     "rarity": "rare", "price": 1200000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 20, "meta": {"produces": "bread", "input": "wheat",
+                               "outputPerHour": 120, "consumesPerHour": 240, "capacity": 30000}},
 ]
 
+# Источники: цены ×100 к старым (35k→3.5M, 22k→2.2M, 48k→4.8M), добыча и
+# ёмкость хранилища тоже ×100 — окупаемость сохраняется в игровом коридоре
+# (~4 суток при штатном составе работников). Источник теперь копит РЕСУРС в
+# своём хранилище (см. production.py), а не деньги.
 _ADMIN_MARKET_SOURCES = [
     {"slug": "admin-src-mine-1", "type": TYPE_SOURCE, "category": "mine", "name": "Шахта",
-     "rarity": "common", "price": 35000, "income_per_hour": 0, "upkeep_per_hour": 0,
-     "employees": 8, "meta": {"resource": "metal", "outputPerHour": 6, "capacity": 500}},
+     "rarity": "common", "price": 3500000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 8, "meta": {"resource": "metal", "outputPerHour": 600, "capacity": 50000}},
     {"slug": "admin-src-field-1", "type": TYPE_SOURCE, "category": "field", "name": "Поле",
-     "rarity": "common", "price": 22000, "income_per_hour": 0, "upkeep_per_hour": 0,
-     "employees": 6, "meta": {"resource": "food", "outputPerHour": 8, "capacity": 600}},
+     "rarity": "common", "price": 2200000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 6, "meta": {"resource": "food", "outputPerHour": 800, "capacity": 60000}},
     {"slug": "admin-src-sawmill-1", "type": TYPE_SOURCE, "category": "sawmill", "name": "Лесопилка",
-     "rarity": "uncommon", "price": 48000, "income_per_hour": 0, "upkeep_per_hour": 0,
-     "employees": 10, "meta": {"resource": "wood", "outputPerHour": 5, "capacity": 450}},
+     "rarity": "uncommon", "price": 4800000, "income_per_hour": 0, "upkeep_per_hour": 0,
+     "employees": 10, "meta": {"resource": "wood", "outputPerHour": 500, "capacity": 45000}},
 ]
 
 # 16 складов с логарифмической шкалой площади 50..100000 м². Цена и rarity
@@ -379,7 +390,8 @@ _ADMIN_MARKET_SOURCES = [
 import math as _math
 
 def _wh_price(area: int) -> int:
-    return int(round(1200 * area * (1 + 0.5 * _math.log10(area / 50))))
+    # 3600 = 1200 × 3 (цены складов подняты ×3 к старым).
+    return int(round(3600 * area * (1 + 0.5 * _math.log10(area / 50))))
 
 def _wh_rarity(area: int) -> str:
     if area < 500: return "common"
@@ -395,7 +407,10 @@ _ADMIN_MARKET_WAREHOUSES = [
      "name": f"Склад {area:,} м²".replace(",", " "), "rarity": _wh_rarity(area),
      "price": _wh_price(area), "income_per_hour": 0, "upkeep_per_hour": 0,
      "employees": max(2, round(area / 200)),
-     "meta": {"areaSqm": area, "storageCap": area * 20, "slots": 1}}
+     # storageCap — вместимость в кг ресурса (см. production.py), масштаб ×1000
+     # к старым area×20: добыча источников выросла ×100, склад должен вмещать
+     # осмысленный запас между рейсами фур.
+     "meta": {"areaSqm": area, "storageCap": area * 1000, "slots": 1}}
     for i, area in enumerate(_WAREHOUSE_AREAS)
 ]
 
@@ -738,25 +753,20 @@ def _mining_cost(asset: dict, econ: Optional[dict] = None) -> float:
 
 
 def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
-    """Почасовой доход инфраструктуры (заводы/источники).
+    """Почасовой доход инфраструктуры.
 
-    Завод: meta.outputPerHour × infra_gpu_price (продукция продаётся «на сторону»
-    по фиксированной цене из econ). Источник: meta.resource → цена ресурсa.
-    Склады прибыли НЕ приносят (отключено).
+    Остался только у завода видеокарт (meta.produces='gpu'): продукция продаётся
+    «на сторону» по фиксированной цене из econ. Источники и пекарня теперь
+    производят ФИЗИЧЕСКИЕ ресурсы в собственное хранилище (см. production.py) —
+    деньги приносит продажа ресурсов со склада, поэтому денежный поток
+    источников отключён, чтобы не платить дважды. Склады прибыли не приносят.
     Коэффициенты берутся из econ; в sync-контексте — дефолты.
     """
     t = asset.get("type")
     meta = asset.get("meta") or {}
-    if t == TYPE_FACTORY:
+    if t == TYPE_FACTORY and meta.get("produces") == "gpu":
         return round(int(meta.get("outputPerHour") or 0) * float(
             econ.get("infra_gpu_price") if econ else DEFAULT_ECON["infra_gpu_price"]), 2)
-    if t == TYPE_SOURCE:
-        resource = str(meta.get("resource") or "")
-        key = {"metal": "infra_metal_price", "food": "infra_food_price", "wood": "infra_wood_price"}.get(resource)
-        if not key:
-            return 0.0
-        return round(int(meta.get("outputPerHour") or 0) * float(
-            econ.get(key) if econ else DEFAULT_ECON[key]), 2)
     return 0.0
 
 
@@ -1214,13 +1224,19 @@ def _fallback_factory(slug: str) -> Optional[dict]:
                 "name": "Завод видеокарт", "rarity": "rare", "price": 250000,
                 "income_per_hour": 0, "upkeep_per_hour": 0, "employees": 24,
                 "meta": {"produces": "gpu", "outputPerHour": 4}}
+    if slug == "admin-fac-bakery-1":
+        return {"slug": slug, "type": TYPE_FACTORY, "category": "bakery",
+                "name": "Пекарня", "rarity": "rare", "price": 1200000,
+                "income_per_hour": 0, "upkeep_per_hour": 0, "employees": 20,
+                "meta": {"produces": "bread", "input": "wheat",
+                         "outputPerHour": 120, "consumesPerHour": 240, "capacity": 30000}}
 
 
 def _fallback_source(slug: str) -> Optional[dict]:
     SRC = {
-        "admin-src-mine-1": ("Шахта", "common", 35000, 8, "metal", 6, 500),
-        "admin-src-field-1": ("Поле", "common", 22000, 6, "food", 8, 600),
-        "admin-src-sawmill-1": ("Лесопилка", "uncommon", 48000, 10, "wood", 5, 450),
+        "admin-src-mine-1": ("Шахта", "common", 3500000, 8, "metal", 600, 50000),
+        "admin-src-field-1": ("Поле", "common", 2200000, 6, "food", 800, 60000),
+        "admin-src-sawmill-1": ("Лесопилка", "uncommon", 4800000, 10, "wood", 500, 45000),
     }
     info = SRC.get(slug)
     if not info:
@@ -1255,7 +1271,7 @@ def _fallback_warehouse(slug: str) -> Optional[dict]:
             "rarity": _wh_rarity(area), "price": _wh_price(area),
             "income_per_hour": 0, "upkeep_per_hour": 0,
             "employees": max(2, round(area / 200)),
-            "meta": {"areaSqm": area, "storageCap": area * 20, "slots": 1}}
+            "meta": {"areaSqm": area, "storageCap": area * 1000, "slots": 1}}
 
 
 def _fallback_catalog(slug: str) -> Optional[dict]:
@@ -2030,7 +2046,12 @@ if __name__ == "__main__":
     # Суммарная доходность каждого актива каталога — 24–31%/сутки (окупаемость
     # 3.2–4.2 дня). Единый ориентир для всей экономики: активы, ферма и компании
     # должны отбиваться за сопоставимое время, иначе один класс обесценивает остальные.
+    # Инфраструктура (admin-re-*/*factory/source/warehouse) проверяется отдельно:
+    # источники/пекарня зарабатывают физическими ресурсами (production.py), склады
+    # денег не приносят, а лестница admin-re-* исторически ниже коридора.
     for _c in CATALOG:
+        if _c["slug"].startswith("admin-") or _c["type"] in (TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE):
+            continue
         _inst = _c | {"level": 1, "tuning_value": 0.0}
         _daily = (_income_per_hour(_inst) - _upkeep_per_hour(_inst)) * 24 + _rent_daily_rate(_inst)
         _pct = _daily / _c["price"] * 100
@@ -2109,8 +2130,8 @@ if __name__ == "__main__":
     def _daily(asset):
         return (_income_per_hour(asset) - _upkeep_per_hour(asset)) * 24 + _rent_daily_rate(asset)
     for _c in CATALOG:
-        if _c["type"] == TYPE_CAR:   # авто качаются тюнингом, а не уровнем
-            continue
+        if _c["type"] in (TYPE_CAR, TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE):
+            continue   # авто качаются тюнингом; инфраструктура — вне коридора доходности
         _lvl1 = _c | {"level": 1, "tuning_value": 0.0}
         _buy_days = _c["price"] / _daily(_lvl1)
         for _lvl in (1, 5, 10):

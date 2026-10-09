@@ -152,9 +152,11 @@ def _volume_per_cell(crop_id: str) -> float:
     return float(cfg["crops"][crop_id]["volume_per_cell"])
 
 
-def _storage_cap() -> int:
+def _storage_cap(level: int = 1) -> int:
+    """Ёмкость склада поля на культуру. Уровень (1..10) — из prod.storageLevel
+    актива-поля (качается в панели производства, см. production.py)."""
     cfg = _cfg()
-    return int(cfg["storage_slots_per_resource"])
+    return int(cfg["storage_slots_per_resource"] * max(1, int(level)))
 
 
 def _crop_unit_price(crop_id: str, econ: dict) -> float:
@@ -273,10 +275,13 @@ async def get_my_farm(
         if aid not in existing:
             await _get_or_create_field(db, user_id, aid)
 
-    # Все поля игрока.
+    # Все поля игрока. Ёмкость склада — с уровнем из prod актива (1..10).
     fields = []
+    prods = {str(a["_id"]): (a.get("prod") or {}) for a in await db.user_assets.find(
+        {"userId": user_id, "type": "source", "category": "field"}, {"prod": 1}).to_list(100)}
     async for f in db.user_fields.find({"userId": user_id}):
-        fields.append(_serialize_field(f, cfg))
+        level = max(1, int(prods.get(str(f.get("assetId")), {}).get("storageLevel", 1)))
+        fields.append(_serialize_field(f, cfg, _storage_cap(level)))
 
     # Машины фермы: все экземпляры user_hardware с itemId вида "combine_*" или "tractor_*".
     machines = []
@@ -301,7 +306,7 @@ async def get_my_farm(
     return {"fields": fields, "machines": machines, "fuel": round(fuel, 2)}
 
 
-def _serialize_field(f: dict, cfg: dict) -> dict:
+def _serialize_field(f: dict, cfg: dict, storage_cap: int | None = None) -> dict:
     side = int(f.get("side") or cfg["cells_per_side"])
     cells = f.get("cells") or []
     ready_count = 0
@@ -330,6 +335,7 @@ def _serialize_field(f: dict, cfg: dict) -> dict:
         "totalCells": len(cells),
         "empty": empty_count, "growing": growing_count, "ready": ready_count,
         "storage": f.get("storage") or {},
+        "storageCap": storage_cap,
         "cells": cells_out,
     }
 
@@ -519,6 +525,21 @@ async def harvest(
             f"Недостаточно топлива: нужно {fuel_cost:.1f} л, есть {current_fuel:.1f} л",
         )
 
+    # Персонал и уровень хранилища поля — из prod актива (см. production.py).
+    asset = await db.user_assets.find_one(
+        {"_id": ObjectId(payload.assetId), "userId": user_id},
+        {"prod": 1, "employees": 1, "meta.employees": 1},
+    )
+    prod = (asset or {}).get("prod") or {}
+    workers = int(prod.get("workers", 0))
+    level = max(1, int(prod.get("storageLevel", 1)))
+    # Урожай × эффективность штата: без найма — базовый режим (×1); с наймом
+    # эффективность = workers/штат (×2 max) и ×0.6, если еда кончилась.
+    yield_mult = 1.0
+    if workers > 0:
+        base = int(asset.get("employees") or ((asset.get("meta") or {}).get("employees") or 6))
+        yield_mult = min(2.0, workers / max(1, base)) * (1.0 if float(prod.get("food", 0.0)) > 0 else 0.6)
+
     # Пересчитываем склад и очищаем клетки. Группируем по культуре.
     storage = field.setdefault("storage", {})
     total_by_crop: dict[str, float] = {}
@@ -528,8 +549,8 @@ async def harvest(
         if not crop or crop not in cfg["crops"]:
             c["status"] = "empty"; c["crop"] = None; c["planted_at"] = None; c["ready_at"] = None
             continue
-        volume = _volume_per_cell(crop)
-        cap = _storage_cap()
+        volume = _volume_per_cell(crop) * yield_mult
+        cap = _storage_cap(level)
         current = float(storage.get(crop, 0.0) or 0.0)
         if current + volume > cap:
             # Пропуск: склад полон для этой культуры. Возвращаем клетку.

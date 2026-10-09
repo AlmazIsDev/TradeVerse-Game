@@ -1185,6 +1185,28 @@ async def soft_reset_farms(db: AsyncIOMotorDatabase) -> None:
     await upsert_config(db, MIGRATION_KEY, "1")
 
 
+# ── Миграция: разбор сиротских ферм (houseId=None) ────────────────────────────
+# Фермы, созданные до привязки к домам, не видны в новой системе (слоты
+# подвала). Разбираем их при старте: железо возвращается в инвентарь,
+# ферма удаляется, владелец получает уведомление. Идемпотентно: сироты
+# появляются только из старых данных.
+async def dismantle_orphan_farms(db: AsyncIOMotorDatabase) -> None:
+    async for farm in db.mining_farms.find({"houseId": None}):
+        try:
+            await db.user_hardware.update_many(
+                {"farmId": str(farm["_id"])}, {"$set": {"farmId": None}})
+            await db.mining_farms.delete_one({"_id": farm["_id"]})
+            await push_notification(
+                db, farm["userId"], "mining",
+                "Майнинг-ферма разобрана",
+                f"Ферма «{farm.get('name')}» была создана до привязки к домам и "
+                "не работала в новой системе. Всё оборудование возвращено в инвентарь — "
+                "его можно установить в ферму в подвале дома.",
+            )
+        except Exception:
+            pass
+
+
 # ── Фоновый тик добычи (вызывается Scheduler'ом) ─────────────────────────────
 
 

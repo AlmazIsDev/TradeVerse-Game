@@ -91,6 +91,14 @@ RESOURCES: list[dict] = [
         "base_price": 14.0,
         "unit": "кг",
     },
+    {
+        "id": "bread",
+        "name": "Хлеб",
+        "description": "Выпекается в пекарне из пшеницы. Корм для работников источников — повышает их эффективность.",
+        "category": CAT_AGRICULTURE,
+        "base_price": 30.0,
+        "unit": "кг",
+    },
 
     # ── Минералы (шахта, сырьё) ────────────────────────────────────────────
     {
@@ -219,9 +227,9 @@ if __name__ == "__main__":
         assert r["category"] in RESOURCE_CATEGORIES, r["id"]
         assert isinstance(r["base_price"], (int, float)) and r["base_price"] > 0, r["id"]
 
-    # Все 13 запрошенных предметов на месте.
+    # Все запрошенные предметы на месте (включая хлеб пекарни).
     expected = {
-        "wheat", "carrot", "potato", "sunflower",
+        "wheat", "carrot", "potato", "sunflower", "bread",
         "stone",
         "copper", "silver", "bronze", "metal", "gold",
         "diamond",
@@ -239,6 +247,6 @@ if __name__ == "__main__":
     assert get_resource("nope") is None
     assert price_of("metal") == 60.0
     assert price_of("unknown") == 0.0
-    assert len(all_ids()) == 13
+    assert len(all_ids()) == 14
 
     print("resources self-check OK")

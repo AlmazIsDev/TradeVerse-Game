@@ -18,7 +18,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, Sprout, Package, Fuel, Coins, Info, AlertTriangle, Loader2 } from 'lucide-react'
+import { ChevronLeft, Sprout, Package, Fuel, Coins, Info, AlertTriangle, Loader2, Truck } from 'lucide-react'
 import {
   fetchFarmCatalog, fetchMyFarm, buyFarmCells, farmPlant, farmHarvest,
   buyFuel, sellStorage,
@@ -41,7 +41,7 @@ const CROP_COLOR = {
   sunflower: '#facc15',
 }
 
-function FarmPanel({ assetId, assetName, onBack, balance, onBalanceChange }) {
+function FarmPanel({ assetId, assetName, onBack, onOpenProduction, balance, onBalanceChange }) {
   const { t } = useTranslation()
   const [catalog, setCatalog] = useState(null)
   const [farm, setFarm] = useState(null)
@@ -198,6 +198,12 @@ function FarmPanel({ assetId, assetName, onBack, balance, onBalanceChange }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           <Sprout size={22} className="icon" />
           <h2 className="tab-title" style={{ margin: 0, flex: 1 }}>{t('farm.manage', 'Управление полем')}: {assetName}</h2>
+          {onOpenProduction && (
+            <button className="asset-interact-btn" onClick={onOpenProduction} title={t('prod.manage', 'Управление производством')}
+              style={{ padding: '6px 10px' }}>
+              <Truck size={16} /> {t('prod.manage', 'Управление производством')}
+            </button>
+          )}
         </span>
       </div>
 

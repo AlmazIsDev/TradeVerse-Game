@@ -250,7 +250,8 @@ function _houseResidents(rooms) {
 //   epic      10 000..50 000
 //   legendary ≥ 50 000
 function _warehousePrice(area) {
-  return Math.round(1200 * area * (1 + 0.5 * Math.log10(area / 50)))
+  // 3600 = 1200 × 3 — цены складов подняты ×3, согласовано с backend/assets.py:_wh_price.
+  return Math.round(3600 * area * (1 + 0.5 * Math.log10(area / 50)))
 }
 function _warehouseRarity(area) {
   if (area < 500) return 'common'
@@ -279,9 +280,9 @@ export const ADMIN_WAREHOUSES_CATALOG = WAREHOUSE_AREAS.map((area, i) => {
     color: colorByRarity[rarity],
     emoji: '🏬',
     specs: {
-      areaSqm: area,          // площадь, м²
-      storageCap: area * 20,  // запас условных «слотов» (юнитов товара)
-      slots: 1,               // один склад = один объект во владении
+      areaSqm: area,            // площадь, м²
+      storageCap: area * 1000,  // вместимость в кг ресурса (см. backend/production.py)
+      slots: 1,                 // один склад = один объект во владении
     },
     employees: Math.max(2, Math.round(area / 200)),
     price: _warehousePrice(area),
@@ -311,11 +312,36 @@ export const ADMIN_FACTORIES_CATALOG = [
     employees: 24,
     price: 250000,
   },
+  // Пекарня: пшеница (с поля или со склада, возят фуры) → хлеб → вывоз на склад.
+  // Механика: backend/production.py. Рецепт: 2 кг пшеницы → 1 кг хлеба.
+  {
+    id: 'admin-fac-bakery-1',
+    slug: 'admin-fac-bakery-1',
+    type: 'factory',
+    category: 'bakery',
+    name: 'Пекарня',
+    rarity: 'rare',
+    fromAdmin: true,
+    color: '#d97706',
+    emoji: '🍞',
+    specs: {
+      produces: 'bread',       // что производит
+      input: 'wheat',          // что потребляет
+      outputPerHour: 120,      // кг хлеба в час при штатном составе
+      consumesPerHour: 240,    // кг пшеницы в час при штатном составе
+      capacity: 30000,         // ёмкость хранилища (на каждый ресурс отдельно)
+    },
+    employees: 20,
+    price: 1200000,
+  },
 ]
 
 // ── SOURCES: источники ресурсов (раздел «Источники» на вкладке «Рынок») ───────
-// Три типа: шахта (руда/металл), поле (еда/растения), лесопилка (дерево).
-// Это «добывающие» активы — дают ресурсы, нужны заводам.
+// Три типа: шахта (металл), поле (урожай), лесопилка (дерево).
+// Это «добывающие» активы — дают ресурсы, нужны заводам. Цены ×100 к старым
+// (согласовано с backend/assets.py), добыча и ёмкость тоже ×100 — окупаемость
+// сохраняется в игровом коридоре. Источник копит ресурс в своё хранилище
+// (прокачка до 10 ур.), фуры развозят на склад или в пекарню.
 export const ADMIN_SOURCES_CATALOG = [
   {
     id: 'admin-src-mine-1',
@@ -329,12 +355,12 @@ export const ADMIN_SOURCES_CATALOG = [
     emoji: '⛏️',
     specs: {
       resource: 'metal',        // что добывает
-      outputPerHour: 6,         // базовая добыча в час
-      capacity: 500,            // запас склада
+      outputPerHour: 600,       // базовая добыча в час (штатный состав)
+      capacity: 50000,          // ёмкость хранилища 1-го уровня (кг)
       employees: 8,
     },
     employees: 8,
-    price: 35000,
+    price: 3500000,
   },
   {
     id: 'admin-src-field-1',
@@ -348,12 +374,12 @@ export const ADMIN_SOURCES_CATALOG = [
     emoji: '🌾',
     specs: {
       resource: 'food',
-      outputPerHour: 8,
-      capacity: 600,
+      outputPerHour: 800,
+      capacity: 60000,
       employees: 6,
     },
     employees: 6,
-    price: 22000,
+    price: 2200000,
   },
   {
     id: 'admin-src-sawmill-1',
@@ -367,12 +393,12 @@ export const ADMIN_SOURCES_CATALOG = [
     emoji: '🪵',
     specs: {
       resource: 'wood',
-      outputPerHour: 5,
-      capacity: 450,
+      outputPerHour: 500,
+      capacity: 45000,
       employees: 10,
     },
     employees: 10,
-    price: 48000,
+    price: 4800000,
   },
 ]
 

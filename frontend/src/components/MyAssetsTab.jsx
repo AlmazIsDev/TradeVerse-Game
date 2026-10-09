@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   fetchMyAssets, collectAsset, sellAsset, fetchCompany,
   transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
-  fetchMaterialsPrice, buyMaterials,
+  fetchMaterialsPrice, buyMaterials, renameAsset, hitchTrailer, unhitchTrailer,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
   collectAllAssets, buyMiningUpgrade, upgradeAsset,
 } from '../services/api'
@@ -19,7 +19,7 @@ import ProductionPanel from './ProductionPanel'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
-  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, ChevronLeft, Send, Newspaper, Info,
+  Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, ChevronLeft, Send, Newspaper, Info, Pencil,
   Pickaxe, Factory, Mountain, Warehouse, Sprout,
 } from 'lucide-react'
 
@@ -98,6 +98,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [collectingAll, setCollectingAll] = useState(false)
   const [giftModal, setGiftModal] = useState(null)               // актив, передаваемый игроку
   const [giftName, setGiftName] = useState('')
+  const [renameModal, setRenameModal] = useState(null)           // актив, переименовываемый игроком
+  const [renameName, setRenameName] = useState('')
+  const [hitchModal, setHitchModal] = useState(null)             // прицеп, цепляемый к фуре
+  const [hitchTruckId, setHitchTruckId] = useState('')
   const [mediaModal, setMediaModal] = useState(false)            // разоблачение в СМИ (актив «Медиахолдинг»)
   const [fieldModal, setFieldModal] = useState(null)             // актив-поле с открытой панелью управления
   const [productionModal, setProductionModal] = useState(null)   // источник/пекарня/склад — панель производства
@@ -245,6 +249,38 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
   }
 
+  const submitRename = async () => {
+    if (!renameModal) return
+    const name = renameName.trim()
+    if (name.length < 2) { toast(t('rename.invalid'), 'error'); return }
+    setBusyId(renameModal.id)
+    try {
+      await renameAsset(renameModal.id, name)
+      toast(t('rename.done'))
+      setRenameModal(null)
+      await load()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const submitHitch = async () => {
+    if (!hitchModal || !hitchTruckId) return
+    setBusyId(hitchModal.id)
+    try {
+      await hitchTrailer(hitchModal.id, hitchTruckId)
+      toast(t('trailer.hitched'))
+      setHitchModal(null)
+      await load()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const openMaterials = async (asset) => {
     setMaterialsModal(asset)
     setMaterialsQty('10')
@@ -368,6 +404,10 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const totalAccrued = list.reduce((s, a) => s + (a.accrued || 0), 0)
 
   const emojiFor = (a) => ASSET_EMOJI[a.slug] || (a.type === 'source' ? (SRC_CAT_EMOJI[a.category] || '⛏️') : null) || TYPE_EMOJI[a.type] || '📦'
+  // Имя актива: своё (после переименования) приоритетнее перевода каталога.
+  const nameOf = (a) => (a.customName ? a.name : t(`assetNames.${a.slug}`, a.name))
+  // Прицеп, прицепленный к фуре (для подписи на карточке фуры).
+  const trailerOf = (truckId) => assets.find(x => x.category === 'trailer' && x.hitchedTo === truckId)
   const imgFor = (a) => assetImage(a.slug, a.type)
 
   // Статус аренды — только инфо-бейдж; сами кнопки (сдать/отменить) вынесены
@@ -403,6 +443,19 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         icon: <ArrowUpCircle size={15} />, label: `${t('upgrade.title')} ($${formatMoney(a.upgradeCost)})`,
         onClick: () => setUpgradeModal(a),
       })
+    } else if (a.category === 'trailer') {
+      // Прицепы не тюнингуются — вместо этого механика сцепки с фурой.
+      if (a.hitchedTo) {
+        actions.push({
+          key: 'unhitch', disabled: busy, icon: <Package size={15} />, label: t('trailer.unhitch'),
+          onClick: () => act(a.id, unhitchTrailer, 'trailer.unhitched'),
+        })
+      } else {
+        actions.push({
+          key: 'hitch', disabled: busy, icon: <Package size={15} />, label: t('trailer.hitch'),
+          onClick: () => { setHitchModal(a); setHitchTruckId('') },
+        })
+      }
     } else {
       actions.push({
         key: 'tune', className: 'upgrade', disabled: busy,
@@ -410,6 +463,11 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => setTuneModal(a),
       })
     }
+    // Переименовать — любое имущество и транспорт.
+    actions.push({
+      key: 'rename', disabled: busy, icon: <Pencil size={15} />, label: t('rename.title'),
+      onClick: () => { setRenameModal(a); setRenameName(a.customName ? a.name : '') },
+    })
     // Улучшение «Майнинг» для дома: покупается ровно 1 раз, цена basement*10000.
     // Показывается только при наличии подвала (available) и только если ещё не куплено.
     if (isRealEstate && a.mining?.available && !a.mining?.purchased) {
@@ -460,7 +518,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     if (isCompanyOwner && a.type !== 'realestate') {
       actions.push({
         key: 'toCompany', disabled: busy, icon: <Building2 size={15} />, label: t('myassets.toCompany'),
-        onClick: () => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: t(`assetNames.${a.slug}`, a.name) }) }),
+        onClick: () => askAct(a.id, transferAssetToCompany, 'myassets.transferred', { title: t('myassets.toCompany'), message: t('confirm.transfer', { name: nameOf(a) }) }),
       })
     }
     // Передать актив другому игроку (только личный, не сдаётся).
@@ -488,7 +546,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     }
     actions.push({
       key: 'sell', className: 'sell', disabled: busy, icon: <Trash2 size={15} />, label: t('myassets.sell'),
-      onClick: () => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: t(`assetNames.${a.slug}`, a.name), value: formatMoney(a.value) }) }),
+      onClick: () => askAct(a.id, sellAsset, 'myassets.sold', { danger: true, title: t('myassets.sell'), message: t('confirm.sell', { name: nameOf(a), value: formatMoney(a.value) }) }),
     })
     return actions
   }
@@ -524,7 +582,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     return (
       <FarmPanel
         assetId={fieldModal.id}
-        assetName={t(`assetNames.${fieldModal.slug}`, fieldModal.name)}
+        assetName={nameOf(fieldModal)}
         onBack={() => setFieldModal(null)}
         onOpenProduction={() => setProductionModal(fieldModal)}
         balance={balance}
@@ -603,7 +661,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   <span className="asset-level">{t('myassets.level')} {a.level}</span>
                 </div>
                 <div className="asset-card-head">
-                  <span className="asset-name">{t(`assetNames.${a.slug}`, a.name)}</span>
+                  <span className="asset-name">{nameOf(a)}</span>
                 </div>
                 <div className="asset-stats">
                   <div className="asset-stat"><span>{t('myassets.value')}</span><b>${formatMoney(a.value)}</b></div>
@@ -623,6 +681,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   )}
                   {a.meta?.tax != null && <div className="asset-stat"><span>{t('myassets.tax')}</span><b className="down">${a.meta.tax}{t('units.perHour')}</b></div>}
                   {a.meta?.prestige != null && <div className="asset-stat"><span>{t('market.prestige')}</span><b>{a.meta.prestige}</b></div>}
+                  {a.category === 'truck' && (
+                    <div className="asset-stat"><span>{t('cars.cargoKg', 'Грузоподъёмность')}</span>
+                      <b>{((a.meta?.cargoKg || 0) + (trailerOf(a.id)?.meta?.cargoKg || 0)).toLocaleString('ru-RU')} {t('cars.kg', 'кг')}{trailerOf(a.id) ? ` +${t('trailer.attached', 'прицеп')}` : ''}</b></div>
+                  )}
+                  {a.category === 'trailer' && a.hitchedTo && (
+                    <div className="asset-stat"><span>{t('trailer.attachedTo', 'Прицеплена к')}</span>
+                      <b>{nameOf(assets.find(x => x.id === a.hitchedTo) || { name: '—' })}</b></div>
+                  )}
                   {isCar && <div className="asset-stat"><span><Gauge size={12} /> {t('car.condition')}</span><b className="up">{t(`car.cond_${Math.min(a.level, 3)}`, t('car.cond_1'))}</b></div>}
                 </div>
 
@@ -672,7 +738,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="modal-overlay" onClick={() => setRentModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
-            <h3>{t('rent.title')}: {t(`assetNames.${rentModal.slug}`, rentModal.name)}</h3>
+            <h3>{t('rent.title')}: {nameOf(rentModal)}</h3>
             <p className="modal-price">{t('rent.desc')}</p>
             <div className="rent-duration-grid">
               {RENT_DURATIONS.map(d => (
@@ -695,11 +761,51 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         </div>
       )}
 
+      {renameModal && (
+        <div className="modal-overlay" onClick={() => setRenameModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setRenameModal(null)}><X size={18} /></button>
+            <h3><Pencil size={17} /> {t('rename.title')}</h3>
+            <p className="modal-price">{nameOf(renameModal)}</p>
+            <div className="modal-quantity"><label>{t('rename.newName')}:</label>
+              <input type="text" value={renameName} autoFocus maxLength={40}
+                placeholder={t('rename.placeholder')}
+                onChange={e => setRenameName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitRename() }} /></div>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={submitRename} disabled={busyId === renameModal.id || renameName.trim().length < 2}>{t('common.save')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setRenameModal(null)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hitchModal && (
+        <div className="modal-overlay" onClick={() => setHitchModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setHitchModal(null)}><X size={18} /></button>
+            <h3><Package size={17} /> {t('trailer.hitch')}: {nameOf(hitchModal)}</h3>
+            <p className="modal-price">{t('trailer.hitchDesc')}</p>
+            <div className="modal-quantity"><label>{t('trailer.chooseTruck')}:</label>
+              <select value={hitchTruckId} onChange={e => setHitchTruckId(e.target.value)}>
+                <option value="">{t('trailer.pickTruck', '— выберите фуру —')}</option>
+                {assets.filter(x => x.category === 'truck' && !x.companyId && (x.meta?.hookable || []).includes(hitchModal.slug))
+                  .filter(x => !assets.some(y => y.category === 'trailer' && y.hitchedTo === x.id))
+                  .map(x => <option key={x.id} value={x.id}>{nameOf(x)}</option>)}
+              </select></div>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={submitHitch} disabled={busyId === hitchModal.id || !hitchTruckId}>{t('trailer.hitch')}</button>
+              <button className="stock-btn cancel-btn" onClick={() => setHitchModal(null)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {giftModal && (
         <div className="modal-overlay" onClick={() => setGiftModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setGiftModal(null)}><X size={18} /></button>
-            <h3><Send size={17} /> {t('gift.toPlayer')}: {t(`assetNames.${giftModal.slug}`, giftModal.name)}</h3>
+            <h3><Send size={17} /> {t('gift.toPlayer')}: {nameOf(giftModal)}</h3>
             <p className="modal-price">{t('gift.desc')}</p>
             <div className="modal-quantity"><label>{t('gift.playerLabel')}:</label>
               <input type="text" value={giftName} autoFocus maxLength={40}
@@ -718,7 +824,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="modal-overlay" onClick={() => setMaterialsModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setMaterialsModal(null)}><X size={18} /></button>
-            <h3><Package size={17} /> {t('materials.title')}: {t(`assetNames.${materialsModal.slug}`, materialsModal.name)}</h3>
+            <h3><Package size={17} /> {t('materials.title')}: {nameOf(materialsModal)}</h3>
             <p className="modal-price">{t('materials.desc', { boost: Math.round((materialsInfo?.boostPerUnit || 0) * 100), cap: Math.round((materialsInfo?.boostCap || 0) * 100), hours: materialsInfo?.durationHours || 0 })}</p>
             <p className="modal-price">{t('materials.unitPrice')}: <strong>${formatMoney(materialsInfo?.unitPrice)}</strong></p>
             <div className="modal-quantity"><label>{t('common.quantity')}:</label>
@@ -737,7 +843,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="modal-overlay" onClick={() => setSuppliesModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setSuppliesModal(null)}><X size={18} /></button>
-            <h3><Package size={17} /> {t('itstudio.buySupplies')}: {t(`assetNames.${suppliesModal.asset.slug}`, suppliesModal.asset.name)}</h3>
+            <h3><Package size={17} /> {t('itstudio.buySupplies')}: {nameOf(suppliesModal.asset)}</h3>
 
             {/* Материалы для буста дохода бизнеса (см. assets.buy_materials). */}
             <div className="supplies-section">
@@ -793,7 +899,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         <div className="modal-overlay" onClick={() => busyId !== tuneModal.id && setTuneModal(null)}>
           <div className="modal-content tune-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setTuneModal(null)}><X size={18} /></button>
-            <h3><Wrench size={18} /> {t('tune.title')}: {t(`assetNames.${tuneModal.slug}`, tuneModal.name)}</h3>
+            <h3><Wrench size={18} /> {t('tune.title')}: {nameOf(tuneModal)}</h3>
             <div className="tune-summary">
               <div><span>{t('market.prestige')}</span><b>{tuneModal.meta?.prestige ?? 0}</b></div>
               <div><span>{t('myassets.value')}</span><b>${formatMoney(tuneModal.value)}</b></div>

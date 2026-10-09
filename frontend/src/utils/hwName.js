@@ -5,7 +5,7 @@
 const COOLING_BY_CAP = { 400: 'air', 800: 'tower', 1600: 'liquid', 4000: 'immersion' }
 const CASE_BY_SLOTS = { 2: 'mini', 4: 'midi', 8: 'full' }
 const FAN_BY_CAP = { 200: 'set120', 320: 'set140', 700: 'industrial' }
-// Стойки rack в майнинге удалены; «сетевая стойка» осталась в network.
+// Стойки (rack) вернулись: имя из каталога показывается как есть (default).
 const NETWORK_BY_SPEED = { 1000: 'router', 10000: 'switch' }
 
 export function hwName(item, t) {

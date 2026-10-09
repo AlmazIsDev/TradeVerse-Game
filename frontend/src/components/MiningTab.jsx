@@ -9,6 +9,7 @@ import {
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
+import MiningBulkView from './MiningBulkView'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
   Plus, X, AlertTriangle, Check, Bot, TrendingUp, HardDrive, Server, Cpu,
@@ -16,12 +17,12 @@ import {
 } from 'lucide-react'
 
 // Категории компонентов: обязательные помечены req; multi — можно несколько.
-// Стойки rack удалены: в майнинге только корпуса (case), до 5 GPU каждый.
+// Стойки (rack) вернулись: большая сборка в одном слоте подвала; корпус — до 5 GPU.
 const CATS = [
-  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true },
+  { cat: 'motherboard', req: true }, { cat: 'cpu', req: true }, { cat: 'psu', req: true, multi: true },
   { cat: 'ram', req: true }, { cat: 'ssd', req: true }, { cat: 'cooling', req: true },
   { cat: 'gpu', req: true, multi: true }, { cat: 'fan', multi: true },
-  { cat: 'case' }, { cat: 'ups' }, { cat: 'network' },
+  { cat: 'rack' }, { cat: 'case' }, { cat: 'ups' }, { cat: 'network' },
 ]
 
 // Краткая характеристика детали для выпадающего списка.
@@ -31,6 +32,7 @@ function partSpec(cat, s = {}, t) {
   if (cat === 'cooling' || cat === 'fan') return s.cooling ? ` · ${s.cooling}` : ''
   if (cat === 'cpu') return s.cores ? ` · ${t('units.cores', { count: s.cores })}` : ''
   if (cat === 'motherboard') return s.gpuSlots ? ` · ${s.gpuSlots} GPU` : ''
+  if (cat === 'rack' || cat === 'case') return s.slots ? ` · ${s.slots}` : ''
   if (cat === 'ram' || cat === 'ssd') return s.gb ? ` · ${s.gb} ${t('units.gb')}` : ''
   return ''
 }
@@ -246,8 +248,10 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   }, [])
 
   // ── Загрузка ферм конкретного дома + служебных данных
-  const loadFarmData = useCallback(async (houseId) => {
-    setLoading(true)
+  // silent — фоновое обновление (WS-событие/поллинг/после действия) без
+  // скелетона: раньше каждый такой рефреш перерисовывал экран «перезагрузкой».
+  const loadFarmData = useCallback(async (houseId, silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [f, m, p] = await Promise.all([
         fetchFarms(houseId),
@@ -261,7 +265,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     } catch (err) {
       setMsg({ type: 'error', text: err.message })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
@@ -280,12 +284,13 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     }
   }, [view, currentHouse, loadFarmData])
 
-  // Realtime: события фермы по WebSocket + резервный поллинг.
+  // Realtime: события фермы по WebSocket/поллинг — фоновый silent-рефреш без
+  // скелетона: раньше каждое событие перерисовывало экран «перезагрузкой».
   useEffect(() => {
     if (view !== 'farm') return undefined
-    const onRt = (e) => { if (e.detail?.type === 'mining') loadFarmData(currentHouse.id) }
+    const onRt = (e) => { if (e.detail?.type === 'mining') loadFarmData(currentHouse.id, true) }
     window.addEventListener('tv:realtime', onRt)
-    const id = setInterval(() => loadFarmData(currentHouse.id), 20000)
+    const id = setInterval(() => loadFarmData(currentHouse.id, true), 20000)
     return () => { window.removeEventListener('tv:realtime', onRt); clearInterval(id) }
   }, [view, currentHouse, loadFarmData])
 
@@ -297,7 +302,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
       const res = await fn()
       if (res?.balance != null) onBalanceChange?.(res.balance)
       if (okKey) flash(t(okKey))
-      await loadFarmData(currentHouse.id)
+      await loadFarmData(currentHouse.id, true)
       return res
     } catch (err) {
       flash(err.message, 'error')
@@ -366,6 +371,10 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const tempClass = (temp) => (temp >= 85 ? 'crit' : temp >= 70 ? 'warn' : 'ok')
 
   // ── Рендер по состояниям ────────────────────────────────────────────────
+  if (view === 'bulk') {
+    return <MiningBulkView onBack={() => { setView('houses'); loadHouses() }} />
+  }
+
   if (view === 'houses') {
     return (
       <div className="mining-tab">
@@ -375,6 +384,9 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             {msg.type === 'success' ? <Check size={16} /> : <AlertTriangle size={16} />}<span>{msg.text}</span>
           </div>
         )}
+        <button className="asset-act upgrade" onClick={() => setView('bulk')} style={{ marginBottom: 'var(--spacing-md)' }}>
+          <Bot size={15} /> {t('mining.bulk.title', 'Массовое управление фермами')}
+        </button>
         {loading ? (
           <div className="asset-card skeleton" style={{ height: 220 }} />
         ) : (
@@ -631,13 +643,14 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <h4><Cpu size={16} /> {t('mining.assembly')}</h4>
           <div className="mining-slots">
             {CATS.map(({ cat, req, multi }) => {
+              const multiKey = { gpu: 'gpus', fan: 'fans', psu: 'psus' }[cat]
               const installed = multi
-                ? (cat === 'gpu' ? farm.components?.gpus : farm.components?.fans) || []
+                ? (farm.components?.[multiKey] || [])
                 : (farm.components?.[cat] ? [farm.components[cat]] : [])
               const avail = parts[cat] || []
               const altPlacement = null
               const blockedByAlt = false
-              const capLeft = multi ? (farm.capacity?.[cat === 'gpu' ? 'gpu' : 'fan'] ?? null) : null
+              const capLeft = multi ? (farm.capacity?.[cat] ?? null) : null
               const capFull = capLeft != null && capLeft <= 0
               const canAdd = (multi || installed.length === 0) && !blockedByAlt && !capFull
               const groups = []

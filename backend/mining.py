@@ -43,10 +43,11 @@ FAN_BASE_CAP = 6
 
 # Лимит подвалов и корпусов:
 #   - майнинг разрешён ТОЛЬКО в подвалах домов (basement > 0);
-#   - в одном подвале можно установить столько корпусов, сколько его ёмкость;
-#   - в каждом корпусе — до 5 GPU (см. shop.MAX_CASE_SLOTS).
-MAX_CASES_PER_BASEMENT_SLOT = 1   # один корпус = один слот подвала
+#   - в одном подвале можно установить столько корпусов/стоек, сколько его ёмкость;
+#   - корпус — до 5 GPU, серверная стойка (rack) — до 45 GPU (shop.MAX_MB_SLOTS).
+MAX_CASES_PER_BASEMENT_SLOT = 1   # один корпус/стойка = один слот подвала
 CASE_MAX_GPUS = 5                # жёсткий лимит слотов корпуса
+RACK_MAX_GPUS = 45               # жёсткий лимит слотов стойки
 
 HASH_YIELD = 0.001          # доход за единицу хешрейта × профитность монеты
 ELEC_SCALE = 0.15           # масштаб счёта за электричество
@@ -430,6 +431,7 @@ def _serialize(farm: dict, stats: dict, capacity: Optional[dict] = None) -> dict
             "cpu": comp.get("cpu"),
             "ram": comp.get("ram"), "ssd": comp.get("ssd"),
             "cooling": comp.get("cooling"), "case": comp.get("case"),
+            "rack": comp.get("rack"),
             "ups": comp.get("ups"),
             "network": comp.get("network"),
             "gpus": comp.get("gpus", []), "fans": comp.get("fans", []),
@@ -452,13 +454,15 @@ def _missing_required(farm: dict) -> list[str]:
 
 
 def _enclosure_slots(comp: dict) -> Optional[int]:
-    """Число посадочных мест корпуса (None = корпус не установлен —
-    открытый стенд без жёсткого ограничения). Стойки rack удалены из игры."""
-    node = comp.get("case")
+    """Число посадочных мест размещения (None = ничего не установлено —
+    открытый стенд без жёсткого ограничения). Корпус — до CASE_MAX_GPUS (5),
+    серверная стойка (rack) — до RACK_MAX_GPUS (45)."""
+    node = comp.get("case") or comp.get("rack")
     if node:
-        slots = node.get("specs", {}).get("slots")
+        slots = (node.get("specs") or {}).get("slots")
         if slots:
-            return min(int(slots), CASE_MAX_GPUS)  # жёсткий лимит 5 GPU
+            limit = CASE_MAX_GPUS if comp.get("case") else RACK_MAX_GPUS
+            return min(int(slots), limit)
     return None
 
 
@@ -470,7 +474,7 @@ def _capacity(farm: dict) -> dict:
     без корпуса ограничены открытым стендом (FAN_BASE_CAP)."""
     comp = farm.get("components", {})
     enclosure = _enclosure_slots(comp)
-    mb_slots = min(int((comp.get("motherboard") or {}).get("specs", {}).get("gpuSlots", 0) or 0), CASE_MAX_GPUS)
+    mb_slots = int((comp.get("motherboard") or {}).get("specs", {}).get("gpuSlots", 0) or 0)
 
     gpu_max = mb_slots if mb_slots else 0
     if enclosure is not None:
@@ -610,6 +614,40 @@ class AdminFarmUpdate(BaseModel):
 
 class AdminTransferBody(BaseModel):
     toUsername: str
+
+
+class BulkActionBody(BaseModel):
+    """Bulk-действие над списком ферм: start | stop | repair."""
+    action: str
+    farmIds: list[str]
+
+    @field_validator("farmIds")
+    @classmethod
+    def ids_ok(cls, v):
+        if not v:
+            raise ValueError("Не выбрано ни одной фермы")
+        return v[:100]
+
+
+class BulkAssembleBody(BaseModel):
+    """Авто-сборка нескольких ферм указанными комплектующими.
+    items: [{category: str, hwIds: [str]}] — конкретные свободные экземпляры."""
+    farmIds: list[str]
+    items: list[dict]
+
+    @field_validator("farmIds")
+    @classmethod
+    def ids_ok(cls, v):
+        if not v:
+            raise ValueError("Не выбрано ни одной фермы")
+        return v[:100]
+
+    @field_validator("items")
+    @classmethod
+    def items_ok(cls, v):
+        if not v:
+            raise ValueError("Не указаны комплектующие")
+        return v[:60]
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -863,13 +901,9 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
             )
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$push": {f"components.{role_key}": entry}})
     else:
-        # Корпус - единый вариант размещения (стоек rack больше нет).
-        # Дополнительно проверяем лимит подвалов: у игрока может быть не
-        # больше корпусов, чем суммарная ёмкость подвалов его домов.
-        if role == "case":
-            # Ферма привязана к слоту подвала дома (см. create_farm), лимит
-            # на количество корпусов теперь автоматически = количеству basement.
-            # Дополнительная защита: ферма должна иметь houseId.
+        # Корпус или серверная стойка — единый вариант размещения в слоте
+        # подвала (см. create_farm): ферма должна быть привязана к дому.
+        if role in ("case", "rack"):
             if not farm.get("houseId"):
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
@@ -883,16 +917,13 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
             mb_slots = int(hw.get("specs", {}).get("gpuSlots", 0) or 0)
             if mb_slots <= 0:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Материнская плата не имеет слотов для GPU")
-            if mb_slots > CASE_MAX_GPUS:
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST,
-                    f"Материнская плата рассчитана на {mb_slots} GPU - это больше лимита корпуса ({CASE_MAX_GPUS})",
-                )
             enclosure_slots = _enclosure_slots(comp)
-            if enclosure_slots is not None and mb_slots > enclosure_slots:
+            limit = enclosure_slots if enclosure_slots is not None else RACK_MAX_GPUS
+            if mb_slots > limit:
+                kind = "в корпусе" if enclosure_slots is not None else "максимум стойки"
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
-                    f"Нельзя установить материнскую плату на {mb_slots} GPU: в корпусе только {enclosure_slots} слотов",
+                    f"Нельзя установить материнскую плату на {mb_slots} GPU: {kind} только {limit} слотов",
                 )
         elif role == "case":
             case_slots = int(hw.get("specs", {}).get("slots", 0) or 0)
@@ -911,17 +942,36 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
                         status.HTTP_400_BAD_REQUEST,
                         f"Нельзя установить корпус на {case_slots} GPU: материнская плата требует {mb_slots} слотов",
                     )
-        # Освобождаем ранее установленный компонент этой роли.
-        old = comp.get(role)
-        if old and old.get("hwId") and role != "rack":
-            await db.user_hardware.update_one({"_id": ObjectId(old["hwId"])}, {"$set": {"farmId": None}})
+        elif role == "rack":
+            rack_slots = int(hw.get("specs", {}).get("slots", 0)  or 0)
+            if rack_slots <= 0:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Стойка не имеет посадочных мест")
+            if rack_slots > RACK_MAX_GPUS:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Стойка рассчитана на {rack_slots} GPU - это больше максимума ({RACK_MAX_GPUS})",
+                )
+            mb = comp.get("motherboard")
+            if mb:
+                mb_slots = int(mb.get("specs", {}).get("gpuSlots", 0) or 0)
+                if mb_slots > rack_slots:
+                    raise HTTPException(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Нельзя установить стойку на {rack_slots} GPU: материнская плата требует {mb_slots} слотов",
+                    )
+        # Освобождаем ранее установленный компонент этой роли; при замене
+        # размещения (корпус <-> стойка) освобождаем и второе.
+        roles_to_free = [role]
+        if role in ("case", "rack"):
+            roles_to_free.append("rack" if role == "case" else "case")
+        for r in roles_to_free:
+            old = comp.get(r)
+            if old and old.get("hwId"):
+                await db.user_hardware.update_one({"_id": ObjectId(old["hwId"])}, {"$set": {"farmId": None}})
+            if r != role:
+                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$unset": {f"components.{r}": ""}})
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": entry}})
-
-    # Стойка — общий пул слотов на несколько ферм: НЕ привязываем её к ферме
-    # (farmId остаётся None), чтобы она оставалась доступна другим фермам.
-    if role != "rack":
-        await db.user_hardware.update_one({"_id": hw["_id"]}, {"$set": {"farmId": str(farm["_id"])}})
 
 
 @router.post("/farms/{farm_id}/install")
@@ -961,6 +1011,118 @@ async def install_components_batch(farm_id: str, payload: InstallBatchBody, curr
     return result
 
 
+@router.post("/bulk/action")
+async def bulk_action(
+    payload: BulkActionBody,
+    current_user: dict = Depends(require_allowed("mining")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Массовое действие: start | stop | repair. Ошибка одной фермы не мешает остальным."""
+    if payload.action not in ("start", "stop", "repair"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown action")
+    user_id = str(current_user["_id"])
+    market = await _coin_market(db)
+    econ = await get_econ(db)
+    city = await _city_bonus(db, user_id)
+    results = []
+    for fid in payload.farmIds:
+        item = {"farmId": fid, "ok": False, "error": None}
+        try:
+            farm = await _load_farm(db, user_id, fid)
+            if payload.action == "start":
+                await _start_one(db, user_id, farm, market, econ, city)
+            elif payload.action == "stop":
+                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"status": "idle"}})
+            else:  # repair
+                cost = _repair_cost(farm)
+                if cost > 0:
+                    nb = await adjust_balance(db, user_id, -cost)
+                    if nb is None:
+                        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств на ремонт")
+                    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"condition": 100.0}})
+                    await record_transaction(db, user_id, EXPENSE, cost, CAT_MINING,
+                                             "Farm repair", balance_after=nb)
+            item["ok"] = True
+        except HTTPException as e:
+            item["error"] = e.detail
+        results.append(item)
+    return {"results": results}
+
+
+async def _uninstall_hw(db, farm: dict, hw_id: str) -> bool:
+    """Снять деталь по hwId: uninstall из фермы + возврат в инвентарь.
+    Общая логика uninstall-эндпоинта и отката bulk-сборки."""
+    comp = farm.get("components", {})
+    changed = False
+    for role in ["motherboard", "cpu", "psu", "ram", "ssd", "cooling", "case", "rack", "ups", "network"]:
+        if comp.get(role) and comp[role].get("hwId") == hw_id:
+            await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": None}})
+            changed = True
+    for role_key in ["gpus", "fans", "psus"]:
+        if any(x.get("hwId") == hw_id for x in comp.get(role_key, [])):
+            await db.mining_farms.update_one({"_id": farm["_id"]}, {"$pull": {f"components.{role_key}": {"hwId": hw_id}}})
+            changed = True
+    if changed and ObjectId.is_valid(hw_id):
+        await db.user_hardware.update_one({"_id": ObjectId(hw_id)}, {"$set": {"farmId": None}})
+    return changed
+
+
+@router.post("/bulk/assemble")
+async def bulk_assemble(
+    payload: BulkAssembleBody,
+    current_user: dict = Depends(require_allowed("mining")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Авто-сборка нескольких ферм указанными комплектующими.
+
+    Фермы заполняются по очереди. Если на очередной ферме что-то не встало —
+    уже установленные в неё детали снимаются обратно в инвентарь и работа
+    останавливается: остаток железа сохраняется для следующей сборки."""
+    user_id = str(current_user["_id"])
+    norm_items = []
+    for it in payload.items:
+        cat = str(it.get("category") or "").strip()
+        if not CATEGORY_ROLE.get(cat):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown category: {cat}")
+        hw_ids = [str(x) for x in (it.get("hwIds") or []) if str(x).strip()]
+        if not hw_ids:
+            hw_ids = [None] * max(1, min(int(it.get("qty") or 1), 50))
+        norm_items.append((cat, hw_ids))
+    results = []
+    stop = False
+    for fid in payload.farmIds:
+        if stop:
+            break
+        farm = await db.mining_farms.find_one(
+            {"_id": ObjectId(fid), "userId": user_id}) if ObjectId.is_valid(fid) else None
+        if not farm:
+            results.append({"farmId": fid, "ok": False, "error": "Ферма не найдена"})
+            stop = True
+            continue
+        installed_now = []
+        err = None
+        for cat, hw_ids in norm_items:
+            for hw_id in hw_ids:
+                try:
+                    fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
+                    await _install_one(db, user_id, fresh, cat, hw_id)
+                    installed_now.append(hw_id)
+                except HTTPException as e:
+                    err = f"{cat}: {e.detail}"
+                    break
+            if err:
+                break
+        if err:
+            fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
+            for hw_id in installed_now:
+                await _uninstall_hw(db, fresh, hw_id)
+            results.append({"farmId": fid, "ok": False, "error": err})
+            stop = True
+        else:
+            results.append({"farmId": fid, "ok": True})
+    return {"results": results, "assembled": sum(1 for r in results if r["ok"])}
+
+
 @router.post("/farms/{farm_id}/uninstall")
 async def uninstall_component(farm_id: str, body: dict, current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Снять компонент по hwId — оборудование возвращается в инвентарь."""
@@ -971,7 +1133,7 @@ async def uninstall_component(farm_id: str, body: dict, current_user: dict = Dep
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Не указан hwId")
     comp = farm.get("components", {})
     changed = False
-    for role in ["motherboard", "cpu", "psu", "ram", "ssd", "cooling", "case", "ups", "network"]:
+    for role in ["motherboard", "cpu", "psu", "ram", "ssd", "cooling", "case", "rack", "ups", "network"]:
         if comp.get(role) and comp[role].get("hwId") == hw_id:
             await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": None}})
             changed = True
@@ -989,14 +1151,22 @@ async def uninstall_component(farm_id: str, body: dict, current_user: dict = Dep
 async def start_mining(farm_id: str, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
+    market = await _coin_market(db)
+    econ = await get_econ(db)
+    city = await _city_bonus(db, user_id)
+    await _start_one(db, user_id, farm, market, econ, city)
+    updated = await db.mining_farms.find_one({"_id": farm["_id"]})
+    return _serialize(updated, _compute(updated, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city))
+
+
+async def _start_one(db, user_id: str, farm: dict, market: dict, econ: dict, city: dict) -> None:
+    """Запустить добычу на одной ферме (общая логика single/bulk start).
+
+    Бросает HTTPException при ошибке; статус/coin/last_tick обновляет в БД."""
     missing = _missing_required(farm)
     if missing:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Не хватает компонентов: {', '.join(missing)}")
 
-    # Проверка мощности БП.
-    market = await _coin_market(db)
-    econ = await get_econ(db)
-    city = await _city_bonus(db, user_id)
     stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city)
     psu_w = sum(p.get("specs", {}).get("power", 0) for p in _psus(farm.get("components", {})))
     if psu_w < stats["power"]:
@@ -1014,8 +1184,6 @@ async def start_mining(farm_id: str, current_user: dict = Depends(require_allowe
         {"_id": farm["_id"]},
         {"$set": {"status": "mining", "coin": coin, "last_tick": _now()}},
     )
-    updated = await db.mining_farms.find_one({"_id": farm["_id"]})
-    return _serialize(updated, _compute(updated, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city))
 
 
 @router.post("/farms/{farm_id}/stop")
@@ -1484,22 +1652,25 @@ if __name__ == "__main__":
     _rev, _price, _costs = 60.0, 30.0, 12.0
     assert _mined_qty(_rev, _price) == 2.0 and round(_costs, 2) == 12.0
 
-    # Слоты GPU: ограничены материнкой (жёсткий лимит CASE_MAX_GPUS=5).
-    # Стойки (общий пул слотов между фермами) удалены из игры.
+    # Слоты GPU: ограничены материнкой; стойка поднимает потолок до 45.
     _mb8 = {"specs": {"gpuSlots": 8}}
     _farm = {"components": {"motherboard": _mb8, "gpus": [{}] * 3}}
-    # Упираемся в лимит платы: min(8 слотов платы, CASE_MAX_GPUS=5) = 5 мест,
-    # установлено 3 GPU → свободно 2.
-    assert _capacity(_farm)["gpu"] == 2
+    # Упираемся в лимит платы: 8 слотов платы, 3 установлено → свободно 5.
+    assert _capacity(_farm)["gpu"] == 5
     _farm_case = {"components": {"motherboard": _mb8,
                                  "case": {"specs": {"slots": 8}}, "gpus": [{}] * 3}}
-    assert _capacity(_farm_case)["gpu"] == 2                       # корпус не добавляет сверх платы
+    assert _capacity(_farm_case)["gpu"] == 2                       # корпус режет до 5
+    _farm_rack = {"components": {"motherboard": _mb8,
+                                 "rack": {"specs": {"slots": 45}}, "gpus": [{}] * 3}}
+    assert _capacity(_farm_rack)["gpu"] == 5                       # упираемся в плату, не в стойку
 
     # БП — multi-компонент: открытый стенд даёт 2 места, корпус больше;
     # старое одиночное поле psu совместимо со списком psus.
     assert _psu_max({}) == 2
     # Корпус капируется на CASE_MAX_GPUS=5 мест → 5//3+1 = 2 БП.
     assert _psu_max({"case": {"specs": {"slots": 8}}}) == 2
+    # Стойка на 45 мест → 45//3+1 = 16 БП.
+    assert _psu_max({"rack": {"specs": {"slots": 45}}}) == 16
     assert _psus({"psu": {"hwId": "x"}}) == [{"hwId": "x"}]        # legacy single
     assert _psus({"psus": [{"hwId": "a"}], "psu": {"hwId": "x"}}) == [{"hwId": "a"}]
     _pf = {"components": {"psus": [{}], "case": {"specs": {"slots": 8}}}}

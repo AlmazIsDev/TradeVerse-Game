@@ -661,6 +661,24 @@ class AdminTransferBody(BaseModel):
     toUsername: str
 
 
+class RenameBody(BaseModel):
+    """Переименование имущества/транспорта игроком."""
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def name_ok(cls, v):
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Название слишком короткое")
+        return v[:40]
+
+
+class HitchBody(BaseModel):
+    """Прицепить/отцепить прицеп: truckId обязателен для hitch."""
+    truckId: Optional[str] = None
+
+
 class TransferToPlayer(BaseModel):
     """Передача личного актива другому игроку по нику."""
     toUsername: str
@@ -1098,6 +1116,8 @@ def _serialize(asset: dict) -> dict:
         "companyId": asset.get("companyId"),
         "rental": _rental_view(asset),
         "rentRatePerHour": _rent_rate_per_hour(asset),
+        "customName": bool(asset.get("custom_name")),
+        "hitchedTo": str(asset["hitchedTo"]) if asset.get("hitchedTo") else None,
         "tuning": asset.get("tuning", {}),
         "tuneMaxLevel": TUNE_MAX_LEVEL,
         "materialsBoostPct": _materials_boost(asset),
@@ -1622,6 +1642,8 @@ async def tune_asset(
     asset = await _load_owned(db, user_id, asset_id)
     if asset.get("type") != TYPE_CAR:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Тюнинг доступен только для автомобилей")
+    if asset.get("category") == "trailer":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Прицепы не тюнингуются")
 
     part = payload.part
     tuning = dict(asset.get("tuning", {}))
@@ -1649,6 +1671,86 @@ async def tune_asset(
     )
     updated = await db.user_assets.find_one({"_id": asset["_id"]})
     return {"asset": _serialize(updated), "balance": new_balance, "cost": cost}
+
+
+# ── Переименование и прицепы ─────────────────────────────────────────────────
+
+
+@router.patch("/{asset_id}/rename")
+async def rename_asset(
+    asset_id: str,
+    payload: RenameBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Переименовать своё имущество/транспорт. Название игрока приоритетнее
+    каталожного: фронт показывает custom_name, если задан (customName в _serialize)."""
+    user_id = str(current_user["_id"])
+    asset = await _load_owned(db, user_id, asset_id)
+    await db.user_assets.update_one(
+        {"_id": asset["_id"]},
+        {"$set": {"name": payload.name, "custom_name": True}},
+    )
+    updated = await db.user_assets.find_one({"_id": asset["_id"]})
+    return {"asset": _serialize(updated)}
+
+
+@router.post("/{asset_id}/hitch")
+async def hitch_trailer(
+    asset_id: str,
+    payload: HitchBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Прицепить прицеп к фуре. Правила:
+      - прицеп и фура принадлежат игроку (личные, не в компании);
+      - у фуры в meta.hookable перечислены совместимые slug прицепов;
+      - один прицеп на фуру, прицеп не может быть уже прицеплен."""
+    user_id = str(current_user["_id"])
+    trailer = await _load_owned(db, user_id, asset_id)
+    if trailer.get("category") != "trailer":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Это не прицеп")
+    if trailer.get("hitchedTo"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Прицеп уже прицеплен к другой фуре")
+    truck_id = (payload.truckId or "").strip()
+    if not truck_id or not ObjectId.is_valid(truck_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Не указана фура")
+    truck = await db.user_assets.find_one({
+        "_id": ObjectId(truck_id), "userId": user_id,
+        "type": TYPE_CAR, "category": "truck",
+    })
+    if not truck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Фура не найдена")
+    if truck.get("companyId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Фура принадлежит компании")
+    hookable = (truck.get("meta") or {}).get("hookable") or []
+    if trailer.get("slug") not in hookable:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Эта фура не может тянуть прицеп «{trailer.get('name')}»",
+        )
+    busy = await db.user_assets.find_one({"hitchedTo": ObjectId(truck_id)})
+    if busy:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "К этой фуре уже прицеплен другой прицеп")
+    await db.user_assets.update_one({"_id": trailer["_id"]}, {"$set": {"hitchedTo": ObjectId(truck_id)}})
+    return {"ok": True, "asset": _serialize(await db.user_assets.find_one({"_id": trailer["_id"]}))}
+
+
+@router.post("/{asset_id}/unhitch")
+async def unhitch_trailer(
+    asset_id: str,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Отцепить прицеп от фуры."""
+    user_id = str(current_user["_id"])
+    trailer = await _load_owned(db, user_id, asset_id)
+    if trailer.get("category") != "trailer":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Это не прицеп")
+    if not trailer.get("hitchedTo"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Прицеп не прицеплен")
+    await db.user_assets.update_one({"_id": trailer["_id"]}, {"$unset": {"hitchedTo": ""}})
+    return {"ok": True, "asset": _serialize(await db.user_assets.find_one({"_id": trailer["_id"]}))}
 
 
 @router.post("/{asset_id}/mining/buy")
@@ -1731,6 +1833,9 @@ async def sell_asset(
     base_value = round(_current_value(asset) - asset.get("tuning_value", 0.0), 2)
     market_value = round(base_value * mult + asset.get("tuning_value", 0.0), 2)
     payout = round(market_value * SELL_RATE + _accrued(asset), 2)
+    # Если продали фуру — отцепляем её прицеп (иначе ссылка висела бы мёртвым грузом).
+    if asset.get("category") == "truck":
+        await db.user_assets.update_many({"hitchedTo": asset["_id"]}, {"$unset": {"hitchedTo": ""}})
     await db.user_assets.delete_one({"_id": asset["_id"]})
     new_balance = await adjust_balance(db, user_id, payout)
     cat = _ledger_category(asset)
@@ -1782,6 +1887,8 @@ async def transfer_to_player(
     if asset.get("companyId"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Актив принадлежит компании — сначала верните его себе")
+    if asset.get("category") == "truck":
+        await db.user_assets.update_many({"hitchedTo": asset["_id"]}, {"$unset": {"hitchedTo": ""}})
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Актив сдаётся или ждёт арендатора — снимите с аренды")

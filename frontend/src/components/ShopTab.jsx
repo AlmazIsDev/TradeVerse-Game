@@ -25,7 +25,7 @@ import ShopBuyModal from './ShopBuyModal'
 import { toast } from './Toast'
 // ── Иконки (lucide-react). ───────────────────────────────────────────────
 import {
-  Monitor, Cpu, Box, Package, MemoryStick, HardDrive, Snowflake, Zap, CircuitBoard,
+  Monitor, Cpu, Box, Package, MemoryStick, HardDrive, Snowflake, Zap, CircuitBoard, Server,
   Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
 } from 'lucide-react'
 
@@ -41,12 +41,13 @@ const CATEGORIES = [
   { id: 'cooling', icon: Snowflake },
   { id: 'psu', icon: Zap },
   { id: 'case', icon: Box },
+  { id: 'rack', icon: Server },
   { id: 'supplies', icon: Package },
 ]
 
 const CAT_COLOR = {
   gpu: '#818cf8', cpu: '#a855f7', motherboard: '#06b6d4', ram: '#10b981',
-  ssd: '#eab308', cooling: '#0ea5e9', psu: '#f59e0b', case: '#94a3b8',
+  ssd: '#eab308', cooling: '#0ea5e9', psu: '#f59e0b', case: '#94a3b8', rack: '#64748b',
   supplies: '#f97316',
 }
 
@@ -60,6 +61,7 @@ function specLine(cat, s = {}, t) {
     case 'cooling': return `${s.cooling || 0} Вт охл. · ${s.power || 0}W`
     case 'psu': return `${s.power || 0}W`
     case 'case': return `${t('units.slots', { count: s.slots })}`
+    case 'rack': return `${t('units.slots', { count: s.slots })}`
     case 'supplies': return t(`supplies.${s.kind}`, s.kind || '')
     default: return ''
   }
@@ -144,7 +146,7 @@ async function loadShopItems(category) {
   // Категории, которые показываются в магазине. Дома/бизнесы отсеиваются —
   // они на «Рынке» (MarketTab).
   const SHOP_CATEGORIES = new Set([
-    'gpu', 'cpu', 'motherboard', 'ram', 'ssd', 'cooling', 'psu', 'case', 'supplies',
+    'gpu', 'cpu', 'motherboard', 'ram', 'ssd', 'cooling', 'psu', 'case', 'rack', 'supplies',
   ])
 
   const view = useMemo(() => {

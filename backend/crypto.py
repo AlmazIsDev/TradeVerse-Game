@@ -39,6 +39,9 @@ CRYPTO_FEE_RATE = 0.01
 # бессмысленным «дребезг» buy→sell ради микродвижений цены и придаёт глубину
 # экономике — быстрый оборот теперь стоит денег. Комиссия «сгорает».
 CRYPTO_TRADE_FEE_RATE = 0.005
+# Лимит концентрации: один игрок может держать максимум эту долю эмиссии монеты
+# (holdings в crypto_holdings — покупка + добыча + переводы; продажа не ограничена).
+MAX_HOLD_SHARE = 0.9
 
 # ── Собственная экономика TradeVerse поверх реальных курсов ───────────────────
 # Реальная цена (CoinGecko/симуляция) — БАЗА. Действия игроков двигают монету
@@ -287,6 +290,10 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
                 "price": display,
                 "change24h": round(coin.get("change24h", 0.0) * 0.7 + change, 2),
             })
+    # Синтетические сделки ботов в рамках свободных монет (админка → synthetic).
+    from synthetic import get_synthetic_config
+    synth = await get_synthetic_config(db)
+    await run_bots(db, synth["crypto"])
     # Сбрасываем кэш чтения, чтобы следующий запрос увидел свежие цены.
     _MARKET_CACHE["ts"] = None
     # Рассылаем обновления по WebSocket
@@ -509,7 +516,17 @@ async def quote_crypto(
     if coin is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
     q = _crypto_quote(coin, action, quantity)
-    q["maxAffordable"] = _max_affordable(coin, float(current_user.get("balance") or 0))
+    max_affordable = _max_affordable(coin, float(current_user.get("balance") or 0))
+    if action == "buy":
+        supply = float(coin.get("supply") or 0)
+        if supply > 0:
+            held = await db.crypto_holdings.find_one(
+                {"userId": str(current_user["_id"]), "symbol": symbol})
+            max_buy = max(0.0, round(
+                supply * MAX_HOLD_SHARE - float((held or {}).get("quantity", 0.0) or 0.0), 8))
+            q["maxBuyable"] = max_buy
+            max_affordable = min(max_affordable, max_buy)
+    q["maxAffordable"] = max_affordable
     return q
 
 
@@ -553,6 +570,19 @@ async def trade_crypto(
     fee = round(total * CRYPTO_TRADE_FEE_RATE, 2)
 
     if payload.action == "buy":
+        # Лимит эмиссии: один игрок не может купить больше 90% всех монет.
+        # Проверяем ДО списания, чтобы отклонённая сделка не трогала баланс.
+        supply = float(coin.get("supply") or 0)
+        if supply > 0:
+            held_qty = float((holding or {}).get("quantity", 0.0) or 0.0)
+            max_qty = round(supply * MAX_HOLD_SHARE - held_qty, 8)
+            if qty > max_qty:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Лимит эмиссии: один игрок может держать максимум "
+                           f"{int(MAX_HOLD_SHARE * 100)}% всех {symbol} "
+                           f"(можно купить ещё {max_qty:g})",
+                )
         # Покупатель платит стоимость + комиссию.
         new_balance = await adjust_balance(db, user_id, -round(total + fee, 2))
         if new_balance is None:
@@ -620,6 +650,99 @@ async def trade_crypto(
     # Выкуп из бюджета компании уже выполнен выше — гейтом перед выплатой.
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
             "price": price, "total": total, "fee": fee, "balance": new_balance}
+
+
+# ── Боты-покупатели (синтетические транзакции) ───────────────────────────────
+# Имитируют рыночную активность по монетам теми же механизмами, что и сделки
+# игроков: двигают спрос/цену через _apply_trade_impact, пишут события в
+# crypto_events. Параметры и вкл/выкл — app_config["synthetic_config"]
+# (админка → synthetic; см. backend/synthetic.py). Денег у бота нет —
+# в ledger синтетические сделки не попадают.
+BOT_USER_ID = "bot"
+BOT_MIN_TRADE_USD = 0.01   # пыль дешевле цента не двигает спрос — не торгуем
+
+
+async def _bot_coin_trade(
+    db: AsyncIOMotorDatabase, coin: dict, cfg: dict,
+    side: Optional[str] = None, quantity: Optional[float] = None,
+) -> bool:
+    """Одна синтетическая сделка по монете. False — сделка не состоялась.
+
+    Строго в рамках свободных монет: покупка режется по остатку
+    (эмиссия − холдинги игроков − купленное ботом ранее), продажа — по
+    купленному ботом ранее (bot_held на документе монеты).
+    """
+    symbol = coin["symbol"]
+    price = float(coin.get("price") or 0)
+    if price <= 0:
+        return False
+    # ponytail: случайный bias вместо 50/50 — иначе покупки и продажи взаимно
+    # гасятся. Вероятность покупки тянется из [buyBiasMin, buyBiasMax] конфига.
+    buy_prob = random.uniform(cfg["buyBiasMin"], cfg["buyBiasMax"])
+    action = side or ("buy" if random.random() < buy_prob else "sell")
+    volume = random.uniform(cfg["minVolumeUsd"], cfg["maxVolumeUsd"])
+    qty = float(quantity) if quantity is not None else volume / price
+
+    if action == "buy":
+        supply = float(coin.get("supply") or 0)
+        bot_held = float(coin.get("bot_held") or 0)
+        held = 0.0
+        async for h in db.crypto_holdings.aggregate([
+            {"$match": {"symbol": symbol}},
+            {"$group": {"_id": None, "q": {"$sum": "$quantity"}}},
+        ]):
+            held = float(h.get("q") or 0)
+        qty = min(qty, max(0.0, supply - held - bot_held))
+    else:
+        qty = min(qty, float(coin.get("bot_held") or 0))
+    if qty * price < BOT_MIN_TRADE_USD:
+        return False
+    qty = round(qty, 8)
+
+    new_price = await _apply_trade_impact(db, symbol, action, qty * price)
+    if new_price is None:
+        return False
+    await db.crypto_assets.update_one(
+        {"symbol": symbol},
+        {"$inc": {"bot_held": qty if action == "buy" else -qty}},
+    )
+    await db.crypto_events.insert_one({
+        "symbol": symbol,
+        "type": action,
+        "quantity": qty,
+        "priceBefore": price,
+        "priceAfter": new_price,
+        "userId": BOT_USER_ID,
+        "timestamp": now_utc(),
+    })
+    return True
+
+
+async def run_bots(
+    db: AsyncIOMotorDatabase, cfg: dict,
+    symbol: Optional[str] = None, side: Optional[str] = None,
+    quantity: Optional[float] = None,
+) -> int:
+    """Раунды ботов по монетам. Возвращает число сделок.
+
+    Без symbol — roundsPerTick раундов с вероятностью probability (фоновый тик
+    и ручной «запустить раунд»); с symbol — одна разовая сделка (side/quantity
+    из админки), всё равно в пределах свободных монет.
+    """
+    if not cfg.get("enabled", True) or cfg["roundsPerTick"] <= 0:
+        return 0
+    executed = 0
+    rounds = 1 if symbol else int(cfg["roundsPerTick"])
+    for _ in range(rounds):
+        coins = await db.crypto_assets.find({}).to_list(None)
+        for coin in coins:
+            if symbol and coin["symbol"] != symbol.upper():
+                continue
+            if not symbol and random.random() > cfg["probability"]:
+                continue
+            if await _bot_coin_trade(db, coin, cfg, side=side, quantity=quantity):
+                executed += 1
+    return executed
 
 
 # ── Wallet-to-wallet transfers ───────────────────────────────────────────────
@@ -852,4 +975,14 @@ if __name__ == "__main__":
         lo, hi = min(lo, coin["price"]), max(hi, coin["price"])
     assert hi <= 200.0, f"цена улетела вверх: {hi} при базе 100"
     assert lo >= 50.0, f"цена рухнула вниз: {lo} при базе 100"
+    # Лимит концентрации: купить можно только до 90% эмиссии минус уже держимое.
+    _supply, _held = 1_000_000.0, 400_000.0
+    _max_qty = max(0.0, round(_supply * MAX_HOLD_SHARE - _held, 8))
+    assert _max_qty == 500_000.0   # 900k − 400k
+    assert max(0.0, round(_supply * MAX_HOLD_SHARE - (_supply * MAX_HOLD_SHARE + 1), 8)) == 0.0  # уже >90% — покупка закрыта
+    # Бот: покупка строго в рамках свободных монет (эмиссия − холдинги игроков −
+    # купленное ботом), продажа — не больше bot_held; пыль отсекается.
+    assert max(0.0, 1_000.0 - 400.0 - 100.0) == 500.0
+    assert min(999.0, 100.0) == 100.0
+    assert 0.001 * 5 < BOT_MIN_TRADE_USD
     print("crypto self-check OK")

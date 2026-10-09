@@ -164,7 +164,7 @@ function CarsTab({ balance = 0, onBalanceChange }) {
       if (res && typeof res.balance === 'number' && onBalanceChange) {
         onBalanceChange(res.balance)
       }
-      toast(t('market.bought', { defaultValue: 'Куплено' }) + `: ${item.name}`)
+      toast(t('market.bought', { defaultValue: 'Куплено' }) + `: ${t(`assetNames.${item.slug}`, item.name)}`)
       setPendingBuy(null)
       if (item.isFarmVehicle) loadFarmVehicles()
       else loadCars()
@@ -258,7 +258,7 @@ function CarsTab({ balance = 0, onBalanceChange }) {
                     {item.emoji || TYPE_EMOJI[item.type]}
                   </span>
                 </div>
-                <span className="market-card-name">{item.name}</span>
+                <span className="market-card-name">{t(`assetNames.${item.slug}`, item.name)}</span>
                 <div className="market-card-meta">
                   <span className="market-card-rarity" style={{ color: rc }}>
                     {t(`realestate.rarities.${item.rarity}`, item.rarity)}

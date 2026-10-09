@@ -480,7 +480,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                     ? <img className="asset-banner-img" src={img} alt="" loading="lazy" />
                     : <span className="asset-banner-emoji">{cardEmoji(item)}</span>}
                 </div>
-                <span className="market-card-name">{item.name}</span>
+                <span className="market-card-name">{t(`assetNames.${item.slug}`, item.name)}</span>
                 {item.rarity && (
                   <div className="market-card-meta">
                     <span className="market-card-rarity" style={{ color: rc }}>

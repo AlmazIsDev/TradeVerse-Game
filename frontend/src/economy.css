@@ -545,6 +545,11 @@
 .leaderboard-title-row { display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-md); }
 .leaderboard-title-row .icon { color: #ffb340; }
 .leaderboard-title-row .tab-title { margin: 0; }
+/* Кнопки-шапки («Назад», «Управление производством») в Farm/Production:
+   дефолт asset-interact-btn — width:100% и svg margin-left:auto — растягивал
+   кнопку на всю строку и уводил стрелку вправо. */
+.leaderboard-title-row .asset-interact-btn { width: auto; flex-shrink: 0; }
+.leaderboard-title-row .asset-interact-btn svg:last-child { margin-left: 0; }
 .leaderboard-sorts { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); margin-bottom: var(--spacing-lg); }
 .leaderboard-table { display: flex; flex-direction: column; gap: var(--spacing-xs); }
 .leaderboard-row {
@@ -1263,79 +1268,79 @@ select.company-name-input option {
 .crypto-coin.clickable:hover { background: var(--fill-subtle); }
 
 .asset-detail { max-width: 1180px; }
-.ad-header {
+.mkd-header {
   display: flex; align-items: center; gap: var(--spacing-md);
   margin: var(--spacing-md) 0 var(--spacing-lg); flex-wrap: wrap;
 }
-.ad-logo {
+.mkd-logo {
   width: 56px; height: 56px; border-radius: 16px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   color: #ffffff; font-weight: 800; font-size: 22px; text-transform: uppercase;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
 }
-.ad-title { flex: 1; min-width: 180px; }
-.ad-name-row { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
-.ad-name-row h2 { font-size: 22px; font-weight: 700; color: var(--color-text-primary); }
-.ad-ticker { font-size: 13px; font-weight: 700; color: var(--color-text-secondary); background: var(--color-bg-tertiary); padding: 2px 8px; border-radius: 6px; }
-.ad-fav { background: none; border: none; cursor: pointer; color: var(--color-text-secondary); padding: 2px; }
-.ad-fav.active { color: #ffb340; }
-.ad-sector { font-size: 13px; color: var(--color-text-secondary); margin-top: 2px; }
-.ad-price-block { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.ad-price { font-size: 26px; font-weight: 800; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
-.ad-change { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; font-weight: 600; }
-.ad-change.up { color: var(--color-success); }
-.ad-change.down { color: var(--color-danger); }
-.ad-change.flat { color: var(--color-text-secondary); }
+.mkd-title { flex: 1; min-width: 180px; }
+.mkd-name-row { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
+.mkd-name-row h2 { font-size: 22px; font-weight: 700; color: var(--color-text-primary); }
+.mkd-ticker { font-size: 13px; font-weight: 700; color: var(--color-text-secondary); background: var(--color-bg-tertiary); padding: 2px 8px; border-radius: 6px; }
+.mkd-fav { background: none; border: none; cursor: pointer; color: var(--color-text-secondary); padding: 2px; }
+.mkd-fav.active { color: #ffb340; }
+.mkd-sector { font-size: 13px; color: var(--color-text-secondary); margin-top: 2px; }
+.mkd-price-block { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.mkd-price { font-size: 26px; font-weight: 800; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.mkd-change { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; font-weight: 600; }
+.mkd-change.up { color: var(--color-success); }
+.mkd-change.down { color: var(--color-danger); }
+.mkd-change.flat { color: var(--color-text-secondary); }
 
-.ad-stats-grid {
+.mkd-stats-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--spacing-sm); margin-bottom: var(--spacing-md);
 }
-.ad-stat {
+.mkd-stat {
   background: var(--color-bg-secondary); border: 1px solid var(--hairline);
   border-radius: var(--radius-md); padding: 10px 12px;
   display: flex; flex-direction: column; gap: 4px;
 }
-.ad-stat span { font-size: 11px; color: var(--color-text-secondary); }
-.ad-stat b { font-size: 15px; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
-.ad-stat b.up { color: var(--color-success); }
-.ad-description { font-size: 14px; line-height: 1.6; color: var(--color-text-secondary); margin-bottom: var(--spacing-lg); }
+.mkd-stat span { font-size: 11px; color: var(--color-text-secondary); }
+.mkd-stat b { font-size: 15px; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.mkd-stat b.up { color: var(--color-success); }
+.mkd-description { font-size: 14px; line-height: 1.6; color: var(--color-text-secondary); margin-bottom: var(--spacing-lg); }
 
-.ad-chart-card {
+.mkd-chart-card {
   background: var(--color-bg-secondary); border: 1px solid var(--hairline);
   border-radius: var(--radius-lg); padding: var(--spacing-md); margin-bottom: var(--spacing-lg);
 }
-.ad-chart-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-sm); }
-.ad-intervals { display: flex; gap: 4px; flex-wrap: wrap; }
-.ad-iv {
+.mkd-chart-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-sm); }
+.mkd-intervals { display: flex; gap: 4px; flex-wrap: wrap; }
+.mkd-iv {
   padding: 5px 11px; border-radius: var(--radius-sm); border: 1px solid transparent;
   background: var(--color-bg-tertiary); color: var(--color-text-secondary);
   font-size: 12px; font-weight: 600; cursor: pointer;
 }
-.ad-iv.active { background: var(--color-accent); color: var(--on-accent); }
-.ad-charttype { display: flex; gap: 4px; }
-.ad-charttype button {
+.mkd-iv.active { background: var(--color-accent); color: var(--on-accent); }
+.mkd-charttype { display: flex; gap: 4px; }
+.mkd-charttype button {
   padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--hairline);
   background: var(--color-bg-tertiary); color: var(--color-text-secondary); cursor: pointer;
   display: inline-flex; align-items: center;
 }
-.ad-charttype button.active { background: var(--color-accent); color: var(--on-accent); border-color: transparent; }
+.mkd-charttype button.active { background: var(--color-accent); color: var(--on-accent); border-color: transparent; }
 .price-chart-wrap { width: 100%; }
-.ad-chart { transition: opacity 0.2s ease; }
-.ad-chart.loading { opacity: 0.5; }
-.ad-chart-hint { font-size: 11px; color: var(--color-text-secondary); margin-top: 6px; text-align: center; }
+.mkd-chart { transition: opacity 0.2s ease; }
+.mkd-chart.loading { opacity: 0.5; }
+.mkd-chart-hint { font-size: 11px; color: var(--color-text-secondary); margin-top: 6px; text-align: center; }
 
-.ad-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
-.ad-buy, .ad-sell, .ad-fav-btn {
+.mkd-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
+.mkd-buy, .mkd-sell, .mkd-fav-btn {
   flex: 1; min-width: 130px; padding: 13px; border: none; border-radius: var(--radius-md);
   font-weight: 700; font-size: 15px; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
-.ad-buy { background: linear-gradient(135deg, #34c759, #248a3d); color: #e7f7ec; }
-.ad-sell { background: linear-gradient(135deg, #ff3b30, #b3000c); color: #ffffff; }
-.ad-sell:disabled { opacity: 0.45; cursor: not-allowed; }
-.ad-fav-btn { flex: 0 0 auto; background: var(--color-bg-tertiary); color: var(--color-text-primary); border: 1px solid var(--hairline); }
-.ad-fav-btn.active { color: #ffb340; border-color: rgba(251,191,36,0.4); }
+.mkd-buy { background: linear-gradient(135deg, #34c759, #248a3d); color: #e7f7ec; }
+.mkd-sell { background: linear-gradient(135deg, #ff3b30, #b3000c); color: #ffffff; }
+.mkd-sell:disabled { opacity: 0.45; cursor: not-allowed; }
+.mkd-fav-btn { flex: 0 0 auto; background: var(--color-bg-tertiary); color: var(--color-text-primary); border: 1px solid var(--hairline); }
+.mkd-fav-btn.active { color: #ffb340; border-color: rgba(251,191,36,0.4); }
 
 /* ===================== CRYPTO WALLET TRANSFER ===================== */
 .crypto-transfer-form { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); }
@@ -1433,10 +1438,10 @@ select.company-name-input option {
 
 /* ===================== BIG-NUMBER OVERFLOW GUARDS ===================== */
 .header-balance { max-width: 280px; }
-.asset-summary-card, .ad-stat, .bank-mini, .bank-crypto-val, .portfolio-item-values, .stat-info, .profile-card { min-width: 0; }
+.asset-summary-card, .mkd-stat, .bank-mini, .bank-crypto-val, .portfolio-item-values, .stat-info, .profile-card { min-width: 0; }
 /* Числа переносятся, а не обрезаются */
-.asset-summary-card b, .ad-stat b, .bank-mini b, .stat-value,
-.portfolio-value, .portfolio-total strong, .company-emp-salary, .ad-price,
+.asset-summary-card b, .mkd-stat b, .bank-mini b, .stat-value,
+.portfolio-value, .portfolio-total strong, .company-emp-salary, .mkd-price,
 .bank-crypto-val b, .bank-hero-balance, .profile-card-number {
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -1549,9 +1554,9 @@ select.company-name-input option {
 .cbonus-timer { font-size: 10px; color: var(--color-text-secondary); white-space: nowrap; }
 
 /* ===================== REAL MARKET DATA (logos / live badge) ===================== */
-.ad-logo-img { width: 56px; height: 56px; border-radius: 16px; object-fit: cover; background: var(--color-bg-tertiary); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); flex-shrink: 0; }
+.mkd-logo-img { width: 56px; height: 56px; border-radius: 16px; object-fit: cover; background: var(--color-bg-tertiary); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); flex-shrink: 0; }
 .crypto-coin-img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: var(--color-bg-tertiary); flex-shrink: 0; }
-.ad-live {
+.mkd-live {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 11px; font-weight: 700; color: var(--color-success);
   background: rgba(52, 199, 89, 0.14); padding: 2px 8px; border-radius: 999px;
@@ -1741,58 +1746,58 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .cf-prob-label { display: block; margin-top: 4px; font-size: 11px; color: var(--color-text-secondary); }
 
 /* ===================== ДЕТАЛЬ АКТИВА: биржевой двухколоночный вид ===================== */
-.ad-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--spacing-lg); align-items: start; }
-@media (max-width: 980px) { .ad-layout { grid-template-columns: 1fr; } }
-.ad-col-main, .ad-col-side { display: flex; flex-direction: column; gap: var(--spacing-md); min-width: 0; }
+.mkd-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--spacing-lg); align-items: start; }
+@media (max-width: 980px) { .mkd-layout { grid-template-columns: 1fr; } }
+.mkd-col-main, .mkd-col-side { display: flex; flex-direction: column; gap: var(--spacing-md); min-width: 0; }
 /* внутри колонок нижние отступы убираем — за расстояние отвечает gap */
-.ad-col-main .ad-stats-grid, .ad-col-main .ad-description, .ad-col-main .ad-chart-card { margin-bottom: 0; }
+.mkd-col-main .mkd-stats-grid, .mkd-col-main .mkd-description, .mkd-col-main .mkd-chart-card { margin-bottom: 0; }
 
-.ad-info-card {
+.mkd-info-card {
   background: var(--color-bg-secondary); border: 1px solid var(--hairline);
   border-radius: var(--radius-lg); padding: var(--spacing-md);
   display: flex; flex-direction: column; gap: 8px;
   animation: adRise .35s ease both;
 }
-.ad-info-card:nth-child(2) { animation-delay: .04s; }
-.ad-info-card:nth-child(3) { animation-delay: .08s; }
-.ad-info-card:nth-child(4) { animation-delay: .12s; }
-.ad-info-card:nth-child(5) { animation-delay: .16s; }
-.ad-info-card:nth-child(6) { animation-delay: .20s; }
-.ad-info-card:nth-child(7) { animation-delay: .24s; }
+.mkd-info-card:nth-child(2) { animation-delay: .04s; }
+.mkd-info-card:nth-child(3) { animation-delay: .08s; }
+.mkd-info-card:nth-child(4) { animation-delay: .12s; }
+.mkd-info-card:nth-child(5) { animation-delay: .16s; }
+.mkd-info-card:nth-child(6) { animation-delay: .20s; }
+.mkd-info-card:nth-child(7) { animation-delay: .24s; }
 @keyframes adRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-.ad-info-title { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--color-text-primary); }
-.ad-info-title svg { color: var(--color-accent-hover); }
-.ad-info-empty { font-size: 12px; color: var(--color-text-secondary); }
+.mkd-info-title { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--color-text-primary); }
+.mkd-info-title svg { color: var(--color-accent-hover); }
+.mkd-info-empty { font-size: 12px; color: var(--color-text-secondary); }
 
-.ad-metric-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--color-text-secondary); }
-.ad-metric-row span { display: inline-flex; align-items: center; gap: 5px; }
-.ad-metric-row b { font-size: 13px; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
-.ad-metric-row b.up, .ad-metric-row .ad-change.up { color: var(--color-success); }
-.ad-metric-row b.down, .ad-metric-row .ad-change.down { color: var(--color-danger); }
-.ad-metric-row b.accent { color: var(--color-accent-hover); }
+.mkd-metric-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--color-text-secondary); }
+.mkd-metric-row span { display: inline-flex; align-items: center; gap: 5px; }
+.mkd-metric-row b { font-size: 13px; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.mkd-metric-row b.up, .mkd-metric-row .mkd-change.up { color: var(--color-success); }
+.mkd-metric-row b.down, .mkd-metric-row .mkd-change.down { color: var(--color-danger); }
+.mkd-metric-row b.accent { color: var(--color-accent-hover); }
 
 /* Рекомендация */
-.ad-rec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ad-rec-badge { font-size: 12px; font-weight: 800; padding: 3px 12px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
-.ad-rec-badge.buy { color: #e7f7ec; background: linear-gradient(90deg, #34c759, #34c759); }
-.ad-rec-badge.hold { color: #5c3200; background: linear-gradient(90deg, #ffb340, #ff9500); }
-.ad-rec-badge.sell { color: #fdeceb; background: linear-gradient(90deg, #ff6961, #ff3b30); }
-.ad-info-card.ad-rec { border-color: rgba(0, 113, 227, 0.25); }
-.ad-info-card.ad-rec.buy { border-color: rgba(52, 199, 89, 0.35); }
-.ad-info-card.ad-rec.sell { border-color: rgba(255, 59, 48, 0.35); }
+.mkd-rec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mkd-rec-badge { font-size: 12px; font-weight: 800; padding: 3px 12px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
+.mkd-rec-badge.buy { color: #e7f7ec; background: linear-gradient(90deg, #34c759, #34c759); }
+.mkd-rec-badge.hold { color: #5c3200; background: linear-gradient(90deg, #ffb340, #ff9500); }
+.mkd-rec-badge.sell { color: #fdeceb; background: linear-gradient(90deg, #ff6961, #ff3b30); }
+.mkd-info-card.mkd-rec { border-color: rgba(0, 113, 227, 0.25); }
+.mkd-info-card.mkd-rec.buy { border-color: rgba(52, 199, 89, 0.35); }
+.mkd-info-card.mkd-rec.sell { border-color: rgba(255, 59, 48, 0.35); }
 
 /* Риск-бейджи */
-.ad-risk-badge { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
-.ad-risk-badge.low { color: #d6f5dd; background: rgba(52, 199, 89, 0.18); }
-.ad-risk-badge.medium { color: #ffe9b0; background: rgba(255, 149, 0, 0.18); }
-.ad-risk-badge.high { color: #ffe0dd; background: rgba(255, 59, 48, 0.18); }
+.mkd-risk-badge { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+.mkd-risk-badge.low { color: #d6f5dd; background: rgba(52, 199, 89, 0.18); }
+.mkd-risk-badge.medium { color: #ffe9b0; background: rgba(255, 149, 0, 0.18); }
+.mkd-risk-badge.high { color: #ffe0dd; background: rgba(255, 59, 48, 0.18); }
 
 /* Полоса популярности */
-.ad-pop-bar { height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.08); overflow: hidden; margin-top: 2px; }
-.ad-pop-fill { height: 100%; background: linear-gradient(90deg, #0077ed, #0071e3); border-radius: 3px; transition: width .4s ease; }
+.mkd-pop-bar { height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.08); overflow: hidden; margin-top: 2px; }
+.mkd-pop-fill { height: 100%; background: linear-gradient(90deg, #0077ed, #0071e3); border-radius: 3px; transition: width .4s ease; }
 
-.ad-info-card .tx-list { max-height: 240px; overflow-y: auto; }
+.mkd-info-card .tx-list { max-height: 240px; overflow-y: auto; }
 
 /* Разбивка сделки в модалке покупки/продажи */
 .trade-breakdown {
@@ -1863,48 +1868,48 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .tm-preset:disabled { opacity: .4; cursor: not-allowed; }
 
 /* Обоснование рекомендации */
-.ad-why { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 2px; }
-.ad-why-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-secondary); }
-.ad-why-list { list-style: none; margin: 5px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-.ad-why-list li { position: relative; padding-left: 13px; font-size: 11.5px; line-height: 1.45; color: var(--color-text-secondary); }
-.ad-why-list li::before { content: ''; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--color-accent); }
+.mkd-why { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 2px; }
+.mkd-why-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-secondary); }
+.mkd-why-list { list-style: none; margin: 5px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.mkd-why-list li { position: relative; padding-left: 13px; font-size: 11.5px; line-height: 1.45; color: var(--color-text-secondary); }
+.mkd-why-list li::before { content: ''; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--color-accent); }
 
 /* Универсальная шкала-индикатор внутри карточек */
-.ad-meter { height: 6px; border-radius: 3px; background: rgba(128, 128, 128, 0.18); overflow: hidden; }
-.ad-meter-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
-.ad-meter-fill.up { background: linear-gradient(90deg, #34c759, #248a3d); }
-.ad-meter-fill.down { background: linear-gradient(90deg, #ff6961, #ff3b30); }
+.mkd-meter { height: 6px; border-radius: 3px; background: rgba(128, 128, 128, 0.18); overflow: hidden; }
+.mkd-meter-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+.mkd-meter-fill.up { background: linear-gradient(90deg, #34c759, #248a3d); }
+.mkd-meter-fill.down { background: linear-gradient(90deg, #ff6961, #ff3b30); }
 
-.ad-info-hint { font-size: 11px; line-height: 1.4; color: var(--color-text-secondary); }
-.ad-info-hint b { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.mkd-info-hint { font-size: 11px; line-height: 1.4; color: var(--color-text-secondary); }
+.mkd-info-hint b { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
 
 /* Диапазон цены за период с маркером текущей цены */
-.ad-range { display: flex; flex-direction: column; gap: 5px; }
-.ad-range-track {
+.mkd-range { display: flex; flex-direction: column; gap: 5px; }
+.mkd-range-track {
   position: relative; height: 6px; border-radius: 3px;
   background: linear-gradient(90deg, #34c759, #ffb340, #ff3b30);
 }
-.ad-range-marker {
+.mkd-range-marker {
   position: absolute; top: 50%; width: 3px; height: 14px; border-radius: 2px;
   background: var(--color-text-primary); transform: translate(-50%, -50%);
   box-shadow: 0 0 0 2px var(--color-bg-secondary); transition: left .4s ease;
 }
-.ad-range-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.mkd-range-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 
 /* Нереализованная прибыль — выделенная строка, главный показатель позиции */
-.ad-pnl {
+.mkd-pnl {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 8px 10px; border-radius: var(--radius-md); background: var(--color-bg-tertiary);
   font-size: 12.5px; color: var(--color-text-secondary);
 }
-.ad-pnl b { display: flex; flex-direction: column; align-items: flex-end; font-size: 15px; font-variant-numeric: tabular-nums; }
-.ad-pnl b.up { color: var(--color-success); }
-.ad-pnl b.down { color: var(--color-danger); }
-.ad-pnl b em { font-style: normal; font-size: 11px; opacity: .85; }
+.mkd-pnl b { display: flex; flex-direction: column; align-items: flex-end; font-size: 15px; font-variant-numeric: tabular-nums; }
+.mkd-pnl b.up { color: var(--color-success); }
+.mkd-pnl b.down { color: var(--color-danger); }
+.mkd-pnl b em { font-style: normal; font-size: 11px; opacity: .85; }
 
 /* История сделок вынесена под две колонки — там место есть, скролл не нужен */
-.ad-history-card { margin-top: var(--spacing-lg); }
-.ad-history-card .tx-list { max-height: none; overflow-y: visible; }
+.mkd-history-card { margin-top: var(--spacing-lg); }
+.mkd-history-card .tx-list { max-height: none; overflow-y: visible; }
 
 /* ===================== АВТО: компактные действия + тюнинг ===================== */
 .asset-actions.compact { gap: 6px; }
@@ -2009,9 +2014,9 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 }
 .mining-houses-grid {
   display: grid; gap: var(--spacing-sm);
-  /* Маленькие плитки: ~180px — было 280, уменьшили примерно в 1.5 раза;
-     на узких экранах — 140px. */
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  /* auto-fit вместо auto-fill: когда домов мало (1–2), плитки растягиваются
+     на свободные колонки, а не оставляют пустоту справа. */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 .mining-house-card {
   text-align: left;
@@ -2733,10 +2738,45 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 
   /* Детали акции/монеты: шапка перестраивается — название целиком,
      цена с изменением отдельной строкой под ним. */
-  .ad-header { gap: var(--spacing-sm); }
-  .ad-logo, .ad-logo-img { width: 44px; height: 44px; }
-  .ad-title { min-width: 0; }
-  .ad-name-row h2 { font-size: 17px; }
-  .ad-price-block { flex: 1 1 100%; flex-direction: row; align-items: center; justify-content: space-between; }
-  .ad-price { font-size: 20px; }
+  .mkd-header { gap: var(--spacing-sm); }
+  .mkd-logo, .mkd-logo-img { width: 44px; height: 44px; }
+  .mkd-title { min-width: 0; }
+  .mkd-name-row h2 { font-size: 17px; }
+  .mkd-price-block { flex: 1 1 100%; flex-direction: row; align-items: center; justify-content: space-between; }
+  .mkd-price { font-size: 20px; }
 }
+
+/* ── Bulk-управление майнинг-фермами (MiningBulkView) ── */
+.mining-bulk-list { display: flex; flex-direction: column; gap: 8px; }
+.mining-bulk-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radius-md);
+  background: var(--color-surface, rgba(255,255,255,0.04)); cursor: pointer;
+}
+.mining-bulk-name { font-weight: 600; min-width: 140px; }
+.mining-bulk-state { font-size: 12px; opacity: 0.85; }
+.mining-bulk-meta { font-size: 12px; opacity: 0.7; margin-left: auto; text-align: right; }
+
+/* ── Автообновление рынка (RefreshControls) ── */
+.refresh-controls {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+}
+.refresh-label { font-size: 12px; opacity: 0.7; margin-right: 2px; }
+.refresh-spin { animation: refresh-rotate 0.8s linear infinite; }
+@keyframes refresh-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ── Обновление конкретного актива (RefreshControls в AssetDetail) ── */
+/* Размер и рамка — ровно как у кнопок .mkd-charttype, чтобы блок не выпадал из тулбара. */
+.mkd-chart-tools { display: flex; align-items: center; gap: 4px; }
+.refresh-controls { display: flex; align-items: center; gap: 4px; }
+.refresh-controls .refresh-select,
+.refresh-controls .refresh-btn {
+  padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--hairline);
+  background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+  font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center;
+}
+.refresh-controls .refresh-select { appearance: auto; padding-right: 20px; }
+.refresh-controls .refresh-btn:disabled { opacity: 0.6; cursor: default; }
+.refresh-spin { animation: refresh-rotate 0.8s linear infinite; }
+@keyframes refresh-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

@@ -51,7 +51,8 @@ SHOP_CONFIG_KEY = "shop_config"
 SHOP_PRICES_KEY = "shop_prices"   # админские цены {id: price|null}
 MAX_BUY_QTY = 1000
 RESALE_RATIO = 0.65
-MAX_CASE_SLOTS = 5    # Лимит слотов корпуса — больше НЕТ стоек, корпуса только до 5 GPU
+MAX_CASE_SLOTS = 5    # Лимит слотов корпуса; для больших сборок — стойки (rack)
+MAX_MB_SLOTS = 45     # Жёсткий лимит слотов мат. платы (стойка максимум 45 GPU)
 
 # Палитра «по мощности»: холодный (слабое) → горячий (топовое).
 TIER_COLORS = ["#60a5fa", "#22d3ee", "#34d399", "#facc15", "#fb923c", "#ef4444"]
@@ -72,6 +73,7 @@ CATEGORY_ROLE = {
     "psu": {"role": "psu", "required": True, "multi": True},
     "cooling": {"role": "cooling", "required": True},
     "case": {"role": "case", "required": False},
+    "rack": {"role": "rack", "required": False},
     "fan": {"role": "fan", "required": False, "multi": True},
     "ups": {"role": "ups", "required": False},
     "network": {"role": "network", "required": False},
@@ -180,15 +182,14 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(cores * 700, 2),
         })
 
-    # Базовые материнские платы - строго до 5 GPU (общий лимит корпуса).
-    # Если у игрока установлен корпус, материнка с числом слотов больше
-    # доступных в корпусе не установится (см. mining.install_component).
-    for i, slots in enumerate((1, 2, 3, 4, 5)):
+    # Базовые материнские платы: от 1 до 19 GPU. Больше 5 слотов имеет смысл
+    # только со стойкой (rack) — корпус ограничен MAX_CASE_SLOTS (см. mining).
+    for i, slots in enumerate((1, 2, 3, 4, 5, 6, 8, 12, 19)):
         items.append({
             "id": f"mb-{slots}", "category": "motherboard",
             "name": f"Мат. плата ({slots} GPU)",
-            "color": _tier_color(i),
-            "specs": {"gpuSlots": slots, "power": 60},
+            "color": _tier_color(min(5, i)),
+            "specs": {"gpuSlots": slots, "power": 60 + slots * 4},
             "base_price": round(slots * 1200, 2),
         })
 
@@ -208,7 +209,7 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(gb * 3, 2),
         })
 
-    # Корпуса — только до 5 GPU (стойки УДАЛЕНЫ из игры).
+    # Корпуса — до 5 GPU; для больших сборок есть серверные стойки (rack).
     for i, (name, slots) in enumerate([
         ("Мини-корпус", 1), ("Компактный корпус", 2), ("Миди-башня", 3),
         ("Башенный корпус", 4), ("Full Tower", 5),
@@ -218,6 +219,22 @@ def _build_base_catalog() -> list[dict]:
             "color": _tier_color(i),
             "specs": {"slots": slots},
             "base_price": round(slots * 800, 2),
+        })
+
+    # Серверные стойки: много GPU в одной ферме (и, соответственно, много БП —
+    # см. mining._psu_max). Дороже корпуса за слот: серверное исполнение.
+    for i, (name, slots) in enumerate([
+        ("Серверная стойка 12U", 8),
+        ("Серверная стойка 24U", 12),
+        ("Серверная стойка 42U", 20),
+        ("Промышленная стойка XL", 30),
+        ("Стойка дата-центра", 45),
+    ]):
+        items.append({
+            "id": f"rack-{i}", "category": "rack", "name": name,
+            "color": _tier_color(min(5, i + 1)),
+            "specs": {"slots": slots},
+            "base_price": round(slots * 1200, 2),
         })
 
     fans = [("Комплект 120мм", 200, 15), ("Комплект 140мм", 320, 22),
@@ -1141,12 +1158,15 @@ if __name__ == "__main__":
     assert len(admin_mb) == 20, f"admin mb: {len(admin_mb)}"
     assert len(admin_ssd) == 20, f"admin ssd: {len(admin_ssd)}"
     assert len(admin_supplies) == 2, f"admin supplies: {len(admin_supplies)}"
-    # Корпуса и материнки — только до 5 GPU.
+    # Корпуса и админские материнки — до 5 GPU; большие сборки через стойки.
     for c in admin_case + admin_mb:
         slots = c["specs"].get("slots", c["specs"].get("gpuSlots", 0))
         assert slots <= 5, f"slots > 5: {c['id']} {slots}"
-    # Стойки rack полностью удалены из каталога.
-    assert not [c for c in CATALOG if c["category"] == "rack"]
+    # Серверные стойки вернулись: 8..45 слотов, все больше корпуса.
+    racks = [c for c in CATALOG if c["category"] == "rack"]
+    assert len(racks) == 5 and racks[0]["specs"]["slots"] == 8 and racks[-1]["specs"]["slots"] == 45
+    # Базовые материнки есть и больше 5 GPU (под стойки).
+    assert any(c["category"] == "motherboard" and c["specs"]["gpuSlots"] > 5 for c in BASE_CATALOG)
 
     ids = [c["id"] for c in CATALOG]
     assert len(ids) == len(set(ids)), "дубликаты id"

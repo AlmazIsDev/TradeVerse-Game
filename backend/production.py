@@ -332,6 +332,17 @@ def _load_cargo(store: dict, cap_kg: float) -> dict:
     return cargo
 
 
+async def _truck_cargo_kg(db, truck: dict) -> float:
+    """Грузоподъёмность фуры с учётом прицепленного прицепа (assets.py /hitch).
+    Прицеп хранится на документе прицепа (hitchedTo -> _id фуры)."""
+    base = float((truck.get("meta") or {}).get("cargoKg") or 0)
+    tr = await db.user_assets.find_one(
+        {"hitchedTo": truck["_id"], "userId": truck["userId"], "category": "trailer"},
+        {"meta.cargoKg": 1},
+    )
+    return base + float(((tr or {}).get("meta") or {}).get("cargoKg") or 0)
+
+
 def _trip(truck_id: str, unit_id: str, dest_id: str, cargo: dict, now: datetime) -> dict:
     return {"until": now + timedelta(minutes=float(_cfg()["trip_minutes"])),
             "cargo": cargo, "toId": dest_id, "fromId": unit_id}
@@ -340,7 +351,7 @@ def _trip(truck_id: str, unit_id: str, dest_id: str, cargo: dict, now: datetime)
 async def _depart_output(db, unit: dict, p: dict, truck: dict, dest_id: str, now: datetime) -> None:
     """Отправить одну фуру с выхода юнита: погрузка → hauling."""
     truck_id = truck["id"]
-    cargo_kg = float(truck.get("meta", {}).get("cargoKg") or 0)
+    cargo_kg = await _truck_cargo_kg(db, truck)
     if unit.get("category") == "field":
         fdoc = await db.user_fields.find_one({"assetId": str(unit["_id"])})
         if not fdoc:
@@ -379,7 +390,7 @@ async def _depart_input(db, unit: dict, truck: dict, input_id: str, now: datetim
         store = dict(fdoc.get("storage") or {})
     else:
         return
-    cargo = _load_cargo(store, float(truck.get("meta", {}).get("cargoKg") or 0))
+    cargo = _load_cargo(store, await _truck_cargo_kg(db, truck))
     # Пекарне нужна только пшеница: прочий груз возвращаем в источник.
     wheat = cargo.pop("wheat", 0.0)
     for res, qty in cargo.items():

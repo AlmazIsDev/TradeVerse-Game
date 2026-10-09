@@ -214,17 +214,18 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     return () => window.removeEventListener('tv:theme', onTheme)
   }, [draw])
 
-  const idxFromEvent = (e) => {
+  const idxFromX = (clientX) => {
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
     const W = rect.width
     const padL = 10, padR = 62
     const plotW = W - padL - padR
     const { count } = view.current
-    const rel = (e.clientX - rect.left - padL) / plotW
+    const rel = (clientX - rect.left - padL) / plotW
     const raw = type === 'candle' ? rel * count - 0.5 : rel * (count - 1)
     return Math.max(0, Math.min(count - 1, Math.round(raw)))
   }
+  const idxFromEvent = (e) => idxFromX(e.clientX)
 
   const onMove = (e) => {
     if (drag.current) {
@@ -240,6 +241,22 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     hover.current = idxFromEvent(e)
     draw()
   }
+
+  // Тач (мобильные): палец на графике = кроссхэйр с ценой в точке,
+  // ведение пальцем инспектирует значения. На ПК не влияет.
+  const onTouchStart = (e) => {
+    const x = e.touches[0]?.clientX
+    if (x == null) return
+    hover.current = idxFromX(x)
+    draw()
+  }
+  const onTouchMove = (e) => {
+    const x = e.touches[0]?.clientX
+    if (x == null) return
+    hover.current = idxFromX(x)
+    draw()
+  }
+  const onTouchEnd = () => { hover.current = -1; draw() }
   const onLeave = () => { hover.current = -1; drag.current = null; draw() }
   const onDown = (e) => { drag.current = { x: e.clientX, start: view.current.start } }
   const onUp = () => { drag.current = null }
@@ -274,6 +291,10 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
         onMouseLeave={onLeave}
         onMouseDown={onDown}
         onMouseUp={onUp}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
       />
     </div>
   )

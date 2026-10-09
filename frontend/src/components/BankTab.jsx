@@ -6,7 +6,7 @@ import AnalyticsChart from './AnalyticsChart'
 import { toast } from './Toast'
 import {
   Send, History, User, DollarSign, MessageSquare,
-  LayoutGrid, BarChart3, Coins, TrendingUp, TrendingDown, Wallet, ArrowRight,
+  LayoutGrid, BarChart3, Coins, TrendingUp, TrendingDown, Wallet, ArrowRight, CreditCard,
 } from 'lucide-react'
 
 function BankTab({ balance = 0, onBalanceChange }) {
@@ -20,6 +20,12 @@ function BankTab({ balance = 0, onBalanceChange }) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [analytics, setAnalytics] = useState(null)
   const [crypto, setCrypto] = useState(null)
+  // Номер карты синхронизируется в localStorage хедером (Header.jsx) при старте.
+  const [cardNumber, setCardNumber] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tradeverse_user'))?.card_number || null
+    } catch { return null }
+  })
 
   useEffect(() => { setLocalBalance(balance) }, [balance])
 
@@ -98,6 +104,11 @@ function BankTab({ balance = 0, onBalanceChange }) {
               )}
             </div>
             <div className="bank-hero-balance" title={`${formatMoney(localBalance)} $`}>{formatCompact(localBalance)} <span>$</span></div>
+            {cardNumber && (
+              <div className="bank-hero-cardnum" title={cardNumber}>
+                <CreditCard size={13} /> {cardNumber}
+              </div>
+            )}
             <button className="bank-hero-action" onClick={() => setView('transfer')}>
               <Send size={15} /> {t('bank.sendMoney')}
             </button>

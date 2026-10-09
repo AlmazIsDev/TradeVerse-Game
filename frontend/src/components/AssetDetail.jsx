@@ -343,7 +343,9 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
                   <div className="mkd-pnl">
                     <span>{t('asset.unrealizedPnl')}</span>
                     <b className={unrealizedPnl >= 0 ? 'up' : 'down'}>
-                      {unrealizedPnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(unrealizedPnl))}
+                      <span>
+                        {unrealizedPnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(unrealizedPnl))}
+                      </span>
                       <em>{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</em>
                     </b>
                   </div>

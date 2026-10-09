@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchMarketLots, createMarketLot, updateMarketLot, cancelMarketLot, buyMarketLot,
-  fetchMyAssets, fetchInventory,
+  fetchMyAssets, fetchInventory, fetchShopCatalog,
 } from '../services/api'
 import { toast } from './Toast'
 import { formatMoney } from './TransactionsPanel'
@@ -108,6 +108,29 @@ function CentralMarketTab() {
   const [createPrice, setCreatePrice] = useState('')
   const [createError, setCreateError] = useState(null)
   const [createBusy, setCreateBusy] = useState(false)
+
+  // Госцены железа (каталог магазина) — для подсказки в плейсхолдере цены.
+  // Грузятся один раз при первом открытии модалки в режиме «Железо».
+  const [hwPrices, setHwPrices] = useState({})
+  useEffect(() => {
+    if (!createOpen || createKind !== 'hardware') return
+    let cancelled = false
+    fetchShopCatalog()
+      .then(list => {
+        if (cancelled) return
+        const m = {}
+        ;(Array.isArray(list) ? list : []).forEach(i => { m[i.id] = i.price })
+        setHwPrices(m)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [createOpen, createKind])
+
+  // Госцена выбранного предмета: актив — оценка из /api/assets/mine,
+  // железо — цена каталога магазина. Показывается в плейсхолдере цены.
+  const govPrice = createKind === 'asset'
+    ? myAssets.find(a => String(a.id) === String(createItemId))?.value
+    : hwPrices[createItemId]
 
   const resetCreate = useCallback(() => {
     setCreateKind('asset')
@@ -459,7 +482,10 @@ function CentralMarketTab() {
                         <Hash size={11} /> ×{lot.qty}
                       </span>
                       <span className="centralmarket-lot-seller">
-                        <User size={11} /> {lot.seller}
+                        {lot.sellerAvatar
+                          ? <img className="centralmarket-lot-seller-avatar" src={lot.sellerAvatar} alt="" />
+                          : <User size={11} />}
+                        {lot.seller}
                       </span>
                     </div>
                   </div>
@@ -565,7 +591,7 @@ function CentralMarketTab() {
                   </option>
                   {myAssets.map(a => (
                     <option key={a.id} value={a.id}>
-                      {a.name} ({kindLabel('asset')})
+                      {a.name}
                     </option>
                   ))}
                 </select>
@@ -610,7 +636,7 @@ function CentralMarketTab() {
                   value={createPrice}
                   onChange={e => setCreatePrice(e.target.value)}
                   disabled={createBusy}
-                  placeholder="0.00"
+                  placeholder={govPrice != null ? String(govPrice) : '0.00'}
                   className="centralmarket-input"
                 />
               </label>

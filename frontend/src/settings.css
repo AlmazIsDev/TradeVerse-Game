@@ -4,7 +4,6 @@
    .form-group/.submit-btn), чтобы выглядеть частью единого интерфейса. */
 
 .settings-page {
-  max-width: 980px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);

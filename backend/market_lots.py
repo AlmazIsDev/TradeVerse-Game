@@ -123,9 +123,12 @@ async def _serialize_lots(db, lots: list[dict]) -> list[dict]:
     users = {}
     if seller_ids:
         async for u in db.users.find(
-            {"_id": {"$in": [ObjectId(s) for s in seller_ids]}}, {"username": 1}
+            {"_id": {"$in": [ObjectId(s) for s in seller_ids]}}, {"username": 1, "avatar": 1}
         ):
-            users[str(u["_id"])] = u.get("username", "—")
+            users[str(u["_id"])] = {
+                "name": u.get("username", "—"),
+                "avatar": u.get("avatar"),
+            }
     # Старые лоты могли сохраниться без name — добираем: железо из каталога
     # витрины, активы из user_assets (одним запросом).
     asset_ids = [
@@ -138,6 +141,7 @@ async def _serialize_lots(db, lots: list[dict]) -> list[dict]:
             asset_names[str(a["_id"])] = a.get("name") or a.get("slug")
     out = []
     for l in lots:
+        u = users.get(l.get("sellerId")) or {}
         name = l.get("name")
         if not name and l.get("kind") == "hardware":
             name = (CATALOG_BY_ID.get(l.get("itemId")) or {}).get("name")
@@ -151,7 +155,8 @@ async def _serialize_lots(db, lots: list[dict]) -> list[dict]:
             "qty": l.get("qty", 1),
             "pricePerItem": l.get("pricePerItem"),
             "sellerId": l.get("sellerId"),
-            "seller": users.get(l.get("sellerId"), "—"),
+            "seller": u.get("name", "—"),
+            "sellerAvatar": u.get("avatar"),
             "createdAt": l.get("created_at").isoformat() if isinstance(l.get("created_at"), datetime) else None,
         })
     return out

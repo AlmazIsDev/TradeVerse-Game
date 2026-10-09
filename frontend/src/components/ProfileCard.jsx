@@ -50,7 +50,7 @@ function ProfileCard({ cardNumber, cardVisible, onVisibilityChange }) {
       ) : (
         <div className="profile-card-number profile-card-empty">—</div>
       )}
-      <div className="profile-card-label">{t('profile.card')}</div>
+      {/* <div className="profile-card-label">{t('profile.card')}</div> */}
       {displayNumber && (
         <button
           className="profile-card-visibility-btn"

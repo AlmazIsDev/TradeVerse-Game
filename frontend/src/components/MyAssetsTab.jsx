@@ -767,7 +767,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             <button className="crypto-modal-close" onClick={() => setRenameModal(null)}><X size={18} /></button>
             <h3><Pencil size={17} /> {t('rename.title')}</h3>
             <p className="modal-price">{nameOf(renameModal)}</p>
-            <div className="modal-quantity"><label>{t('rename.newName')}:</label>
+            <div className="modal-quantity modal-quantity--col"><label>{t('rename.newName')}:</label>
               <input type="text" value={renameName} autoFocus maxLength={40}
                 placeholder={t('rename.placeholder')}
                 onChange={e => setRenameName(e.target.value)}

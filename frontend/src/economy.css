@@ -541,7 +541,7 @@
 .stock-card.skeleton { background: var(--color-bg-secondary); border-radius: var(--radius-lg); }
 
 /* ===================== LEADERBOARD ===================== */
-.leaderboard-tab { max-width: 860px; }
+.leaderboard-tab { width: 100%; }
 .leaderboard-title-row { display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-md); }
 .leaderboard-title-row .icon { color: #ffb340; }
 .leaderboard-title-row .tab-title { margin: 0; }
@@ -1267,7 +1267,7 @@ select.company-name-input option {
 .stock-card.clickable:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .crypto-coin.clickable:hover { background: var(--fill-subtle); }
 
-.asset-detail { max-width: 1180px; }
+.asset-detail { width: 100%; }
 .mkd-header {
   display: flex; align-items: center; gap: var(--spacing-md);
   margin: var(--spacing-md) 0 var(--spacing-lg); flex-wrap: wrap;
@@ -1390,6 +1390,19 @@ select.company-name-input option {
 .bank-hero-net.down { background: rgba(0,0,0,0.2); }
 .bank-hero-balance { font-size: 40px; font-weight: 800; margin: var(--spacing-md) 0; letter-spacing: -0.5px; }
 .bank-hero-balance span { font-size: 22px; opacity: 0.8; }
+/* Полный номер карты в банке (в хедере на телефоне он укорочен до 4 цифр) */
+.bank-hero-cardnum {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: -6px;
+  margin-bottom: var(--spacing-sm);
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--color-text-secondary);
+}
 .bank-hero-action {
   display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px;
   background: rgba(255, 255, 255, 0.95); color: #004a9e; border: none; border-radius: var(--radius-md);
@@ -1907,6 +1920,13 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .mkd-pnl b.down { color: var(--color-danger); }
 .mkd-pnl b em { font-style: normal; font-size: 11px; opacity: .85; }
 
+/* На телефонах блок «Нереализованная прибыль» — строчками в одну колонку:
+   лейбл, под ним сумма и процент. */
+@media (max-width: 640px) {
+  .mkd-pnl { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .mkd-pnl b { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+}
+
 /* История сделок вынесена под две колонки — там место есть, скролл не нужен */
 .mkd-history-card { margin-top: var(--spacing-lg); }
 .mkd-history-card .tx-list { max-height: none; overflow-y: visible; }
@@ -1992,9 +2012,14 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 /* ===================== NEXUS — магазин оборудования ===================== */
 .shop-subtitle { color: var(--color-text-secondary); font-size: 13px; margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-lg); }
 .shop-toolbar-right { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
-.shop-tab .gpu-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important; }
-.shop-tab .gpu-card { align-items: stretch; }
-.shop-tab .gpu-card-name { font-size: 15px; flex: 0 0 auto; }
+.shop-tab .gpu-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)) !important; }
+.shop-tab .gpu-card { align-items: stretch; padding: 12px; gap: 8px; min-height: 0; }
+.shop-tab .gpu-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.shop-tab .gpu-card-headtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.shop-tab .gpu-card-icon { width: 36px; height: 36px; flex: 0 0 36px; }
+.shop-tab .gpu-card-name { font-size: 14px; flex: 0 0 auto; }
+.shop-tab .gpu-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+.shop-tab .gpu-card-foot .gpu-card-specs { flex: 1; min-width: 0; }
 .gpu-card-cat {
   font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
   color: var(--color-text-secondary);
@@ -2703,6 +2728,8 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   .leaderboard-row { grid-template-columns: 44px 1fr auto; }
   .leaderboard-row .lb-networth { display: block; }
   .lb-profit-sub { display: none; }
+  /* Профит не переносится («+8,18 млрд $» одной строкой) и не давит колонку. */
+  .lb-profit { white-space: nowrap; min-width: 0; }
 }
 
 /* ===================== МОБИЛЬНАЯ КОМПАКТНОСТЬ (≤640px) ===================== */
@@ -2713,12 +2740,24 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   .asset-summary-card { min-width: 0; }
   .asset-summary-card b { font-size: 16px; }
 
-  /* Транзакции: название не режем многоточием, сумму переносим —
-     «−10 000 000 000,00 $» больше не наезжает на бейдж категории. */
-  .tx-card { padding: 12px; gap: 10px; }
-  .tx-card-label { white-space: normal; overflow-wrap: anywhere; }
-  .tx-card-amounts { max-width: 48%; }
-  .tx-card-amount { font-size: 13px; overflow-wrap: anywhere; }
+  /* Транзакции: описание и таймстамп одной строкой до края контейнера,
+     суммы переносятся вниз карточки. */
+  .tx-card { padding: 12px; gap: 10px; flex-wrap: wrap; }
+  .tx-card-label { white-space: nowrap; }
+  .tx-card-date { white-space: nowrap; }
+  .tx-card-amounts {
+    max-width: none;
+    flex: 1 0 100%;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .tx-card-amount { font-size: 13px; }
+
+  /* Фильтры Все/Доход/Расход — одинаковая ширина на всю строку. */
+  .tx-filters { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .tx-filters .tx-pill { text-align: center; padding: 8px 0; }
 
   /* Майнинг: у ИИ-управляющего кнопки уходят на отдельную строку,
      описанию достаётся вся ширина (раньше сжималось до столбика слов). */

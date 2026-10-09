@@ -207,11 +207,17 @@ async function loadShopItems(category) {
             const affordable = balance >= item.price
             return (
               <div key={item.id} className="gpu-card gpu-card-compact" style={{ borderColor: `${color}55` }}>
-                <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={20} /></span>
-                <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
-                <span className="gpu-card-name">{hwName(item, t)}</span>
-                <div className="gpu-card-specs"><span>{specLine(item.category, item.specs, t)}</span></div>
-                <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
+                <div className="gpu-card-head">
+                  <span className="gpu-card-icon" style={{ background: color }}><CatIcon size={18} /></span>
+                  <div className="gpu-card-headtext">
+                    <span className="gpu-card-cat">{t(`mining.comp.${item.category}`, item.category)}</span>
+                    <span className="gpu-card-name">{hwName(item, t)}</span>
+                  </div>
+                </div>
+                <div className="gpu-card-foot">
+                  <div className="gpu-card-specs"><span>{specLine(item.category, item.specs, t)}</span></div>
+                  <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
+                </div>
                 <button
                   className="gpu-card-buy"
                   style={{ background: affordable ? color : undefined }}

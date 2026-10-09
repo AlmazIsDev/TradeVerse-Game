@@ -304,6 +304,13 @@ async def _run_bots(db: AsyncIOMotorDatabase, stocks: list[dict]):
 
 CATALOG_ANCHOR_PULL = 0.1   # доля сближения цены акции компании с фундаменталом за тик
 
+# Доля разрыва с базовой ценой, закрываемая за тик (возврат к среднему, как
+# WALK_REVERSION у крипты). Без неё блуждание — свободная диффузия: коридор
+# [0.3x, 3x] лишь отражает цену от краёв, и капитализация качается в разы.
+# 0.01: стационарное СКО ≈ vol/√(2θ) ≈ 3.5% — живой график (self-check ниже
+# требует размах >2% за 240 тиков), но диффузия к краям коридора подавлена.
+WALK_REVERSION = 0.01
+
 # Коридор собственного блуждания цены вокруг базовой (как [0.3x,3x] у крипты).
 WALK_FLOOR = 0.3
 WALK_CEIL = 3.0
@@ -324,7 +331,7 @@ def _walk_stock_price(stock: dict) -> Optional[float]:
     плоской линией, и вся аналитика вырождалась: momentum ≈ 0 → probUp = 50%
     → тренд всегда «Держать». Здесь та же механика, что у крипты
     (crypto._walk_price): случайный дрейф задаёт направление на тик, gauss даёт
-    шум, коридор вокруг base_price не даёт цене уйти в экспоненту.
+    шум, возврат к среднему + коридор не дают цене диффундировать к краям.
     """
     base = float(stock.get("base_price") or stock.get("price") or 0)
     old = float(stock.get("price") or 0)
@@ -332,7 +339,7 @@ def _walk_stock_price(stock: dict) -> Optional[float]:
         return None
     vol = float(_resolve_config(stock)["volatility"])
     drift = random.uniform(-0.5, 0.5) * vol
-    new = old * (1 + drift + random.gauss(0, vol))
+    new = old + WALK_REVERSION * (base - old) + old * (drift + random.gauss(0, vol))
     new = max(base * WALK_FLOOR, min(base * WALK_CEIL, new))
     new = round(max(0.01, new), 2)
     return new if new != old else None
@@ -341,11 +348,13 @@ def _walk_stock_price(stock: dict) -> Optional[float]:
 async def _walk_system_stocks(db: AsyncIOMotorDatabase):
     """Двигает цены системных акций собственным блужданием.
 
-    Пользовательские эмиссии (issuer) и акции компаний (companyId) пропускаем:
-    первые двигают только игроки, вторые дрейфуют к капиталу компании
-    (см. _revalue_company_stocks) — блуждание боролось бы с этим якорем.
+    Пользовательские эмиссии (issuer) тоже ходят: их якорь — цена размещения
+    (base_price ставится при первом тике), иначе при малом онлайне график
+    мёртвая линия. Акции компаний (companyId) пропускаем: они дрейфуют к
+    капиталу компании (см. _revalue_company_stocks) — блуждание боролось бы
+    с этим якорем.
     """
-    async for s in db.stocks.find({"issuer": {"$in": [None, ""]}, "companyId": None}):
+    async for s in db.stocks.find({"companyId": None}):
         old = float(s.get("price") or 0)
         if "base_price" not in s and old > 0:
             await db.stocks.update_one({"_id": s["_id"]}, {"$set": {"base_price": old}})
@@ -392,8 +401,12 @@ async def _revalue_company_stocks(db: AsyncIOMotorDatabase):
         fair = max(0.01, round(capital / total_shares, 2))
         price = float(s.get("price", 0.0))
         if price <= 0:
-            continue
-        new_price = round(price + (fair - price) * CATALOG_ANCHOR_PULL, 2)
+            price = fair  # акция с нулевой ценой: якорим прямо к фундаменталу
+        # OU-процесс вокруг fair: дрейф к фундаменталу + шум. Без шумового
+        # члена цена сходилась к fair за ~7 тиков и замирала плоской линией —
+        # боты акции компаний не торгуют (guard по issuer), игроки — редко.
+        noise = price * cfg["volatility"] * random.gauss(0, 1)
+        new_price = round(price + (fair - price) * CATALOG_ANCHOR_PULL + noise, 2)
         new_price = max(0.01, new_price)
         if new_price == price:
             continue

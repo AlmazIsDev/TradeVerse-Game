@@ -133,18 +133,27 @@ async def ensure_coins_seeded(db: AsyncIOMotorDatabase):
             await MarketDataService.ensure_backfill(db, "crypto", c["symbol"], c["price"], c.get("volatility", 0.05))
 
 
+WALK_REVERSION = 0.1      # доля разрыва с базовой ценой, закрываемая за тик
+
+
 def _walk_price(coin: dict) -> dict:
-    """Случайное блуждание цены, ограниченное коридором [0.3x, 3x] от базовой."""
+    """Блуждание цены с возвратом к среднему (OU-процесс) вокруг базовой.
+
+    Без возврата к среднему это свободное случайное блуждание: коридор
+    [0.3x, 3x] лишь отражает цену от краёв, и она диффундирует, заполняя
+    весь 10x диапазон — капитализация качается в разы. Стационарное СКО
+    процесса ≈ vol / sqrt(2 * WALK_REVERSION), для самого волатильного
+    DUSK (0.14) это ~0.3 → цена держится в пределах ~0.5x–2x от базы.
+    """
     base = coin.get("base_price", coin["price"])
     vol = coin.get("volatility", 0.05)
     old = coin["price"]
     # ponytail: добавляем случайный дрейф вместо чисто нулевого среднего —
     # gauss(0, vol) симметричен и цена в среднем стоит на месте. Небольшой bias
     # (доля vol) задаёт направление на этот тик, поэтому появляются тренды.
-    # Эвристика: дрейф ≤ половины волатильности, коридор [0.3x,3x] не даёт взрыва.
     drift = random.uniform(-0.5, 0.5) * vol
-    new = old * (1 + drift + random.gauss(0, vol))
-    new = max(base * 0.3, min(base * 3, new))
+    new = old + WALK_REVERSION * (base - old) + old * (drift + random.gauss(0, vol))
+    new = max(base * 0.5, min(base * 2, new))
     change = ((new - old) / old * 100) if old else 0.0
     coin["price"] = round(new, 6)
     coin["change24h"] = round(coin.get("change24h", 0.0) * 0.7 + change, 2)
@@ -833,4 +842,14 @@ if __name__ == "__main__":
     # marketCap -> supply recompute (единственная нетривиальная новая логика здесь).
     price, market_cap = 100.0, 50_000_000.0
     assert round(market_cap / price) == 500_000
+    # Блуждание цены должно быть стационарным вокруг базы, а не свободным
+    # диффузионным процессом, заполняющим коридор [0.3x, 3x] (→ качели
+    # капитализации в разы). Самая волатильная монета, 5000 тиков (~3.5 суток).
+    coin = {"price": 100.0, "base_price": 100.0, "volatility": 0.14}
+    lo, hi = float("inf"), 0.0
+    for _ in range(5000):
+        coin = _walk_price(coin)
+        lo, hi = min(lo, coin["price"]), max(hi, coin["price"])
+    assert hi <= 200.0, f"цена улетела вверх: {hi} при базе 100"
+    assert lo >= 50.0, f"цена рухнула вниз: {lo} при базе 100"
     print("crypto self-check OK")

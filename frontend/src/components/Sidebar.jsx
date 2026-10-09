@@ -51,10 +51,15 @@ function Sidebar({ activeTab, onTabChange }) {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo">
+      <button
+        type="button"
+        className="sidebar-logo"
+        title={t('nav.account')}
+        onClick={() => onTabChange('account')}
+      >
         <div className="sidebar-logo-icon"><img src="/favicon.svg" alt="TradeVerse" className="logo-glyph" /></div>
         <span className="sidebar-logo-text">TradeVerse</span>
-      </div>
+      </button>
       <nav className="sidebar-nav">
         {groups.map(group => (
           <div className="sidebar-group" key={group.title}>

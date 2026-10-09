@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend } from '../services/api'
+import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend, fetchFavorites } from '../services/api'
 import TransactionsPanel, { formatMoney, formatQty, formatCompact } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
 import { parseQty } from '../utils/qty'
@@ -36,12 +36,14 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [perShare, setPerShare] = useState('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('cap')   // cap | gainers | losers
+  const [favs, setFavs] = useState(() => new Set())
 
   const load = useCallback(async () => {
     try {
-      const [mkt, pf] = await Promise.all([fetchStocksV2(), fetchPortfolio()])
+      const [mkt, pf, favs] = await Promise.all([fetchStocksV2(), fetchPortfolio(), fetchFavorites()])
       setStocks(mkt)
       setPortfolio(pf)
+      setFavs(new Set(favs.filter(f => f.market === 'stock').map(f => f.symbol)))
       setError(null)
     } catch (err) {
       setError(err.message)
@@ -129,8 +131,14 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
     r = [...r]
     if (sort === 'gainers') r.sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))
     else if (sort === 'losers') r.sort((a, b) => (a.changePercent || 0) - (b.changePercent || 0))
+    // Избранные всегда выше остальных (внутри групп сохраняется текущая сортировка).
+    if (favs.size) {
+      const y = r.filter(s => favs.has(s.symbol))
+      const n = r.filter(s => !favs.has(s.symbol))
+      r = [...y, ...n]
+    }
     return r
-  }, [stocks, search, sort])
+  }, [stocks, search, sort, favs])
 
   if (detailSymbol) {
     return (
@@ -275,7 +283,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                   )
                 })}
               </div>
-            ) : <p className="empty-state">{t('crypto.noAssets')}</p>}
+            ) : <p className="empty-state">{t('stocks.noAssets')}</p>}
           </div>
 
           {/* Прогноз */}

@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchConfig, toggleCardVisibility, fetchCurrentUser,
+  toggleCardVisibility, fetchCurrentUser,
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
   acceptInvite, declineInvite, acceptApplication, declineApplication,
 } from '../services/api'
-import { useApiOnMount } from '../hooks/useApi'
 import ProfileCard from './ProfileCard'
 import { formatCompact } from './TransactionsPanel'
 import { Bell, LogOut, X, Check, Wallet } from 'lucide-react'
@@ -26,7 +25,6 @@ function getStoredUser() {
 
 function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
   const { t } = useTranslation()
-  const { data: headerConfig } = useApiOnMount(() => fetchConfig('header_title'))
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState([])
   const notifRef = useRef(null)
@@ -41,7 +39,6 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
   const displayName = user?.username || storedUser?.username || t('header.user')
   const avatar = user?.avatar || storedUser?.avatar || null
   const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'TV'
-  const headerTitle = headerConfig?.value || 'TradeVerse'
   const unreadCount = notifications.filter(n => !n.read).length
 
   useEffect(() => {
@@ -195,12 +192,6 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
 
   return (
     <header className="header">
-      <div className="header-left">
-        <div className="header-logo">
-          <span className="header-logo-icon"><img src="/favicon.svg" alt="TradeVerse" className="logo-glyph" /></span>
-          <span className="header-logo-text">{headerTitle}</span>
-        </div>
-      </div>
       <div className="header-right">
         {balance != null && (
           <div className="header-balance" title={`${t('account.balance')}: ${formatMoney(balance)} $`}>

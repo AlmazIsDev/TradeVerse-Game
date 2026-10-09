@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCryptoAccount, fetchCryptoMarket, openCryptoAccount, tradeCrypto,
-  transferCrypto, fetchCryptoTransfers,
+  transferCrypto, fetchCryptoTransfers, fetchFavorites,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatQty, formatCompact } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
@@ -45,6 +45,7 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [transfers, setTransfers] = useState([])
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('cap')   // cap | gainers | losers
+  const [favs, setFavs] = useState(() => new Set())
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -52,9 +53,10 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
       const acc = await fetchCryptoAccount()
       setAccount(acc)
       if (acc.opened) {
-        const [mkt, trs] = await Promise.all([fetchCryptoMarket(), fetchCryptoTransfers()])
+        const [mkt, trs, favs] = await Promise.all([fetchCryptoMarket(), fetchCryptoTransfers(), fetchFavorites()])
         setMarket(mkt)
         setTransfers(trs)
+        setFavs(new Set(favs.filter(f => f.market === 'crypto').map(f => f.symbol)))
       }
     } catch {
       // Не сбрасываем в онбординг при фоновом обновлении: сетевой сбой не должен
@@ -168,8 +170,14 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
     r = [...r]
     if (sort === 'gainers') r.sort((a, b) => (b.change24h || 0) - (a.change24h || 0))
     else if (sort === 'losers') r.sort((a, b) => (a.change24h || 0) - (b.change24h || 0))
+    // Избранные монеты всегда выше остальных (внутри групп — текущая сортировка).
+    if (favs.size) {
+      const y = r.filter(c => favs.has(c.symbol))
+      const n = r.filter(c => !favs.has(c.symbol))
+      r = [...y, ...n]
+    }
     return r
-  }, [market, search, sort])
+  }, [market, search, sort, favs])
 
   if (loading) {
     return (

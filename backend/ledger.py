@@ -55,16 +55,21 @@ async def adjust_balance(
     средств недостаточно / пользователь не найден.
     """
     oid = ObjectId(user_id)
+    # Дробная арифметика $inc накапливает пыль (0.1+0.2-стиль), поэтому баланс
+    # клампится в 0 и округляется до сотых прямо в атомарном обновлении —
+    # все модули идут через эту функцию, так что деньги в БД всегда в сотых.
+    _rounded = [{"$set": {"balance": {"$round": [
+        {"$max": [{"$add": ["$balance", delta]}, 0.0]}, 2]}}}]
     if delta < 0:
         result = await db.users.find_one_and_update(
             {"_id": oid, "balance": {"$gte": abs(delta)}},
-            {"$inc": {"balance": delta}},
+            _rounded,
             return_document=True,  # pymongo.ReturnDocument.AFTER == True
         )
     else:
         result = await db.users.find_one_and_update(
             {"_id": oid},
-            {"$inc": {"balance": delta}},
+            _rounded,
             return_document=True,
         )
     if not result:

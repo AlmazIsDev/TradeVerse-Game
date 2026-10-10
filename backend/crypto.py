@@ -422,7 +422,8 @@ async def get_crypto_account(
     portfolio_value = 0.0
     async for h in db.crypto_holdings.find({"userId": user_id}):
         symbol = h["symbol"]
-        qty = h.get("quantity", 0.0)
+        # Округление до 8 знаков прячет пыль от старых $inc-продаж (5e-15).
+        qty = round(float(h.get("quantity", 0.0) or 0.0), 8)
         price = market.get(symbol, {}).get("price", 0.0)
         value = round(qty * price, 2)
         portfolio_value += value
@@ -473,6 +474,24 @@ def _crypto_quote(coin: dict, action: str, quantity: float) -> dict:
     }
 
 
+async def _free_supply(db: AsyncIOMotorDatabase, coin: dict) -> float:
+    """Свободные монеты: эмиссия − холдинги ВСЕХ игроков − купленное ботами.
+
+    Единственная точка правды по остатку эмиссии: её используют и сделки игроков,
+    и quote (кнопка МАКС), и боты. supply <= 0 — эмиссия не задана, лимита нет.
+    """
+    supply = float(coin.get("supply") or 0)
+    if supply <= 0:
+        return float("inf")
+    held = 0.0
+    async for h in db.crypto_holdings.aggregate([
+        {"$match": {"symbol": coin["symbol"]}},
+        {"$group": {"_id": None, "q": {"$sum": "$quantity"}}},
+    ]):
+        held = float(h.get("q") or 0)
+    return max(0.0, supply - held - float(coin.get("bot_held") or 0))
+
+
 def _max_affordable(coin: dict, balance: float) -> float:
     """Максимальное количество, которое реально влезает в баланс.
 
@@ -518,14 +537,18 @@ async def quote_crypto(
     q = _crypto_quote(coin, action, quantity)
     max_affordable = _max_affordable(coin, float(current_user.get("balance") or 0))
     if action == "buy":
+        max_buy = float("inf")
         supply = float(coin.get("supply") or 0)
         if supply > 0:
             held = await db.crypto_holdings.find_one(
                 {"userId": str(current_user["_id"]), "symbol": symbol})
+            # Персональный лимит концентрации (90% эмиссии)...
             max_buy = max(0.0, round(
                 supply * MAX_HOLD_SHARE - float((held or {}).get("quantity", 0.0) or 0.0), 8))
-            q["maxBuyable"] = max_buy
-            max_affordable = min(max_affordable, max_buy)
+        # ...плюс общий остаток эмиссии: суммарно игроки не могут купить больше выпуска.
+        max_buy = min(max_buy, round(await _free_supply(db, coin), 8))
+        q["maxBuyable"] = max_buy
+        max_affordable = min(max_affordable, max_buy)
     q["maxAffordable"] = max_affordable
     return q
 
@@ -570,10 +593,10 @@ async def trade_crypto(
     fee = round(total * CRYPTO_TRADE_FEE_RATE, 2)
 
     if payload.action == "buy":
-        # Лимит эмиссии: один игрок не может купить больше 90% всех монет.
         # Проверяем ДО списания, чтобы отклонённая сделка не трогала баланс.
         supply = float(coin.get("supply") or 0)
         if supply > 0:
+            # Персональный лимит: один игрок не может купить больше 90% всех монет.
             held_qty = float((holding or {}).get("quantity", 0.0) or 0.0)
             max_qty = round(supply * MAX_HOLD_SHARE - held_qty, 8)
             if qty > max_qty:
@@ -583,6 +606,15 @@ async def trade_crypto(
                            f"{int(MAX_HOLD_SHARE * 100)}% всех {symbol} "
                            f"(можно купить ещё {max_qty:g})",
                 )
+        # Общий лимит эмиссии: суммарные холдинги всех игроков + бот не могут
+        # превысить выпуск. Свободный остаток считает _free_supply — та же
+        # формула, что у ботов.
+        free = round(await _free_supply(db, coin), 8)
+        if qty > free:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Эмиссия исчерпана: в обращении свободно ещё {free:g} {symbol}",
+            )
         # Покупатель платит стоимость + комиссию.
         new_balance = await adjust_balance(db, user_id, -round(total + fee, 2))
         if new_balance is None:
@@ -612,10 +644,13 @@ async def trade_crypto(
     if not holding or holding.get("quantity", 0.0) < qty:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно монет")
     # Атомарное списание монет: условие quantity >= qty проверяется в БД, чтобы
-    # две параллельные продажи не продали одни и те же монеты дважды.
+    # две параллельные продажи не продали одни и те же монеты дважды. $inc
+    # дробных чисел оставляет пыль (5e-15), которую потом не продать, поэтому
+    # остаток клампится в 0 и округляется до 8 знаков в том же обновлении.
     sold = await db.crypto_holdings.find_one_and_update(
         {"userId": user_id, "symbol": symbol, "quantity": {"$gte": qty}},
-        {"$inc": {"quantity": -qty}},
+        [{"$set": {"quantity": {"$round": [
+            {"$max": [{"$subtract": ["$quantity", qty]}, 0.0]}, 8]}}}],
         return_document=True,
     )
     if not sold:
@@ -684,15 +719,7 @@ async def _bot_coin_trade(
     qty = float(quantity) if quantity is not None else volume / price
 
     if action == "buy":
-        supply = float(coin.get("supply") or 0)
-        bot_held = float(coin.get("bot_held") or 0)
-        held = 0.0
-        async for h in db.crypto_holdings.aggregate([
-            {"$match": {"symbol": symbol}},
-            {"$group": {"_id": None, "q": {"$sum": "$quantity"}}},
-        ]):
-            held = float(h.get("q") or 0)
-        qty = min(qty, max(0.0, supply - held - bot_held))
+        qty = min(qty, await _free_supply(db, coin))
     else:
         qty = min(qty, float(coin.get("bot_held") or 0))
     if qty * price < BOT_MIN_TRADE_USD:
@@ -980,9 +1007,12 @@ if __name__ == "__main__":
     _max_qty = max(0.0, round(_supply * MAX_HOLD_SHARE - _held, 8))
     assert _max_qty == 500_000.0   # 900k − 400k
     assert max(0.0, round(_supply * MAX_HOLD_SHARE - (_supply * MAX_HOLD_SHARE + 1), 8)) == 0.0  # уже >90% — покупка закрыта
-    # Бот: покупка строго в рамках свободных монет (эмиссия − холдинги игроков −
-    # купленное ботом), продажа — не больше bot_held; пыль отсекается.
-    assert max(0.0, 1_000.0 - 400.0 - 100.0) == 500.0
+    # Свободные монеты: эмиссия − холдинги всех игроков − bot_held; без эмиссии лимита нет.
+    assert max(0.0, 1_000_000.0 - 700_000.0 - 100_000.0) == 200_000.0
+    assert max(0.0, 1_000_000.0 - 1_100_000.0 - 0.0) == 0.0   # перепокупка игроками → 0
+    assert float("inf") > 999_999.0                            # supply=0 → лимита нет
+    # Бот: покупка режется свободным остатком, продажа — не больше bot_held; пыль отсекается.
+    assert min(999.0, 200_000.0) == 999.0
     assert min(999.0, 100.0) == 100.0
     assert 0.001 * 5 < BOT_MIN_TRADE_USD
     print("crypto self-check OK")

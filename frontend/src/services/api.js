@@ -1247,6 +1247,8 @@ export async function fetchFarms(houseId) {
 export async function fetchMiningHouses() { return request('/api/mining/houses') }
 export async function fetchMiningMarket() { return request('/api/mining/market') }
 export async function fetchMiningParts() { return request('/api/mining/parts') }
+// Полный инвентарь железа игрока (каждая единица + где установлена).
+export async function fetchHardwareInventory() { return request('/api/mining/inventory') }
 export async function createFarm(name, houseId, slotIndex) {
   return request('/api/mining/farms', {
     method: 'POST',

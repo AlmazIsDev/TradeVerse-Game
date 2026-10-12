@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 // Car — иконка для пункта меню «Автосалон» (CarsTab).
-import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Store, Trophy, Cpu, Settings, Landmark, Car, Handshake } from 'lucide-react'
+import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Store, Trophy, Cpu, Settings, Landmark, Car, Handshake, Boxes } from 'lucide-react'
 
 const ICON_MAP = {
   account: Wallet,
@@ -12,6 +12,7 @@ const ICON_MAP = {
   mining: Cpu,
   realestate: Store,
   centralmarket: Landmark,
+  inventory: Boxes,
   myhomes: Home,
   mycompany: Building,
   leaderboard: Trophy,
@@ -39,6 +40,7 @@ function Sidebar({ activeTab, onTabChange }) {
       { id: 'playerbusinesses', label: t('nav.playerBusinesses', 'Бизнесы игроков') },
     ] },
     { title: t('nav.groupAssets'), items: [
+      { id: 'inventory', label: t('nav.inventory') },
       { id: 'mining', label: t('nav.mining') },
       { id: 'cityroof', label: t('nav.cityroof') },
       { id: 'myhomes', label: t('nav.myhomes') },

@@ -715,6 +715,23 @@ async def available_parts(current_user: dict = Depends(get_current_user), db: As
     return by_cat
 
 
+@router.get("/inventory")
+async def my_hardware_inventory(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Полный инвентарь железа игрока: каждая единица и где установлена
+    (farmName рядом с farmId — вкладка «Инвентарь» без лишних запросов)."""
+    user_id = str(current_user["_id"])
+    items = [_serialize_hw(h) async for h in
+             db.user_hardware.find({"userId": user_id}).sort("purchased_at", -1)]
+    farm_names = {str(f["_id"]): f.get("name") async for f in
+                  db.mining_farms.find({"userId": user_id}, {"name": 1})}
+    for it in items:
+        it["farmName"] = farm_names.get(it["farmId"]) if it.get("farmId") else None
+    return {"items": items}
+
+
 @router.get("/houses")
 async def get_mining_houses(
     current_user: dict = Depends(get_current_user),
@@ -908,6 +925,22 @@ async def _rack_pool_check(db, user_id: str, rack_hw_id: str, rack_slots: int,
         )
 
 
+async def in_use_rack_ids(db, user_id: str) -> set[str]:
+    """ID стоек, задействованных хотя бы в одной ферме игрока. Стойка — общий
+    пул слотов (farmId у неё всегда None), поэтому «занятость» отслеживается
+    по ссылкам components.rack.hwId. Такие экземпляры не продаются и не
+    выставляются на рынок, но остаются доступны другим фермам."""
+    used: set[str] = set()
+    async for f in db.mining_farms.find(
+        {"userId": user_id, "components.rack.hwId": {"$ne": None}},
+        {"components.rack.hwId": 1},
+    ):
+        rack = (f.get("components") or {}).get("rack") or {}
+        if rack.get("hwId"):
+            used.add(rack["hwId"])
+    return used
+
+
 async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optional[str]) -> None:
     """Установить один компонент в ферму (общая логика single/batch).
 
@@ -1044,6 +1077,14 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
                 await db.mining_farms.update_one({"_id": farm["_id"]}, {"$unset": {f"components.{r}": ""}})
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": entry}})
+
+    # Экземпляр закрепляется за фермой: занятое железо не показывается как
+    # свободное (/parts, продажа, ЦР) и не может быть установлено второй раз.
+    # Стойка — исключение: это общий пул слотов на несколько ферм, её
+    # занятость отслеживается отдельно (см. in_use_rack_ids).
+    if role != "rack":
+        await db.user_hardware.update_one(
+            {"_id": hw["_id"]}, {"$set": {"farmId": str(farm["_id"])}})
 
 
 @router.post("/farms/{farm_id}/install")

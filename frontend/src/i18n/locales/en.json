@@ -27,7 +27,32 @@
     "groupFinance": "Finance",
     "groupMarkets": "Markets",
     "groupAssets": "Assets & Business",
-    "groupCommunity": "Community"
+    "groupCommunity": "Community",
+    "inventory": "Inventory"
+  },
+  "inventory": {
+    "page_overview": "Overview",
+    "page_assets": "Property",
+    "page_hardware": "Hardware",
+    "units": "Hardware units",
+    "totalCost": "Purchase value",
+    "free": "Free",
+    "installed": "Installed",
+    "installedOn": "on a farm",
+    "catAll": "All categories",
+    "search": "Search by name…",
+    "sortNew": "Newest first",
+    "sortPrice": "By price",
+    "sortCondition": "By condition",
+    "slotsShort": "slots",
+    "mbits": "Mbit/s",
+    "sellHint": "Free hardware can be sold on the Central Market.",
+    "empty": "No hardware yet — buy some in the Shop.",
+    "notFound": "Nothing found",
+    "ovAssets": "Property",
+    "ovHardware": "Hardware",
+    "ovUnits": "{{n}} units",
+    "ovFarms": "{{n}} farms ({{active}} active)"
   },
   "cars": {
     "title": "Car Dealership",
@@ -797,7 +822,9 @@
       "rack": "Rack",
       "fan": "Fans",
       "ups": "UPS",
-      "network": "Network"
+      "network": "Network",
+      "asic": "ASIC",
+      "supplies": "Supplies"
     },
     "desc": {
       "gpu": "Increases hashrate — the core mining power.",

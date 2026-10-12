@@ -27,7 +27,32 @@
     "groupFinance": "Финансы",
     "groupMarkets": "Рынки",
     "groupAssets": "Активы и бизнес",
-    "groupCommunity": "Сообщество"
+    "groupCommunity": "Сообщество",
+    "inventory": "Инвентарь"
+  },
+  "inventory": {
+    "page_overview": "Обзор",
+    "page_assets": "Имущество",
+    "page_hardware": "Железо",
+    "units": "Единиц железа",
+    "totalCost": "Стоимость (закупка)",
+    "free": "Свободно",
+    "installed": "Установлено",
+    "installedOn": "на ферме",
+    "catAll": "Все категории",
+    "search": "Поиск по названию…",
+    "sortNew": "Сначала новые",
+    "sortPrice": "По цене",
+    "sortCondition": "По состоянию",
+    "slotsShort": "слотов",
+    "mbits": "Мбит/с",
+    "sellHint": "Свободное железо можно продать на Центральном рынке.",
+    "empty": "Железа пока нет — купите его в Магазине.",
+    "notFound": "Ничего не найдено",
+    "ovAssets": "Имущество",
+    "ovHardware": "Железо",
+    "ovUnits": "{{n}} ед.",
+    "ovFarms": "{{n}} ферм ({{active}} активн.)"
   },
   "cars": {
     "title": "Автосалон",
@@ -797,7 +822,9 @@
       "rack": "Стойка",
       "fan": "Вентиляторы",
       "ups": "ИБП",
-      "network": "Сеть"
+      "network": "Сеть",
+      "asic": "Асик",
+      "supplies": "Расходники"
     },
     "desc": {
       "gpu": "Увеличивает хешрейт — основную мощность добычи.",

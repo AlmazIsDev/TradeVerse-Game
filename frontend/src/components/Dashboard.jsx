@@ -11,6 +11,8 @@ import LeaderboardTab from './LeaderboardTab'
 import MarketTab from './MarketTab'
 import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
+// InventoryTab — вкладка «Инвентарь»: обзор владений, имущество, железо.
+import InventoryTab from './InventoryTab'
 import MyCompanyTab from './MyCompanyTab'
 // CarsTab — вкладка «Автосалон» (покупка авто через серверный каталог).
 import CityRoofTab from './CityRoofTab'
@@ -181,6 +183,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <CentralMarketTab />
       case 'myhomes':
         return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'inventory':
+        return <InventoryTab balance={balance} onBalanceChange={handleBalanceChange} onTabChange={setActiveTab} />
       case 'mycompany':
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cars':

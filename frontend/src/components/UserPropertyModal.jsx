@@ -11,6 +11,7 @@ import {
   adminFetchGrantCatalogs, adminGrantAsset, adminGrantHardware,
 } from '../services/api'
 import ConfirmDialog from './ConfirmDialog'
+import HardwareInventory from './HardwareInventory'
 import { toast } from './Toast'
 import {
   X, Package, Cpu, Briefcase, Building2, Edit3, Trash2, ArrowLeftRight, Save,
@@ -431,40 +432,16 @@ function UserPropertyModal({ username, userId, onClose }) {
         )}
 
         {!loading && tab === 'inventory' && (
-          <div className="admin-list">
-            {inventory.length === 0 && <p className="empty-state">{t('admin.property.emptyInventory')}</p>}
-            {inventory.map(h => (
-              <div key={h.id} className="admin-user-item">
-                <div className="admin-user-info">
-                  <div className="uprop-title-row">
-                    <strong>{h.name}</strong>
-                    <span className="user-role user">{h.category}</span>
-                    {h.farmId && (
-                      <span className="user-role admin" title={farmNameById[h.farmId] || h.farmId}>
-                        {t('admin.property.installedOn')}: {farmNameById[h.farmId] || '…'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="admin-user-meta">
-                    <span>{t('admin.property.fieldCondition')}: {h.condition}%</span>
-                    {h.purchasePrice != null && <span>${h.purchasePrice}</span>}
-                  </div>
-                </div>
-                <div className="user-actions">
-                  {h.farmId && (
-                    <button className="admin-btn" title={t('admin.property.hwUninstall')}
-                      disabled={busy} onClick={() => doUninstallHw(h)}>
-                      <Wrench size={14} />
-                    </button>
-                  )}
-                  <button className="admin-btn admin-btn-danger" title={t('admin.property.delete')}
-                    onClick={() => setConfirmTarget({ kind: 'hardware', id: h.id, name: h.name })}>
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          /* Тот же UI, что и во вкладке «Инвентарь» игрока: чипы категорий,
+             поиск, фильтр установлено/свободно + админ-действия. */
+          <HardwareInventory
+            items={inventory}
+            farmNameById={farmNameById}
+            admin
+            busy={busy}
+            onUninstall={doUninstallHw}
+            onDelete={(h) => setConfirmTarget({ kind: 'hardware', id: h.id, name: h.name })}
+          />
         )}
 
         {!loading && tab === 'company' && (

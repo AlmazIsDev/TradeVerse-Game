@@ -1546,3 +1546,52 @@ async def admin_transfer_company(
         data={"companyId": company_id},
     )
     return {"company": result}
+
+
+# ── Admin: сотрудники компании ───────────────────────────────────────────────
+
+
+@router.get("/admin/{company_id}/members")
+async def admin_list_members(
+    company_id: str,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Сотрудники компании (для админ-панели): имя, роль, зарплата."""
+    company = await _load_any_company(db, company_id)
+    members = []
+    for m in await _members(db, str(company["_id"])):
+        u = await db.users.find_one({"_id": m["userId"]}, {"username": 1}) if ObjectId.is_valid(m["userId"]) else None
+        members.append({
+            "userId": m["userId"],
+            "username": (u or {}).get("username", "—"),
+            "role": m.get("role"),
+            "salary": m.get("salary"),
+        })
+    return {"members": members}
+
+
+@router.delete("/admin/{company_id}/members/{user_id}")
+async def admin_remove_member(
+    company_id: str,
+    user_id: str,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Исключить сотрудника из компании."""
+    company = await _load_any_company(db, company_id)
+    member = await db.company_members.find_one({"companyId": str(company["_id"]), "userId": user_id})
+    if not member:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")
+    await db.company_members.delete_one({"_id": member["_id"]})
+    await push_notification(
+        db, user_id, "company", "Вы исключены из компании",
+        f"Администрация исключила вас из компании «{company['name']}».",
+        data={"companyId": str(company["_id"])},
+    )
+    await push_notification(
+        db, company["ownerId"], "company", "Сотрудник исключён",
+        f"Администрация исключила сотрудника из «{company['name']}».",
+        data={"companyId": str(company["_id"])},
+    )
+    return {"ok": True}

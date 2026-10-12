@@ -14,7 +14,7 @@ import { hwName } from '../utils/hwName'
 import { toast } from './Toast'
 import ConfirmDialog from './ConfirmDialog'
 import {
-  Bot, ChevronLeft, Play, Square, Wrench, Hammer, X, Droplet, Coins, Trash2,
+  Bot, ChevronLeft, Play, Square, Wrench, Hammer, X, Droplet, Coins, Trash2, Check,
 } from 'lucide-react'
 
 // Категории для авто-сборки: порядок = порядок установки в ферму.
@@ -184,95 +184,129 @@ export default function MiningBulkView({ onBack }) {
         </button>
       </div>
 
-      <div className="market-cats" style={{ marginBottom: 'var(--spacing-md)' }}>
-        <button className="asset-act upgrade" disabled={busy || !selectedIds.length} onClick={() => runAction('start')}>
-          <Play size={14} /> {t('mining.bulk.start', 'Запустить')}
-        </button>
-        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('stop')}>
-          <Square size={14} /> {t('mining.bulk.stop', 'Остановить')}
-        </button>
-        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('repair')}>
-          <Wrench size={14} /> {t('mining.bulk.repair', 'Починить')}
-        </button>
-        <button className="asset-act upgrade" disabled={busy || !selectedUnassembled.length}
-          onClick={() => setAsmOpen(true)}
-          title={t('mining.bulk.asmHint', 'Собрать выбранные несобранные фермы указанными деталями')}>
-          <Hammer size={14} /> {t('mining.bulk.assemble', 'Авто-сборка')}
-        </button>
-        <label className="mining-bulk-selectall" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={allChecked}
-            onChange={e => setSel(e.target.checked ? Object.fromEntries(farms.map(f => [f.id, true])) : {})} />
-          {t('mining.bulk.all', 'Все')}
-        </label>
+      <div className="mining-bulk-toolbar">
+        <div className="mbt-pair">
+          <div className="mbt-section">
+            <span className="mbt-title">{t('mining.bulk.secActions', 'Действия')}</span>
+            <div className="mbt-row">
+              <button className="asset-act upgrade" disabled={busy || !selectedIds.length} onClick={() => runAction('start')}>
+                <Play size={14} /> {t('mining.bulk.start', 'Запустить')}
+              </button>
+              <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('stop')}>
+                <Square size={14} /> {t('mining.bulk.stop', 'Остановить')}
+              </button>
+              <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('repair')}>
+                <Wrench size={14} /> {t('mining.bulk.repair', 'Починить')}
+              </button>
+              <button className="asset-act upgrade" disabled={busy || !selectedUnassembled.length}
+                onClick={() => setAsmOpen(true)}
+                title={t('mining.bulk.asmHint', 'Собрать выбранные несобранные фермы указанными деталями')}>
+                <Hammer size={14} /> {t('mining.bulk.assemble', 'Авто-сборка')}
+              </button>
+            </div>
+          </div>
+
+          {/* Выбор ферм по группам домов (в т.ч. «без группы») */}
+          {groups.length > 0 && (
+            <div className="mbt-section">
+              <span className="mbt-title">{t('mining.bulk.groups', 'Группы домов')}</span>
+              <div className="mbt-row">
+                <select className="mslot-pick" disabled={busy} value="" onChange={e => { if (e.target.value) selectGroup(e.target.value) }}>
+                  <option value="">{t('mining.bulk.selectGroup', '— выбрать группу —')}</option>
+                  {groups.map(g => (
+                    <option key={g.key} value={g.key}>
+                      {g.name || t('mining.noGroup', 'Без группы')} ({g.farmIds.length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mbt-pair">
+          {/* Обслуживание: охлаждающая жидкость + ИИ-управляющий */}
+          <div className="mbt-section">
+            <span className="mbt-title">{t('mining.bulk.secService', 'Обслуживание и ИИ-управляющий')}</span>
+            <div className="mbt-row">
+              <span className="mining-bulk-label">{t('mining.bulk.coolant', 'ОЖ')}</span>
+              <input type="number" min="1" max="4" className="tx-input mining-bulk-qty" disabled={busy}
+                value={coolantQty}
+                onChange={e => setCoolantQty(Math.max(1, Math.min(4, parseInt(e.target.value, 10) || 1)))} />
+              <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('coolant', { qty: coolantQty })}>
+                <Droplet size={14} /> {t('mining.bulk.coolantAdd', 'Заправить')}
+              </button>
+              <span className="mbt-divider" />
+              <button className="asset-act upgrade" disabled={busy || !selectedIds.length} onClick={() => runAction('hire')}
+                title={t('mining.bulk.hireHint', 'Нанять ИИ-управляющего на каждую выбранную ферму (120 000 $/ферма)')}>
+                <Bot size={14} /> {t('mining.bulk.hire', 'Нанять ИИ')}
+              </button>
+              <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('upgrade')}
+                title={t('mining.bulk.upgradeHint', 'Поднять ИИ-управляющего на уровень на каждой выбранной ферме')}>
+                {t('mining.bulk.upgrade', 'Повысить ИИ')}
+              </button>
+              <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('fire')}
+                title={t('mining.bulk.fireHint', 'Уволить ИИ-управляющего на выбранных фермах')}>
+                {t('mining.bulk.fire', 'Уволить ИИ')}
+              </button>
+            </div>
+          </div>
+
+          {/* Автономность ИИ + монета + снятие железа */}
+          <div className="mbt-section">
+            <span className="mbt-title">{t('mining.bulk.secAuto', 'Автономность ИИ и монета')}</span>
+            <div className="mbt-row">
+              {[['autoRepair', 'mining.autoRepair'], ['autoCoin', 'mining.autoCoin'], ['autoRestart', 'mining.autoRestart']].map(([key, lk]) => (
+                <label key={key} className="mining-bulk-toggle">
+                  <input type="checkbox" disabled={busy} checked={aiToggles[key]}
+                    onChange={e => setAiToggles(s => ({ ...s, [key]: e.target.checked }))} />
+                  {t(lk)}
+                </label>
+              ))}
+              <button className="asset-act" disabled={busy || !selectedIds.length}
+                onClick={() => runAction('settings', { settings: aiToggles })}>
+                <Check size={14} /> {t('mining.bulk.applySettings', 'Применить настройки')}
+              </button>
+              <span className="mbt-divider" />
+              <span className="mbt-nowrap">
+                <span className="mining-bulk-label">{t('mining.bulk.coin', 'Монета')}</span>
+                <select className="mslot-pick" disabled={busy} value={coinSel}
+                  onChange={e => setCoinSel(e.target.value)}>
+                  <option value="">{t('mining.bulk.pickCoin', '— выбрать монету —')}</option>
+                  {coins.map(c => <option key={c.symbol} value={c.symbol}>{c.symbol} · ${formatMoney(c.price)}</option>)}
+                </select>
+                <button className="asset-act" disabled={busy || !selectedIds.length || !coinSel}
+                  onClick={() => runAction('coin', { symbol: coinSel })}>
+                  <Coins size={14} /> {t('mining.bulk.setCoin', 'Задать монету')}
+                </button>
+              </span>
+              <span className="mbt-divider" />
+              <button className="asset-act mbt-danger" disabled={busy || !selectedIds.length}
+                onClick={() => setConfirm({
+                  title: t('mining.bulk.uninstallTitle', 'Снять всё железо'),
+                  message: t('mining.bulk.uninstallMsg', 'С {{n}} ферм будет снято всё оборудование — оно вернётся в инвентарь, добыча остановится.').replace('{{n}}', String(selectedIds.length)),
+                  onConfirm: () => runAction('uninstall'),
+                })}>
+                <Trash2 size={14} /> {t('mining.bulk.uninstall', 'Снять всё железо')}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Выбор ферм по группам домов (в т.ч. «без группы») */}
-      {groups.length > 0 && (
-        <div className="market-cats" style={{ marginBottom: 'var(--spacing-md)' }}>
-          <span className="mining-bulk-label">{t('mining.bulk.groups', 'Группы домов')}</span>
-          <select className="mslot-pick" disabled={busy} value="" onChange={e => { if (e.target.value) selectGroup(e.target.value) }}>
-            <option value="">{t('mining.bulk.selectGroup', '— выбрать группу —')}</option>
-            {groups.map(g => (
-              <option key={g.key} value={g.key}>
-                {g.name || t('mining.noGroup', 'Без группы')} ({g.farmIds.length})
-              </option>
-            ))}
-          </select>
+      {/* Шапка списка ферм: выбор «Все» и счётчик выбранных */}
+      {farms.length > 0 && (
+        <div className="mining-bulk-listhead">
+          <label className="mining-bulk-selectall">
+            <input type="checkbox" checked={allChecked}
+              onChange={e => setSel(e.target.checked ? Object.fromEntries(farms.map(f => [f.id, true])) : {})} />
+            {t('mining.bulk.all', 'Все')}
+          </label>
+          <span className="mining-bulk-selected">
+            {t('mining.bulk.selected', 'Выбрано')}: {selectedIds.length} / {farms.length}
+          </span>
         </div>
       )}
-
-      {/* Сервисные действия: охлаждающая жидкость и ИИ-управляющий */}
-      <div className="market-cats" style={{ marginBottom: 'var(--spacing-md)' }}>
-        <span className="mining-bulk-label">{t('mining.bulk.coolant', 'ОЖ')}</span>
-        <input type="number" min="1" max="4" className="tx-input mining-bulk-qty" disabled={busy}
-          value={coolantQty}
-          onChange={e => setCoolantQty(Math.max(1, Math.min(4, parseInt(e.target.value, 10) || 1)))} />
-        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('coolant', { qty: coolantQty })}>
-          <Droplet size={14} /> {t('mining.bulk.coolantAdd', 'Заправить')}
-        </button>
-        <span className="mining-bulk-label">{t('mining.bulk.ai', 'ИИ')}</span>
-        <button className="asset-act upgrade" disabled={busy || !selectedIds.length} onClick={() => runAction('hire')}
-          title={t('mining.bulk.hireHint', 'Нанять ИИ-управляющего на каждую выбранную ферму ({{n}} $/ферма)', { n: '120 000' })}>
-          <Bot size={14} /> {t('mining.bulk.hire', 'Нанять ИИ')}
-        </button>
-        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('upgrade')}
-          title={t('mining.bulk.upgradeHint', 'Поднять ИИ-управляющего на уровень на каждой выбранной ферме')}>
-          {t('mining.bulk.upgrade', 'Повысить ИИ')}
-        </button>
-        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('fire')}
-          title={t('mining.bulk.fireHint', 'Уволить ИИ-управляющего на выбранных фермах')}>
-          {t('mining.bulk.fire', 'Уволить ИИ')}
-        </button>
-      </div>
-
-      {/* Переключатели ИИ + выбор монеты + снятие всего железа */}
-      <div className="market-cats" style={{ marginBottom: 'var(--spacing-md)' }}>
-        {[['autoRepair', 'mining.autoRepair'], ['autoCoin', 'mining.autoCoin'], ['autoRestart', 'mining.autoRestart']].map(([key, lk]) => (
-          <label key={key} className="mining-bulk-selectall" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input type="checkbox" disabled={busy} checked={aiToggles[key]}
-              onChange={e => setAiToggles(s => ({ ...s, [key]: e.target.checked }))} />
-            {t(lk)}
-          </label>
-        ))}
-        <button className="asset-act" disabled={busy || !selectedIds.length}
-          onClick={() => runAction('settings', { settings: aiToggles })}>
-          {t('mining.bulk.applySettings', 'Применить настройки')}
-        </button>
-        <span className="mining-bulk-label">{t('mining.bulk.coin', 'Монета')}</span>
-        <select className="mslot-pick" disabled={busy} value={coinSel}
-          onChange={e => setCoinSel(e.target.value)}>
-          <option value="">{t('mining.bulk.pickCoin', '— выбрать монету —')}</option>
-          {coins.map(c => <option key={c.symbol} value={c.symbol}>{c.symbol} · ${'{'}formatMoney(c.price){'}'}</option>)}
-        </select>
-        <button className="asset-act" disabled={busy || !selectedIds.length}
-          onClick={() => selectedIds.length && setConfirm({
-            title: t('mining.bulk.uninstallTitle', 'Снять всё железо'),
-            message: t('mining.bulk.uninstallMsg', 'С {{n}} ферм будет снято всё оборудование — оно вернётся в инвентарь, добыча остановится.').replace('{{n}}', String(selectedIds.length)),
-            onConfirm: () => runAction('uninstall'),
-          })}>
-          <Trash2 size={14} /> {t('mining.bulk.uninstall', 'Снять всё железо')}
-        </button>
-      </div>
 
       {farms.length === 0 ? (
         <div className="empty-state"><p>{t('mining.bulk.noFarms', 'Ферм пока нет — создайте их в подвалах домов.')}</p></div>

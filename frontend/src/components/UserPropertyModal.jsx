@@ -3,26 +3,35 @@ import { useTranslation } from 'react-i18next'
 import {
   adminFetchUserProperty,
   adminUpdateAsset, adminDeleteAsset, adminTransferAsset,
-  adminUpdateFarm, adminDeleteFarm, adminTransferFarm,
+  adminUpdateFarm, adminDeleteFarm, adminTransferFarm, adminUninstallFarm,
   adminUpdateCompany, adminDeleteCompany, adminTransferCompany,
+  adminListCompanyMembers, adminRemoveCompanyMember,
   adminUpdateBusiness, adminVacateBusiness, adminTransferBusiness,
+  adminFetchInventory, adminUninstallHardware, adminDeleteHardware,
 } from '../services/api'
 import ConfirmDialog from './ConfirmDialog'
 import { toast } from './Toast'
 import {
   X, Package, Cpu, Briefcase, Building2, Edit3, Trash2, ArrowLeftRight, Save,
+  HardDrive, Wrench, UserMinus, ChevronDown, ChevronUp,
 } from 'lucide-react'
 
 const TABS = [
   { id: 'assets', icon: Package },
   { id: 'farms', icon: Cpu },
+  { id: 'inventory', icon: HardDrive },
   { id: 'company', icon: Briefcase },
   { id: 'businesses', icon: Building2 },
 ]
 
+// Порядок отображения компонентов фермы: одиночные слоты + массивы.
+const COMP_ROLES = ['motherboard', 'cpu', 'ram', 'ssd', 'cooling', 'case', 'rack', 'ups', 'network']
+const COMP_LISTS = ['gpus', 'fans', 'psus']
+
 /**
  * Модалка полного управления имуществом игрока из админ-панели: активы,
- * майнинг-фермы, компания и бизнесы «Крыши города». Правки/удаление/передача
+ * майнинг-фермы (вплоть до полного разбора), инвентарь железа, компания
+ * (с сотрудниками) и бизнесы «Крыши города». Правки/удаление/передача
  * владения выполняются через админ-эндпоинты (см. services/api.js) и
  * обходят обычные игровые ограничения (см. backend
  * AdminAssetUpdate/AdminFarmUpdate/AdminCompanyUpdate/AdminBusinessUpdate).
@@ -31,18 +40,32 @@ function UserPropertyModal({ username, userId, onClose }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState('assets')
   const [data, setData] = useState(null)
+  const [inventory, setInventory] = useState([])
+  const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null) // { kind, id, form }
   const [transferring, setTransferring] = useState(null) // { kind, id, name }
   const [transferTo, setTransferTo] = useState('')
-  const [confirmTarget, setConfirmTarget] = useState(null) // { kind, id, name }
+  const [confirmTarget, setConfirmTarget] = useState(null) // { kind, id, name, companyId? }
+  const [expandedFarm, setExpandedFarm] = useState(null) // id фермы с раскрытым составом
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
     setLoading(true)
     try {
-      const res = await adminFetchUserProperty(userId)
-      setData(res)
+      const [prop, inv] = await Promise.all([
+        adminFetchUserProperty(userId),
+        adminFetchInventory(userId).catch(() => []),
+      ])
+      setData(prop)
+      setInventory(inv.items || [])
+      if (prop.company) {
+        adminListCompanyMembers(prop.company.id)
+          .then(r => setMembers(r.members || []))
+          .catch(() => setMembers([]))
+      } else {
+        setMembers([])
+      }
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -125,13 +148,29 @@ function UserPropertyModal({ username, userId, onClose }) {
     if (!confirmTarget) return
     setBusy(true)
     try {
-      const { kind, id } = confirmTarget
+      const { kind, id, companyId } = confirmTarget
       if (kind === 'assets') await adminDeleteAsset(id)
       else if (kind === 'farms') await adminDeleteFarm(id)
       else if (kind === 'company') await adminDeleteCompany(id)
       else if (kind === 'businesses') await adminVacateBusiness(id)
+      else if (kind === 'hardware') await adminDeleteHardware(id)
+      else if (kind === 'member') await adminRemoveCompanyMember(companyId, id)
+      else if (kind === 'farmUninstall') await adminUninstallFarm(id)
       setConfirmTarget(null)
-      toast(t('admin.property.deleted'))
+      toast(t(kind === 'farmUninstall' ? 'admin.property.dismantled' : 'admin.property.deleted'))
+      await load()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doUninstallHw = async (h) => {
+    setBusy(true)
+    try {
+      await adminUninstallHardware(h.id)
+      toast(t('admin.property.hwUninstalled'))
       await load()
     } catch (err) {
       toast(err.message, 'error')
@@ -160,8 +199,9 @@ function UserPropertyModal({ username, userId, onClose }) {
     }
   }
 
-  const renderActions = (kind, item, deleteLabelKey = 'admin.property.delete') => (
+  const renderActions = (kind, item, deleteLabelKey = 'admin.property.delete', extra = null) => (
     <div className="user-actions">
+      {extra}
       <button className="admin-btn" onClick={() => startEdit(kind, item)}><Edit3 size={14} /></button>
       <button className="admin-btn" onClick={() => { setTransferring({ kind, id: item.id, name: item.name }); setTransferTo('') }}>
         <ArrowLeftRight size={14} />
@@ -172,10 +212,39 @@ function UserPropertyModal({ username, userId, onClose }) {
     </div>
   )
 
+  // Чипы установленного железа фермы: одиночные слоты + массивы (GPU ×N).
+  const renderComponents = (farm) => {
+    const comp = farm.components || {}
+    const chips = []
+    for (const role of COMP_ROLES) {
+      const node = comp[role]
+      if (node?.hwId) chips.push({ key: role, label: t(`admin.property.comp_${role}`), name: node.name, count: 1 })
+    }
+    for (const key of COMP_LISTS) {
+      const arr = comp[key] || []
+      if (arr.length) chips.push({
+        key, count: arr.length,
+        label: t(`admin.property.comp_${key}`),
+        name: arr.map(x => x.name).filter(Boolean).join(', '),
+      })
+    }
+    if (!chips.length) return <span className="uprop-empty-comp">{t('admin.property.noComponents')}</span>
+    return (
+      <div className="uprop-comps">
+        {chips.map(c => (
+          <span key={c.key} className="uprop-comp" title={c.name}>
+            <b>{c.label}{c.count > 1 ? ` ×${c.count}` : ''}:</b> {c.name}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
   const assets = data?.assets || []
   const farms = data?.farms || []
   const company = data?.company || null
   const businesses = data?.businesses || []
+  const farmNameById = Object.fromEntries(farms.map(f => [f.id, f.name]))
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -187,6 +256,7 @@ function UserPropertyModal({ username, userId, onClose }) {
           {TABS.map(tb => {
             const Icon = tb.icon
             const count = tb.id === 'assets' ? assets.length : tb.id === 'farms' ? farms.length
+              : tb.id === 'inventory' ? inventory.length
               : tb.id === 'company' ? (company ? 1 : 0) : businesses.length
             return (
               <button key={tb.id} className={`tx-pill ${tab === tb.id ? 'active' : ''}`} onClick={() => setTab(tb.id)}>
@@ -236,7 +306,7 @@ function UserPropertyModal({ username, userId, onClose }) {
                 ) : (
                   <>
                     <div className="admin-user-info">
-                      <div><strong>{t(`assetNames.${a.slug}`, a.name)}</strong> <span className="user-role user">{a.type}</span></div>
+                      <div className="uprop-title-row"><strong>{t(`assetNames.${a.slug}`, a.name)}</strong> <span className="user-role user">{a.type}</span></div>
                       <div className="admin-user-meta">
                         <span>{t('admin.property.fieldLevel')}: {a.level}</span>
                         <span>${a.price}</span>
@@ -294,16 +364,66 @@ function UserPropertyModal({ username, userId, onClose }) {
                 ) : (
                   <>
                     <div className="admin-user-info">
-                      <div><strong>{f.name}</strong> <span className="user-role user">{f.status}</span></div>
+                      <div className="uprop-title-row">
+                        <strong>{f.name}</strong> <span className="user-role user">{f.status}</span>
+                        <button className="admin-btn uprop-expand" onClick={() => setExpandedFarm(expandedFarm === f.id ? null : f.id)}
+                          title={t('admin.property.showComponents')}>
+                          {expandedFarm === f.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      </div>
                       <div className="admin-user-meta">
                         <span>{t('admin.property.fieldCondition')}: {f.condition}%</span>
                         <span>{t('admin.property.fieldOverclock')}: ×{f.overclock}</span>
                         <span>{t('admin.property.fieldElectricity')}: ${f.electricityOwed}</span>
+                        {f.houseId && <span className="user-role user">{t('admin.property.inHouse')}</span>}
                       </div>
+                      {expandedFarm === f.id && renderComponents(f)}
                     </div>
-                    {renderActions('farms', f)}
+                    {renderActions('farms', f, 'admin.property.delete', (
+                      <button className="admin-btn" title={t('admin.property.dismantle')}
+                        onClick={() => setConfirmTarget({ kind: 'farmUninstall', id: f.id, name: f.name })}>
+                        <Wrench size={14} />
+                      </button>
+                    ))}
                   </>
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && tab === 'inventory' && (
+          <div className="admin-list">
+            {inventory.length === 0 && <p className="empty-state">{t('admin.property.emptyInventory')}</p>}
+            {inventory.map(h => (
+              <div key={h.id} className="admin-user-item">
+                <div className="admin-user-info">
+                  <div className="uprop-title-row">
+                    <strong>{h.name}</strong>
+                    <span className="user-role user">{h.category}</span>
+                    {h.farmId && (
+                      <span className="user-role admin" title={farmNameById[h.farmId] || h.farmId}>
+                        {t('admin.property.installedOn')}: {farmNameById[h.farmId] || '…'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="admin-user-meta">
+                    <span>{t('admin.property.fieldCondition')}: {h.condition}%</span>
+                    {h.purchasePrice != null && <span>${h.purchasePrice}</span>}
+                  </div>
+                </div>
+                <div className="user-actions">
+                  {h.farmId && (
+                    <button className="admin-btn" title={t('admin.property.hwUninstall')}
+                      disabled={busy} onClick={() => doUninstallHw(h)}>
+                      <Wrench size={14} />
+                    </button>
+                  )}
+                  <button className="admin-btn admin-btn-danger" title={t('admin.property.delete')}
+                    onClick={() => setConfirmTarget({ kind: 'hardware', id: h.id, name: h.name })}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -313,55 +433,72 @@ function UserPropertyModal({ username, userId, onClose }) {
           <div className="admin-list">
             {!company && <p className="empty-state">{t('admin.property.emptyCompany')}</p>}
             {company && (
-              <div className="admin-user-item">
-                {editing?.kind === 'company' && editing.id === company.id ? (
-                  <div className="admin-user-edit-form">
-                    <div className="admin-user-edit-header"><strong>{company.name}</strong></div>
-                    <div className="admin-user-edit-fields">
-                      <div className="admin-field-group">
-                        <label>{t('admin.property.fieldName')}</label>
-                        <input type="text" className="admin-input" value={editing.form.name}
-                          onChange={e => setEditing({ ...editing, form: { ...editing.form, name: e.target.value } })} />
+              <>
+                <div className="admin-user-item">
+                  {editing?.kind === 'company' && editing.id === company.id ? (
+                    <div className="admin-user-edit-form">
+                      <div className="admin-user-edit-header"><strong>{company.name}</strong></div>
+                      <div className="admin-user-edit-fields">
+                        <div className="admin-field-group">
+                          <label>{t('admin.property.fieldName')}</label>
+                          <input type="text" className="admin-input" value={editing.form.name}
+                            onChange={e => setEditing({ ...editing, form: { ...editing.form, name: e.target.value } })} />
+                        </div>
+                        <div className="admin-field-group">
+                          <label>{t('admin.property.fieldBudget')}</label>
+                          <input type="number" className="admin-input" value={editing.form.budget}
+                            onChange={e => setEditing({ ...editing, form: { ...editing.form, budget: e.target.value } })} />
+                        </div>
+                        <div className="admin-field-checkbox">
+                          <label>
+                            <input type="checkbox" checked={editing.form.isOpen}
+                              onChange={e => setEditing({ ...editing, form: { ...editing.form, isOpen: e.target.checked } })} />
+                            {t('admin.property.fieldIsOpen')}
+                          </label>
+                        </div>
+                        <div className="admin-field-checkbox">
+                          <label>
+                            <input type="checkbox" checked={editing.form.visibleInSearch}
+                              onChange={e => setEditing({ ...editing, form: { ...editing.form, visibleInSearch: e.target.checked } })} />
+                            {t('admin.property.fieldVisibleInSearch')}
+                          </label>
+                        </div>
                       </div>
-                      <div className="admin-field-group">
-                        <label>{t('admin.property.fieldBudget')}</label>
-                        <input type="number" className="admin-input" value={editing.form.budget}
-                          onChange={e => setEditing({ ...editing, form: { ...editing.form, budget: e.target.value } })} />
-                      </div>
-                      <div className="admin-field-checkbox">
-                        <label>
-                          <input type="checkbox" checked={editing.form.isOpen}
-                            onChange={e => setEditing({ ...editing, form: { ...editing.form, isOpen: e.target.checked } })} />
-                          {t('admin.property.fieldIsOpen')}
-                        </label>
-                      </div>
-                      <div className="admin-field-checkbox">
-                        <label>
-                          <input type="checkbox" checked={editing.form.visibleInSearch}
-                            onChange={e => setEditing({ ...editing, form: { ...editing.form, visibleInSearch: e.target.checked } })} />
-                          {t('admin.property.fieldVisibleInSearch')}
-                        </label>
-                      </div>
-                    </div>
-                    <div className="admin-user-edit-actions">
-                      <button className="admin-btn admin-btn-primary" disabled={busy} onClick={saveEdit}><Save size={14} /> {t('admin.save')}</button>
-                      <button className="admin-btn" disabled={busy} onClick={cancelEdit}><X size={14} /> {t('admin.cancel')}</button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="admin-user-info">
-                      <div><strong>{company.name}</strong> <span className={`user-role ${company.isOpen ? 'user' : 'admin'}`}>{company.isOpen ? t('admin.property.open') : t('admin.property.closed')}</span></div>
-                      <div className="admin-user-meta">
-                        <span>{t('admin.property.fieldBudget')}: ${company.budget}</span>
-                        <span>{t('admin.property.fieldMembers')}: {company.memberCount}</span>
-                        <span>{t('admin.property.fieldAssets')}: {company.assetCount}</span>
+                      <div className="admin-user-edit-actions">
+                        <button className="admin-btn admin-btn-primary" disabled={busy} onClick={saveEdit}><Save size={14} /> {t('admin.save')}</button>
+                        <button className="admin-btn" disabled={busy} onClick={cancelEdit}><X size={14} /> {t('admin.cancel')}</button>
                       </div>
                     </div>
-                    {renderActions('company', company)}
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      <div className="admin-user-info">
+                        <div className="uprop-title-row"><strong>{company.name}</strong> <span className={`user-role ${company.isOpen ? 'user' : 'admin'}`}>{company.isOpen ? t('admin.property.open') : t('admin.property.closed')}</span></div>
+                        <div className="admin-user-meta">
+                          <span>{t('admin.property.fieldBudget')}: ${company.budget}</span>
+                          <span>{t('admin.property.fieldMembers')}: {company.memberCount}</span>
+                          <span>{t('admin.property.fieldAssets')}: {company.assetCount}</span>
+                        </div>
+                      </div>
+                      {renderActions('company', company)}
+                    </>
+                  )}
+                </div>
+                <div className="uprop-members">
+                  <h4>{t('admin.property.membersTitle')} ({members.length})</h4>
+                  {members.length === 0 && <p className="empty-state">{t('admin.property.noMembers')}</p>}
+                  {members.map(m => (
+                    <div key={m.userId} className="uprop-member-row">
+                      <span className="uprop-member-name">{m.username}</span>
+                      <span className="user-role user">{m.role || '—'}</span>
+                      <span className="admin-user-meta"><span>${m.salary ?? 0}/h</span></span>
+                      <button className="admin-btn admin-btn-danger" title={t('admin.property.kick')}
+                        onClick={() => setConfirmTarget({ kind: 'member', id: m.userId, name: m.username, companyId: company.id })}>
+                        <UserMinus size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -399,7 +536,7 @@ function UserPropertyModal({ username, userId, onClose }) {
                 ) : (
                   <>
                     <div className="admin-user-info">
-                      <div><strong>{b.name}</strong> <span className="user-role user">Lv.{b.protectionLevel}</span></div>
+                      <div className="uprop-title-row"><strong>{b.name}</strong> <span className="user-role user">Lv.{b.protectionLevel}</span></div>
                       <div className="admin-user-meta">
                         <span>{t('admin.property.fieldReward')}: {b.reward}</span>
                       </div>
@@ -435,7 +572,11 @@ function UserPropertyModal({ username, userId, onClose }) {
         <ConfirmDialog
           open={!!confirmTarget}
           title={t('admin.property.deleteConfirmTitle')}
-          message={confirmTarget ? t('admin.property.deleteConfirmMessage', { name: confirmTarget.name }) : ''}
+          message={confirmTarget
+            ? (confirmTarget.kind === 'farmUninstall'
+                ? t('admin.property.dismantleConfirm', { name: confirmTarget.name })
+                : t('admin.property.deleteConfirmMessage', { name: confirmTarget.name }))
+            : ''}
           danger
           busy={busy}
           onConfirm={doDelete}

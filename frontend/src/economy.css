@@ -1249,12 +1249,68 @@ select.company-name-input option {
 .company-assets-modal { max-width: 120px; width: min(1100px, 96vw); max-height: 90vh; overflow-y: auto; }
 .company-assets-modal h3 { display: flex; align-items: center; gap: 8px; }
 
-.user-property-modal { max-width: 1100px; width: min(1100px, 96vw); max-height: 88vh; overflow-y: auto; }
-.user-property-modal h3 { display: flex; align-items: center; gap: 8px; }
+/* Двойной класс — специфичность выше .modal-content из App.css (грузится
+   позже и перебивал max-width, модалка схлопывалась до 420px). */
+.modal-content.user-property-modal {
+  max-width: 1100px;
+  width: min(1100px, 96vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+/* Только ЗАГОЛОВОК САМОЙ модалки (">"), иначе правило доставалось вложенным
+   ConfirmDialog/передаче владения и разворачивало их центрированный текст влево. */
+.user-property-modal > h3 { display: flex; align-items: center; gap: 8px; }
+
+/* Карточки внутри модалки: центрируем по вертикали — колонка кнопок выше
+   текста, и без центрирования под метаданными копится пустота. */
+.user-property-modal .admin-user-item { align-items: center; }
+.user-property-modal .admin-user-meta { flex-wrap: wrap; row-gap: 4px; }
+.user-property-modal .uprop-title-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+/* ── Состав фермы (компоненты) ── */
+.user-property-modal .uprop-expand { margin-left: 6px; padding: 2px 4px; }
+.user-property-modal .uprop-comps {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: var(--spacing-sm);
+}
+.user-property-modal .uprop-comp {
+  font-size: 12px; line-height: 1.4;
+  padding: 3px 8px; border-radius: var(--radius-sm, 6px);
+  background: var(--fill-subtle, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.user-property-modal .uprop-comp b { color: var(--color-text-primary); font-weight: 600; }
+.user-property-modal .uprop-empty-comp { font-size: 12px; color: var(--color-text-secondary); }
+
+/* ── Сотрудники компании ── */
+.user-property-modal .uprop-members { margin-top: var(--spacing-md); }
+.user-property-modal .uprop-members h4 {
+  margin: 0 0 var(--spacing-sm); font-size: 13px;
+  color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.4px;
+}
+.user-property-modal .uprop-member-row {
+  display: flex; align-items: center; gap: var(--spacing-sm);
+  padding: 6px 4px; border-bottom: 1px solid var(--color-border);
+}
+.user-property-modal .uprop-member-row:last-child { border-bottom: none; }
+.user-property-modal .uprop-member-name { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Кнопки действий — столбиком: экономят ширину строки карточки. */
+.user-property-modal .user-actions {
+  flex-direction: column;
+  gap: 4px;
+}
+.user-property-modal .user-actions .admin-btn { padding: 5px 7px; }
+
 /* На телефонах модалка занимает весь экран с небольшими полями — иначе
    фиксированная ширина/высота выталкивала контент за границы вьюпорта. */
 @media (max-width: 640px) {
-  .user-property-modal {
+  .modal-content.user-property-modal {
     width: calc(100vw - 16px);
     max-width: calc(100vw - 16px);
     max-height: calc(100dvh - 16px);
@@ -1694,6 +1750,13 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .admin-panel-modern .admin-user-item:hover,
 .admin-panel-modern .admin-stock-item:hover,
 .admin-panel-modern .admin-tx-item:hover { border-color: rgba(0, 113, 227, 0.28); transform: translateX(2px); }
+
+/* Кнопки действий в карточке пользователя — столбиком, чтобы не съедать ширину строки. */
+.admin-panel-modern .admin-user-item .user-actions {
+  flex-direction: column;
+  gap: 4px;
+}
+.admin-panel-modern .admin-user-item .user-actions .admin-btn { padding: 5px 7px; }
 
 @media (max-width: 720px) {
   .admin-panel-modern .admin-body { flex-direction: column; }
@@ -2800,6 +2863,38 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .tx-input:focus { border-color: rgba(0, 113, 227, 0.55); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15); }
 .tx-input:disabled { opacity: 0.55; cursor: not-allowed; }
 .tx-input::placeholder { color: var(--color-text-muted, #86868b); }
+
+/* Тулбар массового управления: пары секций в строку (ПК), стопкой (моб.) */
+.mining-bulk-toolbar { display: flex; flex-direction: column; gap: 10px; margin-bottom: var(--spacing-md); }
+.mbt-pair { display: flex; flex-wrap: wrap; gap: 10px; }
+.mbt-pair .mbt-section { flex: 1 1 380px; }
+.mbt-section {
+  background: #161617;
+  border: 1px solid var(--hairline); border-radius: var(--radius-md, 12px); padding: 10px 12px;
+}
+.mbt-title {
+  display: block; margin-bottom: 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--color-text-muted, #86868b);
+}
+.mbt-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mbt-row .asset-act { flex: 0 1 auto; min-width: 0; padding: 8px 12px; }
+.mbt-divider { width: 1px; align-self: stretch; background: var(--hairline); margin: 0 4px; }
+.mbt-nowrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap; }
+.mbt-row .mslot-pick { width: auto; min-width: 160px; margin-top: 0; padding: 8px 30px 8px 10px; font-size: 12.5px; align-self: center; }
+.mbt-row .mslot-pick:focus { border-color: rgba(0, 113, 227, 0.55); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15); outline: none; }
+.mbt-row .mslot-pick:disabled { opacity: 0.55; cursor: not-allowed; }
+.mining-bulk-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--color-text-secondary); cursor: pointer; user-select: none;
+}
+.mining-bulk-toggle input { width: 15px; height: 15px; accent-color: var(--color-accent-hover); cursor: pointer; }
+/* Шапка списка ферм: «Все» + счётчик */
+.mining-bulk-listhead { display: flex; align-items: center; gap: 14px; padding: 4px 4px 8px; }
+.mining-bulk-listhead .mining-bulk-selectall { margin-left: 0; }
+.mining-bulk-selected { font-size: 12px; color: var(--color-text-muted, #86868b); }
+.mbt-danger { color: var(--color-danger, #ff453a); border-color: rgba(255, 59, 48, 0.35); }
+.mbt-danger:hover { background: rgba(255, 59, 48, 0.12); }
 
 .mining-bulk-list { display: flex; flex-direction: column; gap: 8px; }
 .mining-bulk-label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); align-self: center; }

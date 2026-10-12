@@ -620,6 +620,40 @@ export async function adminTransferBusiness(businessId, toUsername) {
   })
 }
 
+// ── Admin: инвентарь железа и разбор майнинга ────────────────────────────────
+
+/** Полный инвентарь железа игрока: каждая единица и где установлена. */
+export async function adminFetchInventory(userId) {
+  return request(`/api/mining/admin/inventory/${encodeURIComponent(userId)}`)
+}
+
+/** Снять деталь с фермы в инвентарь. */
+export async function adminUninstallHardware(hwId) {
+  return request(`/api/mining/admin/hardware/${encodeURIComponent(hwId)}/uninstall`, { method: 'POST' })
+}
+
+/** Удалить единицу железа (установленная снимается с фермы автоматически). */
+export async function adminDeleteHardware(hwId) {
+  return request(`/api/mining/admin/hardware/${encodeURIComponent(hwId)}`, { method: 'DELETE' })
+}
+
+/** Полный разбор фермы: всё оборудование — в инвентарь. */
+export async function adminUninstallFarm(farmId) {
+  return request(`/api/mining/admin/farms/${encodeURIComponent(farmId)}/uninstall`, { method: 'POST' })
+}
+
+/** Сотрудники компании (для админ-панели). */
+export async function adminListCompanyMembers(companyId) {
+  return request(`/api/company/admin/${encodeURIComponent(companyId)}/members`)
+}
+
+/** Исключить сотрудника из компании. */
+export async function adminRemoveCompanyMember(companyId, userId) {
+  return request(`/api/company/admin/${encodeURIComponent(companyId)}/members/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  })
+}
+
 // ── Admin economy panel ────────────────────────────────────────────────────────
 
 export async function fetchEconomyAnalytics() {

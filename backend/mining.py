@@ -2017,3 +2017,101 @@ if __name__ == "__main__":
     assert _ms is True
 
     print("mining self-check OK")
+
+
+# ── Admin: инвентарь железа и полный разбор фермы ────────────────────────────
+
+
+def _serialize_hw(h: dict) -> dict:
+    return {
+        "id": str(h["_id"]),
+        "itemId": h.get("itemId"),
+        "name": h.get("name"),
+        "category": h.get("category"),
+        "specs": h.get("specs", {}),
+        "condition": round(float(h.get("condition", 100) or 0), 1),
+        "purchasePrice": h.get("purchase_price"),
+        "farmId": h.get("farmId"),
+        "purchasedAt": h["purchased_at"].isoformat() if isinstance(h.get("purchased_at"), datetime) else None,
+    }
+
+
+@router.get("/admin/inventory/{user_id}")
+async def admin_list_inventory(
+    user_id: str,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Полный инвентарь железа игрока: каждая единица и где установлена."""
+    items = [_serialize_hw(h) async for h in
+             db.user_hardware.find({"userId": user_id}).sort("purchased_at", -1)]
+    return {"items": items}
+
+
+@router.post("/admin/hardware/{hw_id}/uninstall")
+async def admin_uninstall_hw(
+    hw_id: str,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Снять деталь с фермы в инвентарь."""
+    if not ObjectId.is_valid(hw_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID детали")
+    hw = await db.user_hardware.find_one({"_id": ObjectId(hw_id)})
+    if not hw:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Деталь не найдена")
+    if not hw.get("farmId"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Деталь не установлена на ферму")
+    farm = await db.mining_farms.find_one({"_id": hw["farmId"]})
+    if farm:
+        await _uninstall_hw(db, farm, str(hw["_id"]))
+    try:
+        from ws import push_to_user
+        await push_to_user(hw["userId"], {"type": "mining", "farmId": str(hw["farmId"])})
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@router.delete("/admin/hardware/{hw_id}")
+async def admin_delete_hw(
+    hw_id: str,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Удалить единицу железа. Установленная — сначала снимается с фермы."""
+    if not ObjectId.is_valid(hw_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID детали")
+    hw = await db.user_hardware.find_one({"_id": ObjectId(hw_id)})
+    if not hw:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Деталь не найдена")
+    if hw.get("farmId"):
+        farm = await db.mining_farms.find_one({"_id": hw["farmId"]})
+        if farm:
+            await _uninstall_hw(db, farm, str(hw["_id"]))
+    await db.user_hardware.delete_one({"_id": hw["_id"]})
+    try:
+        from ws import push_to_user
+        await push_to_user(hw["userId"], {"type": "mining"})
+    except Exception:
+        pass
+    return {"message": f"«{hw.get('name')}» удалена"}
+
+
+@router.post("/admin/farms/{farm_id}/uninstall")
+async def admin_uninstall_farm(
+    farm_id: str,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Полный разбор фермы: всё оборудование — в инвентарь, добыча остановлена."""
+    farm = await _load_any_farm(db, farm_id)
+    await _uninstall_all(db, farm)
+    updated = await db.mining_farms.find_one({"_id": farm["_id"]})
+    result = await _serialize_with_stats(db, updated, farm["userId"])
+    try:
+        from ws import push_to_user
+        await push_to_user(farm["userId"], {"type": "mining", "farmId": farm_id})
+    except Exception:
+        pass
+    return result

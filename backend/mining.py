@@ -44,10 +44,11 @@ FAN_BASE_CAP = 6
 # Лимит подвалов и корпусов:
 #   - майнинг разрешён ТОЛЬКО в подвалах домов (basement > 0);
 #   - в одном подвале можно установить столько корпусов/стоек, сколько его ёмкость;
-#   - корпус — до 5 GPU, серверная стойка (rack) — до 45 GPU (shop.MAX_MB_SLOTS).
+#   - корпус — до 5 GPU; серверная стойка (rack) — общий пул слотов на несколько
+#     ферм (сумма слотов материнок ферм ≤ слотов стойки, см. _rack_pool_check).
 MAX_CASES_PER_BASEMENT_SLOT = 1   # один корпус/стойка = один слот подвала
 CASE_MAX_GPUS = 5                # жёсткий лимит слотов корпуса
-RACK_MAX_GPUS = 45               # жёсткий лимит слотов стойки
+RACK_MAX_GPUS = 60               # потолок GPU на одну ферму на стойке (= MAX_MB_SLOTS)
 
 HASH_YIELD = 0.001          # доход за единицу хешрейта × профитность монеты
 ELEC_SCALE = 0.15           # масштаб счёта за электричество
@@ -108,7 +109,10 @@ MANAGER_SETTINGS = ("autoRepair", "autoCoin", "autoRestart")
 # Полное восстановление фермы с 0% износа стоит эту долю от цены её железа.
 # Калибровано так, чтобы разгон 1.5× оставался выгодным на ферме любого размера
 # (+14…+26% к чистой прибыли после ремонта) — см. _repair_cost.
-REPAIR_COST_PCT = 0.10
+# Цена за единицу износа от СТОИМОСТИ железа. Железо подорожало ×10
+# (глобальная инфляция каталога), поэтому доля уменьшена /10 — ремонт
+# остаётся той же долей дохода, что и до инфляции цен.
+REPAIR_COST_PCT = 0.01
 
 
 def _now() -> datetime:
@@ -458,7 +462,7 @@ def _missing_required(farm: dict) -> list[str]:
 def _enclosure_slots(comp: dict) -> Optional[int]:
     """Число посадочных мест размещения (None = ничего не установлено —
     открытый стенд без жёсткого ограничения). Корпус — до CASE_MAX_GPUS (5),
-    серверная стойка (rack) — до RACK_MAX_GPUS (45)."""
+    серверная стойка (rack) — до RACK_MAX_GPUS (60)."""
     node = comp.get("case") or comp.get("rack")
     if node:
         slots = (node.get("specs") or {}).get("slots")
@@ -883,6 +887,27 @@ async def delete_farm(farm_id: str, current_user: dict = Depends(get_current_use
     return {"ok": True}
 
 
+async def _rack_pool_check(db, user_id: str, rack_hw_id: str, rack_slots: int,
+                           extra: int, exclude_farm_id: Optional[str] = None) -> None:
+    """Стойка — общий пул слотов на несколько ферм: сумма слотов материнок
+    (потребность каждой фермы) не должна превышать слотов стойки.
+
+    extra — потребность текущей фермы (gpuSlots её материнки), exclude_farm_id
+    исключает саму ферму (при замене платы/стойки). Бросает HTTPException."""
+    used = 0
+    q: dict = {"userId": user_id, "components.rack.hwId": rack_hw_id}
+    if exclude_farm_id and ObjectId.is_valid(exclude_farm_id):
+        q["_id"] = {"$ne": ObjectId(exclude_farm_id)}
+    async for f in db.mining_farms.find(q, {"components.motherboard": 1}):
+        mb = (f.get("components") or {}).get("motherboard") or {}
+        used += int((mb.get("specs") or {}).get("gpuSlots", 0) or 0)
+    if used + extra > rack_slots:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"В стойке занято {used} из {rack_slots} слотов — для этой фермы нужно ещё {extra}",
+        )
+
+
 async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optional[str]) -> None:
     """Установить один компонент в ферму (общая логика single/batch).
 
@@ -957,10 +982,19 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
             enclosure_slots = _enclosure_slots(comp)
             limit = enclosure_slots if enclosure_slots is not None else RACK_MAX_GPUS
             if mb_slots > limit:
-                kind = "в корпусе" if enclosure_slots is not None else "максимум стойки"
+                kind = "в корпусе" if enclosure_slots is not None else "максимум на ферму"
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
                     f"Нельзя установить материнскую плату на {mb_slots} GPU: {kind} только {limit} слотов",
+                )
+            # Стойка — общий пул слотов: потребность этой фермы не должна
+            # превышать остаток пула (другие фермы уже могут занимать слоты).
+            rack = comp.get("rack")
+            if rack and rack.get("hwId"):
+                await _rack_pool_check(
+                    db, user_id, rack["hwId"],
+                    int((rack.get("specs") or {}).get("slots", 0) or 0),
+                    mb_slots, exclude_farm_id=str(farm["_id"]),
                 )
         elif role == "case":
             case_slots = int(hw.get("specs", {}).get("slots", 0) or 0)
@@ -982,20 +1016,21 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
         elif role == "rack":
             rack_slots = int(hw.get("specs", {}).get("slots", 0)  or 0)
             if rack_slots <= 0:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Стойка не имеет посадочных мест")
-            if rack_slots > RACK_MAX_GPUS:
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST,
-                    f"Стойка рассчитана на {rack_slots} GPU - это больше максимума ({RACK_MAX_GPUS})",
-                )
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Стойка обслуживает несколько ферм (общий пул слотов) и не может быть пустой")
             mb = comp.get("motherboard")
+            my_mb_slots = 0
             if mb:
-                mb_slots = int(mb.get("specs", {}).get("gpuSlots", 0) or 0)
-                if mb_slots > rack_slots:
+                my_mb_slots = int(mb.get("specs", {}).get("gpuSlots", 0) or 0)
+                if my_mb_slots > rack_slots:
                     raise HTTPException(
                         status.HTTP_400_BAD_REQUEST,
-                        f"Нельзя установить стойку на {rack_slots} GPU: материнская плата требует {mb_slots} слотов",
+                        f"Материнка этой фермы требует {my_mb_slots} слотов - больше, чем в стойке ({rack_slots})",
                     )
+            # Пул: другие фермы уже могут занимать слоты этой стойки.
+            await _rack_pool_check(
+                db, user_id, str(hw["_id"]), rack_slots, my_mb_slots,
+                exclude_farm_id=str(farm["_id"]),
+            )
         # Освобождаем ранее установленный компонент этой роли; при замене
         # размещения (корпус <-> стойка) освобождаем и второе.
         roles_to_free = [role]

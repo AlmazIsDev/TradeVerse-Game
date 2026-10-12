@@ -52,7 +52,7 @@ SHOP_PRICES_KEY = "shop_prices"   # админские цены {id: price|null}
 MAX_BUY_QTY = 1000
 RESALE_RATIO = 0.65
 MAX_CASE_SLOTS = 5    # Лимит слотов корпуса; для больших сборок — стойки (rack)
-MAX_MB_SLOTS = 45     # Жёсткий лимит слотов мат. платы (стойка максимум 45 GPU)
+MAX_MB_SLOTS = 60     # Жёсткий лимит слотов мат. платы (люксовая стойка 60 GPU)
 
 # Палитра «по мощности»: холодный (слабое) → горячий (топовое).
 TIER_COLORS = ["#60a5fa", "#22d3ee", "#34d399", "#facc15", "#fb923c", "#ef4444"]
@@ -139,20 +139,24 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(hashrate * price_per_hash, 2),
         })
 
-    # Премиум-линейка «Lux» — комплектующие за миллионы для богатых игроков.
-    # Доли сети насыщаются (mining._farm_share), поэтому прирост дохода от них
-    # скромный — это имиджевые покупки, а не обязательный апгрейд. Характеристики
-    # согласованы с лимитами майнинга: mb 19 GPU, стойка ≤45 слотов.
+    # Премиум-линейка «Lux» — топовые характеристики каждой категории по ЕДИНОЙ
+    # цене за характеристику, как у остального каталога (люкс = верхняя ступень
+    # лестницы, а не «наценка за бренд»): 4× характеристики = 4× цены.
+    # Доли сети насыщаются (mining._farm_share), поэтому прирост дохода от люкса
+    # скромный — имиджевые покупки. Цены = характеристика × K категории (после
+    # глобального ×10): gpu $60/H, cpu $7000×mult/ядро, mb $12000/слот,
+    # ram $900/ГБ, ssd $40/ГБ, cooling $12/кВт, psu $9/Вт, ups $11/VA,
+    # rack $12000/слот.
     _lux = [
-        ("gpu", "Voltronix Zenith V900", {"hashrate": 150000, "power": 7620}, 2500000.0),
-        ("cpu", "Quantum Core Q64X", {"cores": 64, "power": 557}, 1000000.0),
-        ("motherboard", "Apex Board X19", {"gpuSlots": 19, "power": 136}, 1000000.0),
-        ("ram", "ByteForge Singularity 4096GB", {"gb": 4096, "power": 261}, 1500000.0),
-        ("ssd", "SolidByte Infinity 65536GB", {"gb": 65536, "power": 6}, 1000000.0),
-        ("cooling", "Криогенный контур «Гелиос»", {"cooling": 600000, "power": 3002}, 2500000.0),
-        ("psu", "AmpereX Galaxy 25000W", {"power": 25000}, 2000000.0),
-        ("ups", "ИБП Terra 1 MVA", {"backup": 1000000, "power": 510}, 2000000.0),
-        ("rack", "Гиперстойка 45U", {"slots": 45}, 2000000.0),
+        ("gpu", "Voltronix Zenith V900", {"hashrate": 150000, "power": 7620}, 150000 * 60.0),
+        ("cpu", "Quantum Core Q64X", {"cores": 64, "power": 557}, round(64 * 7000 * 2.10, 2)),
+        ("motherboard", "Apex Board X60", {"gpuSlots": 60, "power": 136}, 60 * 12000.0),
+        ("ram", "ByteForge Singularity 4096GB", {"gb": 4096, "power": 261}, 4096 * 900.0),
+        ("ssd", "SolidByte Infinity 65536GB", {"gb": 65536, "power": 6}, 65536 * 40.0),
+        ("cooling", "Криогенный контур «Гелиос»", {"cooling": 600000, "power": 3002}, 600000 * 12.0),
+        ("psu", "AmpereX Galaxy 25000W", {"power": 25000}, 25000 * 9.0),
+        ("ups", "ИБП Terra 1 MVA", {"backup": 1000000, "power": 510}, 1000000 * 11.0),
+        ("rack", "Гиперстойка 300U", {"slots": 300}, 300 * 12000.0),
     ]
     for cat, name, specs, price in _lux:
         items.append({
@@ -189,7 +193,8 @@ def _build_base_catalog() -> list[dict]:
         })
 
     # Базовые материнские платы под стойки (6..45 GPU); слоты 1..5 покрывает
-    # админ-серия и корпуса. 45 = потолок стойки (mining.RACK_MAX_GPUS).
+    # админ-серия и корпуса. 45 = базовый потолок; 60 GPU — только люксовая
+    # Apex Board X60 (mining.RACK_MAX_GPUS).
     for i, slots in enumerate((6, 8, 12, 19, 24, 45)):
         items.append({
             "id": f"mb-{slots}", "category": "motherboard",
@@ -271,6 +276,11 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(mbps * 0.6, 2),
         })
 
+    # Глобальный масштаб цен ×10 (инфляция). Люкс задан сразу в финальных
+    # ценах (характеристика × K×10) — повторно не масштабируем.
+    for it in items:
+        if not it["id"].startswith("lux-"):
+            it["base_price"] = round(it["base_price"] * 10, 2)
     return items
 
 
@@ -666,6 +676,9 @@ def _build_admin_catalog() -> list[dict]:
         "base_price": 5000.0,
     })
 
+    # Глобальный масштаб цен ×10 (см. _build_base_catalog).
+    for it in items:
+        it["base_price"] = round(it["base_price"] * 10, 2)
     return items
 
 
@@ -1118,25 +1131,32 @@ if __name__ == "__main__":
     for c in admin_case + admin_mb:
         slots = c["specs"].get("slots", c["specs"].get("gpuSlots", 0))
         assert slots <= 5, f"slots > 5: {c['id']} {slots}"
-    # Серверные стойки: 5 базовых (8..45 слотов) + премиум «Гиперстойка 45U».
+    # Серверные стойки: 5 базовых (8..45 слотов) + люксовая «Гиперстойка 300U»
+    # (общий пул слотов на несколько ферм, см. mining._rack_pool_check).
     racks = [c for c in CATALOG if c["category"] == "rack"]
     assert len(racks) == 6
     assert min(r["specs"]["slots"] for r in racks) == 8
-    assert max(r["specs"]["slots"] for r in racks) == 45
+    assert max(r["specs"]["slots"] for r in racks) == 300
+    # Топовая базовая стойка дешевле люксовой: разница — в слотах пула.
+    _base_top_rack = min(r["base_price"] for r in racks if r["specs"]["slots"] == 45)
+    assert _base_top_rack < 2_000_000
 
     # Флагманская линейка Voltronix + криогенная станция.
     v300 = CATALOG_BY_ID["gpu-vlt-2"]
     assert v300["name"] == "Voltronix Quantum V300" and v300["specs"]["hashrate"] == 80000
-    assert CATALOG_BY_NAME["Криогенная станция охлаждение"] == 250000 * 1.2
+    assert CATALOG_BY_NAME["Криогенная станция охлаждение"] == 250000 * 12.0
 
-    # Премиум-линейка Lux: по позиции на каждую категорию, цена ≥ $1M.
+    # Премиум-линейка Lux: по позиции на каждую категорию, цена = характеристика
+    # × K категории (пропорционально, без «наценки за бренд»).
     lux = [c for c in CATALOG if c["id"].startswith("lux-")]
     assert len(lux) == 9, f"lux items: {len(lux)}"
-    assert all(c["base_price"] >= 1_000_000 for c in lux)
+    assert next(c for c in lux if c["id"] == "lux-gpu")["base_price"] == 150000 * 60
+    assert next(c for c in lux if c["id"] == "lux-psu")["base_price"] == 25000 * 9
+    assert next(c for c in lux if c["id"] == "lux-rack")["base_price"] == 300 * 12000
     assert next(c for c in lux if c["id"] == "lux-gpu")["specs"]["hashrate"] == 150000
-    assert next(c for c in lux if c["id"] == "lux-rack")["specs"]["slots"] == 45
-    assert next(c for c in lux if c["id"] == "lux-motherboard")["specs"]["gpuSlots"] == 19
-    # Базовые материнки — только под стойки (6..45 GPU); топ лестницы — 45.
+    assert next(c for c in lux if c["id"] == "lux-rack")["specs"]["slots"] == 300
+    assert next(c for c in lux if c["id"] == "lux-motherboard")["specs"]["gpuSlots"] == 60
+    # Базовые материнки — 6..45 GPU; 60 GPU только у люксовой Apex Board X60.
     _base_mbs = sorted(c["specs"]["gpuSlots"] for c in BASE_CATALOG
                        if c["category"] == "motherboard" and not c["id"].startswith("lux-"))
     assert _base_mbs == [6, 8, 12, 19, 24, 45], f"mb ladder: {_base_mbs}"

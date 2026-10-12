@@ -40,6 +40,9 @@ CRYPTO_FEE_RATE = 0.01
 # бессмысленным «дребезг» buy→sell ради микродвижений цены и придаёт глубину
 # экономике — быстрый оборот теперь стоит денег. Комиссия «сгорает».
 CRYPTO_TRADE_FEE_RATE = 0.005
+# Остатки количества меньше этого — пыль округлений: не торгуются, не
+# показываются в портфеле и удаляются при обнулении.
+DUST_QTY = 1e-8
 # Лимит концентрации: один игрок может держать максимум эту долю эмиссии монеты
 # (holdings в crypto_holdings — покупка + добыча + переводы; продажа не ограничена).
 MAX_HOLD_SHARE = 0.9
@@ -425,6 +428,9 @@ async def get_crypto_account(
         symbol = h["symbol"]
         # Округление до 8 знаков прячет пыль от старых $inc-продаж (5e-15).
         qty = round(float(h.get("quantity", 0.0) or 0.0), 8)
+        # Пыль и нулевые остатки не показываем и в оценку портфеля не включаем.
+        if qty <= DUST_QTY:
+            continue
         price = market.get(symbol, {}).get("price", 0.0)
         value = round(qty * price, 2)
         portfolio_value += value
@@ -575,6 +581,15 @@ async def trade_crypto(
     if coin is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Монета не найдена")
 
+    holding = await db.crypto_holdings.find_one({"userId": user_id, "symbol": symbol})
+    # «Продать максимум»: запрос в пределах пыли от баланса добирает остаток
+    # целиком, чтобы после $round не оставалось 0.00000001 (и наоборот —
+    # запрос чуть больше округлённого баланса не падал с «Недостаточно монет»).
+    if payload.action == "sell" and holding:
+        hq = round(float(holding.get("quantity", 0.0) or 0.0), 8)
+        if hq > 0 and abs(hq - qty) <= DUST_QTY:
+            qty = hq
+
     # Размер сделки для расчёта impact считаем по текущей цене, но исполняем по
     # цене, уже сдвинутой этим impact'ом (иначе появляется безрисковый арбитраж
     # buy→sell на собственном движении цены). См. _project_fill / _apply_trade_impact.
@@ -590,7 +605,6 @@ async def trade_crypto(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Слишком маленький объём сделки",
         )
-    holding = await db.crypto_holdings.find_one({"userId": user_id, "symbol": symbol})
     fee = round(total * CRYPTO_TRADE_FEE_RATE, 2)
 
     if payload.action == "buy":
@@ -656,6 +670,9 @@ async def trade_crypto(
     )
     if not sold:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно монет")
+    if float(sold.get("quantity", 0.0) or 0.0) <= 0.0:
+        # Полная продажа — холдинг с нулём не храним (иначе «мёртвая» строка в портфеле).
+        await db.crypto_holdings.delete_one({"_id": sold["_id"]})
     # Компания-эмитент выкупает монеты из бюджета; при нехватке бюджета —
     # рефанд монет продавцу и отказ. Дебит бюджета после списания монет.
     cid = coin.get("companyId")

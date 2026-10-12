@@ -195,7 +195,7 @@ export const MOTHERBOARD_PRODUCTS = [
   { id: 'mb-19', name: 'Мат. плата (19 GPU)', maxGpus: 19, price: null },
   { id: 'mb-24', name: 'Мат. плата (24 GPU)', maxGpus: 24, price: null },
   { id: 'mb-45', name: 'Мат. плата (45 GPU)', maxGpus: 45, price: null },
-  { id: 'lux-motherboard', name: 'Apex Board X19', maxGpus: 19, price: null },
+  { id: 'lux-motherboard', name: 'Apex Board X60', maxGpus: 60, price: null },
 ]
 
 // 20 видов SSD

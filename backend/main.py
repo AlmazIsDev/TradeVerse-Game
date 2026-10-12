@@ -167,7 +167,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
     await mining_module.dismantle_orphan_farms(db)   # разбор ферм без дома (не видны в новой системе)
-    await assets.scale_businesses_x1000(db)   # разовая миграция: бизнесы игроков ×1000 (цена/доход/расход)
+    await assets_module.scale_businesses_x1000(db)   # разовая миграция: бизнесы игроков ×1000 (цена/доход/расход)
     await fix_invalid_card_numbers(db.users)   # починка карт-заглушек «0000-…» и пропусков
     from production import migrate_owned_infra
     await migrate_owned_infra(db)   # синхронизация цен/meta купленных источников и складов

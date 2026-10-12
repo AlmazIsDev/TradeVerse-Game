@@ -654,6 +654,33 @@ export async function adminRemoveCompanyMember(companyId, userId) {
   })
 }
 
+// ── Admin: выдача активов/предметов игроку ───────────────────────────────────
+
+/** Каталоги для выдачи: активы (assets) и железо (hardware). */
+export async function adminFetchGrantCatalogs() {
+  const [assets, hardware] = await Promise.all([
+    request('/api/assets/admin/catalog'),
+    request('/api/admin/shop/catalog'),
+  ])
+  return { assets: assets.items, hardware: hardware.items }
+}
+
+/** Выдать актив игроку бесплатно (шт.). */
+export async function adminGrantAsset(userId, slug, quantity = 1) {
+  return request(`/api/assets/admin/grant/${encodeURIComponent(userId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ slug, quantity }),
+  })
+}
+
+/** Выдать предмет (железо) игроку бесплатно (шт.). */
+export async function adminGrantHardware(userId, itemId, quantity = 1) {
+  return request(`/api/admin/shop/grant/${encodeURIComponent(userId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ item_id: itemId, quantity }),
+  })
+}
+
 // ── Admin economy panel ────────────────────────────────────────────────────────
 
 export async function fetchEconomyAnalytics() {

@@ -15,6 +15,8 @@ export const TX_FIELDS = [
 export default function TxFilters({ filters, setFilters, options, openMenu, setOpenMenu, toggleValue, setMode, setRange, sort, onSort }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
+  const [wordsInput, setWordsInput] = useState('')
+  const [wordsMode, setWordsMode] = useState('include')
   // Клик вне любого дропдауна закрывает его.
   useEffect(() => {
     const close = (e) => {
@@ -26,7 +28,10 @@ export default function TxFilters({ filters, setFilters, options, openMenu, setO
 
   const fieldLabel = (key) => {
     const f = TX_FIELDS.find(x => x.key === key)
-    return f ? t(f.i18n, f.fallback) : key
+    if (f) return t(f.i18n, f.fallback)
+    if (key === 'auto') return t('admin.txAuto', 'Автооперации')
+    if (key === 'words') return t('admin.txWords', 'Слова')
+    return key
   }
   const activeCount = (key) =>
     (filters.include[key]?.length || 0) + (filters.exclude[key]?.length || 0)
@@ -36,6 +41,13 @@ export default function TxFilters({ filters, setFilters, options, openMenu, setO
     { key: 'categories', label: t('admin.txCategory', 'Категория'), options: (options.categories || []).map(c => ({ value: c, label: c })) },
     { key: 'directions', label: t('admin.txDirection', 'Операция'), options: [{ value: 'income', label: t('admin.txIn', 'Доход') }, { value: 'expense', label: t('admin.txOut', 'Расход') }] },
     { key: 'sources', label: t('admin.txSource', 'Источник'), options: (options.sources || []).map(s => ({ value: s, label: s === 'user' ? t('admin.txSourceUser', 'Игроки') : s })) },
+    { key: 'auto', label: t('admin.txAuto', 'Автооперации'), options: [
+      { value: 'salary', label: t('admin.txAutoSalary', 'Зарплаты компаний') },
+      { value: 'cityroof', label: t('admin.txAutoCityroof', 'Автосбор «Крыши города»') },
+      { value: 'mining', label: t('admin.txAutoMining', 'Добыча майнинга') },
+      { value: 'farm_expenses', label: t('admin.txAutoFarm', 'Расходы ферм (эл-во/ИИ)') },
+      { value: 'realestate', label: t('admin.txAutoRealestate', 'Доход бизнесов/домов') },
+    ] },
   ]
   const RANGES = [
     { key: 'timestamp', label: t('admin.txTime', 'Время'), fields: ['from', 'to'], type: 'datetime-local' },
@@ -69,7 +81,7 @@ export default function TxFilters({ filters, setFilters, options, openMenu, setO
                 <button className={`tx-chip ${(filters.exclude[menu.key] ? 'exclude' : 'include') === 'include' ? 'active' : ''}`} onClick={() => setMode(menu.key, 'include')}>{t('admin.txModeInclude', 'Включить')}</button>
                 <button className={`tx-chip ${(filters.exclude[menu.key] ? 'exclude' : 'include') === 'exclude' ? 'active' : ''}`} onClick={() => setMode(menu.key, 'exclude')}>{t('admin.txModeExclude', 'Кроме')}</button>
               </div>
-              {menu.key !== 'directions' && (
+              {menu.key !== 'directions' && menu.key !== 'auto' && (
                 <input className="admin-input" style={{ width: '100%', marginBottom: 6 }} placeholder={t('admin.txSearchInList', 'Поиск в списке...')}
                   value={query} onChange={e => setQuery(e.target.value)} />
               )}
@@ -103,6 +115,39 @@ export default function TxFilters({ filters, setFilters, options, openMenu, setO
           )}
         </div>
       ))}
+      {/* Слова: включить/кроме — свободный ввод по описанию операции */}
+      <div className="tx-filter-menu" style={{ position: 'relative' }}>
+        <button className={`tx-chip ${((filters.include.words?.length || 0) + (filters.exclude.words?.length || 0)) ? 'active' : ''}`}
+          onClick={() => setOpenMenu(openMenu === 'words' ? null : 'words')}>
+          {t('admin.txWords', 'Слова')}{((filters.include.words?.length || 0) + (filters.exclude.words?.length || 0))
+            ? ` (${(filters.include.words?.length || 0) + (filters.exclude.words?.length || 0)})` : ''}
+        </button>
+        {openMenu === 'words' && (
+          <div className="tx-filter-dropdown" style={{ position: 'absolute', zIndex: 10, background: 'var(--bg-elev, #1e1f24)', border: '1px solid var(--border, #333)', borderRadius: 8, padding: 8, marginTop: 4, minWidth: 240 }}>
+            <div className="tx-filter-modes" style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+              <button className={`tx-chip ${wordsMode === 'include' ? 'active' : ''}`} onClick={() => setWordsMode('include')}>{t('admin.txModeInclude', 'Включить')}</button>
+              <button className={`tx-chip ${wordsMode === 'exclude' ? 'active' : ''}`} onClick={() => setWordsMode('exclude')}>{t('admin.txModeExclude', 'Кроме')}</button>
+            </div>
+            <input className="admin-input" style={{ width: '100%' }} autoFocus
+              placeholder={t('admin.txWordsPh', 'Слово из описания + Enter')} value={wordsInput}
+              onChange={e => setWordsInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && wordsInput.trim()) {
+                  toggleValue('words', wordsInput.trim(), wordsMode)
+                  setWordsInput('')
+                }
+              }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+              {(filters.include.words || []).map(w => (
+                <button key={'iw-' + w} className="tx-chip active" onClick={() => toggleValue('words', w, 'include')}>{w} ×</button>
+              ))}
+              {(filters.exclude.words || []).map(w => (
+                <button key={'ew-' + w} className="tx-chip active" onClick={() => toggleValue('words', w, 'exclude')}>≠ {w} ×</button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
       {/* Сортировка */}
       <select className="admin-input tx-sort-select" value={sort} onChange={e => onSort(e.target.value)}>
         {TX_FIELDS.map(f => <option key={f.key} value={f.key}>{t(f.i18n, f.fallback)}</option>)}

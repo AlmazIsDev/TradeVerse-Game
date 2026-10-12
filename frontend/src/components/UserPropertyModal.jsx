@@ -8,12 +8,13 @@ import {
   adminListCompanyMembers, adminRemoveCompanyMember,
   adminUpdateBusiness, adminVacateBusiness, adminTransferBusiness,
   adminFetchInventory, adminUninstallHardware, adminDeleteHardware,
+  adminFetchGrantCatalogs, adminGrantAsset, adminGrantHardware,
 } from '../services/api'
 import ConfirmDialog from './ConfirmDialog'
 import { toast } from './Toast'
 import {
   X, Package, Cpu, Briefcase, Building2, Edit3, Trash2, ArrowLeftRight, Save,
-  HardDrive, Wrench, UserMinus, ChevronDown, ChevronUp,
+  HardDrive, Wrench, UserMinus, ChevronDown, ChevronUp, Gift,
 } from 'lucide-react'
 
 const TABS = [
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'inventory', icon: HardDrive },
   { id: 'company', icon: Briefcase },
   { id: 'businesses', icon: Building2 },
+  { id: 'grant', icon: Gift },
 ]
 
 // Порядок отображения компонентов фермы: одиночные слоты + массивы.
@@ -49,6 +51,12 @@ function UserPropertyModal({ username, userId, onClose }) {
   const [confirmTarget, setConfirmTarget] = useState(null) // { kind, id, name, companyId? }
   const [expandedFarm, setExpandedFarm] = useState(null) // id фермы с раскрытым составом
   const [busy, setBusy] = useState(false)
+  // ── Вкладка «Выдать»: каталоги подгружаются лениво, при первом открытии ──
+  const [grantKind, setGrantKind] = useState('asset')   // asset | hw
+  const [grantCatalogs, setGrantCatalogs] = useState(null) // { assets, hardware }
+  const [grantQuery, setGrantQuery] = useState('')
+  const [grantItem, setGrantItem] = useState('')
+  const [grantQty, setGrantQty] = useState(1)
 
   const load = async () => {
     setLoading(true)
@@ -74,6 +82,34 @@ function UserPropertyModal({ username, userId, onClose }) {
   }
 
   useEffect(() => { load() }, [userId])
+
+  // Каталоги для вкладки «Выдать» — один раз при первом открытии вкладки.
+  useEffect(() => {
+    if (tab === 'grant' && !grantCatalogs) {
+      adminFetchGrantCatalogs()
+        .then(setGrantCatalogs)
+        .catch(err => toast(err.message, 'error'))
+    }
+  }, [tab, grantCatalogs])
+
+  const doGrant = async () => {
+    if (!grantItem) return
+    setBusy(true)
+    try {
+      const qty = Math.max(1, parseInt(grantQty) || 1)
+      const res = grantKind === 'asset'
+        ? await adminGrantAsset(userId, grantItem, qty)
+        : await adminGrantHardware(userId, grantItem, qty)
+      toast(t('admin.property.grantDone', { name: res.name, count: res.granted }))
+      setGrantItem('')
+      setGrantQty(1)
+      await load()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const startEdit = (kind, item) => {
     if (kind === 'assets') {
@@ -257,10 +293,12 @@ function UserPropertyModal({ username, userId, onClose }) {
             const Icon = tb.icon
             const count = tb.id === 'assets' ? assets.length : tb.id === 'farms' ? farms.length
               : tb.id === 'inventory' ? inventory.length
-              : tb.id === 'company' ? (company ? 1 : 0) : businesses.length
+              : tb.id === 'company' ? (company ? 1 : 0)
+              : tb.id === 'businesses' ? businesses.length
+              : null
             return (
               <button key={tb.id} className={`tx-pill ${tab === tb.id ? 'active' : ''}`} onClick={() => setTab(tb.id)}>
-                <Icon size={14} /> {t(`admin.property.tab_${tb.id}`)} ({count})
+                <Icon size={14} /> {t(`admin.property.tab_${tb.id}`)}{count != null ? ` (${count})` : ''}
               </button>
             )
           })}
@@ -546,6 +584,49 @@ function UserPropertyModal({ username, userId, onClose }) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {!loading && tab === 'grant' && (
+          <div className="admin-list">
+            <div className="uprop-grant">
+              <div className="admin-field-group">
+                <label>{t('admin.property.grantKind')}</label>
+                <select className="admin-input" value={grantKind}
+                  onChange={e => { setGrantKind(e.target.value); setGrantItem('') }}>
+                  <option value="asset">{t('admin.property.grantAsset')}</option>
+                  <option value="hw">{t('admin.property.grantHardware')}</option>
+                </select>
+              </div>
+              <div className="admin-field-group">
+                <label>{t('admin.property.grantSearch')}</label>
+                <input type="text" className="admin-input" value={grantQuery}
+                  placeholder={t('admin.property.grantSearchPh')}
+                  onChange={e => setGrantQuery(e.target.value)} />
+              </div>
+              <div className="admin-field-group">
+                <label>{t('admin.property.grantItem')}</label>
+                <select className="admin-input" value={grantItem} onChange={e => setGrantItem(e.target.value)}>
+                  <option value="">{t('admin.property.grantChoose')}</option>
+                  {(grantKind === 'asset' ? (grantCatalogs?.assets || []) : (grantCatalogs?.hardware || []))
+                    .filter(i => !grantQuery || (i.name || '').toLowerCase().includes(grantQuery.toLowerCase()))
+                    .map(i => (
+                      <option key={i.slug || i.id} value={i.slug || i.id}>
+                        {i.name} (${i.price?.toLocaleString?.('ru-RU') ?? i.price})
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="admin-field-group">
+                <label>{t('admin.property.grantQty')}</label>
+                <input type="number" className="admin-input" min="1" max={grantKind === 'asset' ? 20 : 1000}
+                  value={grantQty} onChange={e => setGrantQty(e.target.value)} />
+              </div>
+              <button className="admin-btn admin-btn-primary" disabled={busy || !grantItem} onClick={doGrant}>
+                <Gift size={14} /> {t('admin.property.grantSubmit')}
+              </button>
+              {!grantCatalogs && <p className="empty-state">{t('common.loading')}</p>}
+            </div>
           </div>
         )}
 

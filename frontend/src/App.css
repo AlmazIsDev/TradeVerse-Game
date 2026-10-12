@@ -2718,10 +2718,13 @@ body {
 }
 .tx-chip:hover { color: var(--color-text-primary); }
 .tx-chip.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
-.admin-tx-table { display: flex; flex-direction: column; }
+.admin-tx-table { display: flex; flex-direction: column; overflow-x: auto; }
+/* min-width строки: колонка «Игрок» (1fr с overflow:hidden) иначе схлопывается
+   до нуля, когда контейнеру не хватает ширины (маленький масштаб/окно). */
 .admin-tx-row {
   display: grid;
-  grid-template-columns: 84px 1.4fr 110px 1fr 120px 120px 108px 44px;
+  grid-template-columns: 84px minmax(140px, 1.4fr) 110px minmax(110px, 1fr) 120px 120px 108px 44px;
+  min-width: 920px;
   align-items: center; gap: var(--spacing-sm);
   padding: 6px 10px; border-bottom: 1px solid var(--hairline);
   font-size: 13px; color: var(--color-text-primary);

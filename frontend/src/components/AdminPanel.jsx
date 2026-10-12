@@ -79,6 +79,8 @@ function DbDocPreview({ doc, refs = {} }) {
 }
 const DB_PAGE_SIZE = 50
 const TX_PAGE_SIZE = 50
+// Пресеты фильтров транзакций ({имя: {filters, sort, order}}) — в localStorage.
+const TX_PRESETS_KEY = 'tradeverse_admin_tx_presets'
 
 // Сортировки списка пользователей (клиентские — список и так полный).
 const USER_SORTS = [
@@ -132,7 +134,9 @@ function AdminPanel({ user, onClose }) {
       </div>
     )
   }
-  const [activeSection, setActiveSection] = useState('stocks')
+  // Последний открытый раздел запоминается: при переоткрытии панели продолжаем
+  // с того же места. Стартовый раздел — «Пользователи».
+  const [activeSection, setActiveSection] = useState(() => localStorage.getItem('tradeverse_admin_section') || 'users')
   const [stocks, setStocks] = useState([])
   const [stocksV2, setStocksV2] = useState([])
   const [users, setUsers] = useState([])
@@ -146,6 +150,10 @@ function AdminPanel({ user, onClose }) {
   const [txOrder, setTxOrder] = useState(-1) // 1 asc / -1 desc
   const [txPage, setTxPage] = useState(0)    // 0-based
   const [txNonce, setTxNonce] = useState(0)  // ручное обновление (кнопка/удаление)
+  const [txPresets, setTxPresets] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(TX_PRESETS_KEY) || '{}') } catch { return {} }
+  })
+  const [txPresetSel, setTxPresetSel] = useState('')
   const [configItems, setConfigItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingStock, setEditingStock] = useState(null)
@@ -224,6 +232,11 @@ function AdminPanel({ user, onClose }) {
     loadData()
   }, [activeSection])
 
+  // Запоминаем открытый раздел админ-панели.
+  useEffect(() => {
+    localStorage.setItem('tradeverse_admin_section', activeSection)
+  }, [activeSection])
+
   // Смена фильтра статуса лотов ЦР — перезагрузка списка.
   useEffect(() => {
     if (activeSection === 'lots') loadData()
@@ -296,6 +309,36 @@ function AdminPanel({ user, onClose }) {
     if (!Object.values(r).some(v => v !== '' && v != null)) delete ranges[field]
     return { ...f, ranges }
   })
+
+  // ── Пресеты фильтров транзакций ────────────────────────────────────────────
+  const saveTxPreset = () => {
+    const name = prompt(t('admin.txPresets.namePrompt'))?.trim()
+    if (!name) return
+    const next = { ...txPresets, [name]: { filters: txFilters, sort: txSort, order: txOrder } }
+    setTxPresets(next)
+    setTxPresetSel(name)
+    localStorage.setItem(TX_PRESETS_KEY, JSON.stringify(next))
+    toast(t('admin.txPresets.saved'))
+  }
+
+  const applyTxPreset = (name) => {
+    setTxPresetSel(name)
+    const p = txPresets[name]
+    if (!p) return
+    setTxFilters(p.filters)
+    setTxSort(p.sort || 'timestamp')
+    setTxOrder(p.order ?? -1)
+  }
+
+  const deleteTxPreset = () => {
+    if (!txPresetSel) return
+    if (!confirm(t('admin.txPresets.deleteConfirm', { name: txPresetSel }))) return
+    const next = { ...txPresets }
+    delete next[txPresetSel]
+    setTxPresets(next)
+    setTxPresetSel('')
+    localStorage.setItem(TX_PRESETS_KEY, JSON.stringify(next))
+  }
 
   // Сброс на первую страницу при смене фильтра, поиска или сортировки.
   useEffect(() => { setTxPage(0) }, [txFilters, txSearch, txSort, txOrder])
@@ -1804,6 +1847,19 @@ function AdminPanel({ user, onClose }) {
                 <button className="admin-btn" onClick={() => setTxNonce(n => n + 1)} title={t('admin.refresh')}>
                   <RefreshCw size={14} />
                 </button>
+                <div className="tx-preset-group">
+                  <select className="admin-input" value={txPresetSel} onChange={e => applyTxPreset(e.target.value)}
+                    title={t('admin.txPresets.title')}>
+                    <option value="">{t('admin.txPresets.load')}</option>
+                    {Object.keys(txPresets).map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <button className="admin-btn" onClick={saveTxPreset} title={t('admin.txPresets.save')}>
+                    <Save size={14} />
+                  </button>
+                  <button className="admin-btn" disabled={!txPresetSel} onClick={deleteTxPreset} title={t('admin.txPresets.delete')}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
               <div className="admin-tx-table tx-cols-6">
                 <div className="admin-tx-row admin-tx-head">

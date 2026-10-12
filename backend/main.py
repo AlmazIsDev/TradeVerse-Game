@@ -168,6 +168,7 @@ async def lifespan(app: FastAPI):
     await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
     await mining_module.dismantle_orphan_farms(db)   # разбор ферм без дома (не видны в новой системе)
     await assets.scale_businesses_x1000(db)   # разовая миграция: бизнесы игроков ×1000 (цена/доход/расход)
+    await fix_invalid_card_numbers(db.users)   # починка карт-заглушек «0000-…» и пропусков
     from production import migrate_owned_infra
     await migrate_owned_infra(db)   # синхронизация цен/meta купленных источников и складов
     start_scheduler()   # единый фоновый планировщик всех систем
@@ -262,6 +263,21 @@ async def ensure_unique_card_number(users) -> str:
         existing = await users.find_one({"card_number": card})
         if not existing:
             return card
+
+
+_CARD_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{5}$")
+
+
+async def fix_invalid_card_numbers(users) -> None:
+    """Починка карт-заглушек и пропусков: у части старых аккаунтов номер
+    «0000-0000-0000-00000» (нулевая заглушка) или отсутствует — выдаём уникальный.
+    Идемпотентно: после прогона все номера соответствуют формату и уникальны."""
+    bad = [u async for u in users.find({}, {"card_number": 1})
+           if not _CARD_RE.match(u.get("card_number") or "")
+           or set((u.get("card_number") or "").replace("-", "")) == {"0"}]
+    for u in bad:
+        card = await ensure_unique_card_number(users)
+        await users.update_one({"_id": u["_id"]}, {"$set": {"card_number": card}})
 
 
 async def issue_token_pair(db: AsyncIOMotorDatabase, user: dict) -> tuple[str, str]:
@@ -1174,6 +1190,28 @@ TX_SORT_FIELDS = {"timestamp", "direction", "label", "category", "username", "am
 # direction/category вычисляются в $project — матчим $expr-эквивалентом до
 # проекции, source — константа проекции, живёт в post-match.
 _AMOUNT_OPS = {"amount_min": "$gte", "amount_max": "$lte"}
+
+
+def _label_rx(pattern: str) -> dict:
+    return {"$regex": pattern, "$options": "i"}
+
+
+# Группы автоматических операций для фильтра транзакций. Условия по сырым
+# полям документа реестра (до $project): метки генерируются модулями игры —
+# см. record_transaction в company/cityroof/mining/assets.
+AUTO_TX_GROUPS: dict[str, dict] = {
+    # Зарплаты сотрудников (авто-выплаты из бюджета компании).
+    "salary": {"category": "company", "label": _label_rx("Зарплата")},
+    # Автосбор дохода бизнесов «Крыши города».
+    "cityroof": {"category": "cityroof", "label": _label_rx("Автосбор")},
+    # Добыча майнинг-ферм (весь доход категории mining).
+    "mining": {"category": "mining", "direction": "income"},
+    # Расходы ферм: электричество и ИИ-управляющий.
+    "farm_expenses": {"category": "mining", "direction": "expense",
+                      "label": _label_rx("Расходы фермы|ИИ-управляющий")},
+    # Доход от бизнесов и домов (аренда/прибыль активов).
+    "realestate": {"category": {"$in": ["realestate", "business"]}, "direction": "income"},
+}
 _TS_OPS = {"ts_from": "$gte", "ts_to": "$lte"}
 
 
@@ -1231,6 +1269,21 @@ def build_tx_filters(f: dict, names: dict) -> tuple[dict | None, dict]:
         if f.get(key):
             raw.setdefault("timestamp", {})[op] = f[key]
 
+    # Автооперации и слова — условия по сырым полям (label/category/direction),
+    # уходят в pre_match до $project вместе с остальными raw_conds.
+    auto_in = [t for t in (f.get("auto") or []) if t in AUTO_TX_GROUPS]
+    auto_ex = [t for t in (f.get("exclude_auto") or []) if t in AUTO_TX_GROUPS]
+    if auto_in:
+        raw_conds.append({"$or": [AUTO_TX_GROUPS[t] for t in auto_in]})
+    if auto_ex:
+        raw_conds.append({"$nor": [AUTO_TX_GROUPS[t] for t in auto_ex]})
+    words_in = f.get("words") or []
+    words_ex = f.get("exclude_words") or []
+    if words_in:
+        raw_conds.append({"$or": [{"label": _label_rx(re.escape(w))} for w in words_in]})
+    if words_ex:
+        raw_conds.append({"$nor": [{"label": _label_rx(re.escape(w))} for w in words_ex]})
+
     if raw_conds:
         raw = {"$and": [raw, *raw_conds]} if raw else (
             raw_conds[0] if len(raw_conds) == 1 else {"$and": raw_conds})
@@ -1273,6 +1326,8 @@ async def admin_get_all_transactions(
     categories: str = Query(None), exclude_categories: str = Query(None),
     directions: str = Query(None), exclude_directions: str = Query(None),
     sources: str = Query(None), exclude_sources: str = Query(None),
+    auto: str = Query(None), exclude_auto: str = Query(None),
+    words: str = Query(None), exclude_words: str = Query(None),
     amount_min: float = Query(None), amount_max: float = Query(None),
     ts_from: str = Query(None), ts_to: str = Query(None),
     sort: str = Query("timestamp"),
@@ -1325,6 +1380,8 @@ async def admin_get_all_transactions(
         "categories": _split_csv(categories), "exclude_categories": _split_csv(exclude_categories),
         "directions": _split_csv(directions), "exclude_directions": _split_csv(exclude_directions),
         "sources": _split_csv(sources), "exclude_sources": _split_csv(exclude_sources),
+        "auto": _split_csv(auto), "exclude_auto": _split_csv(exclude_auto),
+        "words": _split_csv(words), "exclude_words": _split_csv(exclude_words),
         "amount_min": amount_min, "amount_max": amount_max,
         "ts_from": ts_from, "ts_to": ts_to,
     }, names)

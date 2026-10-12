@@ -2322,3 +2322,87 @@ if __name__ == "__main__":
     print(f"  studio(common,$5k)   = ${studio_rate}/сутки")
     print(f"  villa(rare,$160k)    = ${_rent_daily_rate(villa)}/сутки")
     print(f"  castle(legendary,$1.5M) = ${castle_rate}/сутки")
+
+
+# ── Admin: выдача активов игроку ─────────────────────────────────────────────
+
+
+class AdminGrantBody(BaseModel):
+    slug: str
+    quantity: int = 1
+
+
+@router.get("/admin/catalog")
+async def admin_asset_catalog(
+    _admin=Depends(require_admin("users_property")),
+):
+    """Каталог активов для выдачи игрокам из админки."""
+    return {"items": [
+        {"slug": c["slug"], "name": c["name"], "type": c["type"],
+         "category": c.get("category"), "price": c["price"]}
+        for c in CATALOG
+    ]}
+
+
+@router.post("/admin/grant/{user_id}")
+async def admin_grant_asset(
+    user_id: str,
+    body: AdminGrantBody,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Выдать актив игроку бесплатно: без списания денег, записи в ledger
+    и влияния на рыночный спрос. Лимиты владения действуют."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+    catalog = _find_catalog(body.slug) or _fallback_catalog(body.slug)
+    if not catalog:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Актив «{body.slug}» не найден в каталоге")
+    qty = max(1, min(int(body.quantity or 1), 20))
+
+    granted = 0
+    for _ in range(qty):
+        try:
+            await check_type_limit(db, user_id, catalog["type"])
+        except HTTPException:
+            if granted == 0:
+                raise
+            break  # лимит типа достигнут — выдаём сколько влезло
+        doc = {
+            "userId": user_id,
+            "slug": catalog["slug"],
+            "type": catalog["type"],
+            "name": catalog["name"],
+            "category": catalog.get("category"),
+            "rarity": catalog.get("rarity"),
+            "rooms": catalog.get("rooms"),
+            "basement": catalog.get("basement"),
+            "employees": catalog.get("employees", 0),
+            "price": float(catalog["price"]),
+            "price_mult": 1.0,
+            "income_per_hour": catalog.get("income_per_hour", 0),
+            "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
+            "level": 1,
+            "mining": False,
+            "meta": catalog.get("meta", {}),
+            "companyId": None,
+            "rental": None,
+            "purchased_at": _now(),
+            "last_collected": _now(),
+        }
+        await db.user_assets.insert_one(doc)
+        granted += 1
+
+    if granted:
+        try:
+            await push_notification(
+                db, user_id, "system", "Актив выдан",
+                f"Администрация выдала вам «{catalog['name']}»"
+                + (f" ×{granted}" if granted > 1 else "") + ".",
+            )
+        except Exception:
+            pass
+    return {"granted": granted, "name": catalog["name"]}

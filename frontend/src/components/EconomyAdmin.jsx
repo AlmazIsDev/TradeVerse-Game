@@ -18,6 +18,13 @@ const CONFIG_FIELDS = [
   { key: 'inflation', step: 0.01 },
   { key: 'energy_cost', step: 0.01 },
   { key: 'wc_price', step: 1 },
+  { key: 'mining_basement_cost', step: 100 },
+  { key: 'mining_basement_income', step: 1 },
+  { key: 'infra_gpu_price', step: 5 },
+  { key: 'infra_metal_price', step: 1 },
+  { key: 'infra_food_price', step: 0.5 },
+  { key: 'infra_wood_price', step: 1 },
+  { key: 'infra_warehouse_rate', step: 0.01 },
 ]
 
 function EconomyAdmin({ canEditConfig = true }) {
@@ -88,17 +95,23 @@ function EconomyAdmin({ canEditConfig = true }) {
   const A = analytics || {}
   const stats = [
     { icon: DollarSign, label: t('econ.moneySupply'), value: '$' + formatCompact(A.moneySupply) },
+    { icon: Wallet, label: t('econ.totalCash'), value: '$' + formatCompact(A.totalCash) },
     { icon: Wallet, label: t('econ.totalCapital'), value: '$' + formatCompact(A.totalCapital) },
     { icon: Users, label: t('econ.avgCapital'), value: '$' + formatCompact(A.avgCapital) },
     { icon: Users, label: t('econ.players'), value: A.users ?? 0 },
     { icon: Activity, label: t('econ.dailyVolume'), value: '$' + formatCompact(A.dailyVolume) },
+    { icon: Activity, label: t('econ.dailyOperations'), value: formatCompact(A.dailyOperations ?? 0) },
     { icon: LineChart, label: t('econ.stocksValue'), value: '$' + formatCompact(A.stocks?.value) },
+    { icon: LineChart, label: t('econ.stocksHoldings'), value: A.stocks?.holdings ?? 0 },
     { icon: Coins, label: t('econ.cryptoValue'), value: '$' + formatCompact(A.crypto?.value) },
     { icon: Home, label: t('econ.realestate'), value: A.assets?.realestate ?? 0 },
     { icon: Briefcase, label: t('econ.business'), value: A.assets?.business ?? 0 },
     { icon: Car, label: t('econ.cars'), value: A.assets?.cars ?? 0 },
+    { icon: Home, label: t('econ.assetsValue'), value: '$' + formatCompact(A.assets?.value) },
     { icon: Building2, label: t('econ.companies'), value: A.companies?.count ?? 0 },
+    { icon: Building2, label: t('econ.companiesBudgets'), value: '$' + formatCompact(A.companies?.budgets) },
     { icon: Coins, label: 'WarCoin', value: formatCompact(A.warcoin) },
+    { icon: DollarSign, label: t('econ.warcoinValue'), value: '$' + formatCompact(A.warcoinValue) },
   ]
 
   return (

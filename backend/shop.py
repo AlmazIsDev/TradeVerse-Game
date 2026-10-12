@@ -1167,3 +1167,57 @@ if __name__ == "__main__":
     assert ssd1["specs"]["gb"] > 0
 
     print("shop self-check OK")
+
+
+# ── Admin: выдача предметов игроку ───────────────────────────────────────────
+
+
+class AdminGrantHwBody(BaseModel):
+    item_id: str
+    quantity: int = 1
+
+
+@admin_router.get("/catalog")
+async def admin_hw_catalog(_admin=Depends(require_admin("users_property"))):
+    """Каталог железа для выдачи игрокам из админки."""
+    return {"items": [
+        {"id": c["id"], "name": c["name"], "category": c["category"],
+         "price": c.get("base_price", 0)}
+        for c in CATALOG
+    ]}
+
+
+@admin_router.post("/grant/{user_id}")
+async def admin_grant_hw(
+    user_id: str,
+    body: AdminGrantHwBody,
+    _admin=Depends(require_admin("users_property")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Выдать предмет (железо) игроку бесплатно. Без записи в ledger."""
+    from bson import ObjectId as _OID
+    from notifications import push_notification
+    if not _OID.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    target = await db.users.find_one({"_id": _OID(user_id)})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+    item = CATALOG_BY_ID.get(body.item_id)
+    if not item:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Предмет «{body.item_id}» не найден в каталоге")
+    qty = max(1, min(int(body.quantity or 1), 1000))
+    now = _now()
+    docs = [{
+        "userId": user_id, "itemId": item["id"], "category": item["category"],
+        "name": item["name"], "specs": item.get("specs", {}) or {},
+        "purchase_price": item.get("base_price", 0), "condition": 100, "purchased_at": now,
+    } for _ in range(qty)]
+    await db.user_hardware.insert_many(docs)
+    try:
+        await push_notification(
+            db, user_id, "system", "Предмет выдан",
+            f"Администрация выдала вам «{item['name']}» ×{qty}.",
+        )
+    except Exception:
+        pass
+    return {"granted": qty, "name": item["name"]}

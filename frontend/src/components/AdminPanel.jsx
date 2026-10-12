@@ -6,6 +6,7 @@ import {
   adminListTransactions, adminTxFilterOptions,
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
   fetchAdminPermissions, updateAdminPermissions, adminUpdateUserBans,
+  adminSetUserPassword, adminLogoutUser, adminListLots, adminCancelLot, adminBroadcast,
   fetchSyntheticConfig, saveSyntheticConfig, triggerSynthetic, fetchSyntheticOrders,
 } from '../services/api'
 import TxFilters, { TX_FIELDS } from './TxFilters'
@@ -17,7 +18,7 @@ import PriceHistoryEditor from './PriceHistoryEditor'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
-  Database, Coins, ChevronLeft, ChevronRight, Bot,
+  Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, Gavel, Megaphone,
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 import { toast } from './Toast'
@@ -37,6 +38,15 @@ function Tooltip({ text }) {
 }
 
 const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
+
+// Единый читаемый формат времени для админ-панели (вместо сырых ISO-строк).
+const fmtTs = (ts) => {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ts
+  const p = n => String(n).padStart(2, '0')
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
 
 // Подсветка полей документа по типу значения — чтобы не путаться где что.
 // refs: карта id-строка -> человекочитаемое имя (юзернейм/название бизнеса).
@@ -166,7 +176,14 @@ function AdminPanel({ user, onClose }) {
     leaderboard_lock: false,
   })
   const [editErrors, setEditErrors] = useState({})
+  const [newPassword, setNewPassword] = useState('')
+  const [pwdBusy, setPwdBusy] = useState(false)
   const [propertyUser, setPropertyUser] = useState(null)
+  // ── Лоты ЦР (модерация) и глобальное объявление ──────────────────────────
+  const [lots, setLots] = useState([])
+  const [lotsStatus, setLotsStatus] = useState('active')
+  const [bcForm, setBcForm] = useState({ title: '', message: '' })
+  const [bcBusy, setBcBusy] = useState(false)
   // ── Состояние раздела «Доступы» (только L4) ──────────────────────────────
   const [perms, setPerms] = useState(null)
   const [permsSaving, setPermsSaving] = useState(false)
@@ -206,6 +223,11 @@ function AdminPanel({ user, onClose }) {
   useEffect(() => {
     loadData()
   }, [activeSection])
+
+  // Смена фильтра статуса лотов ЦР — перезагрузка списка.
+  useEffect(() => {
+    if (activeSection === 'lots') loadData()
+  }, [lotsStatus])
 
   // Если пришёл срез прав без текущего раздела — переключаем на первый доступный.
   useEffect(() => {
@@ -335,6 +357,9 @@ function AdminPanel({ user, onClose }) {
       } else if (activeSection === 'users') {
         const data = await request('/api/admin/users')
         setUsers(data)
+      } else if (activeSection === 'lots') {
+        const data = await adminListLots(lotsStatus)
+        setLots(data.lots || [])
       } else if (activeSection === 'perms') {
         const data = await fetchAdminPermissions()
         setPerms(data)
@@ -429,8 +454,73 @@ function AdminPanel({ user, onClose }) {
     setEditErrors({})
   }
 
+  const handleResetPassword = async () => {
+    if (newPassword.length < 6) return
+    setPwdBusy(true)
+    try {
+      await adminSetUserPassword(editingUser, newPassword)
+      setNewPassword('')
+      toast(t('admin.passwordResetDone'))
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    } finally {
+      setPwdBusy(false)
+    }
+  }
+
+  const handleLogoutUser = async () => {
+    setPwdBusy(true)
+    try {
+      const res = await adminLogoutUser(editingUser)
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    } finally {
+      setPwdBusy(false)
+    }
+  }
+
+  // Сброс аватара игрока (users_edit): PATCH avatar=null.
+  const handleResetAvatar = async () => {
+    if (!confirm(t('admin.avatarResetConfirm'))) return
+    try {
+      await adminUpdateUser(editingUser, { avatar: null })
+      toast(t('admin.avatarResetDone'))
+      loadData()
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    }
+  }
+
+  // Модерация лотов ЦР.
+  const handleCancelLot = async (lot) => {
+    if (!confirm(t('admin.lots.cancelConfirm', { name: lot.name }))) return
+    try {
+      await adminCancelLot(lot.id)
+      toast(t('admin.lots.cancelled'))
+      loadData()
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    }
+  }
+
+  // Глобальное объявление всем игрокам.
+  const handleBroadcast = async () => {
+    if (!bcForm.title.trim()) return
+    setBcBusy(true)
+    try {
+      const res = await adminBroadcast(bcForm.title.trim(), bcForm.message.trim())
+      toast(t('admin.broadcast.sent', { count: res.sent }))
+      setBcForm({ title: '', message: '' })
+    } catch (err) {
+      toast(t('admin.error') + ': ' + err.message, 'error')
+    } finally {
+      setBcBusy(false)
+    }
+  }
+
   const handleCancelEditUser = () => {
     setEditingUser(null)
+    setNewPassword('')
     setEditForm({
       username: '',
       balance: '',
@@ -816,7 +906,9 @@ function AdminPanel({ user, onClose }) {
     { id: 'prices', perm: 'catalog_prices', label: t('admin.prices.title'), icon: DollarSign },
     { id: 'synthetic', perm: 'synthetic', label: t('admin.synthetic.title'), icon: Bot },
     { id: 'users', perm: 'users_view', label: t('admin.users'), icon: Users },
+    { id: 'lots', perm: 'central_market', label: t('admin.lots.title'), icon: Gavel },
     { id: 'transactions', perm: 'transactions_view', label: t('admin.transactions'), icon: ArrowLeftRight },
+    { id: 'broadcast', perm: 'broadcast', label: t('admin.broadcast.title'), icon: Megaphone },
     { id: 'economy', perm: 'economy_view', label: t('econ.tab'), icon: Activity },
     { id: 'config', perm: 'config', label: t('admin.config'), icon: Settings },
     { id: 'database', perm: 'database', label: t('admin.database.title'), icon: Database },
@@ -1104,13 +1196,6 @@ function AdminPanel({ user, onClose }) {
         )}
 
         {!loading && activeSection === 'synthetic' && synthForm && (() => {
-          const fmtTs = (ts) => {
-            if (!ts) return '—'
-            const d = new Date(ts)
-            if (isNaN(d.getTime())) return ts
-            const p = n => String(n).padStart(2, '0')
-            return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-          }
           const fmtQty = (q) => {
             const n = Number(q) || 0
             return n >= 1 ? n.toLocaleString('ru-RU', { maximumFractionDigits: 0 })
@@ -1412,7 +1497,12 @@ function AdminPanel({ user, onClose }) {
                       ))}
                     </span>
                     <div className="admin-user-meta">
-                      <span className="user-date">{u.created_at}</span>
+                      <span className="user-date">{fmtTs(u.created_at)}</span>
+                      {u.ips?.length > 0 && (
+                        <span className="user-date" title={u.ips.map(x => x.ip).join(', ')}>
+                          IP: {u.ips[0].ip}{u.ips.length > 1 ? ` (+${u.ips.length - 1})` : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className="admin-user-capital" title={`$${(u.netWorth ?? 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}`}>
@@ -1538,6 +1628,40 @@ function AdminPanel({ user, onClose }) {
                       <ShieldAlert size={14} /> {t('admin.banSave')}
                     </button>
                   </div>
+                  <div className="admin-field-group">
+                    <label>{t('admin.fieldIps')}</label>
+                    {(u.ips || []).map(x => (
+                      <div key={x.ip} className="admin-ip-row">
+                        <span>{x.ip}</span>
+                        <span className="user-date">{fmtTs(x.at)}</span>
+                      </div>
+                    ))}
+                    {!u.ips?.length && <span className="user-date">{t('admin.ipsEmpty')}</span>}
+                  </div>
+                  {can('users_password') && (
+                    <div className="admin-field-group">
+                      <label>{t('admin.resetPassword')}</label>
+                      <div className="form-row">
+                        <input type="text" className="admin-input" value={newPassword}
+                          placeholder={t('admin.resetPasswordPh')} maxLength={72}
+                          onChange={e => setNewPassword(e.target.value)} />
+                        <button className="admin-btn" disabled={newPassword.length < 6 || pwdBusy}
+                          title={t('admin.resetPassword')} onClick={handleResetPassword}>
+                          <KeyRound size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {can('users_logout') && (
+                    <button className="admin-btn" disabled={pwdBusy} onClick={handleLogoutUser}>
+                      <LogOut size={14} /> {t('admin.logoutUser')}
+                    </button>
+                  )}
+                  {can('users_edit') && (
+                    <button className="admin-btn" onClick={handleResetAvatar}>
+                      <EyeOff size={14} /> {t('admin.avatarReset')}
+                    </button>
+                  )}
                   <div className="user-edit-panel-actions">
                     <button className="admin-btn admin-btn-primary" onClick={handleSaveUser}>
                       <Save size={14} /> {t('admin.save')}
@@ -1550,6 +1674,72 @@ function AdminPanel({ user, onClose }) {
               )
             })()}
           </>
+        )}
+
+        {!loading && activeSection === 'lots' && (
+          <div>
+            <div className="admin-toolbar">
+              <select className="admin-input" value={lotsStatus} onChange={e => setLotsStatus(e.target.value)}>
+                {['active', 'sold', 'cancelled', 'all'].map(s => (
+                  <option key={s} value={s}>{t(`admin.lots.status_${s}`)}</option>
+                ))}
+              </select>
+              <span className="admin-count">{t('admin.lots.count', { count: lots.length })}</span>
+            </div>
+            <div className="admin-list">
+              {lots.map(l => (
+                <div key={l.id} className="admin-stock-item">
+                  <div className="stock-info">
+                    <strong>{l.name}</strong>
+                    <span>{t(l.kind === 'asset' ? 'centralmarket.cat_asset' : 'centralmarket.cat_hardware')}</span>
+                    <span>{l.seller}</span>
+                    <span className="admin-count">×{l.qty} · ${Number(l.pricePerItem || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="stock-actions">
+                    <span className="user-date">{fmtTs(l.createdAt)}</span>
+                    {l.kind === 'asset' && can('users_property') && (
+                      <button className="admin-btn" title={t('admin.property.title')}
+                        onClick={() => setPropertyUser({ id: l.sellerId, username: l.seller })}>
+                        <Briefcase size={14} />
+                    </button>
+                    )}
+                    <button className="admin-btn admin-btn-danger" title={t('admin.lots.cancelLot')}
+                      onClick={() => handleCancelLot(l)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {lots.length === 0 && <p className="empty-state">{t('admin.lots.empty')}</p>}
+            </div>
+          </div>
+        )}
+
+        {!loading && activeSection === 'broadcast' && (
+          <div>
+            <div className="admin-section-divider">
+              <h3>{t('admin.broadcast.title')}</h3>
+              <p className="admin-section-hint">{t('admin.broadcast.hint')}</p>
+            </div>
+            <div className="admin-add-form">
+              <div className="config-field">
+                <label>{t('admin.broadcast.titleLabel')}</label>
+                <input className="admin-input" value={bcForm.title} maxLength={120}
+                  onChange={e => setBcForm({ ...bcForm, title: e.target.value })} />
+              </div>
+              <div className="config-field">
+                <label>{t('admin.broadcast.messageLabel')}</label>
+                <textarea className="admin-input db-json-textarea" rows={4} value={bcForm.message}
+                  maxLength={2000} onChange={e => setBcForm({ ...bcForm, message: e.target.value })} />
+              </div>
+            </div>
+            <div className="admin-toolbar">
+              <button className="admin-btn admin-btn-primary" disabled={bcBusy || !bcForm.title.trim()}
+                onClick={handleBroadcast}>
+                <Megaphone size={14} /> {t('admin.broadcast.send')}
+              </button>
+            </div>
+          </div>
         )}
 
         {!loading && activeSection === 'perms' && (
@@ -1590,13 +1780,6 @@ function AdminPanel({ user, onClose }) {
         )}
 
         {!loading && activeSection === 'transactions' && (() => {
-          const fmtTs = (ts) => {
-            if (!ts) return '—'
-            const d = new Date(ts)
-            if (isNaN(d.getTime())) return ts
-            const p = n => String(n).padStart(2, '0')
-            return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`
-          }
           const fmtMoney = (v) => `$${Math.abs(Number(v) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           // Единый поток операций реестра и сделок ботов приходит уже отфильтрованным,
           // отсортированным и постранично — иначе искать можно было бы только внутри

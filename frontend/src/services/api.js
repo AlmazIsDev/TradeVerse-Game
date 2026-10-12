@@ -433,6 +433,41 @@ export async function adminDeleteUser(userId) {
   })
 }
 
+/** Сброс пароля игрока администратором. */
+export async function adminSetUserPassword(userId, password) {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  })
+}
+
+/** Разлогинить игрока (инвалидация всех refresh-токенов). */
+export async function adminLogoutUser(userId) {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/logout`, {
+    method: 'POST',
+  })
+}
+
+/** Все лоты Центрального рынка (модерация): lot_status = active|all|sold|cancelled. */
+export async function adminListLots(lotStatus = 'active') {
+  return request(`/api/market/lots/admin/all?lot_status=${encodeURIComponent(lotStatus)}`)
+}
+
+/** Снять любой лот с продажи (товар остаётся у продавца). */
+export async function adminCancelLot(lotId) {
+  return request(`/api/market/lots/admin/${encodeURIComponent(lotId)}`, {
+    method: 'DELETE',
+  })
+}
+
+/** Глобальное объявление всем игрокам: {title, message}. */
+export async function adminBroadcast(title, message) {
+  return request('/api/admin/broadcast', {
+    method: 'POST',
+    body: JSON.stringify({ title, message }),
+  })
+}
+
 // ── Admin: имущество игрока ─────────────────────────────────────────────────
 
 /** Полный список имущества игрока: активы, майнинг-фермы, компания, бизнесы «Крыши города». */
@@ -1164,7 +1199,9 @@ export async function unhitchTrailer(id) { return request(`/api/assets/${encodeU
 export async function deleteFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
 export async function installComponent(id, category, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category, hwId }) }) }
 export async function installComponentsBatch(id, items) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install-batch`, { method: 'POST', body: JSON.stringify({ items }) }) }
-export async function bulkFarmAction(action, farmIds) { return request('/api/mining/bulk/action', { method: 'POST', body: JSON.stringify({ action, farmIds }) }) }
+export async function bulkFarmAction(action, farmIds, extra = {}) { return request('/api/mining/bulk/action', { method: 'POST', body: JSON.stringify({ action, farmIds, ...extra }) }) }
+export async function bulkCreateFarms(body) { return request('/api/mining/bulk/create', { method: 'POST', body: JSON.stringify(body) }) }
+export async function setHouseGroup(houseId, group) { return request(`/api/mining/houses/${encodeURIComponent(houseId)}/group`, { method: 'POST', body: JSON.stringify({ group }) }) }
 export async function bulkAssemble(farmIds, items) { return request('/api/mining/bulk/assemble', { body: JSON.stringify({ farmIds, items }) , method: 'POST' }) }
 export async function uninstallComponent(id, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/uninstall`, { method: 'POST', body: JSON.stringify({ hwId }) }) }
 export async function startMining(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/start`, { method: 'POST' }) }
@@ -1172,7 +1209,7 @@ export async function stopMining(id) { return request(`/api/mining/farms/${encod
 export async function setFarmCoin(id, symbol) { return request(`/api/mining/farms/${encodeURIComponent(id)}/coin`, { method: 'POST', body: JSON.stringify({ symbol }) }) }
 export async function setOverclock(id, value) { return request(`/api/mining/farms/${encodeURIComponent(id)}/overclock`, { method: 'POST', body: JSON.stringify({ value }) }) }
 export async function repairFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}/repair`, { method: 'POST' }) }
-export async function farmManager(id, action) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action }) }) }
+export async function farmManager(id, action, settings) { return request(`/api/mining/farms/${encodeURIComponent(id)}/manager`, { method: 'POST', body: JSON.stringify({ action, ...(settings ? { settings } : {}) }) }) }
 
 // ── Ферма: поле, культуры, машины, топливо ──────────────────────────────────
 

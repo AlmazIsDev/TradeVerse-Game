@@ -106,26 +106,6 @@ def _now() -> datetime:
 def _build_base_catalog() -> list[dict]:
     items: list[dict] = []
 
-    brands = [
-        ("CrystalCore", ["Quartz", "Topaz", "Sapphire", "Diamond"]),
-        ("Pyronix", ["Spark", "Flare", "Blaze", "Inferno"]),
-        ("Archivex", ["Vault", "Legacy", "Archive", "Genesis"]),
-    ]
-    for brand, lines in brands:
-        for li, line in enumerate(lines):
-            for tier in range(3):
-                rank = li * 3 + tier
-                hashrate = int(180 * (1.6 ** rank))
-                power = _gpu_power(hashrate)
-                model = f"{brand} {line} {(rank + 1) * 100}"
-                items.append({
-                    "id": f"gpu-{brand[:2].lower()}-{li}-{tier}",
-                    "category": "gpu", "name": model, "brand": brand,
-                    "color": _tier_color(rank // 2),
-                    "specs": {"hashrate": hashrate, "power": power},
-                    "base_price": round(hashrate * PRICE_PER_HASH, 2),
-                })
-
     # ASIC-майнеры: профессиональное узкоспециализированное железо (высокий hashrate/потребление).
     # Цена за хеш ниже, чем у GPU (ASIC_PRICE_RATIO): доля фермы в сети насыщается
     # (mining._farm_share), поэтому огромный хешрейт ASIC даёт непропорционально
@@ -140,6 +120,45 @@ def _build_base_catalog() -> list[dict]:
             "color": _tier_color(5),
             "specs": {"hashrate": hashrate, "power": power},
             "base_price": round(hashrate * PRICE_PER_HASH * ASIC_PRICE_RATIO, 2),
+        })
+
+    # Флагманские GPU нового поколения (Voltronix): поднимают потолок дохода
+    # максимальной фермы (19 шт. в стойке, разгон 1.5×) с ~28k до ~61k $/ч.
+    # Цена за хеш ниже PRICE_PER_HASH (5.25 → 4.7): доля фермы в сети насыщается
+    # (mining._farm_share), поэтому огромный хешрейт окупается дольше —
+    # калибровано под окупаемость топ-сборки ~5 дней, как у остального железа.
+    for i, (name, hashrate, price_per_hash) in enumerate([
+        ("Voltronix Pulse V100", 40000, 5.25),
+        ("Voltronix Storm V200", 55000, 5.0),
+        ("Voltronix Quantum V300", 80000, 4.7),
+    ]):
+        items.append({
+            "id": f"gpu-vlt-{i}", "category": "gpu", "name": name, "brand": "Voltronix",
+            "color": _tier_color(5),
+            "specs": {"hashrate": hashrate, "power": _gpu_power(hashrate)},
+            "base_price": round(hashrate * price_per_hash, 2),
+        })
+
+    # Премиум-линейка «Lux» — комплектующие за миллионы для богатых игроков.
+    # Доли сети насыщаются (mining._farm_share), поэтому прирост дохода от них
+    # скромный — это имиджевые покупки, а не обязательный апгрейд. Характеристики
+    # согласованы с лимитами майнинга: mb 19 GPU, стойка ≤45 слотов.
+    _lux = [
+        ("gpu", "Voltronix Zenith V900", {"hashrate": 150000, "power": 7620}, 2500000.0),
+        ("cpu", "Quantum Core Q64X", {"cores": 64, "power": 557}, 1000000.0),
+        ("motherboard", "Apex Board X19", {"gpuSlots": 19, "power": 136}, 1000000.0),
+        ("ram", "ByteForge Singularity 4096GB", {"gb": 4096, "power": 261}, 1500000.0),
+        ("ssd", "SolidByte Infinity 65536GB", {"gb": 65536, "power": 6}, 1000000.0),
+        ("cooling", "Криогенный контур «Гелиос»", {"cooling": 600000, "power": 3002}, 2500000.0),
+        ("psu", "AmpereX Galaxy 25000W", {"power": 25000}, 2000000.0),
+        ("ups", "ИБП Terra 1 MVA", {"backup": 1000000, "power": 510}, 2000000.0),
+        ("rack", "Гиперстойка 45U", {"slots": 45}, 2000000.0),
+    ]
+    for cat, name, specs, price in _lux:
+        items.append({
+            "id": f"lux-{cat}", "category": cat, "name": name,
+            "brand": "Lux", "color": _tier_color(5),
+            "specs": specs, "base_price": price,
         })
 
     for w in (500, 750, 1000, 1600, 2200, 3000, 4200, 6000):
@@ -158,7 +177,7 @@ def _build_base_catalog() -> list[dict]:
         ("Воздушное", 400), ("Башенное", 800), ("Жидкостное", 1600),
         ("Иммерсионное", 4000), ("Иммерсионная ванна Pro", 9000),
         ("Промышленный чиллер", 25000), ("Чиллерная станция", 60000),
-        ("Градирня", 120000),
+        ("Градирня", 120000), ("Криогенная станция", 250000),
     ]
     for i, (name, cap) in enumerate(coolers):
         items.append({
@@ -169,22 +188,9 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(cap * 1.2, 2),
         })
 
-    cpus = [
-        ("Ryzen Quad Q4", 4), ("Ryzen Hexa H6", 6), ("Falcon Octa X8", 8),
-        ("Falcon Dodeca X12", 12), ("Threadstorm 16", 16),
-        ("Threadstorm Xeon 32", 32), ("EPYC Titan 64", 64),
-    ]
-    for i, (name, cores) in enumerate(cpus):
-        items.append({
-            "id": f"cpu-{cores}", "category": "cpu", "name": name,
-            "color": _tier_color(i),
-            "specs": {"cores": cores, "power": 45 + cores * 8},
-            "base_price": round(cores * 700, 2),
-        })
-
-    # Базовые материнские платы: от 1 до 19 GPU. Больше 5 слотов имеет смысл
-    # только со стойкой (rack) — корпус ограничен MAX_CASE_SLOTS (см. mining).
-    for i, slots in enumerate((1, 2, 3, 4, 5, 6, 8, 12, 19)):
+    # Базовые материнские платы под стойки (6..45 GPU); слоты 1..5 покрывает
+    # админ-серия и корпуса. 45 = потолок стойки (mining.RACK_MAX_GPUS).
+    for i, slots in enumerate((6, 8, 12, 19, 24, 45)):
         items.append({
             "id": f"mb-{slots}", "category": "motherboard",
             "name": f"Мат. плата ({slots} GPU)",
@@ -276,53 +282,18 @@ def _build_base_catalog() -> list[dict]:
 #   case:  "TitanFrame Mini M100" / "NovaCase Apex X550" / "IronNest Colossus C550"
 
 # (brand_code, brand, line, hashrate)
-_GPU_ROWS = [
-    ("cc", "CrystalCore", "Quartz", 180),    ("cc", "CrystalCore", "Quartz", 220),
-    ("cc", "CrystalCore", "Quartz", 270),    ("cc", "CrystalCore", "Quartz", 330),
-    ("cc", "CrystalCore", "Quartz", 400),    ("cc", "CrystalCore", "Quartz", 480),
-    ("cc", "CrystalCore", "Topaz", 620),     ("cc", "CrystalCore", "Topaz", 760),
-    ("cc", "CrystalCore", "Topaz", 930),     ("cc", "CrystalCore", "Topaz", 1120),
-    ("cc", "CrystalCore", "Topaz", 1340),    ("cc", "CrystalCore", "Topaz", 1600),
-    ("cc", "CrystalCore", "Topaz", 1900),    ("cc", "CrystalCore", "Topaz", 2250),
-    ("cc", "CrystalCore", "Sapphire", 2700), ("cc", "CrystalCore", "Sapphire", 3150),
-    ("cc", "CrystalCore", "Sapphire", 3650), ("cc", "CrystalCore", "Sapphire", 4200),
-    ("cc", "CrystalCore", "Sapphire", 4850), ("cc", "CrystalCore", "Sapphire", 5600),
-    ("cc", "CrystalCore", "Sapphire", 6450), ("cc", "CrystalCore", "Sapphire", 7350),
-    ("cc", "CrystalCore", "Diamond", 8400),  ("cc", "CrystalCore", "Diamond", 9600),
-    ("cc", "CrystalCore", "Diamond", 11000), ("cc", "CrystalCore", "Diamond", 12500),
-    ("cc", "CrystalCore", "Diamond", 14200), ("cc", "CrystalCore", "Diamond", 16000),
-    ("cc", "CrystalCore", "Diamond", 18000), ("cc", "CrystalCore", "Diamond", 20000),
-    ("py", "Pyronix", "Spark", 210),         ("py", "Pyronix", "Spark", 260),
-    ("py", "Pyronix", "Spark", 320),         ("py", "Pyronix", "Spark", 390),
-    ("py", "Pyronix", "Spark", 470),         ("py", "Pyronix", "Spark", 560),
-    ("py", "Pyronix", "Flare", 720),         ("py", "Pyronix", "Flare", 880),
-    ("py", "Pyronix", "Flare", 1070),        ("py", "Pyronix", "Flare", 1290),
-    ("py", "Pyronix", "Flare", 1550),        ("py", "Pyronix", "Flare", 1860),
-    ("py", "Pyronix", "Flare", 2220),        ("py", "Pyronix", "Flare", 2650),
-    ("py", "Pyronix", "Blaze", 3150),        ("py", "Pyronix", "Blaze", 3700),
-    ("py", "Pyronix", "Blaze", 4350),        ("py", "Pyronix", "Blaze", 5100),
-    ("py", "Pyronix", "Blaze", 5950),        ("py", "Pyronix", "Blaze", 6900),
-    ("py", "Pyronix", "Blaze", 8000),        ("py", "Pyronix", "Blaze", 9250),
-    ("py", "Pyronix", "Inferno", 10700),     ("py", "Pyronix", "Inferno", 12300),
-    ("py", "Pyronix", "Inferno", 14100),     ("py", "Pyronix", "Inferno", 16200),
-    ("py", "Pyronix", "Inferno", 18500),     ("py", "Pyronix", "Inferno", 21000),
-    ("py", "Pyronix", "Inferno", 24000),     ("py", "Pyronix", "Inferno", 27000),
-    ("ax", "Archivex", "Vault", 170),        ("ax", "Archivex", "Vault", 210),
-    ("ax", "Archivex", "Vault", 260),        ("ax", "Archivex", "Vault", 320),
-    ("ax", "Archivex", "Vault", 390),        ("ax", "Archivex", "Vault", 470),
-    ("ax", "Archivex", "Legacy", 600),       ("ax", "Archivex", "Legacy", 730),
-    ("ax", "Archivex", "Legacy", 890),       ("ax", "Archivex", "Legacy", 1070),
-    ("ax", "Archivex", "Legacy", 1290),      ("ax", "Archivex", "Legacy", 1550),
-    ("ax", "Archivex", "Legacy", 1860),      ("ax", "Archivex", "Legacy", 2220),
-    ("ax", "Archivex", "Archive", 2650),     ("ax", "Archivex", "Archive", 3150),
-    ("ax", "Archivex", "Archive", 3700),     ("ax", "Archivex", "Archive", 4350),
-    ("ax", "Archivex", "Archive", 5100),     ("ax", "Archivex", "Archive", 5950),
-    ("ax", "Archivex", "Archive", 6900),     ("ax", "Archivex", "Archive", 8000),
-    ("ax", "Archivex", "Genesis", 9300),     ("ax", "Archivex", "Genesis", 10800),
-    ("ax", "Archivex", "Genesis", 12500),    ("ax", "Archivex", "Genesis", 14500),
-    ("ax", "Archivex", "Genesis", 16700),    ("ax", "Archivex", "Genesis", 19200),
-    ("ax", "Archivex", "Genesis", 22000),    ("ax", "Archivex", "Genesis", 25000),
-]
+# 3 бренда × 7 ступеней хешрейта (ступени, а не каждая модель подряд —
+# иначе каталог превращается в «кучу кучу»). Цена = hashrate × PRICE_PER_HASH,
+# поэтому равный хешрейт равен в цене независимо от бренда.
+_GPU_STEPS = [180, 400, 900, 2000, 4500, 10000, 25000]
+_GPU_ROWS = []
+for _code, _brand, _lines in [
+    ("cc", "CrystalCore", ["Quartz", "Topaz", "Sapphire", "Diamond"]),
+    ("py", "Pyronix", ["Spark", "Flare", "Blaze", "Inferno"]),
+    ("ax", "Archivex", ["Vault", "Legacy", "Archive", "Genesis"]),
+]:
+    for _i, _h in enumerate(_GPU_STEPS):
+        _GPU_ROWS.append((_code, _brand, _lines[min(3, _i // 2)], _h))
 
 _GPU_SUFFIX = {
     "cc": {"Quartz": ("Q", 320), "Topaz": ("T", 520), "Sapphire": ("S", 720), "Diamond": ("D", 920)},
@@ -338,53 +309,18 @@ def _gpu_suffix(code: str, line: str, idx_in_line: int) -> str:
 
 
 # (brand_code, brand, line, max_gpus, multiplier)
-_CPU_ROWS = [
-    ("cc", "CrystalChip", "Stone", 1, 1.00),   ("cc", "CrystalChip", "Stone", 2, 1.01),
-    ("cc", "CrystalChip", "Stone", 2, 1.02),   ("cc", "CrystalChip", "Stone", 3, 1.03),
-    ("cc", "CrystalChip", "Stone", 4, 1.04),   ("cc", "CrystalChip", "Stone", 5, 1.05),
-    ("cc", "CrystalChip", "Crystal", 6, 1.07),  ("cc", "CrystalChip", "Crystal", 7, 1.09),
-    ("cc", "CrystalChip", "Crystal", 8, 1.11),  ("cc", "CrystalChip", "Crystal", 9, 1.13),
-    ("cc", "CrystalChip", "Crystal", 10, 1.15), ("cc", "CrystalChip", "Crystal", 11, 1.17),
-    ("cc", "CrystalChip", "Crystal", 12, 1.19), ("cc", "CrystalChip", "Crystal", 13, 1.21),
-    ("cc", "CrystalChip", "Diamond", 14, 1.24), ("cc", "CrystalChip", "Diamond", 15, 1.27),
-    ("cc", "CrystalChip", "Diamond", 16, 1.30), ("cc", "CrystalChip", "Diamond", 17, 1.33),
-    ("cc", "CrystalChip", "Diamond", 18, 1.36), ("cc", "CrystalChip", "Diamond", 19, 1.39),
-    ("cc", "CrystalChip", "Diamond", 20, 1.42), ("cc", "CrystalChip", "Diamond", 21, 1.45),
-    ("cc", "CrystalChip", "Diamond", 22, 1.48), ("cc", "CrystalChip", "Diamond", 23, 1.52),
-    ("cc", "CrystalChip", "Diamond", 24, 1.56), ("cc", "CrystalChip", "Diamond", 25, 1.60),
-    ("cc", "CrystalChip", "Diamond", 26, 1.65), ("cc", "CrystalChip", "Diamond", 27, 1.70),
-    ("cc", "CrystalChip", "Diamond", 28, 1.75), ("cc", "CrystalChip", "Diamond", 30, 1.80),
-    ("py", "PyroCore", "Ember", 2, 1.02),      ("py", "PyroCore", "Ember", 3, 1.03),
-    ("py", "PyroCore", "Ember", 4, 1.05),      ("py", "PyroCore", "Ember", 5, 1.07),
-    ("py", "PyroCore", "Ember", 6, 1.09),      ("py", "PyroCore", "Ember", 7, 1.11),
-    ("py", "PyroCore", "Blaze", 8, 1.14),      ("py", "PyroCore", "Blaze", 9, 1.17),
-    ("py", "PyroCore", "Blaze", 10, 1.20),     ("py", "PyroCore", "Blaze", 11, 1.23),
-    ("py", "PyroCore", "Blaze", 12, 1.26),     ("py", "PyroCore", "Blaze", 13, 1.29),
-    ("py", "PyroCore", "Blaze", 14, 1.32),     ("py", "PyroCore", "Blaze", 15, 1.35),
-    ("py", "PyroCore", "Inferno", 16, 1.39),   ("py", "PyroCore", "Inferno", 17, 1.43),
-    ("py", "PyroCore", "Inferno", 18, 1.47),   ("py", "PyroCore", "Inferno", 19, 1.51),
-    ("py", "PyroCore", "Inferno", 20, 1.55),   ("py", "PyroCore", "Inferno", 21, 1.59),
-    ("py", "PyroCore", "Inferno", 22, 1.63),   ("py", "PyroCore", "Inferno", 23, 1.67),
-    ("py", "PyroCore", "Inferno", 24, 1.72),   ("py", "PyroCore", "Inferno", 25, 1.77),
-    ("py", "PyroCore", "Inferno", 26, 1.82),   ("py", "PyroCore", "Inferno", 27, 1.87),
-    ("py", "PyroCore", "Inferno", 28, 1.92),   ("py", "PyroCore", "Inferno", 29, 1.97),
-    ("py", "PyroCore", "Inferno", 30, 2.03),   ("py", "PyroCore", "Inferno", 32, 2.10),
-    ("ax", "ArchiveCore", "Legacy", 1, 1.01),  ("ax", "ArchiveCore", "Legacy", 2, 1.02),
-    ("ax", "ArchiveCore", "Legacy", 3, 1.03),  ("ax", "ArchiveCore", "Legacy", 4, 1.05),
-    ("ax", "ArchiveCore", "Legacy", 5, 1.07),  ("ax", "ArchiveCore", "Legacy", 6, 1.09),
-    ("ax", "ArchiveCore", "Archive", 7, 1.11), ("ax", "ArchiveCore", "Archive", 8, 1.13),
-    ("ax", "ArchiveCore", "Archive", 9, 1.15), ("ax", "ArchiveCore", "Archive", 10, 1.17),
-    ("ax", "ArchiveCore", "Archive", 11, 1.19),("ax", "ArchiveCore", "Archive", 12, 1.21),
-    ("ax", "ArchiveCore", "Archive", 13, 1.23),("ax", "ArchiveCore", "Archive", 14, 1.25),
-    ("ax", "ArchiveCore", "Genesis", 15, 1.28),("ax", "ArchiveCore", "Genesis", 16, 1.31),
-    ("ax", "ArchiveCore", "Genesis", 17, 1.34),("ax", "ArchiveCore", "Genesis", 18, 1.37),
-    ("ax", "ArchiveCore", "Genesis", 19, 1.40),("ax", "ArchiveCore", "Genesis", 20, 1.43),
-    ("ax", "ArchiveCore", "Genesis", 21, 1.46),("ax", "ArchiveCore", "Genesis", 22, 1.49),
-    ("ax", "ArchiveCore", "Genesis", 23, 1.53),("ax", "ArchiveCore", "Genesis", 24, 1.57),
-    ("ax", "ArchiveCore", "Genesis", 25, 1.61),("ax", "ArchiveCore", "Genesis", 26, 1.65),
-    ("ax", "ArchiveCore", "Genesis", 27, 1.70),("ax", "ArchiveCore", "Genesis", 28, 1.75),
-    ("ax", "ArchiveCore", "Genesis", 29, 1.80),("ax", "ArchiveCore", "Genesis", 30, 1.85),
-]
+# 3 бренда × 8 ступеней ядер. Множитель зависит только от ступени — цены
+# равных по ядрам моделей совпадают, лестница строго монотонна.
+_CPU_STEPS = [(2, 1.00), (4, 1.05), (6, 1.10), (8, 1.15),
+              (12, 1.25), (16, 1.35), (24, 1.55), (32, 1.75)]
+_CPU_ROWS = []
+for _code, _brand, _lines in [
+    ("cc", "CrystalChip", ["Stone", "Crystal", "Diamond"]),
+    ("py", "PyroCore", ["Ember", "Blaze", "Inferno"]),
+    ("ax", "ArchiveCore", ["Legacy", "Archive", "Genesis"]),
+]:
+    for _i, (_cores, _mult) in enumerate(_CPU_STEPS):
+        _CPU_ROWS.append((_code, _brand, _lines[min(2, _i // 3)], _cores, _mult))
 
 _CPU_SUFFIX = {
     "cc": {"Stone": ("S", 210), "Crystal": ("C", 310), "Diamond": ("D", 410)},
@@ -1028,7 +964,7 @@ async def set_shop_prices(
         "supplies": "admin-supply",
     }.get(category)
     cat_count = {
-        "gpu": 90, "cpu": 90, "case": 20, "ram": 20, "cooling": 20,
+        "gpu": 21, "cpu": 24, "case": 20, "ram": 20, "cooling": 20,
         "psu": 20, "motherboard": 20, "ssd": 20,
         "realestate": 81, "business": 12,
     }.get(category, 90)
@@ -1068,8 +1004,11 @@ async def set_shop_prices(
             if cat_prefix and 1 <= pid <= cat_count:
                 return f"{cat_prefix}-{pid}"
             return None
-        # Строковые ключи — как есть (admin-fac-*, admin-src-*, admin-wh-*, car-*, ...).
-        if key.startswith(("admin-", "car-", "truck-", "trailer-")):
+        # Строковые ключи — как есть (admin-fac-*, admin-src-*, admin-wh-*, car-*, ...),
+        # плюс id базового каталога, добавленного позже (Voltronix, Lux, большие
+        # материнки, ASIC) — без них редактор цен не мог бы переопределять их.
+        if key.startswith(("admin-", "car-", "truck-", "trailer-",
+                           "gpu-vlt-", "gpu-asic-", "lux-", "mb-")):
             return key
         return None
 
@@ -1149,8 +1088,25 @@ if __name__ == "__main__":
     admin_mb = [c for c in ADMIN_CATALOG if c["category"] == "motherboard"]
     admin_ssd = [c for c in ADMIN_CATALOG if c["category"] == "ssd"]
     admin_supplies = [c for c in ADMIN_CATALOG if c["category"] == "supplies"]
-    assert len(admin_gpu) == 90, f"admin gpu: {len(admin_gpu)}"
-    assert len(admin_cpu) == 90, f"admin cpu: {len(admin_cpu)}"
+    assert len(admin_gpu) == 21, f"admin gpu: {len(admin_gpu)}"
+    assert len(admin_cpu) == 24, f"admin cpu: {len(admin_cpu)}"
+    # CPU: равные ядра — равная цена (вне зависимости от бренда); цена строго
+    # растёт по ступеням ядер.
+    _by_cores = {}
+    for c in admin_cpu:
+        _by_cores.setdefault(c["specs"]["cores"], set()).add(c["base_price"])
+        assert len(_by_cores[c["specs"]["cores"]]) == 1, "разные цены на равные ядра"
+    _price_of = {k: v.pop() for k, v in _by_cores.items()}
+    _steps = sorted(_price_of)
+    assert all(_price_of[a] < _price_of[b] for a, b in zip(_steps, _steps[1:])),         "цены CPU не растут по ступеням"
+    # GPU: равный хешрейт — равная цена; цена строго растёт по ступеням.
+    _by_hash = {}
+    for c in admin_gpu:
+        _by_hash.setdefault(c["specs"]["hashrate"], set()).add(c["base_price"])
+        assert len(_by_hash[c["specs"]["hashrate"]]) == 1, "разные цены на равный хешрейт"
+    _hprice_of = {k: v.pop() for k, v in _by_hash.items()}
+    _hsteps = sorted(_hprice_of)
+    assert all(_hprice_of[a] < _hprice_of[b] for a, b in zip(_hsteps, _hsteps[1:])),         "цены GPU не растут по ступеням"
     assert len(admin_case) == 20, f"admin case: {len(admin_case)}"
     assert len(admin_ram) == 20, f"admin ram: {len(admin_ram)}"
     assert len(admin_cooling) == 20, f"admin cooling: {len(admin_cooling)}"
@@ -1162,11 +1118,28 @@ if __name__ == "__main__":
     for c in admin_case + admin_mb:
         slots = c["specs"].get("slots", c["specs"].get("gpuSlots", 0))
         assert slots <= 5, f"slots > 5: {c['id']} {slots}"
-    # Серверные стойки вернулись: 8..45 слотов, все больше корпуса.
+    # Серверные стойки: 5 базовых (8..45 слотов) + премиум «Гиперстойка 45U».
     racks = [c for c in CATALOG if c["category"] == "rack"]
-    assert len(racks) == 5 and racks[0]["specs"]["slots"] == 8 and racks[-1]["specs"]["slots"] == 45
-    # Базовые материнки есть и больше 5 GPU (под стойки).
-    assert any(c["category"] == "motherboard" and c["specs"]["gpuSlots"] > 5 for c in BASE_CATALOG)
+    assert len(racks) == 6
+    assert min(r["specs"]["slots"] for r in racks) == 8
+    assert max(r["specs"]["slots"] for r in racks) == 45
+
+    # Флагманская линейка Voltronix + криогенная станция.
+    v300 = CATALOG_BY_ID["gpu-vlt-2"]
+    assert v300["name"] == "Voltronix Quantum V300" and v300["specs"]["hashrate"] == 80000
+    assert CATALOG_BY_NAME["Криогенная станция охлаждение"] == 250000 * 1.2
+
+    # Премиум-линейка Lux: по позиции на каждую категорию, цена ≥ $1M.
+    lux = [c for c in CATALOG if c["id"].startswith("lux-")]
+    assert len(lux) == 9, f"lux items: {len(lux)}"
+    assert all(c["base_price"] >= 1_000_000 for c in lux)
+    assert next(c for c in lux if c["id"] == "lux-gpu")["specs"]["hashrate"] == 150000
+    assert next(c for c in lux if c["id"] == "lux-rack")["specs"]["slots"] == 45
+    assert next(c for c in lux if c["id"] == "lux-motherboard")["specs"]["gpuSlots"] == 19
+    # Базовые материнки — только под стойки (6..45 GPU); топ лестницы — 45.
+    _base_mbs = sorted(c["specs"]["gpuSlots"] for c in BASE_CATALOG
+                       if c["category"] == "motherboard" and not c["id"].startswith("lux-"))
+    assert _base_mbs == [6, 8, 12, 19, 24, 45], f"mb ladder: {_base_mbs}"
 
     ids = [c["id"] for c in CATALOG]
     assert len(ids) == len(set(ids)), "дубликаты id"
@@ -1174,12 +1147,12 @@ if __name__ == "__main__":
     # Контракт имён с shopCatalog.js — проверяем по одной позиции из каждой серии.
     gpu1 = CATALOG_BY_ID["admin-gpu-1"]
     assert gpu1["name"] == "CrystalCore Quartz Q320", f"got {gpu1['name']!r}"
-    gpu90 = CATALOG_BY_ID["admin-gpu-90"]
-    assert gpu90["name"] == "Archivex Genesis G1060", f"got {gpu90['name']!r}"
+    gpu21 = CATALOG_BY_ID["admin-gpu-21"]
+    assert gpu21["name"] == "Archivex Genesis G920", f"got {gpu21['name']!r}"
     cpu1 = CATALOG_BY_ID["admin-cpu-1"]
     assert cpu1["name"] == "CrystalChip Stone S210", f"got {cpu1['name']!r}"
-    cpu90 = CATALOG_BY_ID["admin-cpu-90"]
-    assert cpu90["name"] == "ArchiveCore Genesis G560", f"got {cpu90['name']!r}"
+    cpu24 = CATALOG_BY_ID["admin-cpu-24"]
+    assert cpu24["name"] == "ArchiveCore Genesis G420", f"got {cpu24['name']!r}"
     case1 = CATALOG_BY_ID["admin-case-1"]
     assert case1["specs"]["slots"] <= 5, f"case1 slots: {case1['specs']}"
     ram1 = CATALOG_BY_ID["admin-ram-1"]

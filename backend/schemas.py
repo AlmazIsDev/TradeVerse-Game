@@ -161,6 +161,17 @@ class TokenPair(BaseModel):
     refresh_token: str
 
 
+class AdminPasswordReset(BaseModel):
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v):
+        if len(v) < 6:
+            raise ValueError("Пароль должен быть минимум 6 символов")
+        return v
+
+
 class AdminUserUpdate(BaseModel):
     username: Optional[str] = None
     balance: Optional[float] = None
@@ -169,6 +180,15 @@ class AdminUserUpdate(BaseModel):
     card_number: Optional[str] = None
     hidden_from_leaderboard: Optional[bool] = None
     leaderboard_lock: Optional[bool] = None
+    # null = сбросить аватар (админ-действие «убрать аватарку»)
+    avatar: Optional[str] = None
+
+    @field_validator("avatar")
+    @classmethod
+    def avatar_valid(cls, v):
+        if v is not None and not AVATAR_DATA_URL_RE.match(v):
+            raise ValueError("Аватар должен быть data-URL изображения")
+        return v
 
     @field_validator("role")
     @classmethod

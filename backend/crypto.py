@@ -24,6 +24,7 @@ from ledger import (
     adjust_balance, record_transaction,
 )
 from market_data import MarketDataService
+from networth import ensure_transfer_allowed
 from notifications import push_notification
 from timeutil import now_utc
 from ws import broadcast
@@ -811,6 +812,10 @@ async def transfer_crypto(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя перевести самому себе")
     if not recipient.get("crypto_account_opened"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "У получателя нет криптосчёта")
+
+    # Гейт новичка: и отправитель, и получатель должны иметь состояние от порога.
+    await ensure_transfer_allowed(db, current_user)
+    await ensure_transfer_allowed(db, recipient, recipient=True)
 
     # Атомарное списание у отправителя с проверкой достаточности (с учётом комиссии).
     debited = await db.crypto_holdings.find_one_and_update(

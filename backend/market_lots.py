@@ -26,11 +26,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
-from admin_perms import get_current_user, require_allowed
+from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db
 from ledger import INCOME, EXPENSE, CAT_MARKET, adjust_balance, record_transaction
 from notifications import push_notification
@@ -315,6 +315,14 @@ async def buy_lot(
 
     total = round(qty * float(lot["pricePerItem"]), 2)
 
+    # Лимит владения домами/бизнесами действует и на вторичном рынке ЦР:
+    # без него лимит покупки в магазине обходился покупкой с рук.
+    if lot.get("kind") == "asset":
+        src = await db.user_assets.find_one({"_id": _oid(lot["itemId"])}, {"type": 1})
+        if src:
+            from assets import check_type_limit
+            await check_type_limit(db, user_id, src["type"])
+
     # Продавец мог быть удалён после создания лота — проверяем до брони, чтобы
     # не оказаться с деньгами покупателя и без получателя выручки.
     seller_id = lot["sellerId"]
@@ -445,3 +453,37 @@ async def buy_lot(
         pass
 
     return {"ok": True, "qty": qty, "total": total, "balance": buyer_after}
+
+
+# ── Admin: модерация лотов ───────────────────────────────────────────────────
+
+
+@router.get("/admin/all")
+async def admin_list_lots(
+    lot_status: str = Query("active"),
+    _admin=Depends(require_admin("central_market")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Все лоты (по умолчанию активные) для админ-панели. Свежие первыми, до 200."""
+    q = {} if lot_status == "all" else {"status": lot_status}
+    lots = await db.market_lots.find(q).sort("created_at", -1).to_list(200)
+    return {"lots": await _serialize_lots(db, lots)}
+
+
+@router.delete("/admin/{lot_id}")
+async def admin_cancel_lot(
+    lot_id: str,
+    _admin=Depends(require_admin("central_market")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Снять любой лот с продажи (модерация). Товар остаётся у продавца."""
+    lot = await db.market_lots.find_one({"_id": _oid(lot_id)})
+    if not lot:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Лот не найден")
+    await db.market_lots.update_one({"_id": lot["_id"]}, {"$set": {"status": "cancelled"}})
+    if lot.get("status") == "active" and lot.get("sellerId"):
+        await push_notification(
+            db, lot["sellerId"], "market", "Лот снят",
+            f"Ваш лот «{lot.get('name') or lot.get('itemId') or '—'}» снят с продажи администрацией.",
+        )
+    return {"ok": True}

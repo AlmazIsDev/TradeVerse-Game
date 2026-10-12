@@ -19,7 +19,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
 
 from admin_perms import get_current_user, require_admin, require_allowed
-from database import get_db, find_config_by_key
+from database import get_db, find_config_by_key, upsert_config
 from ledger import (
     INCOME, EXPENSE, CAT_REALESTATE, CAT_BUSINESS,
     CAT_FACTORY, CAT_SOURCE, CAT_WAREHOUSE,
@@ -104,6 +104,40 @@ RENTABLE_TYPES = {"realestate", "car", "business"}
 # (разоблачения в СМИ, media.py). Остальные бизнесы (шаурмечная, кофейня, завод…)
 # сдавать нельзя — арендовать в них нечего, кроме голого дохода.
 RENTABLE_BUSINESS_SLUGS = {"media_holding"}   # + любые itstudio_* (по префиксу slug)
+
+# Лимиты владения на игрока (учёт по userId, включая переданные компании —
+# они остаются в портфеле владельца). Проверяется при покупке и в ЦР.
+TYPE_LIMITS = {TYPE_REALESTATE: 40, TYPE_BUSINESS: 20}
+_LIMIT_NAMES = {TYPE_REALESTATE: "домов", TYPE_BUSINESS: "бизнесов"}
+
+
+async def check_type_limit(db, user_id: str, asset_type: str) -> None:
+    """Не дать игроку превысить лимит владения домами/бизнесами."""
+    limit = TYPE_LIMITS.get(asset_type)
+    if not limit:
+        return
+    cnt = await db.user_assets.count_documents({"userId": user_id, "type": asset_type})
+    if cnt >= limit:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Достигнут лимит: не больше {limit} {_LIMIT_NAMES[asset_type]} на игрока",
+        )
+
+
+# ── Миграция: масштаб бизнесов ×1000 ────────────────────────────────────────
+BIZ_SCALE_KEY = "business_scale_x1000_v1"
+
+
+async def scale_businesses_x1000(db) -> None:
+    """Одноразово приводит уже купленные бизнесы к новому масштабу каталога
+    (цена/доход/расход ×1000). Идемпотентно — помечается конфигом."""
+    if await find_config_by_key(db, BIZ_SCALE_KEY):
+        return
+    await db.user_assets.update_many(
+        {"type": TYPE_BUSINESS},
+        {"$mul": {"price": 1000, "income_per_hour": 1000, "upkeep_per_hour": 1000}},
+    )
+    await upsert_config(db, BIZ_SCALE_KEY, "1")
 
 
 def _is_rentable(asset: dict) -> bool:
@@ -467,6 +501,21 @@ _CAR_CATALOG = [
 CATALOG = (CATALOG + _ADMIN_MARKET_HOUSES + _ADMIN_MARKET_BUSINESSES
            + _ADMIN_MARKET_FACTORIES + _ADMIN_MARKET_SOURCES + _ADMIN_MARKET_WAREHOUSES
            + _CAR_CATALOG)
+
+# ── Масштабирование каталога ─────────────────────────────────────────────────
+# Бизнесы ×1000 (цена, доход, расход): топовые сборки майнинга приносят десятки
+# тысяч $/ч, бизнесы за $50k с доходом $400/ч стали бы копеечными.
+for _c in CATALOG:
+    if _c["type"] == TYPE_BUSINESS:
+        _c["price"] = _c["price"] * 1000
+        _c["income_per_hour"] = _c.get("income_per_hour", 0) * 1000
+        _c["upkeep_per_hour"] = _c.get("upkeep_per_hour", 0) * 1000
+# Дома пассивный доход не приносят: дом — это подвал для майнинга и аренда,
+# деньги делаются майнингом/бизнесами. Существующие экземпляры ловятся
+# guard'ом в _income_per_hour (без миграции).
+for _c in CATALOG:
+    if _c["type"] == TYPE_REALESTATE:
+        _c["income_per_hour"] = 0
 CATALOG_BY_SLUG = {c["slug"]: c for c in CATALOG}
 CATALOG_BY_SLUG_CI = {c["slug"].lower(): c for c in CATALOG}
 CATALOG_BY_NAME = {c["name"].strip().lower(): c for c in CATALOG}
@@ -793,7 +842,9 @@ def _income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
     # Их «уровень» не качается через upgrade, прогресс идёт через тюнинг/престиж.
     if asset.get("type") == TYPE_CAR:
         return 0.0
-    base = asset.get("income_per_hour", 0)
+    # Дома тоже: пассивный доход отключён (см. масштабирование CATALOG),
+    # майнинг-улучшение подвала и аренда остаются — они добавляются ниже.
+    base = 0.0 if asset.get("type") == TYPE_REALESTATE else asset.get("income_per_hour", 0)
     level = asset.get("level", 1)
     value = base * (1 + 0.25 * (level - 1)) * _price_mult(asset)
     if asset.get("type") == TYPE_BUSINESS:
@@ -1331,6 +1382,7 @@ async def buy_asset(
         )
 
     user_id = str(current_user["_id"])
+    await check_type_limit(db, user_id, catalog["type"])
     # Динамическая цена покупки: admin-override (если задан в редакторе цен)
     # → базовая цена каталога. Затем применяем рыночный множитель.
     await _ensure_asset_market(db)

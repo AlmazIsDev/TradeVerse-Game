@@ -12,6 +12,7 @@ from pydantic import BaseModel, field_validator
 
 from admin_perms import get_current_user, require_allowed
 from database import get_db
+from networth import ensure_transfer_allowed
 from ledger import (
     EXPENSE,
     INCOME,
@@ -89,6 +90,10 @@ async def create_transfer(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Нельзя перевести деньги самому себе",
         )
+
+    # Гейт новичка: и отправитель, и получатель должны иметь состояние от порога.
+    await ensure_transfer_allowed(db, current_user)
+    await ensure_transfer_allowed(db, recipient, recipient=True)
 
     # Атомарное списание с проверкой достаточности средств
     new_sender_balance = await adjust_balance(db, sender_id, -amount)

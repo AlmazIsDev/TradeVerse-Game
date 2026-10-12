@@ -4,7 +4,7 @@ import {
   fetchFarms, fetchMiningHouses, fetchMiningMarket, fetchMiningParts,
   createFarm, deleteFarm, installComponent, installComponentsBatch,
   uninstallComponent, startMining, stopMining, setFarmCoin, setOverclock,
-  repairFarm, farmManager, addCoolant,
+  repairFarm, farmManager, addCoolant, bulkCreateFarms, setHouseGroup,
 } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
@@ -57,7 +57,7 @@ function OverclockSlider({ value, disabled, label, onCommit }) {
 }
 
 // ── Экран выбора дома ──────────────────────────────────────────────────────
-function HousesView({ houses, onPickHouse, onBack }) {
+function HousesView({ houses, onPickHouse, onBack, onSetGroup }) {
   const { t } = useTranslation()
   if (houses.length === 0) {
     return (
@@ -82,7 +82,9 @@ function HousesView({ houses, onPickHouse, onBack }) {
           const free = h.slots.filter(s => !s.occupied).length
           const used = h.slots.filter(s => s.occupied).length
           return (
-            <button key={h.id} className="mining-house-card" onClick={() => onPickHouse(h)}>
+            <div key={h.id} className="mining-house-card" role="button" tabIndex={0}
+              onClick={() => onPickHouse(h)}
+              onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) onPickHouse(h) }}>
               <div className="mining-house-head">
                 <Home size={22} className="icon" />
                 <span className="mining-house-name">{h.name}</span>
@@ -102,10 +104,25 @@ function HousesView({ houses, onPickHouse, onBack }) {
                   <b className="up">{free}</b>
                 </div>
               </div>
+              <div className="mining-house-info-row">
+                <span>{t('mining.group', 'Группа')}</span>
+                <input
+                  className="tx-input mining-house-group"
+                  defaultValue={h.group || ''}
+                  placeholder={t('mining.groupPlaceholder', '—')}
+                  maxLength={30}
+                  onClick={e => e.stopPropagation()}
+                  onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+                  onBlur={e => {
+                    const v = e.target.value.trim()
+                    if (v !== (h.group || '')) onSetGroup?.(h.id, v || null)
+                  }}
+                />
+              </div>
               <div className="mining-house-cta">
                 <ChevronRight size={16} /> {t('mining.openHouse', 'Открыть')}
               </div>
-            </button>
+            </div>
           )
         })}
       </div>
@@ -114,7 +131,7 @@ function HousesView({ houses, onPickHouse, onBack }) {
 }
 
 // ── Экран выбора слота в доме ─────────────────────────────────────────────
-function SlotsView({ house, onPickSlot, onNewSlot, onBack }) {
+function SlotsView({ house, onPickSlot, onNewSlot, onBack, onFillHouse, qtyValue, onQtyChange, freeCount }) {
   const { t } = useTranslation()
   return (
     <div className="mining-slots-view">
@@ -126,6 +143,17 @@ function SlotsView({ house, onPickSlot, onNewSlot, onBack }) {
         <span className={`rarity-badge rarity-${house.rarity || 'common'}`}>{house.rarity}</span>
       </div>
       <p className="mining-hint">{t('mining.slotsHint', 'В этом доме {{n}} слотов. Нажмите на слот, чтобы открыть ферму, или на пустой — чтобы создать новую.').replace('{{n}}', String(house.basement))}</p>
+      {onFillHouse && house.slots.some(s => !s.occupied) && (
+        <div className="mining-bulk-create-row" style={{ marginBottom: 'var(--spacing-md)' }}>
+          <span className="mining-bulk-label">{t('mining.slotsAvailable', 'Свободно слотов')}: <b>{freeCount}</b></span>
+          <input type="number" min="1" max="1000" className="tx-input mining-bulk-qty"
+            value={qtyValue}
+            onChange={e => onQtyChange(Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 1)))} />
+          <button className="asset-act upgrade" onClick={onFillHouse}>
+            <Plus size={14} /> {t('mining.fillHouseSlots', 'Заполнить свободные слоты')}
+          </button>
+        </div>
+      )}
       <div className="mining-slots-grid">
         {house.slots.map(s => {
           const free = !s.occupied
@@ -236,12 +264,15 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const [confirm, setConfirm] = useState(null)
   const [installQty, setInstallQty] = useState({})
   const [newFarmSlot, setNewFarmSlot] = useState(null)
+  const [createQty, setCreateQty] = useState(1)
 
-  // ── Загрузка списка домов
+  // ── Загрузка списка домов (заодно обновляет currentHouse — иначе после
+  // создания/удаления фермы слоты дома оставались устаревшими до перезахода).
   const loadHouses = useCallback(async () => {
     try {
       const hs = await fetchMiningHouses()
       setHouses(hs || [])
+      setCurrentHouse(prev => (prev ? ((hs || []).find(h => h.id === prev.id) || prev) : prev))
     } catch (err) {
       setMsg({ type: 'error', text: err.message })
     }
@@ -338,10 +369,14 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     try {
       const farm = await createFarm(name, currentHouse.id, newFarmSlot)
       setNewFarmSlot(null)
-      // После создания — сразу идём к ферме и обновляем дома.
+      // После создания — сразу идём к ферме и обновляем дома (текущий дом
+      // перечитается в loadHouses → слоты актуальны при возврате).
       setActiveId(farm.id)
       setView('farm')
       await loadHouses()
+      // Создание из интерфейса фермы: список ферм дома нужно перезагрузить,
+      // эффект на view/currentHouse не сработает (значения не изменились).
+      await loadFarmData(currentHouse.id, true)
       flash(t('mining.created', 'Ферма создана'))
     } catch (err) {
       flash(err.message, 'error')
@@ -356,17 +391,27 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     message: t('confirm.dismantle', { name: f.name }),
     onConfirm: async () => {
       await run(() => deleteFarm(f.id))
-      // После удаления — обновить дома и выйти к слотам, если ферм не осталось.
+      // После удаления — обновить дома; loadHouses синхронизирует currentHouse.
       await loadHouses()
       if (farms.length <= 1) {
         setView('slots')
         setActiveId(null)
-        const h = await fetchMiningHouses().catch(() => [])
-        const fresh = (h || []).find(x => x.id === currentHouse?.id)
-        if (fresh) setCurrentHouse(fresh)
       }
     },
   })
+
+  const bulkCreate = async (houseId) => {
+    setBusy(true)
+    try {
+      const res = await bulkCreateFarms({ ...(houseId ? { houseId } : {}), qty: createQty })
+      flash(t('mining.bulkCreated', 'Создано ферм: {{n}}').replace('{{n}}', String(res?.created ?? 0)))
+      await loadHouses()
+    } catch (err) {
+      flash(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const tempClass = (temp) => (temp >= 85 ? 'crit' : temp >= 70 ? 'warn' : 'ok')
 
@@ -387,12 +432,23 @@ function MiningTab({ balance = 0, onBalanceChange }) {
         <button className="asset-act upgrade" onClick={() => setView('bulk')} style={{ marginBottom: 'var(--spacing-md)' }}>
           <Bot size={15} /> {t('mining.bulk.title', 'Массовое управление фермами')}
         </button>
+        <div className="mining-bulk-create-row" style={{ marginBottom: 'var(--spacing-md)' }}>
+          <span className="mining-bulk-label">{t('mining.slotsAvailable', 'Свободно слотов')}: <b>{houses.reduce((n, h) => n + h.slots.filter(s => !s.occupied).length, 0)}</b></span>
+          <input type="number" min="1" max="1000" className="tx-input mining-bulk-qty" disabled={busy}
+            value={createQty}
+            onChange={e => setCreateQty(Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 1)))} />
+          <button className="asset-act upgrade" disabled={busy}
+            onClick={() => bulkCreate(null)}>
+            <Plus size={15} /> {t('mining.bulkCreateAll', 'Создать фермы во всех домах')}
+          </button>
+        </div>
         {loading ? (
           <div className="asset-card skeleton" style={{ height: 220 }} />
         ) : (
           <HousesView
             houses={houses}
             onPickHouse={pickHouse}
+            onSetGroup={(id, g) => run(() => setHouseGroup(id, g)).then(loadHouses)}
           />
         )}
       </div>
@@ -413,6 +469,10 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             house={currentHouse}
             onPickSlot={pickSlot}
             onNewSlot={openNewSlot}
+            onFillHouse={() => bulkCreate(currentHouse.id)}
+            qtyValue={createQty}
+            onQtyChange={setCreateQty}
+            freeCount={currentHouse.slots.filter(s => !s.occupied).length}
             onBack={() => { setView('houses'); setCurrentHouse(null) }}
           />
         ) : null}
@@ -480,6 +540,11 @@ function MiningTab({ balance = 0, onBalanceChange }) {
         <span>›</span>
         <span className="mining-breadcrumb-current">{farm.name}</span>
       </div>
+
+      {/* Bulk-управление доступно и отсюда (раньше кнопка была только на экране домов) */}
+      <button className="asset-act upgrade" onClick={() => setView('bulk')} style={{ marginBottom: 'var(--spacing-md)' }}>
+        <Bot size={15} /> {t('mining.bulk.title', 'Массовое управление фермами')}
+      </button>
 
       {/* Селектор ферм внутри дома + кнопка добавления новой.
           Кнопка «+» появляется только если в этом доме ещё есть свободный слот. */}
@@ -615,6 +680,22 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                 <span>{t('mining.level')} {farm.manager.level} · ${formatMoney(farm.manager.salary)}{t('units.perHour')}</span>
                 <small className="mmc-desc">{t('mining.managerDesc')}</small>
               </div>
+              <div className="mmc-toggles">
+                {[
+                  ['autoRepair', 'mining.autoRepair', 'mining.autoRepairHint'],
+                  ['autoCoin', 'mining.autoCoin', 'mining.autoCoinHint'],
+                  ['autoRestart', 'mining.autoRestart', 'mining.autoRestartHint'],
+                ].map(([key, lk, hk]) => (
+                  <label key={key} className="mmc-toggle" title={t(hk)}>
+                    <input
+                      type="checkbox" disabled={busy}
+                      checked={farm.manager.settings?.[key] ?? true}
+                      onChange={e => run(() => farmManager(farm.id, 'settings', { [key]: e.target.checked }))}
+                    />
+                    <span>{t(lk)}</span>
+                  </label>
+                ))}
+              </div>
               <div className="mmc-actions">
                 {farm.manager.level >= 5 ? (
                   <button className="asset-act upgrade" disabled>{t('mining.maxLevel')}</button>
@@ -729,6 +810,17 @@ function MiningTab({ balance = 0, onBalanceChange }) {
           <div className="mining-success-row"><span>{t('mining.profitHr')}</span><b className={(s.profitPerHour || 0) >= 0 ? 'up' : 'down'}>${formatMoney(s.profitPerHour || 0)}</b></div>
         </div>
       </div>
+
+      {/* Модалка создания фермы — и отсюда тоже: раньше «Новая ферма» из
+          интерфейса фермы открывала её только при заходе в экран дома. */}
+      <NewFarmModal
+        open={newFarmSlot != null}
+        slotIndex={newFarmSlot || 0}
+        houseName={currentHouse?.name}
+        busy={busy}
+        onConfirm={confirmNewFarm}
+        onCancel={() => { if (!busy) setNewFarmSlot(null) }}
+      />
 
       <ConfirmDialog
         open={!!confirm}

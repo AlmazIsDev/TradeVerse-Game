@@ -10,13 +10,17 @@ const NETWORK_BY_SPEED = { 1000: 'router', 10000: 'switch' }
 
 export function hwName(item, t) {
   const { category, specs = {}, name } = item || {}
+  // Реальное (брендовое) имя приоритетнее шаблона: раньше шаблон подменял
+  // названия всех категорий, кроме GPU («Процессор N ядер» вместо модели).
+  // Шаблон используется только когда имени нет совсем.
+  if (name) return name
   switch (category) {
-    case 'psu': return t('shop.psuName', { w: specs.power, defaultValue: name })
-    case 'cpu': return t('shop.cpuName', { cores: specs.cores, defaultValue: name })
-    case 'motherboard': return t('shop.mbName', { slots: specs.gpuSlots, defaultValue: name })
-    case 'ram': return t('shop.ramName', { gb: specs.gb, defaultValue: name })
-    case 'ssd': return t('shop.ssdName', { gb: specs.gb, defaultValue: name })
-    case 'ups': return t('shop.upsName', { w: specs.backup, defaultValue: name })
+    case 'psu': return t('shop.psuName', { w: specs.power, defaultValue: '' })
+    case 'cpu': return t('shop.cpuName', { cores: specs.cores, defaultValue: '' })
+    case 'motherboard': return t('shop.mbName', { slots: specs.gpuSlots, defaultValue: '' })
+    case 'ram': return t('shop.ramName', { gb: specs.gb, defaultValue: '' })
+    case 'ssd': return t('shop.ssdName', { gb: specs.gb, defaultValue: '' })
+    case 'ups': return t('shop.upsName', { w: specs.backup, defaultValue: '' })
     case 'cooling': {
       const key = COOLING_BY_CAP[specs.cooling]
       return key ? t(`shop.coolingName.${key}`, name) : name

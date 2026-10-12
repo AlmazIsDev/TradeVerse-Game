@@ -6,13 +6,15 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchFarms, fetchMiningParts, bulkFarmAction, bulkAssemble,
+  fetchFarms, fetchMiningParts, fetchMiningMarket, fetchMiningHouses,
+  bulkFarmAction, bulkAssemble,
 } from '../services/api'
-import { formatCompact } from './TransactionsPanel'
+import { formatCompact, formatMoney } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import { toast } from './Toast'
+import ConfirmDialog from './ConfirmDialog'
 import {
-  Bot, ChevronLeft, Play, Square, Wrench, Hammer, X,
+  Bot, ChevronLeft, Play, Square, Wrench, Hammer, X, Droplet, Coins, Trash2,
 } from 'lucide-react'
 
 // Категории для авто-сборки: порядок = порядок установки в ферму.
@@ -44,15 +46,25 @@ export default function MiningBulkView({ onBack }) {
   const [busy, setBusy] = useState(false)
   const [asmOpen, setAsmOpen] = useState(false)
   const [choice, setAsmChoice] = useState({})   // выбранные для сборки детали {cat: {hwId, qty}}
+  const [coins, setCoins] = useState([])        // рынок монет для bulk-выбора монеты
+  const [coinSel, setCoinSel] = useState('')
+  const [coolantQty, setCoolantQty] = useState(1)
+  const [aiToggles, setAiToggles] = useState({ autoRepair: true, autoCoin: true, autoRestart: true })
+  const [confirm, setConfirm] = useState(null)
+  const [houses, setHouses] = useState([])
 
   const load = useCallback(async () => {
     try {
-      const [f, p] = await Promise.all([
+      const [f, p, m, hs] = await Promise.all([
         fetchFarms(),
         fetchMiningParts().catch(() => ({})),
+        fetchMiningMarket().catch(() => ({ coins: [], best: null })),
+        fetchMiningHouses().catch(() => []),
       ])
       setFarms(f || [])
       setParts(p || {})
+      setCoins(m?.coins || [])
+      setHouses(hs || [])
     } catch (e) {
       toast(e?.message || t('common.error', 'Ошибка'), 'error')
     }
@@ -69,11 +81,39 @@ export default function MiningBulkView({ onBack }) {
     [farms, sel],
   )
 
-  const runAction = async (action) => {
+  // Группы домов: {group name|null -> farmIds}. null = дома без группы.
+  const groups = useMemo(() => {
+    const byId = Object.fromEntries((houses || []).map(h => [h.id, h.group || null]))
+    const map = {}
+    for (const f of farms) {
+      const g = byId[f.houseId] ?? null
+      const key = g || '__none__'
+      if (!map[key]) map[key] = { key, name: g, farmIds: [] }
+      map[key].farmIds.push(f.id)
+    }
+    return Object.values(map)
+  }, [houses, farms])
+
+  // Клик по группе: все фермы группы выбираются, повторный клик — снимает выбор.
+  const selectGroup = (key) => {
+    const g = groups.find(x => x.key === key)
+    if (!g) return
+    setSel(s => {
+      const all = g.farmIds.every(id => s[id])
+      const n = { ...s }
+      for (const id of g.farmIds) {
+        if (all) delete n[id]
+        else n[id] = true
+      }
+      return n
+    })
+  }
+
+  const runAction = async (action, extra) => {
     if (!selectedIds.length) return
     setBusy(true)
     try {
-      const res = await bulkFarmAction(action, selectedIds)
+      const res = await bulkFarmAction(action, selectedIds, extra)
       const fails = (res?.results || []).filter(r => !r.ok)
       if (fails.length) {
         toast(t('mining.bulk.partial', { ok: res.results.length - fails.length, fail: fails.length }) + ' · ' + fails[0].error, 'error')
@@ -166,6 +206,74 @@ export default function MiningBulkView({ onBack }) {
         </label>
       </div>
 
+      {/* Выбор ферм по группам домов (в т.ч. «без группы») */}
+      {groups.length > 0 && (
+        <div className="market-cats" style={{ marginBottom: 'var(--spacing-md)' }}>
+          <span className="mining-bulk-label">{t('mining.bulk.groups', 'Группы домов')}</span>
+          <select className="mslot-pick" disabled={busy} value="" onChange={e => { if (e.target.value) selectGroup(e.target.value) }}>
+            <option value="">{t('mining.bulk.selectGroup', '— выбрать группу —')}</option>
+            {groups.map(g => (
+              <option key={g.key} value={g.key}>
+                {g.name || t('mining.noGroup', 'Без группы')} ({g.farmIds.length})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Сервисные действия: охлаждающая жидкость и ИИ-управляющий */}
+      <div className="market-cats" style={{ marginBottom: 'var(--spacing-md)' }}>
+        <span className="mining-bulk-label">{t('mining.bulk.coolant', 'ОЖ')}</span>
+        <input type="number" min="1" max="4" className="tx-input mining-bulk-qty" disabled={busy}
+          value={coolantQty}
+          onChange={e => setCoolantQty(Math.max(1, Math.min(4, parseInt(e.target.value, 10) || 1)))} />
+        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('coolant', { qty: coolantQty })}>
+          <Droplet size={14} /> {t('mining.bulk.coolantAdd', 'Заправить')}
+        </button>
+        <span className="mining-bulk-label">{t('mining.bulk.ai', 'ИИ')}</span>
+        <button className="asset-act upgrade" disabled={busy || !selectedIds.length} onClick={() => runAction('hire')}
+          title={t('mining.bulk.hireHint', 'Нанять ИИ-управляющего на каждую выбранную ферму ({{n}} $/ферма)', { n: '120 000' })}>
+          <Bot size={14} /> {t('mining.bulk.hire', 'Нанять ИИ')}
+        </button>
+        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('upgrade')}
+          title={t('mining.bulk.upgradeHint', 'Поднять ИИ-управляющего на уровень на каждой выбранной ферме')}>
+          {t('mining.bulk.upgrade', 'Повысить ИИ')}
+        </button>
+        <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('fire')}
+          title={t('mining.bulk.fireHint', 'Уволить ИИ-управляющего на выбранных фермах')}>
+          {t('mining.bulk.fire', 'Уволить ИИ')}
+        </button>
+      </div>
+
+      {/* Переключатели ИИ + выбор монеты + снятие всего железа */}
+      <div className="market-cats" style={{ marginBottom: 'var(--spacing-md)' }}>
+        {[['autoRepair', 'mining.autoRepair'], ['autoCoin', 'mining.autoCoin'], ['autoRestart', 'mining.autoRestart']].map(([key, lk]) => (
+          <label key={key} className="mining-bulk-selectall" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="checkbox" disabled={busy} checked={aiToggles[key]}
+              onChange={e => setAiToggles(s => ({ ...s, [key]: e.target.checked }))} />
+            {t(lk)}
+          </label>
+        ))}
+        <button className="asset-act" disabled={busy || !selectedIds.length}
+          onClick={() => runAction('settings', { settings: aiToggles })}>
+          {t('mining.bulk.applySettings', 'Применить настройки')}
+        </button>
+        <span className="mining-bulk-label">{t('mining.bulk.coin', 'Монета')}</span>
+        <select className="mslot-pick" disabled={busy} value={coinSel}
+          onChange={e => setCoinSel(e.target.value)}>
+          <option value="">{t('mining.bulk.pickCoin', '— выбрать монету —')}</option>
+          {coins.map(c => <option key={c.symbol} value={c.symbol}>{c.symbol} · ${'{'}formatMoney(c.price){'}'}</option>)}
+        </select>
+        <button className="asset-act" disabled={busy || !selectedIds.length}
+          onClick={() => selectedIds.length && setConfirm({
+            title: t('mining.bulk.uninstallTitle', 'Снять всё железо'),
+            message: t('mining.bulk.uninstallMsg', 'С {{n}} ферм будет снято всё оборудование — оно вернётся в инвентарь, добыча остановится.').replace('{{n}}', String(selectedIds.length)),
+            onConfirm: () => runAction('uninstall'),
+          })}>
+          <Trash2 size={14} /> {t('mining.bulk.uninstall', 'Снять всё железо')}
+        </button>
+      </div>
+
       {farms.length === 0 ? (
         <div className="empty-state"><p>{t('mining.bulk.noFarms', 'Ферм пока нет — создайте их в подвалах домов.')}</p></div>
       ) : (
@@ -224,6 +332,15 @@ export default function MiningBulkView({ onBack }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirm}
+        busy={busy}
+        title={confirm?.title}
+        message={confirm?.message}
+        onConfirm={() => { const h = confirm?.onConfirm; setConfirm(null); h?.() }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

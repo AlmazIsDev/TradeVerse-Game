@@ -23,6 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger("tradeverse")
 
 from init_db import init as init_db
+from networth import WARCOIN_USD
 
 from auth import (
     get_current_user,
@@ -89,6 +90,7 @@ from schemas import (
     RefreshRequest,
     TokenPair,
     AdminUserUpdate,
+    AdminPasswordReset,
     StockCreate,
     StockResponse,
     ConfigUpdate,
@@ -165,6 +167,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
     await mining_module.dismantle_orphan_farms(db)   # разбор ферм без дома (не видны в новой системе)
+    await assets.scale_businesses_x1000(db)   # разовая миграция: бизнесы игроков ×1000 (цена/доход/расход)
     from production import migrate_owned_infra
     await migrate_owned_infra(db)   # синхронизация цен/meta купленных источников и складов
     start_scheduler()   # единый фоновый планировщик всех систем
@@ -279,9 +282,18 @@ async def issue_token_pair(db: AsyncIOMotorDatabase, user: dict) -> tuple[str, s
 # ── Auth Endpoints ───────────────────────────────────────────────────────────
 
 
+def _client_ip(request: Request) -> str:
+    """IP клиента: первый hop из X-Forwarded-For (за реверс-прокси), иначе прямой."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @app.post("/api/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
 async def register_user(
     user_data: UserCreate,
+    request: Request,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     users = db.users
@@ -294,6 +306,8 @@ async def register_user(
 
     card_number = await ensure_unique_card_number(users)
 
+    now = datetime.now(timezone.utc)
+    ip = _client_ip(request)
     new_user = {
         "username": user_data.username,
         "hashed_password": hash_password(user_data.password),
@@ -302,7 +316,10 @@ async def register_user(
         "card_number": card_number,
         "card_visible": True,
         "avatar": None,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": now,
+        # Все IP, с которых заходил пользователь: {ip: iso-время последнего входа}
+        "login_ips": {ip: now.isoformat()},
+        "last_login": now.isoformat(),
     }
     result = await users.insert_one(new_user)
     new_user["_id"] = result.inserted_id
@@ -325,6 +342,7 @@ async def register_user(
 @app.post("/api/login", response_model=AuthResponse)
 async def login_user(
     user_data: UserLogin,
+    request: Request,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     user = await db.users.find_one({"username": user_data.username})
@@ -339,6 +357,14 @@ async def login_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверное имя пользователя или пароль",
         )
+
+    # История IP для админки: {ip: последнее время входа с этого адреса}.
+    now = datetime.now(timezone.utc)
+    ip = _client_ip(request)
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {f"login_ips.{ip}": now.isoformat(), "last_login": now.isoformat()}},
+    )
 
     token, refresh_token = await issue_token_pair(db, user)
 
@@ -527,7 +553,6 @@ async def update_config(
 
 
 STARTING_BALANCE = 15000.0
-WARCOIN_USD = 50.0
 
 # Ключ сортировки → реальное имя поля в записи лидерборда (camelCase).
 # ВАЖНО: 'networth' маппится на 'netWorth' — иначе e[sort_key] бросал KeyError,
@@ -799,9 +824,24 @@ async def admin_get_users(
     out = []
     async for u in db.users.find({}, {"username": 1, "role": 1, "balance": 1, "created_at": 1,
                                       "card_number": 1, "hidden_from_leaderboard": 1, "leaderboard_lock": 1,
+                                      "login_ips": 1, "last_login": 1,
                                       "admin_level": 1, "bans": 1}):
         e = by_uid.get(str(u["_id"]), {})
+        # IP-история: свежие адреса первыми, максимум 20 — полный список не нужен,
+        # а ответ не раздуваем.
+        ips = [{"ip": ip, "at": at} for ip, at in (u.get("login_ips") or {}).items()]
+        ips.sort(key=lambda x: x["at"], reverse=True)
         out.append({
+            "id": str(u["_id"]),
+            "username": u.get("username", ""),
+            "role": u.get("role", "user"),
+            "admin_level": int(u.get("admin_level") or 4) if u.get("role") == "admin" else None,
+            "bans": u.get("bans") or {},
+            "balance": float(u.get("balance", 0.0) or 0.0),
+            "created_at": u.get("created_at").isoformat() if isinstance(u.get("created_at"), datetime) else u.get("created_at"),
+            "last_login": u.get("last_login"),
+            "ips": ips[:20],
+            "card_number": u.get("card_number"),
             "id": str(u["_id"]),
             "username": u.get("username", ""),
             "role": u.get("role", "user"),
@@ -1007,10 +1047,89 @@ async def admin_set_user_bans(
     try:
         from ws import push_to_user, push_to_admins
         await push_to_user(user_id, {"type": "banned", "bans": {k: 1 for k in clean}})
-        await push_to_admins(db, {"type": "admin_user_modified", "userId": user})
+        await push_to_admins(db, {"type": "admin_user_modified", "userId": user_id})
     except Exception:
         pass
     return {"message": "Баны обновлены", "bans": clean}
+
+
+@app.post("/api/admin/broadcast")
+async def admin_broadcast(
+    payload: dict,
+    _admin=Depends(require_admin("broadcast")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Глобальное объявление: уведомление каждому пользователю игры."""
+    title = str(payload.get("title") or "").strip()
+    message = str(payload.get("message") or "").strip()
+    if not title:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Заголовок обязателен")
+    now = datetime.now(timezone.utc)
+    docs = [
+        {
+            "userId": str(u["_id"]),
+            "type": "broadcast",
+            "title": title,
+            "body": message,
+            "data": {"by": _admin.get("username")},
+            "read": False,
+            "created_at": now,
+        }
+        async for u in db.users.find({}, {"_id": 1})
+    ]
+    if docs:
+        await db.notifications.insert_many(docs)
+    # Realtime-попап всем подключённым (кто офлайн — увидит в списке уведомлений).
+    try:
+        from ws import broadcast
+        await broadcast({"type": "notification", "notification": {
+            "type": "broadcast", "title": title, "body": message,
+        }})
+    except Exception:
+        pass
+    logger.info("Admin '%s' broadcast to %d users: %s",
+                _admin.get("username", "unknown"), len(docs), title)
+    return {"sent": len(docs)}
+
+
+@app.post("/api/admin/users/{user_id}/password")
+async def admin_set_user_password(
+    user_id: str,
+    payload: AdminPasswordReset,
+    _admin=Depends(require_admin("users_password")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Сброс пароля пользователя администратором."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    result = await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"hashed_password": hash_password(payload.password)}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+    logger.info("Admin '%s' reset password of user %s",
+                _admin.get("username", "unknown"), user_id)
+    return {"message": "Пароль обновлён"}
+
+
+@app.post("/api/admin/users/{user_id}/logout")
+async def admin_logout_user(
+    user_id: str,
+    _admin=Depends(require_admin("users_logout")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Разлогинить пользователя: инвалидирует все refresh-токены.
+
+    Access-токен доживает до своего короткого срока, после чего игрок
+    автоматически выбрасывается на страницу входа.
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    result = await db.refresh_tokens.delete_many({"user_id": ObjectId(user_id)})
+    logger.info("Admin '%s' logged out user %s (%d sessions)",
+                _admin.get("username", "unknown"), user_id, result.deleted_count)
+    return {"message": f"Сессий завершено: {result.deleted_count}"}
 
 
 @app.get("/api/admin/users/{user_id}/property")

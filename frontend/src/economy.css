@@ -2312,6 +2312,9 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .mmc-info b { color: var(--color-text-primary); }
 .mmc-info span { font-size: 12px; color: var(--color-text-secondary); }
 .mmc-actions { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+.mmc-toggles { display: flex; flex-direction: column; gap: 5px; flex: 0 0 auto; }
+.mmc-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; }
+.mmc-toggle input { accent-color: var(--color-accent-hover); cursor: pointer; }
 
 .mining-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--spacing-sm); }
 .mining-slot { background: var(--color-bg-tertiary); border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 9px 11px; }
@@ -2763,6 +2766,7 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
      описанию достаётся вся ширина (раньше сжималось до столбика слов). */
   .mining-manager-card { flex-wrap: wrap; }
   .mmc-actions { width: 100%; }
+  .mmc-toggles { width: 100%; }
   .mmc-actions .asset-act { flex: 1; }
   /* Компоненты фермы: бейджи количества не вылезают за край. */
   .mining-comps { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
@@ -2786,7 +2790,39 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 }
 
 /* ── Bulk-управление майнинг-фермами (MiningBulkView) ── */
+/* ── Поля ввода (массовое управление, модалка фермы, группы домов) ── */
+.tx-input {
+  padding: 8px 10px; font-size: 13px; color: var(--color-text-primary);
+  background: var(--color-bg-tertiary, var(--color-bg-secondary));
+  border: 1px solid var(--hairline); border-radius: 8px;
+  outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.tx-input:focus { border-color: rgba(0, 113, 227, 0.55); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15); }
+.tx-input:disabled { opacity: 0.55; cursor: not-allowed; }
+.tx-input::placeholder { color: var(--color-text-muted, #86868b); }
+
 .mining-bulk-list { display: flex; flex-direction: column; gap: 8px; }
+.mining-bulk-label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); align-self: center; }
+.mining-bulk-qty { width: 72px; }
+/* Селекты в рядах массового управления — компактные, как кнопки рядом */
+.market-cats .mslot-pick {
+  width: auto; min-width: 170px; max-width: 260px; margin-top: 0;
+  padding: 8px 30px 8px 10px; font-size: 12.5px; align-self: center;
+}
+.market-cats .mslot-pick:focus { border-color: rgba(0, 113, 227, 0.55); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15); outline: none; }
+.market-cats .mslot-pick:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Чекбоксы (выбрать все, переключатели ИИ) */
+.mining-bulk-selectall {
+  font-size: 12px; font-weight: 600; color: var(--color-text-secondary);
+  cursor: pointer; user-select: none; align-self: center;
+}
+.mining-bulk-selectall input {
+  width: 15px; height: 15px; cursor: pointer;
+  accent-color: var(--color-accent-hover);
+}
+.mining-bulk-selectall input:disabled { cursor: not-allowed; }
+.mining-bulk-create-row { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
+.mining-house-group { width: 110px; padding: 3px 8px; font-size: 12px; }
 .mining-bulk-row {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border-radius: var(--radius-md);

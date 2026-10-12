@@ -124,21 +124,6 @@ async def check_type_limit(db, user_id: str, asset_type: str) -> None:
         )
 
 
-# ── Миграция: масштаб бизнесов ×1000 ────────────────────────────────────────
-BIZ_SCALE_KEY = "business_scale_x1000_v1"
-
-
-async def scale_businesses_x1000(db) -> None:
-    """Одноразово приводит уже купленные бизнесы к новому масштабу каталога
-    (цена/доход/расход ×1000). Идемпотентно — помечается конфигом."""
-    if await find_config_by_key(db, BIZ_SCALE_KEY):
-        return
-    await db.user_assets.update_many(
-        {"type": TYPE_BUSINESS},
-        {"$mul": {"price": 1000, "income_per_hour": 1000, "upkeep_per_hour": 1000}},
-    )
-    await upsert_config(db, BIZ_SCALE_KEY, "1")
-
 
 def _is_rentable(asset: dict) -> bool:
     """Можно ли выставить актив в аренду. Недвижимость и авто — всегда; бизнесы —

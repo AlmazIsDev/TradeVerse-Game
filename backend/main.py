@@ -167,8 +167,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
     await mining_module.dismantle_orphan_farms(db)   # разбор ферм без дома (не видны в новой системе)
-    await assets_module.scale_businesses_x1000(db)   # разовая миграция: бизнесы игроков ×1000 (цена/доход/расход)
-    await fix_invalid_card_numbers(db.users)   # починка карт-заглушек «0000-…» и пропусков
+    await fix_missing_card_numbers(db.users)   # дозаполнить только ОТСУТСТВУЮЩие номера карт
     from production import migrate_owned_infra
     await migrate_owned_infra(db)   # синхронизация цен/meta купленных источников и складов
     start_scheduler()   # единый фоновый планировщик всех систем
@@ -265,16 +264,14 @@ async def ensure_unique_card_number(users) -> str:
             return card
 
 
-_CARD_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{5}$")
+async def fix_missing_card_numbers(users) -> None:
+    """Дозаполняет ТОЛЬКО отсутствующие номера карт у старых аккаунтов.
 
-
-async def fix_invalid_card_numbers(users) -> None:
-    """Починка карт-заглушек и пропусков: у части старых аккаунтов номер
-    «0000-0000-0000-00000» (нулевая заглушка) или отсутствует — выдаём уникальный.
-    Идемпотентно: после прогона все номера соответствуют формату и уникальны."""
-    bad = [u async for u in users.find({}, {"card_number": 1})
-           if not _CARD_RE.match(u.get("card_number") or "")
-           or set((u.get("card_number") or "").replace("-", "")) == {"0"}]
+    Любой существующий номер (включая «0000-0000-0000-00000») — осознанно
+    выставленное значение (игрок/админ), его не трогаем: перезапись на старте
+    меняла карту игрока при каждом рестарте бэкенда."""
+    bad = [u async for u in users.find({"card_number": None}, {"_id": 1})]
+    bad += [u async for u in users.find({"card_number": {"$exists": False}}, {"_id": 1})]
     for u in bad:
         card = await ensure_unique_card_number(users)
         await users.update_one({"_id": u["_id"]}, {"$set": {"card_number": card}})

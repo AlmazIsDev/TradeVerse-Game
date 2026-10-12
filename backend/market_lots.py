@@ -35,6 +35,7 @@ from database import get_db
 from ledger import INCOME, EXPENSE, CAT_MARKET, adjust_balance, record_transaction
 from notifications import push_notification
 from shop import CATALOG_BY_ID
+from mining import in_use_rack_ids
 
 router = APIRouter(prefix="/api/market/lots", tags=["central-market"])
 
@@ -111,10 +112,18 @@ class LotBuy(BaseModel):
 
 
 async def _available_hw_qty(db, seller_id: str, item_id: str) -> int:
-    """Сколько свободных (не установленных на ферму) единиц железа у продавца."""
-    return await db.user_hardware.count_documents(
-        {"userId": seller_id, "itemId": item_id, "farmId": None}
-    )
+    """Сколько свободных (не установленных на ферму) единиц железа у продавца.
+
+    Стойки — общий пул слотов (farmId у них всегда None): задействованные
+    в фермах экземпляры свободными не считаются."""
+    q: dict = {"userId": seller_id, "itemId": item_id, "farmId": None}
+    hw = await db.user_hardware.find_one(
+        {"userId": seller_id, "itemId": item_id}, {"category": 1})
+    if hw and hw.get("category") == "rack":
+        used = await in_use_rack_ids(db, seller_id)
+        if used:
+            q["_id"] = {"$nin": [ObjectId(x) for x in used if ObjectId.is_valid(x)]}
+    return await db.user_hardware.count_documents(q)
 
 
 async def _serialize_lots(db, lots: list[dict]) -> list[dict]:
@@ -391,9 +400,12 @@ async def buy_lot(
         except Exception:
             pass
     else:
-        free = [h async for h in db.user_hardware.find(
-            {"userId": seller_id, "itemId": lot["itemId"], "farmId": None}
-        ).limit(qty)]
+        hw_q: dict = {"userId": seller_id, "itemId": lot["itemId"], "farmId": None}
+        if CATALOG_BY_ID.get(lot["itemId"], {}).get("category") == "rack":
+            used = await in_use_rack_ids(db, seller_id)
+            if used:
+                hw_q["_id"] = {"$nin": [ObjectId(x) for x in used if ObjectId.is_valid(x)]}
+        free = [h async for h in db.user_hardware.find(hw_q).limit(qty)]
         if len(free) < qty:
             # Железа стало меньше, чем обещал лот — возврат средств и откат лота.
             await adjust_balance(db, user_id, total)

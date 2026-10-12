@@ -16,6 +16,7 @@ import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
 import MarketBuyModal from './MarketBuyModal'
 import { fetchAssetMarket, buyAsset, fetchFarmVehicles, buyFarmVehicle } from '../services/api'
+import { assetImage } from '../utils/assetImages'
 import { CAR_SECTIONS } from '../utils/carsCatalog'
 
 // Ранг редкости для сортировки.
@@ -254,9 +255,9 @@ function CarsTab({ balance = 0, onBalanceChange }) {
                   className="asset-banner"
                   style={{ background: RARITY_GRAD[item.rarity] || RARITY_GRAD.common }}
                 >
-                  <span className="asset-banner-emoji">
-                    {item.emoji || TYPE_EMOJI[item.type]}
-                  </span>
+                  {assetImage(item.slug, item.type)
+                    ? <img className="asset-banner-img" src={assetImage(item.slug, item.type)} alt="" loading="lazy" />
+                    : <span className="asset-banner-emoji">{item.emoji || TYPE_EMOJI[item.type]}</span>}
                 </div>
                 <span className="market-card-name">{t(`assetNames.${item.slug}`, item.name)}</span>
                 <div className="market-card-meta">

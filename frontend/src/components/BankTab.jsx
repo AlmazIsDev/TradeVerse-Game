@@ -6,7 +6,7 @@ import AnalyticsChart from './AnalyticsChart'
 import { toast } from './Toast'
 import {
   Send, History, User, DollarSign, MessageSquare,
-  LayoutGrid, BarChart3, Coins, TrendingUp, TrendingDown, Wallet, ArrowRight, CreditCard,
+  LayoutGrid, BarChart3, Coins, TrendingUp, TrendingDown, Wallet, ArrowRight, CreditCard, Copy,
 } from 'lucide-react'
 
 function BankTab({ balance = 0, onBalanceChange }) {
@@ -20,12 +20,23 @@ function BankTab({ balance = 0, onBalanceChange }) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [analytics, setAnalytics] = useState(null)
   const [crypto, setCrypto] = useState(null)
-  // Номер карты синхронизируется в localStorage хедером (Header.jsx) при старте.
-  const [cardNumber, setCardNumber] = useState(() => {
+  // Номер карты синхронизируется в localStorage хедером (Header.jsx).
+  // Читаем на каждый рендер: так банк сразу подхватывает смену номера и
+  // переключение видимости в шапке (card_visible), не рисуя скрытую карту.
+  let storedUser = null
+  try { storedUser = JSON.parse(localStorage.getItem('tradeverse_user')) } catch { /* ignore */ }
+  const cardNumber = storedUser?.card_number || null
+  const cardVisible = storedUser?.card_visible !== false
+  const displayCard = cardNumber
+    ? (cardVisible ? cardNumber : '****-****-****-' + cardNumber.slice(-5))
+    : null
+  const copyCard = useCallback(async () => {
+    if (!cardNumber) return
     try {
-      return JSON.parse(localStorage.getItem('tradeverse_user'))?.card_number || null
-    } catch { return null }
-  })
+      await navigator.clipboard.writeText(cardNumber)
+      toast(t('header.cardCopied', 'Номер карты скопирован'))
+    } catch { /* clipboard недоступен */ }
+  }, [cardNumber, t])
 
   useEffect(() => { setLocalBalance(balance) }, [balance])
 
@@ -104,14 +115,20 @@ function BankTab({ balance = 0, onBalanceChange }) {
               )}
             </div>
             <div className="bank-hero-balance" title={`${formatMoney(localBalance)} $`}>{formatCompact(localBalance)} <span>$</span></div>
-            {cardNumber && (
-              <div className="bank-hero-cardnum" title={cardNumber}>
-                <CreditCard size={13} /> {cardNumber}
-              </div>
-            )}
-            <button className="bank-hero-action" onClick={() => setView('transfer')}>
-              <Send size={15} /> {t('bank.sendMoney')}
-            </button>
+            <div className="bank-hero-bottom">
+              {displayCard && (
+                <button type="button" className="bank-hero-cardnum"
+                  title={t('header.copyCard', 'Скопировать номер карты')}
+                  onClick={copyCard}>
+                  <CreditCard size={15} />
+                  <span>{displayCard}</span>
+                  <Copy size={13} className="bank-hero-copyicon" />
+                </button>
+              )}
+              <button className="bank-hero-action" onClick={() => setView('transfer')}>
+                <Send size={15} /> {t('bank.sendMoney')}
+              </button>
+            </div>
           </div>
 
           <div className="bank-mini-stats">

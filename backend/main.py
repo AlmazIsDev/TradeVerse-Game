@@ -33,6 +33,7 @@ from auth import (
     create_refresh_token,
     use_refresh_token,
     delete_refresh_token,
+    username_taken,
 )
 from admin_perms import (
     require_admin,
@@ -312,8 +313,8 @@ async def register_user(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     users = db.users
-    existing = await users.find_one({"username": user_data.username})
-    if existing:
+    # Регистронезависимая проверка: "Vasya" и "vasya" — один ник.
+    if await username_taken(db, user_data.username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Пользователь с таким именем уже существует",
@@ -929,13 +930,9 @@ async def admin_update_user(
     elif update_fields.get("role") == "admin" and "admin_level" not in update_fields:
         update_fields["admin_level"] = 4
 
-    # Проверяем уникальность username, если он меняется
+    # Проверяем уникальность username без учёта регистра, если он меняется
     if "username" in update_fields:
-        duplicate = await db.users.find_one({
-            "username": update_fields["username"],
-            "_id": {"$ne": ObjectId(user_id)},
-        })
-        if duplicate:
+        if await username_taken(db, update_fields["username"], exclude_id=user_id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Пользователь с таким именем уже существует",

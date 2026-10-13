@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import secrets
 
 import bcrypt
@@ -58,6 +59,21 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def username_pattern(username: str) -> str:
+    """Anchored regex для поиска ника без учёта регистра."""
+    return f"^{re.escape(username)}$"
+
+
+async def username_taken(
+    db: AsyncIOMotorDatabase, username: str, exclude_id: str | ObjectId | None = None
+) -> bool:
+    """True, если ник занят (регистронезависимо), кроме пользователя exclude_id."""
+    query: dict = {"username": {"$regex": username_pattern(username), "$options": "i"}}
+    if exclude_id is not None:
+        query["_id"] = {"$ne": ObjectId(exclude_id)}
+    return await db.users.find_one(query) is not None
 
 
 def create_access_token(data: dict) -> str:
@@ -208,3 +224,12 @@ async def get_current_user(
                        (f": {ban['reason']}" if ban.get("reason") else ""),
             )
     return user
+
+
+if __name__ == "__main__":
+    # username_pattern экранирует спецсимволы regex — ник с точкой не матчит похожие имена.
+    assert username_pattern("nick.name") == r"^nick\.name$"
+    assert re.match(username_pattern("nick.name"), "nick.name", re.IGNORECASE)
+    assert not re.match(username_pattern("nick.name"), "nickXname", re.IGNORECASE)
+    assert re.match(username_pattern("Vasya"), "vasya", re.IGNORECASE)
+    print("auth self-check OK")

@@ -15,7 +15,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from auth import get_current_user, hash_password, verify_password
+from auth import get_current_user, hash_password, verify_password, username_taken
 from database import get_db
 from schemas import ProfileUpdate, PasswordChangeRequest, AvatarUpdate, BioUpdate
 
@@ -36,8 +36,8 @@ async def update_profile(
     if new_username == current_user.get("username"):
         return {"username": new_username}
 
-    duplicate = await db.users.find_one({"username": new_username, "_id": {"$ne": user_id}})
-    if duplicate:
+    # Регистронезависимая проверка уникальности (как в регистрации и админке)
+    if await username_taken(db, new_username, exclude_id=user_id):
         raise HTTPException(status.HTTP_409_CONFLICT, "Пользователь с таким именем уже существует")
 
     await db.users.update_one({"_id": user_id}, {"$set": {"username": new_username}})

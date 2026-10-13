@@ -270,20 +270,41 @@ function CarsTab({ balance = 0, onBalanceChange }) {
                 </div>
 
                 <div className="asset-stats">
-                  <div className="asset-stat">
-                    <span>
-                      <Fuel size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-                      {t('cars.fuelPer100km', 'л / 100 км')}
-                    </span>
-                    <b>{isTrailer ? '—' : (item.specs?.fuelPer100km ?? 0)}</b>
-                  </div>
-                  <div className="asset-stat">
-                    <span>
-                      <PackageIcon size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-                      {t('cars.cargoKg', 'Грузоподъёмность')}
-                    </span>
-                    <b>{(item.specs?.cargoKg || 0).toLocaleString('ru-RU')} {t('cars.kg', 'кг')}</b>
-                  </div>
+                  {item.isFarmVehicle ? (
+                    <>
+                      <div className="asset-stat">
+                        <span>
+                          <Fuel size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                          {t('cars.fuelPerSqm', 'л / м² урожая')}
+                        </span>
+                        <b>{item.specs?.fuelPerSqm ?? 0}</b>
+                      </div>
+                      <div className="asset-stat">
+                        <span>
+                          <PackageIcon size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                          {t('cars.sqmPerMin', 'м² / мин')}
+                        </span>
+                        <b>{item.specs?.speedSqmPerMin ?? 0}</b>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="asset-stat">
+                        <span>
+                          <Fuel size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                          {t('cars.fuelPer100km', 'л / 100 км')}
+                        </span>
+                        <b>{isTrailer ? '—' : (item.specs?.fuelPer100km ?? 0)}</b>
+                      </div>
+                      <div className="asset-stat">
+                        <span>
+                          <PackageIcon size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                          {t('cars.cargoKg', 'Грузоподъёмность')}
+                        </span>
+                        <b>{(item.specs?.cargoKg || 0).toLocaleString('ru-RU')} {t('cars.kg', 'кг')}</b>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="market-card-price">

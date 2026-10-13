@@ -39,6 +39,7 @@
     "free": "Free",
     "installed": "Installed",
     "installedOn": "on a farm",
+    "onFarms": "On {{count}} farms",
     "catAll": "All categories",
     "search": "Search by name…",
     "sortNew": "Newest first",
@@ -72,6 +73,8 @@
     "sortByPrice": "Sort by price",
     "sortByRarity": "Sort by rarity",
     "fuelPer100km": "L / 100 km",
+    "fuelPerSqm": "L / m² of crop",
+    "sqmPerMin": "m² / min",
     "cargoKg": "Cargo capacity",
     "kg": "kg",
     "ordered": "Order placed"
@@ -899,6 +902,9 @@
       "assembling": "Assembling farms",
       "progressAction": "Action",
       "poolRanOut": "Part pool ran out — some farms were not assembled",
+      "overclock": "Overclock",
+      "overclockHint": "Set overclock on all selected farms. Each PSU is checked: farms with insufficient power are skipped.",
+      "asmSummary": "Assembling: {{farms}} farms · {{cats}} categories selected",
       "creating": "Creating farms"
     },
     "autoRepair": "Auto-repair",

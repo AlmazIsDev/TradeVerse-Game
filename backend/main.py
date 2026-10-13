@@ -990,7 +990,60 @@ async def admin_delete_user(
     logger.info("Admin '%s' deleting user %s (%s)",
                 _admin.get("username", "unknown"), user_id, existing.get("username", "unknown"))
 
-    await db.users.delete_one({"_id": ObjectId(user_id)})
+    # Каскадное удаление всех игровых записей игрока. Поля-ссылки в коллекциях
+    # хранят и строку, и ObjectId (в зависимости от места записи) — матчим оба.
+    uid = str(existing["_id"])
+    oid = existing["_id"]
+    uid_q = {"$in": [uid, oid]}
+
+    from company import _disband
+    owned_companies = await db.companies.find({"ownerId": uid}).to_list(length=None)
+    for owned in owned_companies:
+        await _disband(db, owned)
+
+    # Активы, переданные в компании, принадлежат компании, а не игроку —
+    # переприсваиваем их текущему владельцу компании (userId компании мог уже
+    # смениться через админ-передачу, см. company.py). Остальные удалятся ниже.
+    async for a in db.user_assets.find({"userId": uid_q, "companyId": {"$ne": None}}, {"companyId": 1}):
+        owner = await db.companies.find_one({"_id": ObjectId(a["companyId"])}, {"ownerId": 1})
+        if owner and owner.get("ownerId") and owner["ownerId"] != uid:
+            await db.user_assets.update_one({"_id": a["_id"]}, {"$set": {"userId": owner["ownerId"]}})
+
+    for coll, fields in (
+        ("transactions", ("userId",)),
+        ("user_assets", ("userId",)),
+        ("user_fields", ("userId",)),
+        ("user_hardware", ("userId",)),
+        ("mining_farms", ("userId",)),
+        ("market_lots", ("sellerId",)),
+        ("stock_holdings", ("userId",)),
+        ("crypto_holdings", ("userId",)),
+        ("crypto_transfers", ("fromId", "toId")),
+        ("stock_events", ("userId",)),
+        ("crypto_events", ("userId",)),
+        ("media_events", ("orderedBy", "targetOwnerId")),
+        ("company_debuffs", ("ownerId",)),
+        ("cityroof_sessions", ("attackerId",)),
+        ("cityroof_itstudio_jobs", ("orderedBy",)),
+        ("notifications", ("userId",)),
+        ("company_members", ("userId",)),
+        ("company_invites", ("toUserId", "ownerId")),
+        ("company_applications", ("applicantId", "ownerId")),
+        ("purchases", ("userId",)),
+        ("analytics", ("userId",)),
+    ):
+        query = {"$or": [{f: uid_q} for f in fields]}
+        await db[coll].delete_many(query)
+
+    # Захваченные в CityRoof бизнесы освобождаются (как при недельном ролловере).
+    await db.cityroof_businesses.update_many(
+        {"ownerId": uid_q},
+        {"$set": {"ownerId": None, "ownerName": None, "ownerColor": None}},
+    )
+
+    await db.refresh_tokens.delete_many({"user_id": oid})
+
+    await db.users.delete_one({"_id": oid})
 
     try:
         from ws import push_to_admins

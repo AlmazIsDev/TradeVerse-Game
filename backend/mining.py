@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import asyncio
@@ -36,6 +37,8 @@ from shop import CATALOG_BY_NAME, CATEGORY_ROLE
 from notifications import push_notification
 
 router = APIRouter(prefix="/api/mining", tags=["mining"])
+
+logger = logging.getLogger("tradeverse.mining")
 
 # Обязательные компоненты для запуска добычи (psu проверяется отдельно — список).
 # Сеть обязательна: без неё эффективность режется в EFF_FLOOR (15%) — молчаливая
@@ -105,8 +108,8 @@ MANAGER_SALARY_PER_H = 100.0           # × уровень
 # ИИ-управляющий поддерживает ферму в рабочем состоянии, не дожидаясь
 # критического износа. Порог ремонта растёт с уровнем: чем опытнее управляющий,
 # тем в лучшем состоянии он держит оборудование (level 1 → ~56%, level 5 → 80%).
-MANAGER_REPAIR_BASE = 50.0
-MANAGER_REPAIR_PER_LEVEL = 6.0
+MANAGER_REPAIR_BASE = 88.0
+MANAGER_REPAIR_PER_LEVEL = 2.0
 # Переключатели автономности ИИ (farm.manager.settings, по умолчанию всё включено).
 MANAGER_SETTINGS = ("autoRepair", "autoCoin", "autoRestart")
 
@@ -293,6 +296,27 @@ def choose_best_coin(market: dict, profile: Optional[dict] = None,
     return best
 
 
+def _total_power(farm: dict, overclock: float) -> float:
+    """Потребление фермы в W при заданном разгоне. Единая формула для
+    расчёта статов и проверки БП — чтобы проверки не разошлись с экономикой."""
+    comp = farm.get("components", {})
+    gpu_power = sum(g.get("specs", {}).get("power", 0) for g in comp.get("gpus", [])) * overclock
+    cpu_power = (comp.get("cpu") or {}).get("specs", {}).get("power", 0)
+    mb_power = (comp.get("motherboard") or {}).get("specs", {}).get("power", 0)
+    return round(gpu_power + cpu_power + mb_power + BASE_POWER_W, 1)
+
+
+def _check_psu(farm: dict, overclock: float) -> None:
+    """БП должен покрывать потребление при заданном разгоне. Проверка общая
+    для старта и смены разгона: иначе запуск на низком разгоне с последующим
+    повышением обходит проверку — ферма майнит за пределами БП."""
+    pw = _total_power(farm, overclock)
+    psu_w = sum(p.get("specs", {}).get("power", 0) for p in _psus(farm.get("components", {})))
+    if psu_w < pw:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"Недостаточная мощность БП ({psu_w}W < {pw}W)")
+
+
 def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float = 1.0,
              city: Optional[dict] = None, live_hashrate_on_coin: float = 0.0) -> dict:
     # city — бонусы зданий «Крыши города»: yield (+% к добыче), energy (−% к счёту за свет).
@@ -306,10 +330,7 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     condition = farm.get("condition", 100.0)
 
     hashrate = _farm_hashrate(farm)
-    gpu_power = sum(g.get("specs", {}).get("power", 0) for g in gpus) * overclock
-    cpu_power = (comp.get("cpu") or {}).get("specs", {}).get("power", 0)
-    mb_power = (comp.get("motherboard") or {}).get("specs", {}).get("power", 0)
-    total_power = round(gpu_power + cpu_power + mb_power + BASE_POWER_W, 1)
+    total_power = _total_power(farm, overclock)
 
     cooling_cap = (comp.get("cooling") or {}).get("specs", {}).get("cooling", 0) + sum(f.get("specs", {}).get("cooling", 0) for f in fans)
     manager = farm.get("manager") or {"type": "player", "level": 0}
@@ -318,7 +339,9 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     base_temp = TEMP_AMBIENT + (total_power / max(1, cooling_cap)) * TEMP_FACTOR * (1 - cool_bonus)
     # Бонус охлаждающей жидкости: пока datetime coolant_until не наступила,
     # температура считается сниженной на 25%.
-    coolant_until = farm.get("coolant_until")
+    # _aware: в БД попадались naive-даты (legacy-запись) — сравнение с aware
+    # _now() валило весь тик майнинга TypeError'ом (ИИ и добыча стояли у всех).
+    coolant_until = _aware(farm.get("coolant_until"))
     coolant_active = bool(coolant_until and coolant_until > _now())
     if coolant_active:
         # Снижение от дельты (превышения над TEMP_AMBIENT), сохраняя базу.
@@ -401,13 +424,15 @@ def _repair_cost(farm: dict) -> float:
 
 
 def _ai_should_repair(ai: bool, ai_level: int, condition: float, profit_per_h: float) -> bool:
-    """Решение ИИ-управляющего о ремонте: чинит, когда износ ниже порога уровня
-    И когда ферма в принципе прибыльна (положительный доход в час). Достаточность
-    средств проверяется отдельно при списании (adjust_balance) — здесь только
-    целесообразность, чтобы управляющий не чинил заведомо убыточную ферму."""
+    """Решение ИИ-управляющего о ремонте. ИИ СОДЕРЖИТ ферму: чинит, как только
+    состояние упало ниже порога обслуживания (L1 — 90%, выше уровень — туже,
+    до 98%), а не когда ферма почти развалилась — иначе неделями выглядит,
+    будто управляющий ничего не делает. Ремонт только на прибыльной ферме
+    (положительный доход в час); достаточность средств проверяется отдельно
+    при списании (adjust_balance)."""
     if not ai:
         return False
-    threshold = min(80.0, MANAGER_REPAIR_BASE + ai_level * MANAGER_REPAIR_PER_LEVEL)
+    threshold = min(98.0, MANAGER_REPAIR_BASE + ai_level * MANAGER_REPAIR_PER_LEVEL)
     if condition >= threshold:
         return False
     return profit_per_h > 0
@@ -630,18 +655,20 @@ class AdminTransferBody(BaseModel):
 
 
 BULK_ACTIONS = ("start", "stop", "repair", "coolant", "hire", "upgrade",
-                "fire", "coin", "settings", "uninstall")
+                "fire", "coin", "settings", "uninstall", "overclock")
 
 
 class BulkActionBody(BaseModel):
     """Bulk-действие над списком ферм. Действие — см. BULK_ACTIONS.
     symbol — для coin; settings — для settings (переключатели ИИ);
-    qty — сколько канистр ОЖ заправить в каждую ферму (для coolant)."""
+    qty — сколько канистр ОЖ заправить в каждую ферму (для coolant);
+    value — разгон 0.8..1.5 (для overclock, с проверкой БП на каждой ферме)."""
     action: str
     farmIds: list[str]
     symbol: Optional[str] = None
     settings: Optional[dict] = None
     qty: Optional[int] = None
+    value: Optional[float] = None
 
     @field_validator("farmIds")
     @classmethod
@@ -740,16 +767,44 @@ async def my_hardware_inventory(
     одинаковых единиц не должны ни сериализоваться, ни рендериться поштучно).
     У групп qty > 1 и group=True; продажа группы — /api/shop/sell по itemId."""
     user_id = str(current_user["_id"])
-    items = []
-    async for h in db.user_hardware.find(
-            {"userId": user_id, "farmId": {"$ne": None}}).sort("purchased_at", -1):
-        it = _serialize_hw(h)
-        it["qty"] = 1
-        items.append(it)
     farm_names = {str(f["_id"]): f.get("name") async for f in
                   db.mining_farms.find({"userId": user_id}, {"name": 1})}
-    for it in items:
-        it["farmName"] = farm_names.get(it["farmId"]) if it.get("farmId") else None
+    items = []
+    # Установленное тоже группируем (товар + состояние): при тысячах ферм
+    # поштучный список (8-10 единиц на ферму) убивал и ответ, и рендер.
+    # farmsCount/farmSample — для показа «на N фермах» вместо одной фермы.
+    async for g in db.user_hardware.aggregate([
+        {"$match": {"userId": user_id, "farmId": {"$ne": None}}},
+        {"$group": {
+            "_id": {"itemId": "$itemId", "category": "$category", "name": "$name",
+                    "specs": "$specs", "condition": "$condition"},
+            "qty": {"$sum": 1},
+            "farms": {"$addToSet": "$farmId"},
+            "avg_price": {"$avg": "$purchase_price"},
+            "latest": {"$max": "$purchased_at"},
+        }},
+        {"$sort": {"_id.name": 1, "_id.itemId": 1}},
+    ]):
+        gid = g["_id"]
+        fids = [f for f in g["farms"] if f]
+        first = fids[0] if fids else None
+        items.append({
+            "id": f"inst-{gid.get('itemId')}-{gid.get('condition')}",
+            "itemId": gid.get("itemId"),
+            "name": gid.get("name"),
+            "category": gid.get("category"),
+            "specs": gid.get("specs", {}),
+            "condition": round(float(gid.get("condition") or 0), 1),
+            "purchasePrice": round(float(g["avg_price"] or 0), 2),
+            "farmId": first,
+            "farmName": farm_names.get(first) if first else None,
+            "installedGroup": True,
+            "farmsCount": len(fids),
+            "farmSample": [farm_names.get(f) for f in fids[:3] if farm_names.get(f)],
+            "purchasedAt": g["latest"].isoformat() if isinstance(g.get("latest"), datetime) else None,
+            "qty": g["qty"],
+            "group": True,
+        })
     async for g in db.user_hardware.aggregate([
         {"$match": {"userId": user_id, "farmId": None}},
         {"$group": {
@@ -1184,23 +1239,16 @@ async def install_components_batch(farm_id: str, payload: InstallBatchBody, curr
 
 async def _uninstall_all(db, farm: dict) -> None:
     """Снять ВСЁ оборудование фермы в инвентарь (bulk-uninstall).
-    Добыча останавливается — без компонентов ферма собранной не считается."""
-    comp = farm.get("components") or {}
-    hw_ids = []
-    for role in ("motherboard", "cpu", "ram", "ssd", "cooling", "case", "rack", "ups", "network", "psu"):
-        node = comp.get(role)
-        if isinstance(node, dict) and node.get("hwId"):
-            hw_ids.append(node["hwId"])
-    for key in ("gpus", "fans", "psus"):
-        hw_ids += [x.get("hwId") for x in (comp.get(key) or [])
-                   if isinstance(x, dict) and x.get("hwId")]
+    Добыча останавливается — без компонентов ферма собранной не считается.
+    Освобождаем всё железо с farmId этой фермы одним запросом: components
+    плюс то, что не входит в них (канистры ОЖ) — иначе после разборки
+    остаются «призраки»: единицы числятся установленными, но фермы в них нет."""
     await db.mining_farms.update_one(
         {"_id": farm["_id"]},
         {"$set": {"components": {"gpus": [], "fans": []}, "status": "idle", "coin": None}},
     )
-    valid = [ObjectId(h) for h in hw_ids if h and ObjectId.is_valid(h)]
-    if valid:
-        await db.user_hardware.update_many({"_id": {"$in": valid}}, {"$set": {"farmId": None}})
+    await db.user_hardware.update_many(
+        {"farmId": str(farm["_id"])}, {"$set": {"farmId": None}})
 
 
 @router.post("/bulk/action")
@@ -1216,80 +1264,96 @@ async def bulk_action(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown action")
     user_id = str(current_user["_id"])
     symbol = (payload.symbol or "").upper()
+    # Разгон клампится так же, как в одиночном OverclockBody.
+    oc = max(0.8, min(1.5, round(float(payload.value or 1.0), 2)))
     if payload.action == "coin" and not await db.crypto_assets.find_one({"symbol": symbol}):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
     market = await _coin_market(db)
     econ = await get_econ(db)
     city = await _city_bonus(db, user_id)
-    results = []
-    for fid in payload.farmIds:
+    # Фермы обрабатываются ПАРАЛЛЕЛЬНО (семафор ниже): при удалённой БД
+    # последовательные запросы к Mongo растягивали массовое действие на
+    # десятки минут. Ошибка одной фермы не мешает остальным.
+    gate = _bulk_gate(user_id)
+    sem = asyncio.Semaphore(40)
+
+    async def _one(fid: str) -> dict:
         item = {"farmId": fid, "ok": False, "error": None}
         try:
-            farm = await _load_farm(db, user_id, fid)
-            if payload.action == "start":
-                await _start_one(db, user_id, farm, market, econ, city)
-            elif payload.action == "stop":
-                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"status": "idle"}})
-            elif payload.action == "repair":
-                cost = _repair_cost(farm)
-                if cost > 0:
+            async with sem:
+                farm = await _load_farm(db, user_id, fid)
+                if payload.action == "start":
+                    await _start_one(db, user_id, farm, market, econ, city)
+                elif payload.action == "stop":
+                    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"status": "idle"}})
+                elif payload.action == "repair":
+                    cost = _repair_cost(farm)
+                    if cost > 0:
+                        nb = await adjust_balance(db, user_id, -cost)
+                        if nb is None:
+                            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств на ремонт")
+                        await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"condition": 100.0}})
+                        await record_transaction(db, user_id, EXPENSE, cost, CAT_MINING,
+                                                 "Farm repair", balance_after=nb)
+                elif payload.action == "coolant":
+                    qty = max(1, min(int(payload.qty or 1), COOLANT_MAX))
+                    for _ in range(qty):
+                        fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
+                        await _take_coolant(db, user_id, fresh)
+                elif payload.action == "coin":
+                    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"coin": symbol}})
+                elif payload.action == "settings":
+                    mgr = farm.get("manager") or {}
+                    if mgr.get("type") != "ai":
+                        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Управляющий не нанят")
+                    cur = dict(mgr.get("settings") or {})
+                    for k, v in (payload.settings or {}).items():
+                        if k in MANAGER_SETTINGS:
+                            cur[k] = bool(v)
+                    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"manager.settings": cur}})
+                elif payload.action == "overclock":
+                    # БП каждой фермы проверяется индивидуально: где БП слаб,
+                    # ферма получает ошибку в results, остальные разгоняются.
+                    _check_psu(farm, oc)
+                    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"overclock": oc}})
+                elif payload.action == "uninstall":
+                    await _uninstall_all(db, farm)
+                elif payload.action in ("hire", "upgrade"):
+                    mgr = farm.get("manager") or {}
+                    if payload.action == "hire":
+                        missing = _missing_required(farm)
+                        if missing:
+                            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                                f"Не хватает компонентов: {', '.join(missing)}")
+                        if mgr.get("type") == "ai":
+                            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Управляющий уже нанят")
+                        cost, new_level = MANAGER_BASE_COST, 1
+                    else:
+                        if mgr.get("type") != "ai":
+                            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сначала наймите управляющего")
+                        lvl = int(mgr.get("level", 1))
+                        if lvl >= MANAGER_MAX_LEVEL:
+                            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Достигнут максимальный уровень")
+                        cost, new_level = MANAGER_UPGRADE_COST * lvl, lvl + 1
                     nb = await adjust_balance(db, user_id, -cost)
                     if nb is None:
-                        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств на ремонт")
-                    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"condition": 100.0}})
+                        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+                    new_manager = {"type": "ai", "level": new_level,
+                                   "salary": round(MANAGER_SALARY_PER_H * new_level, 2)}
+                    await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"manager": new_manager}})
                     await record_transaction(db, user_id, EXPENSE, cost, CAT_MINING,
-                                             "Farm repair", balance_after=nb)
-            elif payload.action == "coolant":
-                qty = max(1, min(int(payload.qty or 1), COOLANT_MAX))
-                for _ in range(qty):
-                    fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
-                    await _take_coolant(db, user_id, fresh)
-            elif payload.action == "coin":
-                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"coin": symbol}})
-            elif payload.action == "settings":
-                mgr = farm.get("manager") or {}
-                if mgr.get("type") != "ai":
-                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Управляющий не нанят")
-                cur = dict(mgr.get("settings") or {})
-                for k, v in (payload.settings or {}).items():
-                    if k in MANAGER_SETTINGS:
-                        cur[k] = bool(v)
-                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"manager.settings": cur}})
-            elif payload.action == "uninstall":
-                await _uninstall_all(db, farm)
-            elif payload.action in ("hire", "upgrade"):
-                mgr = farm.get("manager") or {}
-                if payload.action == "hire":
-                    missing = _missing_required(farm)
-                    if missing:
-                        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                            f"Не хватает компонентов: {', '.join(missing)}")
-                    if mgr.get("type") == "ai":
-                        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Управляющий уже нанят")
-                    cost, new_level = MANAGER_BASE_COST, 1
-                else:
-                    if mgr.get("type") != "ai":
-                        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сначала наймите управляющего")
-                    lvl = int(mgr.get("level", 1))
-                    if lvl >= MANAGER_MAX_LEVEL:
-                        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Достигнут максимальный уровень")
-                    cost, new_level = MANAGER_UPGRADE_COST * lvl, lvl + 1
-                nb = await adjust_balance(db, user_id, -cost)
-                if nb is None:
-                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
-                new_manager = {"type": "ai", "level": new_level,
-                               "salary": round(MANAGER_SALARY_PER_H * new_level, 2)}
-                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"manager": new_manager}})
-                await record_transaction(db, user_id, EXPENSE, cost, CAT_MINING,
-                                         f"ИИ-управляющий (ур. {new_level}) — «{farm.get('name')}»",
-                                         balance_after=nb)
-            else:  # fire
-                await db.mining_farms.update_one(
-                    {"_id": farm["_id"]}, {"$set": {"manager": {"type": "player", "level": 0}}})
-            item["ok"] = True
+                                             f"ИИ-управляющий (ур. {new_level}) — «{farm.get('name')}»",
+                                             balance_after=nb)
+                else:  # fire
+                    await db.mining_farms.update_one(
+                        {"_id": farm["_id"]}, {"$set": {"manager": {"type": "player", "level": 0}}})
+                item["ok"] = True
         except HTTPException as e:
             item["error"] = e.detail
-        results.append(item)
+        return item
+
+    async with gate:
+        results = list(await asyncio.gather(*(_one(fid) for fid in payload.farmIds)))
     return {"results": results}
 
 
@@ -1297,6 +1361,20 @@ def _is_capacity_error(detail: str) -> bool:
     """Ошибка ёмкости (ферма заполнена) — при bulk-сборке это не сбой фермы,
     а сигнал остановить заполнение: остаток пула уходит следующим фермам."""
     return str(detail).startswith(("Нет свободных мест", "Нет свободных слотов", "Нет мест под БП"))
+
+
+# ── Анти-спам: одна тяжёлая bulk-операция на пользователя ────────────────────
+_bulk_locks: dict[str, asyncio.Lock] = {}
+
+def _bulk_gate(user_id: str) -> asyncio.Lock:
+    """Серийная блокировка на пользователя: повторный запрос во время
+    выполнения массовой операции получает мгновенный 429 вместо того,
+    чтобы множить нагрузку на БД."""
+    lock = _bulk_locks.setdefault(user_id, asyncio.Lock())
+    if lock.locked():
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Массовая операция уже выполняется — дождитесь завершения")
+    return lock
 
 
 async def _uninstall_hw(db, farm: dict, hw_id: str) -> bool:
@@ -1357,7 +1435,7 @@ async def bulk_assemble(
             pool = deque((i, h if h is not None else next(unit_iter, None)) for i, h in pool)
         norm_items.append((cat, pool))
 
-    sem = asyncio.Semaphore(40)   # упираемся в latency БД: больше параллелизма = выше throughput
+    sem = asyncio.Semaphore(80)   # упираемся в latency БД: больше параллелизма = выше throughput
 
     async def _do_farm(fid: str) -> dict:
         async with sem:
@@ -1400,7 +1478,8 @@ async def bulk_assemble(
                 return {"farmId": fid, "ok": False, "error": err}
             return {"farmId": fid, "ok": True}
 
-    results = await asyncio.gather(*(_do_farm(fid) for fid in payload.farmIds))
+    async with _bulk_gate(user_id):
+        results = await asyncio.gather(*(_do_farm(fid) for fid in payload.farmIds))
     return {"results": list(results), "assembled": sum(1 for r in results if r["ok"])}
 
 
@@ -1456,17 +1535,17 @@ async def bulk_create_farms(
                 free_before += 1
     cap = min(payload.qty, free_before) if payload.qty else free_before
 
-    created = 0
+    docs = []
     for h in houses:
-        if created >= cap:
+        if len(docs) >= cap:
             break
         hid = str(h["_id"])
         for i in range(int(h.get("basement") or 0)):
-            if created >= cap:
+            if len(docs) >= cap:
                 break
             if (hid, i) in occupied:
                 continue
-            doc = {
+            docs.append({
                 "userId": user_id, "name": f"{payload.prefix} #{i + 1}",
                 "houseId": h["_id"], "slotIndex": i,
                 "components": {"gpus": [], "fans": []},
@@ -1474,12 +1553,13 @@ async def bulk_create_farms(
                 "manager": {"type": "player", "level": 0}, "electricity_owed": 0.0,
                 "total_earned": 0.0, "total_spent": 0.0, "last_tick": _now(),
                 "created_at": _now(),
-            }
-            try:
-                await db.mining_farms.insert_one(doc)
-                created += 1
-            except DuplicateKeyError:
-                pass   # слот заняли параллельно
+            })
+    # Вставка параллельно: последовательные insert по одному при удалённой БД
+    # растягивали создание сотен ферм на минуты.
+    gate = _bulk_gate(user_id)
+    async with gate:
+        rets = await asyncio.gather(*(db.mining_farms.insert_one(d) for d in docs))
+    created = sum(1 for r in rets if r.inserted_id)
     return {"ok": True, "created": created, "remaining": free_before - created}
 
 
@@ -1528,9 +1608,8 @@ async def _start_one(db, user_id: str, farm: dict, market: dict, econ: dict, cit
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Не хватает компонентов: {', '.join(missing)}")
 
     stats = _compute(farm, market, econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0), city)
-    psu_w = sum(p.get("specs", {}).get("power", 0) for p in _psus(farm.get("components", {})))
-    if psu_w < stats["power"]:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Недостаточная мощность БП ({psu_w}W < {stats['power']}W)")
+    # Проверка БП общая (см. _check_psu) — в т.ч. против разгона.
+    _check_psu(farm, farm.get("overclock", 1.0))
 
     coin = farm.get("coin")
     manager = farm.get("manager") or {}
@@ -1569,6 +1648,9 @@ async def set_coin(farm_id: str, payload: CoinBody, current_user: dict = Depends
 async def set_overclock(farm_id: str, payload: OverclockBody, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
+    # Проверяем ДО применения: разгон повышает потребление, и запущенная ферма
+    # не может потреблять больше, чем выдаёт её БП.
+    _check_psu(farm, payload.value)
     await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"overclock": payload.value}})
     return {"ok": True, "overclock": payload.value}
 
@@ -1767,28 +1849,33 @@ async def tick_all(db: AsyncIOMotorDatabase):
     # электричество/зарплата списываются с кэша — без неё ферма «прибыльной»,
     # но безденежной, щёлкала бы off↔mining каждый тик со спамом уведомлений.
     async for farm in db.mining_farms.find({"status": "off", "manager.type": "ai"}):
-        if _missing_required(farm):
-            continue
-        if not (farm.get("manager") or {}).get("settings", {}).get("autoRestart", True):
-            continue
-        city = await _city_bonus(db, farm["userId"])
-        stats = _compute(farm, market, ec, em, city)
-        if stats.get("profitPerHour", 0) <= 0:
-            continue
-        # кэш на ~1 тик (60с планировщика) расходов; иначе не трогаем — пусть
-        # ждёт пополнения, а не мигает статусом.
-        tick_h = 60.0 / 3600.0
-        tick_cost = (stats.get("electricityPerHour", 0.0) + stats.get("salaryPerHour", 0.0)) * tick_h
-        owner = await db.users.find_one({"_id": ObjectId(farm["userId"])}, {"balance": 1}) if ObjectId.is_valid(farm["userId"]) else None
-        if not owner or owner.get("balance", 0.0) < tick_cost:
-            continue
-        await db.mining_farms.update_one(
-            {"_id": farm["_id"]},
-            {"$set": {"status": "mining", "last_tick": now}},
-        )
-        await push_notification(db, farm["userId"], "mining", "Ферма перезапущена",
-                                f"ИИ-управляющий возобновил добычу на «{farm.get('name')}».",
-                                data={"farmId": str(farm["_id"])})
+        # Одна битая ферма (кривые данные в БД) не должна валить весь тик:
+        # ошибка логируется и тик идёт дальше по остальным.
+        try:
+            if _missing_required(farm):
+                continue
+            if not (farm.get("manager") or {}).get("settings", {}).get("autoRestart", True):
+                continue
+            city = await _city_bonus(db, farm["userId"])
+            stats = _compute(farm, market, ec, em, city)
+            if stats.get("profitPerHour", 0) <= 0:
+                continue
+            # кэш на ~1 тик (60с планировщика) расходов; иначе не трогаем — пусть
+            # ждёт пополнения, а не мигает статусом.
+            tick_h = 60.0 / 3600.0
+            tick_cost = (stats.get("electricityPerHour", 0.0) + stats.get("salaryPerHour", 0.0)) * tick_h
+            owner = await db.users.find_one({"_id": ObjectId(farm["userId"])}, {"balance": 1}) if ObjectId.is_valid(farm["userId"]) else None
+            if not owner or owner.get("balance", 0.0) < tick_cost:
+                continue
+            await db.mining_farms.update_one(
+                {"_id": farm["_id"]},
+                {"$set": {"status": "mining", "last_tick": now}},
+            )
+            await push_notification(db, farm["userId"], "mining", "Ферма перезапущена",
+                                    f"ИИ-управляющий возобновил добычу на «{farm.get('name')}».",
+                                    data={"farmId": str(farm["_id"])})
+        except Exception:
+            logger.exception("autoRestart failed for farm %s", farm.get("_id"))
 
     # Живой вклад игроков в сложность (второстепенный сигнал, см. LIVE_WEIGHT):
     # суммарный хешрейт активных ферм по монетам, O(активных ферм) за тик.
@@ -1799,11 +1886,11 @@ async def tick_all(db: AsyncIOMotorDatabase):
         if sym:
             live_hashrate_by_coin[sym] = live_hashrate_by_coin.get(sym, 0.0) + _farm_hashrate(farm)
 
-    for farm in active_farms:
+    async def _tick_one(farm: dict) -> None:
         last = _aware(farm.get("last_tick"))
         elapsed_h = min(MAX_ACCRUAL_H, (now - last).total_seconds() / 3600.0) if isinstance(last, datetime) else 0.0
         if elapsed_h < MINING_MIN_ELAPSED_H:
-            continue
+            return
 
         user_id = farm["userId"]
         manager = farm.get("manager") or {"type": "player", "level": 0}
@@ -1879,7 +1966,7 @@ async def tick_all(db: AsyncIOMotorDatabase):
         # списанная канистра не активировала бонус, а остаток застревал —
         # условие расхода требует активный coolant_until.
         cur_coolant = int(farm.get("coolant", 0) or 0)
-        coolant_until = farm.get("coolant_until")
+        coolant_until = _aware(farm.get("coolant_until"))
         if cur_coolant > 0 and coolant_until and coolant_until <= now:
             set_fields["coolant"] = cur_coolant - 1
             set_fields["coolant_until"] = now + timedelta(hours=COOLANT_DURATION_H)
@@ -1901,7 +1988,7 @@ async def tick_all(db: AsyncIOMotorDatabase):
                                         f"«{farm.get('name')}»: недостаточно денег на электричество.",
                                         data={"farmId": str(farm["_id"])})
                 await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": set_fields})
-                continue
+                return
             await record_transaction(db, user_id, EXPENSE, costs, CAT_MINING,
                                      f"Расходы фермы «{farm.get('name')}»", balance_after=nb)
 
@@ -1927,6 +2014,14 @@ async def tick_all(db: AsyncIOMotorDatabase):
                                          "condition": round(new_condition, 2), "status": set_fields.get("status", "mining")})
         except Exception:
             pass
+
+    for farm in active_farms:
+        # Одна битая ферма (кривые данные в БД) не должна валить весь тик:
+        # ошибка логируется, остальные фермы добывают дальше.
+        try:
+            await _tick_one(farm)
+        except Exception:
+            logger.exception("mining tick failed for farm %s", farm.get("_id"))
 
 
 # ── Admin ────────────────────────────────────────────────────────────────────
@@ -2013,14 +2108,15 @@ if __name__ == "__main__":
     # Без управляющего — не ремонтирует.
     assert _ai_should_repair(False, 0, 10.0, 100.0) is False
     # Уровень 1 → порог ~56%; износ 40% ниже порога, ферма прибыльна → чинит.
-    assert _ai_should_repair(True, 1, 40.0, 85.0) is True
+    assert _ai_should_repair(True, 1, 89.0, 85.0) is True      # ниже порога L1 (90)
     # Ниже порога, но ферма убыточна (profit ≤ 0) — не чинит.
     assert _ai_should_repair(True, 1, 40.0, 0.0) is False
     assert _ai_should_repair(True, 1, 40.0, -5.0) is False
     # Состояние выше порога — чинить рано.
-    assert _ai_should_repair(True, 5, 90.0, 1000.0) is False
+    assert _ai_should_repair(True, 5, 99.0, 1000.0) is False   # выше порога L5 (98)
     # Порог растёт с уровнем: level 5 → 80%, износ 70% уже требует ремонта.
     assert _ai_should_repair(True, 5, 70.0, 1000.0) is True
+    assert _ai_should_repair(True, 1, 91.0, 85.0) is False     # ещё выше порога L1
 
     # Майнинг добывает МОНЕТУ: qty = revenue_usd / price; расходы остаются в кэше.
     assert _mined_qty(100.0, 50.0) == 2.0           # 100$ по курсу 50 → 2 монеты
@@ -2186,6 +2282,25 @@ if __name__ == "__main__":
     # ── Переключатели ИИ: дефолт «всё включено» ( manager.settings может отсутствовать) ──
     _ms = ({"type": "ai", "level": 1}.get("settings") or {}).get("autoRepair", True)
     assert _ms is True
+
+    # ── Проверка БП при разгоне: слабый БП блокирует и разгон, и старт ──
+    _weak = {"components": {"gpus": [{"specs": {"power": 1000}}]}}
+    try:
+        _check_psu(_weak, 1.0)
+        raise RuntimeError("psu check must fail on weak PSU")
+    except HTTPException:
+        pass
+    _strong = {"components": {"gpus": [{"specs": {"power": 1000}}],
+                              "psus": [{"specs": {"power": 3000}}]}}
+    _check_psu(_strong, 1.0)
+    _check_psu(_strong, 1.5)   # 1500W потребления < 3000W БП — ок
+    try:
+        _check_psu(_strong, 2.0)   # 2000W... БП 3000 — тоже ок; а вот слабый на 1.5:
+        _check_psu({"components": {"gpus": [{"specs": {"power": 2000}}],
+                                    "psus": [{"specs": {"power": 3000}}]}}, 1.5)
+        raise RuntimeError("psu check must fail on 3000W < 3000W+base")
+    except HTTPException:
+        pass
 
     print("mining self-check OK")
 

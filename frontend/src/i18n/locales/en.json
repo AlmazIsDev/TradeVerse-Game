@@ -908,7 +908,7 @@
       "creating": "Creating farms"
     },
     "autoRepair": "Auto-repair",
-    "autoRepairHint": "The AI repairs the farm itself while mining covers the repair cost",
+    "autoRepairHint": "The AI repairs the farm once it wears down (earlier with a higher manager level) while mining covers the cost",
     "autoCoin": "Auto coin selection",
     "autoCoinHint": "The AI switches the farm to the most profitable coin itself",
     "autoRestart": "Auto-restart",

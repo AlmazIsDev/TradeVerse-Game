@@ -74,7 +74,11 @@ function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy 
     return out
   }, [items, cat, status, query, sort])
 
-  const farmNameOf = (h) => h.farmName || farmNameById[h.farmId] || null
+  // Установленные группы (farmsCount > 1): «на N фермах», образцы — в title.
+  const farmLabelOf = (h) => {
+    if (h.farmsCount > 1) return t('inventory.onFarms', { count: h.farmsCount })
+    return h.farmName || farmNameById[h.farmId] || t('inventory.installedOn')
+  }
 
   return (
     <div className="inv-panel">
@@ -132,7 +136,7 @@ function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy 
             const cond = Math.round(h.condition ?? 100)
             const condClass = cond >= 70 ? 'ok' : cond >= 35 ? 'mid' : 'low'
             const chips = specChips(h, t)
-            const farmName = farmNameOf(h)
+            const farmLabel = farmLabelOf(h)
             return (
               <div key={h.id} className="inv-card">
                 <div className="inv-card-head">
@@ -151,7 +155,7 @@ function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy 
                 </div>
                 <div className="inv-meta">
                   {h.purchasePrice != null && <span>${formatMoney(h.purchasePrice)}{qtyOf(h) > 1 ? ` ×${qtyOf(h)}` : ''}</span>}
-                  {h.farmId && <span className="inv-farm" title={farmName || ''}>{farmName || t('inventory.installedOn')}</span>}
+                  {h.farmId && <span className="inv-farm" title={(h.farmSample || []).join(', ') || farmLabel}>{farmLabel}</span>}
                 </div>
                 {!admin && !h.farmId && onSell && (
                   <div className="user-actions inv-actions">

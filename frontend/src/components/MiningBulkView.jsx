@@ -14,7 +14,7 @@ import { hwName } from '../utils/hwName'
 import { toast } from './Toast'
 import ConfirmDialog from './ConfirmDialog'
 import {
-  Bot, ChevronLeft, Play, Square, Wrench, Hammer, X, Droplet, Coins, Trash2, Check,
+  Bot, ChevronLeft, Play, Square, Wrench, Hammer, X, Droplet, Coins, Trash2, Check, Zap,
 } from 'lucide-react'
 
 // Категории для авто-сборки: порядок = порядок установки в ферму.
@@ -41,6 +41,7 @@ function partSpec(cat, s = {}, t) {
 export default function MiningBulkView({ onBack }) {
   const { t } = useTranslation()
   const [farms, setFarms] = useState([])
+  const [loading, setLoading] = useState(true)
   const [sel, setSel] = useState({})            // {farmId: true}
   const [parts, setParts] = useState({})
   const [busy, setBusy] = useState(false)
@@ -52,11 +53,13 @@ export default function MiningBulkView({ onBack }) {
   const [coins, setCoins] = useState([])        // рынок монет для bulk-выбора монеты
   const [coinSel, setCoinSel] = useState('')
   const [coolantQty, setCoolantQty] = useState(1)
+  const [ocValue, setOcValue] = useState(1)
   const [aiToggles, setAiToggles] = useState({ autoRepair: true, autoCoin: true, autoRestart: true })
   const [confirm, setConfirm] = useState(null)
   const [houses, setHouses] = useState([])
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
       const [f, p, m, hs] = await Promise.all([
         fetchFarms(),
@@ -70,6 +73,8 @@ export default function MiningBulkView({ onBack }) {
       setHouses(hs || [])
     } catch (e) {
       toast(e?.message || t('common.error', 'Ошибка'), 'error')
+    } finally {
+      setLoading(false)
     }
   }, [t])
 
@@ -159,6 +164,7 @@ export default function MiningBulkView({ onBack }) {
     }
     if (!items.length) { toast(t('mining.bulk.noPartsChosen', 'Комплектующие не выбраны'), 'error'); return }
     setBusy(true)
+    setAsmOpen(false)
     const CH = 200
     const farmList = selectedUnassembled
     const total = farmList.length
@@ -199,9 +205,14 @@ export default function MiningBulkView({ onBack }) {
         <Bot size={22} className="icon" />
         <h2 className="tab-title">{t('mining.bulk.title', 'Массовое управление фермами')}</h2>
         {progress && (
-          <span className="mining-bulk-progress">
-            {progress.label}: <b>{progress.done}</b> / {progress.total}
-          </span>
+          <div className="mining-bulk-progressbar" role="status">
+            <span className="mining-bulk-progressbar-label">{progress.label}</span>
+            <div className="mining-bulk-progressbar-track">
+              <div className="mining-bulk-progressbar-fill"
+                style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }} />
+            </div>
+            <span className="mining-bulk-progressbar-num">{progress.done} / {progress.total}</span>
+          </div>
         )}
       </div>
 
@@ -263,6 +274,18 @@ export default function MiningBulkView({ onBack }) {
               <button className="asset-act" disabled={busy || !selectedIds.length} onClick={() => runAction('coolant', { qty: coolantQty })}>
                 <Droplet size={14} /> {t('mining.bulk.coolantAdd', 'Заправить')}
               </button>
+              <span className="mbt-divider" />
+              <span className="mbt-nowrap">
+                <span className="mining-bulk-label">{t('mining.overclock', 'Разгон')}</span>
+                <input type="number" min="0.8" max="1.5" step="0.05" className="tx-input mining-bulk-qty" disabled={busy}
+                  value={ocValue}
+                  onChange={e => setOcValue(Math.max(0.8, Math.min(1.5, parseFloat(e.target.value) || 1)))} />
+                <button className="asset-act" disabled={busy || !selectedIds.length}
+                  title={t('mining.bulk.overclockHint', 'Установить разгон на всех выбранных фермах. БП каждой фермы проверяется: где мощности не хватает, ферма не будет разогнана.')}
+                  onClick={() => runAction('overclock', { value: ocValue })}>
+                  <Zap size={14} /> {t('mining.bulk.overclock', 'Разгон')}
+                </button>
+              </span>
               <span className="mbt-divider" />
               <button className="asset-act upgrade" disabled={busy || !selectedIds.length} onClick={() => runAction('hire')}
                 title={t('mining.bulk.hireHint', 'Нанять ИИ-управляющего на каждую выбранную ферму (120 000 $/ферма)')}>
@@ -335,7 +358,9 @@ export default function MiningBulkView({ onBack }) {
         </div>
       )}
 
-      {farms.length === 0 ? (
+      {loading ? (
+        <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>
+      ) : farms.length === 0 ? (
         <div className="empty-state"><p>{t('mining.bulk.noFarms', 'Ферм пока нет — создайте их в подвалах домов.')}</p></div>
       ) : (
         <div className="mining-bulk-list">
@@ -357,38 +382,54 @@ export default function MiningBulkView({ onBack }) {
 
       {asmOpen && (
         <div className="modal-overlay" onClick={() => !busy && setAsmOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content asm-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setAsmOpen(false)}><X size={18} /></button>
             <h3><Hammer size={17} /> {t('mining.bulk.assemble', 'Авто-сборка')}</h3>
             <p className="modal-price">{t('mining.bulk.asmDesc', 'Детали ставятся в выбранные несобранные фермы по очереди; закончатся — сборка остановится.')}</p>
-            {ASM_CATS.map(({ cat, multi, single }) => (
-              <div key={cat} className="mslot-pick-row" style={{ margin: '6px 0' }}>
-                <label className="mpc-field" style={{ flex: 1 }}>
-                  <span>{t(`mining.comp.${cat}`, cat)}</span>
-                  <select className="mslot-pick" disabled={busy} value=""
-                    onChange={e => { if (e.target.value) setAsmChoice(c => ({ ...c, [cat]: { itemId: e.target.value, qty: 1 } })) }}>
-                    <option value="">{choice[cat]?.itemId
-                      ? hwName((parts[cat] || []).find(p => p.itemId === choice[cat].itemId) || {}, t)
-                      : t('mining.bulk.notSet', '— не ставить —')}</option>
-                    {(parts[cat] || []).map(p => (
-                      <option key={p.itemId} value={p.itemId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}{p.count > 1 ? ` (×${p.count})` : ''}</option>
-                    ))}
-                  </select>
-                </label>
-                {multi && (
-                  <input type="number" min="1" max="50" disabled={busy} className="tx-input"
-                    value={choice[cat]?.qty || 1}
-                    onChange={e => setAsmChoice(c => ({ ...c, [cat]: { ...c[cat], qty: Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)) } }))} />
-                )}
-                {choice[cat]?.itemId && (
-                  <button className="mslot-rm" onClick={() => setAsmChoice(c => { const n = { ...c }; delete n[cat]; return n })}><X size={12} /></button>
-                )}
+            <div className="asm-grid">
+              {ASM_CATS.map(({ cat, multi }) => {
+                const chosen = choice[cat]?.itemId
+                const cnt = (parts[cat] || []).find(p => p.itemId === chosen)?.count || 0
+                return (
+                  <div key={cat} className={`asm-row${chosen ? ' chosen' : ''}`}>
+                    <span className="asm-cat">{t(`mining.comp.${cat}`, cat)}</span>
+                    <select className="mslot-pick" disabled={busy} value={chosen || ''}
+                      onChange={e => {
+                        const v = e.target.value
+                        setAsmChoice(c => {
+                          const n = { ...c }
+                          if (!v) delete n[cat]
+                          // multi по умолчанию берём весь свободный остаток товара:
+                          // ферма возьмёт по ёмкости, лишнее останется в инвентаре
+                          else n[cat] = { itemId: v, qty: multi ? Math.min(2000, (parts[cat] || []).find(p => p.itemId === v)?.count || 1) : 1 }
+                          return n
+                        })
+                      }}>
+                      <option value="">{t('mining.bulk.notSet', '— не ставить —')}</option>
+                      {(parts[cat] || []).map(p => (
+                        <option key={p.itemId} value={p.itemId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}{p.count > 1 ? ` (×${p.count})` : ''}</option>
+                      ))}
+                    </select>
+                    {multi && chosen && (
+                      <input type="number" min="1" max={Math.max(1, cnt)} disabled={busy} className="tx-input asm-qty"
+                        value={choice[cat]?.qty || 1}
+                        onChange={e => setAsmChoice(c => ({ ...c, [cat]: { ...c[cat], qty: Math.max(1, Math.min(cnt || 1, parseInt(e.target.value, 10) || 1)) } }))} />
+                    )}
+                    {chosen && (
+                      <button className="mslot-rm" onClick={() => setAsmChoice(c => { const n = { ...c }; delete n[cat]; return n })}><X size={12} /></button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="asm-footer">
+              <span className="asm-summary">
+                {t('mining.bulk.asmSummary', { farms: selectedUnassembled.length, cats: ASM_CATS.filter(({ cat }) => choice[cat]?.itemId).length })}
+              </span>
+              <div className="modal-buttons">
+                <button className="stock-btn buy-btn" disabled={busy} onClick={() => applyAsm(choice)}>{t('mining.bulk.apply', 'Собрать')}</button>
+                <button className="stock-btn cancel-btn" onClick={() => setAsmOpen(false)}>{t('common.cancel')}</button>
               </div>
-              )
-            )}
-            <div className="modal-buttons">
-              <button className="stock-btn buy-btn" disabled={busy} onClick={() => applyAsm(choice)}>{t('mining.bulk.apply', 'Собрать')}</button>
-              <button className="stock-btn cancel-btn" onClick={() => setAsmOpen(false)}>{t('common.cancel')}</button>
             </div>
           </div>
         </div>

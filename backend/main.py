@@ -184,6 +184,8 @@ app.add_middleware(
         "https://tradeverse.weissx.net",   # прод-фронтенд
         "http://localhost:20300",          # локальный vite (dev/preview)
         "http://127.0.0.1:20300",          # алиас по IP (vite может открыть так)
+        "http://localhost:20310",          # локальный vite (альтернативный порт)
+        "http://127.0.0.1:20310",          # алиас по IP для альтернативного порта
         "http://localhost:5173",           # локальный vite (дефолтный порт)
         "http://127.0.0.1:5173",           # алиас по IP для дефолтного vite
         "http://localhost",                # бонус: origin без порта (на всякий случай)

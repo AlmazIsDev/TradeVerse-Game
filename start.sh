@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 # TradeVerse: обновление из GitHub и запуск (frontend + backend).
-# Запуск:  bash start.sh   (или ./start.sh после chmod +x)
+# Запуск:  bash start.sh   (или ./start.sh)
+# Скрипт можно положить в любую папку: если рядом нет клона репозитория —
+# он сам склонирует AlmazIsDev/TradeVerse-Game и продолжит уже из него.
 set -e
-cd "$(dirname "$0")"
+
+if [ ! -d .git ]; then
+  echo "[0/4] Это не git-репозиторий — клонирую AlmazIsDev/TradeVerse-Game..."
+  cd "$(dirname "$0")"
+  cd ..
+  if [ -d TradeVerse-Game/.git ]; then
+    cd TradeVerse-Game
+  else
+    git clone https://github.com/AlmazIsDev/TradeVerse-Game.git TradeVerse-Game
+    cd TradeVerse-Game
+  fi
+fi
 
 echo "[1/4] Обновление из GitHub (AlmazIsDev/TradeVerse-Game)..."
 git pull origin main

@@ -372,11 +372,18 @@ async def login_user(
         )
 
     # История IP для админки: {ip: последнее время входа с этого адреса}.
+    # ВАЖНО: ключ словаря содержит точки (IPv4) — путь "login_ips.1.2.3.4"
+    # через $set Mongo развернул бы во вложенные документы, поэтому словарь
+    # мержится в приложении и пишется целиком.
     now = datetime.now(timezone.utc)
     ip = _client_ip(request)
+    # Заодно самолечение: битые записи (вложенные документы от старого
+    # dotted-$set) выбрасываются — остаются только строковые метки времени.
+    login_ips = {k: v for k, v in (user.get("login_ips") or {}).items() if isinstance(v, str)}
+    login_ips[ip] = now.isoformat()
     await db.users.update_one(
         {"_id": user["_id"]},
-        {"$set": {f"login_ips.{ip}": now.isoformat(), "last_login": now.isoformat()}},
+        {"$set": {"login_ips": login_ips, "last_login": now.isoformat()}},
     )
 
     token, refresh_token = await issue_token_pair(db, user)
@@ -841,8 +848,10 @@ async def admin_get_users(
                                       "admin_level": 1, "bans": 1}):
         e = by_uid.get(str(u["_id"]), {})
         # IP-история: свежие адреса первыми, максимум 20 — полный список не нужен,
-        # а ответ не раздуваем.
-        ips = [{"ip": ip, "at": at} for ip, at in (u.get("login_ips") or {}).items()]
+        # а ответ не раздуваем. Фильтр по строке отсекает мусор от старых записей,
+        # где точки в ключе развернулись во вложенные документы.
+        ips = [{"ip": ip, "at": at} for ip, at in (u.get("login_ips") or {}).items()
+               if isinstance(at, str)]
         ips.sort(key=lambda x: x["at"], reverse=True)
         out.append({
             "id": str(u["_id"]),

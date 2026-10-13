@@ -41,7 +41,7 @@ const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
 
 // Единый читаемый формат времени для админ-панели (вместо сырых ISO-строк).
 const fmtTs = (ts) => {
-  if (!ts) return '—'
+  if (!ts || typeof ts !== 'string') return '—'
   const d = new Date(ts)
   if (isNaN(d.getTime())) return ts
   const p = n => String(n).padStart(2, '0')

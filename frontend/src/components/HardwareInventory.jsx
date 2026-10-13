@@ -21,7 +21,7 @@ function specChips(hw, t) {
     case 'gpu': case 'asic':
       return [s.hashrate != null && `${s.hashrate} TH/s`, s.power != null && `${s.power} W`].filter(Boolean)
     case 'cpu':
-      return [s.cores != null && `${s.cores} GPU`, s.multiplier != null && `×${s.multiplier}`].filter(Boolean)
+      return [s.cores != null && t('units.cores', { count: s.cores }), s.multiplier != null && `×${s.multiplier}`].filter(Boolean)
     case 'motherboard':
       return [s.gpuSlots != null && `${s.gpuSlots} GPU`].filter(Boolean)
     case 'ram': case 'ssd':
@@ -79,10 +79,10 @@ function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy 
   return (
     <div className="inv-panel">
       <div className="asset-summary">
-        <div className="asset-summary-card"><span>{t('inventory.units')}</span><b>{items.length}</b></div>
+        <div className="asset-summary-card"><span>{t('inventory.units')}</span><b>{items.reduce((s, h) => s + qtyOf(h), 0)}</b></div>
         <div className="asset-summary-card"><span>{t('inventory.totalCost')}</span><b>${formatMoney(totalValue)}</b></div>
         <div className="asset-summary-card"><span>{t('inventory.free')}</span><b>{freeCount}</b></div>
-        <div className="asset-summary-card"><span>{t('inventory.installed')}</span><b>{items.length - freeCount}</b></div>
+        <div className="asset-summary-card"><span>{t('inventory.installed')}</span><b>{items.reduce((s, h) => s + qtyOf(h), 0) - freeCount}</b></div>
       </div>
 
       <div className="inv-toolbar">

@@ -3043,3 +3043,7 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   .inv-toolbar-right { margin-left: 0; width: 100%; }
   .inv-toolbar-right .tx-search { flex: 1; }
 }
+
+/* Прогресс длинной массовой операции (сборка/создание/действие). */
+.mining-bulk-progress { margin-left: auto; font-size: 14px; color: var(--color-warning, #facc15); }
+.mining-bulk-progress b { color: #fff; }

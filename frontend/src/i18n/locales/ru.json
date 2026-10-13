@@ -895,7 +895,11 @@
       "secActions": "Действия",
       "secService": "Обслуживание и ИИ-управляющий",
       "secAuto": "Автономность ИИ и монета",
-      "selected": "Выбрано"
+      "selected": "Выбрано",
+      "assembling": "Сборка ферм",
+      "progressAction": "Действие",
+      "poolRanOut": "Пул деталей закончился — часть ферм не собрана",
+      "creating": "Создание ферм"
     },
     "autoRepair": "Авто-ремонт",
     "autoRepairHint": "ИИ сам чинит ферму, пока добыча покрывает стоимость ремонта",
@@ -911,7 +915,8 @@
     "group": "Группа",
     "groupPlaceholder": "—",
     "noGroup": "Без группы",
-    "slotsAvailable": "Свободно слотов"
+    "slotsAvailable": "Свободно слотов",
+    "coolantAdded": "ОЖ заправлена"
   },
   "confirm": {
     "collect": "Собрать накопленную прибыль ${{amount}}?",

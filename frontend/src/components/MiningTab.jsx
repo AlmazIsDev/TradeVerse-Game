@@ -404,8 +404,17 @@ function MiningTab({ balance = 0, onBalanceChange }) {
   const bulkCreate = async (houseId) => {
     setBusy(true)
     try {
-      const res = await bulkCreateFarms({ ...(houseId ? { houseId } : {}), qty: createQty })
-      flash(t('mining.bulkCreated', 'Создано ферм: {{n}}').replace('{{n}}', String(res?.created ?? 0)))
+      // Чанками по 200: сервер режет qty до 1000, а прогресс обновляется
+      // каждые ~2-4 с вместо молчаливого ожидания.
+      let created = 0
+      for (let left = createQty; left > 0; left -= 200) {
+        const batch = Math.min(200, left)
+        const res = await bulkCreateFarms({ ...(houseId ? { houseId } : {}), qty: batch })
+        created += res?.created ?? 0
+        flash(`${t('mining.bulk.creating', 'Создание ферм')}: ${created} / ${createQty}`)
+        if ((res?.created ?? 0) < batch) break   // свободные слоты кончились
+      }
+      flash(t('mining.bulkCreated', 'Создано ферм: {{n}}').replace('{{n}}', String(created)))
       await loadHouses()
     } catch (err) {
       flash(err.message, 'error')

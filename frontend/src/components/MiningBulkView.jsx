@@ -45,6 +45,9 @@ export default function MiningBulkView({ onBack }) {
   const [parts, setParts] = useState({})
   const [busy, setBusy] = useState(false)
   const [asmOpen, setAsmOpen] = useState(false)
+  // Прогресс длинных массовых операций: {label, done, total} — чанкинг по
+  // 200 ферм даёт обновление каждые ~3-5 с вместо молчаливого ожидания.
+  const [progress, setProgress] = useState(null)
   const [choice, setAsmChoice] = useState({})   // выбранные для сборки детали {cat: {hwId, qty}}
   const [coins, setCoins] = useState([])        // рынок монет для bulk-выбора монеты
   const [coinSel, setCoinSel] = useState('')
@@ -112,11 +115,20 @@ export default function MiningBulkView({ onBack }) {
   const runAction = async (action, extra) => {
     if (!selectedIds.length) return
     setBusy(true)
+    const CH = 200
+    let ok = 0, fail = 0, firstErr = null
     try {
-      const res = await bulkFarmAction(action, selectedIds, extra)
-      const fails = (res?.results || []).filter(r => !r.ok)
-      if (fails.length) {
-        toast(t('mining.bulk.partial', { ok: res.results.length - fails.length, fail: fails.length }) + ' · ' + fails[0].error, 'error')
+      for (let i = 0; i < selectedIds.length; i += CH) {
+        const chunk = selectedIds.slice(i, i + CH)
+        setProgress({ label: t('mining.bulk.progressAction', 'Действие'), done: i, total: selectedIds.length })
+        const res = await bulkFarmAction(action, chunk, extra)
+        const fails = (res?.results || []).filter(r => !r.ok)
+        ok += (res?.results?.length || 0) - fails.length
+        fail += fails.length
+        if (!firstErr && fails.length) firstErr = fails[0].error
+      }
+      if (fail) {
+        toast(t('mining.bulk.partial', { ok, fail }) + (firstErr ? ' · ' + firstErr : ''), 'error')
       } else {
         toast(t('mining.bulk.done'))
       }
@@ -125,6 +137,7 @@ export default function MiningBulkView({ onBack }) {
       toast(e?.message || t('common.error', 'Ошибка'), 'error')
     } finally {
       setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -135,24 +148,38 @@ export default function MiningBulkView({ onBack }) {
     // Инвентарь сгруппирован по товарам: бэкенд сам распределяет qty свободных
     // единиц товара по фермам (пул на категорию). Однорольной категории нужно
     // по детали на каждую несобранную ферму.
-    const farmCount = Math.max(1, selectedUnassembled.length)
     const items = []
     for (const { cat, multi } of ASM_CATS) {
       const c = choice[cat]
       if (!c?.itemId) continue
-      items.push({ category: cat, itemId: c.itemId, qty: multi ? (c.qty || 1) : farmCount })
+      // qtyPerChunk: однорольной категории нужна 1 деталь на каждую ферму
+      // чанка; multi — полный qty в каждом чанке безопасен: ферма берёт по
+      // ёмкости, неизрасходованный остаток пула в запросе не списывается.
+      items.push({ category: cat, itemId: c.itemId, qty: multi ? (c.qty || 1) : 0, qtyPerChunk: !multi })
     }
     if (!items.length) { toast(t('mining.bulk.noPartsChosen', 'Комплектующие не выбраны'), 'error'); return }
     setBusy(true)
+    const CH = 200
+    const farmList = selectedUnassembled
+    const total = farmList.length
+    let assembled = 0
+    let firstErr = null
     try {
-      const res = await bulkAssemble(selectedUnassembled.length ? selectedUnassembled : [], items)
-      const ok = res?.assembled || 0
-      const fails = (res?.results || []).filter(r => !r.ok)
-      if (ok === 0 && fails.length) {
-        toast(fails[0].error, 'error')
+      for (let i = 0; i < total; i += CH) {
+        const chunk = farmList.slice(i, i + CH)
+        setProgress({ label: t('mining.bulk.assembling', 'Сборка ферм'), done: i, total })
+        const payload = items.map(it => ({ ...it, qty: it.qtyPerChunk ? chunk.length : it.qty }))
+        const res = await bulkAssemble(chunk, payload)
+        assembled += res?.assembled || 0
+        if (!firstErr) firstErr = (res?.results || []).find(r => !r.ok)?.error || null
+        setProgress({ label: t('mining.bulk.assembling', 'Сборка ферм'), done: Math.min(i + CH, total), total })
+      }
+      if (assembled === 0 && firstErr) {
+        toast(firstErr, 'error')
       } else {
-        toast(t('mining.bulk.assembled', { n: ok }))
-        if (fails.length) toast(fails[0].error, 'error')
+        toast(t('mining.bulk.assembled', { n: assembled }))
+        if (firstErr) toast(firstErr, 'error')
+        else if (assembled < total) toast(t('mining.bulk.poolRanOut', 'Пул деталей закончился — часть ферм не собрана'), 'error')
       }
       setAsmOpen(false)
       await load()
@@ -160,6 +187,7 @@ export default function MiningBulkView({ onBack }) {
       toast(e?.message || t('common.error', 'Ошибка'), 'error')
     } finally {
       setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -170,6 +198,11 @@ export default function MiningBulkView({ onBack }) {
       <div className="leaderboard-title-row">
         <Bot size={22} className="icon" />
         <h2 className="tab-title">{t('mining.bulk.title', 'Массовое управление фермами')}</h2>
+        {progress && (
+          <span className="mining-bulk-progress">
+            {progress.label}: <b>{progress.done}</b> / {progress.total}
+          </span>
+        )}
       </div>
 
       <div className="mining-nav-row" style={{ marginBottom: 'var(--spacing-md)' }}>

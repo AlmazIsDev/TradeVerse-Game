@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import asyncio
 import math
 import random
 
@@ -647,7 +648,7 @@ class BulkActionBody(BaseModel):
     def ids_ok(cls, v):
         if not v:
             raise ValueError("Не выбрано ни одной фермы")
-        return v[:100]
+        return v[:2000]
 
 
 class BulkAssembleBody(BaseModel):
@@ -661,7 +662,7 @@ class BulkAssembleBody(BaseModel):
     def ids_ok(cls, v):
         if not v:
             raise ValueError("Не выбрано ни одной фермы")
-        return v[:100]
+        return v[:2000]
 
     @field_validator("items")
     @classmethod
@@ -1324,13 +1325,16 @@ async def bulk_assemble(
 ):
     """Авто-сборка нескольких ферм указанными комплектующими.
 
-    Фермы заполняются по очереди. Если на очередной ферме что-то не встало —
-    уже установленные в неё детали снимаются обратно в инвентарь и работа
-    останавливается: остаток железа сохраняется для следующей сборки."""
+    Пул деталей на категорию распределяется по фермам. Фермы обрабатываются
+    ПАРАЛЛЕЛЬНО (семафор 20): путь установки — 4-5 запросов к Mongo на ферму,
+    при удалённой БД (~130 мс/запрос) последовательная сборка 2000 ферм
+    растянулась бы на десятки минут. Неудавшаяся ферма откатывается
+    индивидуально и не мешает остальным."""
     user_id = str(current_user["_id"])
     # Пул деталей на КАТЕГОРИЮ (общий для всех ферм): либо конкретные hwId,
-    # либо qty автоподборов товара (itemId). Пул распределяется по фермам
-    # по очереди — раньше весь пул безуспешно применялся к каждой ферме заново.
+    # либо qty автоподборов товара (itemId). Автоподбор разрешаем ЗАРАНЕЕ
+    # одним запросом на категорию и раздаём явные hwId — иначе параллельные
+    # фермы схватили бы одну и ту же единицу (find_one не атомарен).
     norm_items: list[tuple[str, deque]] = []
     for it in payload.items:
         cat = str(it.get("category") or "").strip()
@@ -1341,53 +1345,63 @@ async def bulk_assemble(
             pool = deque((None, h) for h in hw_ids)
         else:
             item_id = str(it.get("itemId") or "").strip() or None
-            qty = max(1, min(int(it.get("qty") or 1), 1000))
+            qty = max(1, min(int(it.get("qty") or 1), 2000))
             pool = deque((item_id, None) for _ in range(qty))
+        if pool and any(h is None for _, h in pool):
+            item_id = next(i for i, h in pool if i)
+            need = sum(1 for _, h in pool if h is None)
+            units = [str(h["_id"]) async for h in db.user_hardware.find(
+                {"userId": user_id, "category": cat, "itemId": item_id, "farmId": None},
+                {"_id": 1}).limit(need)]
+            unit_iter = iter(units)
+            pool = deque((i, h if h is not None else next(unit_iter, None)) for i, h in pool)
         norm_items.append((cat, pool))
-    results = []
-    stop = False
-    for fid in payload.farmIds:
-        if stop:
-            break
-        farm = await db.mining_farms.find_one(
-            {"_id": ObjectId(fid), "userId": user_id}) if ObjectId.is_valid(fid) else None
-        if not farm:
-            results.append({"farmId": fid, "ok": False, "error": "Ферма не найдена"})
-            stop = True
-            continue
-        installed_now = []
-        err = None
-        for cat, pool in norm_items:
-            single = not CATEGORY_ROLE[cat].get("multi", False)
-            if single and not pool:
-                err = f"{cat}: детали в пуле закончились"
-                break
-            while pool:
-                item_id, hw_id = pool[0]
-                try:
-                    fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
-                    got = await _install_one(db, user_id, fresh, cat, hw_id, item_id)
-                    pool.popleft()
-                    installed_now.append(got)
-                except HTTPException as e:
-                    if not single and _is_capacity_error(e.detail):
-                        # Ферма заполнена — остаток пула уходит следующим фермам.
-                        break
-                    err = f"{cat}: {e.detail}"
+
+    sem = asyncio.Semaphore(40)   # упираемся в latency БД: больше параллелизма = выше throughput
+
+    async def _do_farm(fid: str) -> dict:
+        async with sem:
+            farm = await db.mining_farms.find_one(
+                {"_id": ObjectId(fid), "userId": user_id}) if ObjectId.is_valid(fid) else None
+            if not farm:
+                return {"farmId": fid, "ok": False, "error": "Ферма не найдена"}
+            installed_now = []
+            err = None
+            for cat, pool in norm_items:
+                single = not CATEGORY_ROLE[cat].get("multi", False)
+                if single and not pool:
+                    err = f"{cat}: детали в пуле закончились"
                     break
-            if single:
-                pool.clear()   # однорольная категория: ферме нужна 1 деталь
+                while pool:
+                    # Резервируем единицу ДО await: параллельная ферма иначе
+                    # успеет установить ту же деталь (peek до завершения).
+                    item_id, hw_id = pool.popleft()
+                    try:
+                        fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
+                        got = await _install_one(db, user_id, fresh, cat, hw_id, item_id)
+                        installed_now.append(got)
+                    except HTTPException as e:
+                        pool.appendleft((item_id, hw_id))   # не израсходована
+                        if not single and _is_capacity_error(e.detail):
+                            # Ферма заполнена — остаток пула уходит следующим фермам.
+                            break
+                        err = f"{cat}: {e.detail}"
+                        break
+                    if single:
+                        # Однорольной категории ферме нужна 1 деталь; остаток пула —
+                        # следующим фермам (не чистим пул!).
+                        break
+                if err:
+                    break
             if err:
-                break
-        if err:
-            fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
-            for hw_id in installed_now:
-                await _uninstall_hw(db, fresh, hw_id)
-            results.append({"farmId": fid, "ok": False, "error": err})
-            stop = True
-        else:
-            results.append({"farmId": fid, "ok": True})
-    return {"results": results, "assembled": sum(1 for r in results if r["ok"])}
+                fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
+                for hw_id in installed_now:
+                    await _uninstall_hw(db, fresh, hw_id)
+                return {"farmId": fid, "ok": False, "error": err}
+            return {"farmId": fid, "ok": True}
+
+    results = await asyncio.gather(*(_do_farm(fid) for fid in payload.farmIds))
+    return {"results": list(results), "assembled": sum(1 for r in results if r["ok"])}
 
 
 class BulkCreateBody(BaseModel):

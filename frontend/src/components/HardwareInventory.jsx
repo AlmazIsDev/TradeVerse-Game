@@ -45,7 +45,7 @@ function specChips(hw, t) {
  * сортировка и карточки с баром состояния. admin — режим админки: кнопки
  * «снять с фермы»/«удалить» (onUninstall/onDelete), у игрока список read-only.
  */
-function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy = false, onUninstall, onDelete }) {
+function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy = false, onUninstall, onDelete, onSell }) {
   const { t } = useTranslation()
   const [cat, setCat] = useState('all')
   const [status, setStatus] = useState('all')   // all | free | installed
@@ -57,8 +57,11 @@ function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy 
     return CAT_ORDER.filter(c => present.has(c)).concat([...present].filter(c => !CAT_ICONS[c]))
   }, [items])
 
-  const totalValue = items.reduce((s, h) => s + (h.purchasePrice || 0), 0)
-  const freeCount = items.filter(h => !h.farmId).length
+  // Свободное железо приходит ГРУПАМИ по товару (qty > 1) — сервер не
+  // отдаёт тысячи одинаковых единиц поштучно.
+  const qtyOf = (h) => h.qty || 1
+  const totalValue = items.reduce((s, h) => s + (h.purchasePrice || 0) * qtyOf(h), 0)
+  const freeCount = items.filter(h => !h.farmId).reduce((s, h) => s + qtyOf(h), 0)
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -134,7 +137,7 @@ function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy 
               <div key={h.id} className="inv-card">
                 <div className="inv-card-head">
                   <span className="inv-icon"><Icon size={17} /></span>
-                  <span className="inv-name" title={h.name}>{h.name}</span>
+                  <span className="inv-name" title={h.name}>{h.name}{qtyOf(h) > 1 && <b className="inv-qty"> ×{qtyOf(h)}</b>}</span>
                   <span className={`inv-badge ${h.farmId ? 'installed' : 'free'}`}>
                     {h.farmId ? t('inventory.installed') : t('inventory.free')}
                   </span>
@@ -147,9 +150,17 @@ function HardwareInventory({ items = [], farmNameById = {}, admin = false, busy 
                   <span className={`inv-cond-pct ${condClass}`}>{cond}%</span>
                 </div>
                 <div className="inv-meta">
-                  {h.purchasePrice != null && <span>${formatMoney(h.purchasePrice)}</span>}
+                  {h.purchasePrice != null && <span>${formatMoney(h.purchasePrice)}{qtyOf(h) > 1 ? ` ×${qtyOf(h)}` : ''}</span>}
                   {h.farmId && <span className="inv-farm" title={farmName || ''}>{farmName || t('inventory.installedOn')}</span>}
                 </div>
+                {!admin && !h.farmId && onSell && (
+                  <div className="user-actions inv-actions">
+                    <button className="admin-btn admin-btn-danger" title={t('inventory.sellTitle')}
+                      disabled={busy} onClick={() => onSell(h)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
                 {admin && (
                   <div className="user-actions inv-actions">
                     {h.farmId && (

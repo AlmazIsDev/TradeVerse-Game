@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchMyAssets, fetchHardwareInventory, fetchFarms } from '../services/api'
+import { fetchMyAssets, fetchHardwareInventory, fetchFarms, sellHardware } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import MyAssetsTab from './MyAssetsTab'
 import HardwareInventory from './HardwareInventory'
 import { toast } from './Toast'
+import ConfirmDialog from './ConfirmDialog'
 import { Boxes, Home, Cpu, LayoutGrid, TrendingUp, Wallet, HandCoins, Pickaxe, ArrowRight, AlertTriangle } from 'lucide-react'
 
 // Страницы инвентаря: обзор → имущество (активы) → железо (оборудование).
@@ -29,6 +30,26 @@ function InventoryTab({ balance = 0, onBalanceChange, onTabChange }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [hwItems, setHwItems] = useState(null)   // список железа — грузится лениво
+  const [sellConfirm, setSellConfirm] = useState(null)
+
+  // Продать железо государству (как активы): 65% цены покупки за единицу.
+  const handleSellHardware = (item) => {
+    const qty = item.qty || 1
+    const refund = Math.round((item.purchasePrice || 0) * 0.65 * qty * 100) / 100
+    setSellConfirm({
+      title: t('inventory.sellTitle'),
+      message: t('inventory.sellMsg', { name: item.name, n: qty, price: formatMoney(refund) }),
+      onConfirm: async () => {
+        try {
+          const res = await sellHardware(item.itemId, qty)
+          toast(t('inventory.sold', { price: formatMoney(res?.sold ?? refund) }))
+          setHwItems(null)   // перечитается эффектом страницы «Железо»
+        } catch (err) {
+          toast(err.message, 'error')
+        }
+      },
+    })
+  }
 
   // Сводка для «Обзора»: три запроса параллельно, сбои не ломают страницу.
   const loadSummary = useCallback(async () => {
@@ -67,8 +88,10 @@ function InventoryTab({ balance = 0, onBalanceChange, onTabChange }) {
   const assetsValue = s ? s.assets.reduce((acc, a) => acc + (a.value || 0), 0) : 0
   const assetsProfit = s ? s.assets.reduce((acc, a) => acc + (a.profitPerHour || 0), 0) : 0
   const assetsAccrued = s ? s.assets.reduce((acc, a) => acc + (a.accrued || 0), 0) : 0
-  const hwValue = s ? s.hw.reduce((acc, h) => acc + (h.purchasePrice || 0), 0) : 0
-  const hwFree = s ? s.hw.filter(h => !h.farmId).length : 0
+  const hwQty = (h) => h.qty || 1
+  const hwUnits = s ? s.hw.reduce((acc, h) => acc + hwQty(h), 0) : 0
+  const hwValue = s ? s.hw.reduce((acc, h) => acc + (h.purchasePrice || 0) * hwQty(h), 0) : 0
+  const hwFree = s ? s.hw.filter(h => !h.farmId).reduce((acc, h) => acc + hwQty(h), 0) : 0
   const farmsActive = s ? s.farms.filter(f => f.status === 'mining').length : 0
 
   return (
@@ -92,7 +115,7 @@ function InventoryTab({ balance = 0, onBalanceChange, onTabChange }) {
       {page === 'hardware' && (
         hwItems == null
           ? <div className="loading-state"><div className="spinner" /><p>{t('common.loading')}</p></div>
-          : <HardwareInventory items={hwItems} />
+          : <HardwareInventory items={hwItems} busy={!!sellConfirm} onSell={handleSellHardware} />
       )}
 
       {page === 'overview' && (
@@ -127,7 +150,7 @@ function InventoryTab({ balance = 0, onBalanceChange, onTabChange }) {
                   <Cpu size={18} />
                   <span className="inv-link-text">
                     <b>{t('inventory.page_hardware')}</b>
-                    <small>{t('inventory.ovUnits', { n: s.hw.length })} · ${formatMoney(hwValue)}</small>
+                    <small>{t('inventory.ovUnits', { n: hwUnits })} · ${formatMoney(hwValue)}</small>
                   </span>
                   <ArrowRight size={15} />
                 </button>
@@ -144,6 +167,14 @@ function InventoryTab({ balance = 0, onBalanceChange, onTabChange }) {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={!!sellConfirm}
+        title={sellConfirm?.title}
+        message={sellConfirm?.message}
+        onConfirm={() => { const h = sellConfirm?.onConfirm; setSellConfirm(null); h?.() }}
+        onCancel={() => setSellConfirm(null)}
+      />
     </div>
   )
 }

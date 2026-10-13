@@ -342,12 +342,13 @@ function MiningTab({ balance = 0, onBalanceChange }) {
     }
   }
 
-  const installMany = async (cat, hwIds) => {
+  const installMany = async (cat, itemId, qty) => {
     setBusy(true)
     try {
       // Один batch-запрос вместо последовательных per-item: N раз быстрее и
-      // одна перезагрузка данных вместо N.
-      const res = await installComponentsBatch(activeId, hwIds.map(hwId => ({ category: cat, hwId })))
+      // одна перезагрузка данных вместо N. Инвентарь сгруппирован по товарам —
+      // бэкенд сам подбирает qty свободных единиц этого товара.
+      const res = await installComponentsBatch(activeId, [{ category: cat, itemId, qty }])
       if (res?.error) flash(res.error, 'error')
     } catch (err) {
       flash(err.message, 'error')
@@ -767,18 +768,16 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                         <select className="mslot-pick" disabled={busy} value=""
                           onChange={e => {
                             if (!e.target.value) return
-                            const picked = avail.find(p => p.hwId === e.target.value)
+                            const picked = avail.find(p => p.itemId === e.target.value)
                             if (multi) {
-                              const want = Math.max(1, Math.min(installQty[cat] || 1, capLeft ?? Infinity))
-                              const key = hwName(picked, t) + partSpec(cat, picked.specs, t)
-                              const ids = avail.filter(p => hwName(p, t) + partSpec(cat, p.specs, t) === key).slice(0, want).map(p => p.hwId)
-                              installMany(cat, ids.length ? ids : [picked.hwId])
+                              const want = Math.max(1, Math.min(installQty[cat] || 1, capLeft ?? Infinity, picked.count || 1))
+                              installMany(cat, picked.itemId, want)
                             } else {
-                              run(() => installComponent(farm.id, cat, e.target.value))
+                              run(() => installComponent(farm.id, cat, null, picked.itemId))
                             }
                           }}>
                           <option value="">{t('mining.pickPart')}</option>
-                          {avail.map(p => <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>)}
+                          {avail.map(p => <option key={p.itemId} value={p.itemId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}{p.count > 1 ? ` (×${p.count})` : ''}</option>)}
                         </select>
                         {multi && (
                           <span className="mslot-qty">

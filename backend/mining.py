@@ -19,6 +19,7 @@ import math
 import random
 
 from pymongo.errors import DuplicateKeyError
+from collections import deque
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -36,7 +37,9 @@ from notifications import push_notification
 router = APIRouter(prefix="/api/mining", tags=["mining"])
 
 # Обязательные компоненты для запуска добычи (psu проверяется отдельно — список).
-REQUIRED_ROLES = ["motherboard", "cpu", "ram", "ssd", "cooling"]  # + хотя бы 1 gpu и 1 psu
+# Сеть обязательна: без неё эффективность режется в EFF_FLOOR (15%) — молчаливая
+# ловушка, когда «идентичная» ферма даёт в 6.7 раза меньше (см. _net_efficiency).
+REQUIRED_ROLES = ["motherboard", "cpu", "ram", "ssd", "cooling", "network"]  # + хотя бы 1 gpu и 1 psu
 
 # Ёмкость по вентиляторам, когда корпус не установлен (открытый стенд).
 FAN_BASE_CAP = 6
@@ -580,6 +583,8 @@ class CreateFarm(BaseModel):
 class InstallBody(BaseModel):
     category: str
     hwId: Optional[str] = None   # конкретная деталь из инвентаря (игрок выбирает сам)
+    itemId: Optional[str] = None # или автоподбор свободных единиц этого товара
+    qty: int = 1                 # сколько единиц товара поставить (только с itemId)
 
 
 class InstallBatchBody(BaseModel):
@@ -698,20 +703,29 @@ async def mining_market(current_user: dict = Depends(get_current_user), db: Asyn
 
 @router.get("/parts")
 async def available_parts(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
-    """Свободное оборудование игрока (не установленное ни в одну ферму),
-    сгруппированное по категориям — для самостоятельного выбора комплектующих."""
+    """Свободное оборудование игрока, сгруппированное по товару внутри
+    категории: {category: [{itemId, name, specs, category, count}]}.
+    Инвентарь может содержать десятки тысяч единиц — поштучный список
+    напрочь убивал и сервер, и клиент; установка идёт по itemId + qty."""
     user_id = str(current_user["_id"])
     by_cat: dict[str, list] = {}
-    async for hw in db.user_hardware.find({"userId": user_id, "farmId": None}):
-        by_cat.setdefault(hw.get("category"), []).append({
-            "hwId": str(hw["_id"]),
-            "name": hw.get("name"),
-            "specs": hw.get("specs", {}),
-            "category": hw.get("category"),
+    async for g in db.user_hardware.aggregate([
+        {"$match": {"userId": user_id, "farmId": None}},
+        {"$group": {
+            "_id": {"category": "$category", "itemId": "$itemId",
+                    "name": "$name", "specs": "$specs"},
+            "count": {"$sum": 1},
+        }},
+        {"$sort": {"_id.name": 1, "_id.itemId": 1}},
+    ]):
+        cat = g["_id"].get("category")
+        by_cat.setdefault(cat, []).append({
+            "itemId": g["_id"].get("itemId"),
+            "name": g["_id"].get("name"),
+            "specs": g["_id"].get("specs", {}),
+            "category": cat,
+            "count": g["count"],
         })
-    # Стабильный порядок внутри категории (по названию).
-    for items in by_cat.values():
-        items.sort(key=lambda x: x.get("name") or "")
     return by_cat
 
 
@@ -720,15 +734,47 @@ async def my_hardware_inventory(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Полный инвентарь железа игрока: каждая единица и где установлена
-    (farmName рядом с farmId — вкладка «Инвентарь» без лишних запросов)."""
+    """Инвентарь железа игрока. Установленное — поштучно (единиц немного,
+    видно ферму); свободное — группами по товару и состоянию (десятки тысяч
+    одинаковых единиц не должны ни сериализоваться, ни рендериться поштучно).
+    У групп qty > 1 и group=True; продажа группы — /api/shop/sell по itemId."""
     user_id = str(current_user["_id"])
-    items = [_serialize_hw(h) async for h in
-             db.user_hardware.find({"userId": user_id}).sort("purchased_at", -1)]
+    items = []
+    async for h in db.user_hardware.find(
+            {"userId": user_id, "farmId": {"$ne": None}}).sort("purchased_at", -1):
+        it = _serialize_hw(h)
+        it["qty"] = 1
+        items.append(it)
     farm_names = {str(f["_id"]): f.get("name") async for f in
                   db.mining_farms.find({"userId": user_id}, {"name": 1})}
     for it in items:
         it["farmName"] = farm_names.get(it["farmId"]) if it.get("farmId") else None
+    async for g in db.user_hardware.aggregate([
+        {"$match": {"userId": user_id, "farmId": None}},
+        {"$group": {
+            "_id": {"itemId": "$itemId", "category": "$category", "name": "$name",
+                    "specs": "$specs", "condition": "$condition",
+                    "purchase_price": "$purchase_price"},
+            "qty": {"$sum": 1},
+            "latest": {"$max": "$purchased_at"},
+        }},
+        {"$sort": {"_id.name": 1, "_id.itemId": 1}},
+    ]):
+        gid = g["_id"]
+        items.append({
+            "id": f"free-{gid.get('itemId')}-{gid.get('condition')}",
+            "itemId": gid.get("itemId"),
+            "name": gid.get("name"),
+            "category": gid.get("category"),
+            "specs": gid.get("specs", {}),
+            "condition": round(float(gid.get("condition") or 0), 1),
+            "purchasePrice": gid.get("purchase_price"),
+            "farmId": None,
+            "farmName": None,
+            "purchasedAt": g["latest"].isoformat() if isinstance(g.get("latest"), datetime) else None,
+            "qty": g["qty"],
+            "group": True,
+        })
     return {"items": items}
 
 
@@ -941,11 +987,14 @@ async def in_use_rack_ids(db, user_id: str) -> set[str]:
     return used
 
 
-async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optional[str]) -> None:
+async def _install_one(db, user_id: str, farm: dict, category: str,
+                       hw_id: Optional[str], item_id: Optional[str] = None) -> None:
     """Установить один компонент в ферму (общая логика single/batch).
 
     Мутирует БД; farm — свежезагруженная ферма (при пакетной установке
     перезагружается между вызовами, т.к. ёмкость зависит от уже установленного).
+    Без hw_id берётся любая свободная единица; item_id сужает автоподбор
+    до конкретного товара (инвентарь группируется по товарам, а не по единицам).
     Бросает HTTPException при любой ошибке валидации."""
     meta = CATEGORY_ROLE.get(category)
     if not meta:
@@ -964,7 +1013,10 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
         if not hw:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Деталь недоступна (не найдена или уже установлена)")
     else:
-        hw = await db.user_hardware.find_one({"userId": user_id, "category": category, "farmId": None})
+        q = {"userId": user_id, "category": category, "farmId": None}
+        if item_id:
+            q["itemId"] = item_id
+        hw = await db.user_hardware.find_one(q)
         if not hw:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободного оборудования — купите в магазине")
 
@@ -1085,6 +1137,7 @@ async def _install_one(db, user_id: str, farm: dict, category: str, hw_id: Optio
     if role != "rack":
         await db.user_hardware.update_one(
             {"_id": hw["_id"]}, {"$set": {"farmId": str(farm["_id"])}})
+    return str(hw["_id"])
 
 
 @router.post("/farms/{farm_id}/install")
@@ -1109,12 +1162,16 @@ async def install_components_batch(farm_id: str, payload: InstallBatchBody, curr
     installed = 0
     error = None
     for item in payload.items:
-        try:
-            await _install_one(db, user_id, farm, item.category, item.hwId)
-            installed += 1
-            farm = await _load_farm(db, user_id, farm_id)   # ёмкость зависит от уже установленного
-        except HTTPException as e:
-            error = e.detail
+        reps = max(1, min(int(item.qty or 1), 50)) if item.itemId else 1
+        for _ in range(reps):
+            try:
+                await _install_one(db, user_id, farm, item.category, item.hwId, item.itemId)
+                installed += 1
+                farm = await _load_farm(db, user_id, farm_id)   # ёмкость зависит от уже установленного
+            except HTTPException as e:
+                error = e.detail
+                break
+        if error:
             break
     updated = await db.mining_farms.find_one({"_id": farm["_id"]})
     result = await _serialize_with_stats(db, updated, user_id)
@@ -1235,6 +1292,12 @@ async def bulk_action(
     return {"results": results}
 
 
+def _is_capacity_error(detail: str) -> bool:
+    """Ошибка ёмкости (ферма заполнена) — при bulk-сборке это не сбой фермы,
+    а сигнал остановить заполнение: остаток пула уходит следующим фермам."""
+    return str(detail).startswith(("Нет свободных мест", "Нет свободных слотов", "Нет мест под БП"))
+
+
 async def _uninstall_hw(db, farm: dict, hw_id: str) -> bool:
     """Снять деталь по hwId: uninstall из фермы + возврат в инвентарь.
     Общая логика uninstall-эндпоинта и отката bulk-сборки."""
@@ -1265,15 +1328,22 @@ async def bulk_assemble(
     уже установленные в неё детали снимаются обратно в инвентарь и работа
     останавливается: остаток железа сохраняется для следующей сборки."""
     user_id = str(current_user["_id"])
-    norm_items = []
+    # Пул деталей на КАТЕГОРИЮ (общий для всех ферм): либо конкретные hwId,
+    # либо qty автоподборов товара (itemId). Пул распределяется по фермам
+    # по очереди — раньше весь пул безуспешно применялся к каждой ферме заново.
+    norm_items: list[tuple[str, deque]] = []
     for it in payload.items:
         cat = str(it.get("category") or "").strip()
         if not CATEGORY_ROLE.get(cat):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown category: {cat}")
         hw_ids = [str(x) for x in (it.get("hwIds") or []) if str(x).strip()]
-        if not hw_ids:
-            hw_ids = [None] * max(1, min(int(it.get("qty") or 1), 50))
-        norm_items.append((cat, hw_ids))
+        if hw_ids:
+            pool = deque((None, h) for h in hw_ids)
+        else:
+            item_id = str(it.get("itemId") or "").strip() or None
+            qty = max(1, min(int(it.get("qty") or 1), 1000))
+            pool = deque((item_id, None) for _ in range(qty))
+        norm_items.append((cat, pool))
     results = []
     stop = False
     for fid in payload.farmIds:
@@ -1287,15 +1357,26 @@ async def bulk_assemble(
             continue
         installed_now = []
         err = None
-        for cat, hw_ids in norm_items:
-            for hw_id in hw_ids:
+        for cat, pool in norm_items:
+            single = not CATEGORY_ROLE[cat].get("multi", False)
+            if single and not pool:
+                err = f"{cat}: детали в пуле закончились"
+                break
+            while pool:
+                item_id, hw_id = pool[0]
                 try:
                     fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
-                    await _install_one(db, user_id, fresh, cat, hw_id)
-                    installed_now.append(hw_id)
+                    got = await _install_one(db, user_id, fresh, cat, hw_id, item_id)
+                    pool.popleft()
+                    installed_now.append(got)
                 except HTTPException as e:
+                    if not single and _is_capacity_error(e.detail):
+                        # Ферма заполнена — остаток пула уходит следующим фермам.
+                        break
                     err = f"{cat}: {e.detail}"
                     break
+            if single:
+                pool.clear()   # однорольная категория: ферме нужна 1 деталь
             if err:
                 break
         if err:

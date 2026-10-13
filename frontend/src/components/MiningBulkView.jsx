@@ -132,21 +132,15 @@ export default function MiningBulkView({ onBack }) {
   // Выбор комплектующих: {cat: {hwId, qty}}. Для multi берутся ВСЕ свободные
   // экземпляры того же товара (как installMany в MiningTab), но не больше qty.
   const applyAsm = async (choice) => {
+    // Инвентарь сгруппирован по товарам: бэкенд сам распределяет qty свободных
+    // единиц товара по фермам (пул на категорию). Однорольной категории нужно
+    // по детали на каждую несобранную ферму.
+    const farmCount = Math.max(1, selectedUnassembled.length)
     const items = []
     for (const { cat, multi } of ASM_CATS) {
       const c = choice[cat]
-      if (!c?.hwId) continue
-      const avail = parts[cat] || []
-      if (multi) {
-        const picked = avail.find(p => p.hwId === c.hwId)
-        if (!picked) continue
-        const key = hwName(picked, t) + partSpec(cat, picked.specs, t)
-        const ids = avail.filter(p => hwName(p, t) + partSpec(cat, p.specs, t) === key)
-          .slice(0, c.qty || 1).map(p => p.hwId)
-        if (ids.length) items.push({ category: cat, hwIds: ids })
-      } else {
-        items.push({ category: cat, hwIds: [c.hwId] })
-      }
+      if (!c?.itemId) continue
+      items.push({ category: cat, itemId: c.itemId, qty: multi ? (c.qty || 1) : farmCount })
     }
     if (!items.length) { toast(t('mining.bulk.noPartsChosen', 'Комплектующие не выбраны'), 'error'); return }
     setBusy(true)
@@ -339,12 +333,12 @@ export default function MiningBulkView({ onBack }) {
                 <label className="mpc-field" style={{ flex: 1 }}>
                   <span>{t(`mining.comp.${cat}`, cat)}</span>
                   <select className="mslot-pick" disabled={busy} value=""
-                    onChange={e => { if (e.target.value) setAsmChoice(c => ({ ...c, [cat]: { hwId: e.target.value, qty: 1 } })) }}>
-                    <option value="">{choice[cat]?.hwId
-                      ? hwName((parts[cat] || []).find(p => p.hwId === choice[cat].hwId) || {}, t)
+                    onChange={e => { if (e.target.value) setAsmChoice(c => ({ ...c, [cat]: { itemId: e.target.value, qty: 1 } })) }}>
+                    <option value="">{choice[cat]?.itemId
+                      ? hwName((parts[cat] || []).find(p => p.itemId === choice[cat].itemId) || {}, t)
                       : t('mining.bulk.notSet', '— не ставить —')}</option>
                     {(parts[cat] || []).map(p => (
-                      <option key={p.hwId} value={p.hwId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}</option>
+                      <option key={p.itemId} value={p.itemId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}{p.count > 1 ? ` (×${p.count})` : ''}</option>
                     ))}
                   </select>
                 </label>
@@ -353,7 +347,7 @@ export default function MiningBulkView({ onBack }) {
                     value={choice[cat]?.qty || 1}
                     onChange={e => setAsmChoice(c => ({ ...c, [cat]: { ...c[cat], qty: Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)) } }))} />
                 )}
-                {choice[cat]?.hwId && (
+                {choice[cat]?.itemId && (
                   <button className="mslot-rm" onClick={() => setAsmChoice(c => { const n = { ...c }; delete n[cat]; return n })}><X size={12} /></button>
                 )}
               </div>

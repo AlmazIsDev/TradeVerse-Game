@@ -1260,7 +1260,7 @@ export async function renameAsset(id, name) { return request(`/api/assets/${enco
 export async function hitchTrailer(id, truckId) { return request(`/api/assets/${encodeURIComponent(id)}/hitch`, { method: 'POST', body: JSON.stringify({ truckId }) }) }
 export async function unhitchTrailer(id) { return request(`/api/assets/${encodeURIComponent(id)}/unhitch`, { method: 'POST' }) }
 export async function deleteFarm(id) { return request(`/api/mining/farms/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
-export async function installComponent(id, category, hwId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category, hwId }) }) }
+export async function installComponent(id, category, hwId, itemId) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ category, hwId, itemId }) }) }
 export async function installComponentsBatch(id, items) { return request(`/api/mining/farms/${encodeURIComponent(id)}/install-batch`, { method: 'POST', body: JSON.stringify({ items }) }) }
 export async function bulkFarmAction(action, farmIds, extra = {}) { return request('/api/mining/bulk/action', { method: 'POST', body: JSON.stringify({ action, farmIds, ...extra }) }) }
 export async function bulkCreateFarms(body) { return request('/api/mining/bulk/create', { method: 'POST', body: JSON.stringify(body) }) }

@@ -26,7 +26,7 @@ import { toast } from './Toast'
 // ── Иконки (lucide-react). ───────────────────────────────────────────────
 import {
   Monitor, Cpu, Box, Package, MemoryStick, HardDrive, Snowflake, Zap, CircuitBoard, Server,
-  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart,
+  Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart, Network, PlugZap, Fan,
 } from 'lucide-react'
 
 // Фильтр-пилюли: категории магазина (дома убраны — они на «Рынке»).
@@ -42,13 +42,16 @@ const CATEGORIES = [
   { id: 'psu', icon: Zap },
   { id: 'case', icon: Box },
   { id: 'rack', icon: Server },
+  { id: 'fan', icon: Fan },
+  { id: 'network', icon: Network },
+  { id: 'ups', icon: PlugZap },
   { id: 'supplies', icon: Package },
 ]
 
 const CAT_COLOR = {
   gpu: '#818cf8', cpu: '#a855f7', motherboard: '#06b6d4', ram: '#10b981',
   ssd: '#eab308', cooling: '#0ea5e9', psu: '#f59e0b', case: '#94a3b8', rack: '#64748b',
-  supplies: '#f97316',
+  fan: '#38bdf8', network: '#2dd4bf', ups: '#fb7185', supplies: '#f97316',
 }
 
 function specLine(cat, s = {}, t) {
@@ -59,9 +62,12 @@ function specLine(cat, s = {}, t) {
     case 'ram': return `${s.gb} ГБ · ${s.power || 0}W`
     case 'ssd': return `${s.gb} ГБ · ${s.power || 0}W`
     case 'cooling': return `${s.cooling || 0} Вт охл. · ${s.power || 0}W`
+    case 'fan': return `${s.cooling || 0} Вт охл. · ${s.power || 0}W`
     case 'psu': return `${s.power || 0}W`
     case 'case': return `${t('units.slots', { count: s.slots })}`
     case 'rack': return `${t('units.slots', { count: s.slots })}`
+    case 'network': return s.speed >= 1000 ? `${s.speed / 1000} Гбит/с` : `${s.speed || 0} Мбит/с`
+    case 'ups': return s.backup >= 1000 ? `${s.backup / 1000} kVA` : `${s.backup || 0} VA`
     case 'supplies': return t(`supplies.${s.kind}`, s.kind || '')
     default: return ''
   }
@@ -146,7 +152,8 @@ async function loadShopItems(category) {
   // Категории, которые показываются в магазине. Дома/бизнесы отсеиваются —
   // они на «Рынке» (MarketTab).
   const SHOP_CATEGORIES = new Set([
-    'gpu', 'cpu', 'motherboard', 'ram', 'ssd', 'cooling', 'psu', 'case', 'rack', 'supplies',
+    'gpu', 'cpu', 'motherboard', 'ram', 'ssd', 'cooling', 'psu', 'case', 'rack',
+    'fan', 'network', 'ups', 'supplies',
   ])
 
   const view = useMemo(() => {

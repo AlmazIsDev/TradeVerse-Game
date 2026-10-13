@@ -481,15 +481,71 @@ def _crypto_quote(coin: dict, action: str, quantity: float) -> dict:
     }
 
 
+# ── Атомарный учёт эмиссии ────────────────────────────────────────────────────
+# free = supply − bot_held − emission_sold, где emission_sold — монеты, ушедшие
+# игрокам (покупки, майнинг). Резерв — атомарный guarded $inc на документе
+# монеты: прежний check-then-act по _free_supply пропускал параллельные
+# покупки (все читали один остаток до чужого списания), а начисление холдинга
+# через read-modify-$set теряло инкременты вовсе.
+
+async def _init_emission_sold(db, symbol: str, coin: dict) -> None:
+    """Ленивая инициализация: emission_sold = текущие холдинги игроков.
+    $exists-guard: при гонке второй инициатор видит уже созданный счётчик."""
+    if "emission_sold" in coin:
+        return
+    held = 0.0
+    async for h in db.crypto_holdings.aggregate([
+        {"$match": {"symbol": symbol}},
+        {"$group": {"_id": None, "q": {"$sum": "$quantity"}}},
+    ]):
+        held = float(h.get("q") or 0)
+    await db.crypto_assets.update_one(
+        {"symbol": symbol, "emission_sold": {"$exists": False}},
+        {"$set": {"emission_sold": held}})
+
+
+async def _reserve_emission(db, symbol: str, qty: float) -> bool:
+    """Атомарно зарезервировать qty монет эмиссии. False — свободных нет.
+    Эквивалент «свободно >= qty» И «свободно -= qty» одним действием."""
+    coin = await db.crypto_assets.find_one({"symbol": symbol})
+    if not coin:
+        return False
+    if float(coin.get("supply") or 0) <= 0:
+        return True   # эмиссия не задана — лимита нет
+    await _init_emission_sold(db, symbol, coin)
+    res = await db.crypto_assets.find_one_and_update(
+        {"symbol": symbol,
+         "$expr": {"$lte": [
+             {"$add": [{"$ifNull": ["$emission_sold", 0.0]}, qty]},
+             {"$max": [{"$subtract": [{"$ifNull": ["$supply", 0.0]},
+                                      {"$ifNull": ["$bot_held", 0.0]}]}, 0.0]}]}},
+        {"$inc": {"emission_sold": qty}},
+        return_document=True,
+    )
+    return res is not None
+
+
+async def _release_emission(db, symbol: str, qty: float) -> None:
+    """Вернуть qty монет в свободный остаток (откат резерва / продажа).
+    Флор-кламп: счётчик не должен уходить в минус."""
+    await db.crypto_assets.update_one(
+        {"symbol": symbol},
+        [{"$set": {"emission_sold": {"$max": [
+            {"$subtract": [{"$ifNull": ["$emission_sold", 0.0]}, qty]}, 0.0]}}}])
+
+
 async def _free_supply(db: AsyncIOMotorDatabase, coin: dict) -> float:
     """Свободные монеты: эмиссия − холдинги ВСЕХ игроков − купленное ботами.
 
-    Единственная точка правды по остатку эмиссии: её используют и сделки игроков,
-    и quote (кнопка МАКС), и боты. supply <= 0 — эмиссия не задана, лимита нет.
+    Быстрый путь по счётчику emission_sold (поддерживается атомарно сделками
+    и майнингом); агрегат по холдингам — только пока счётчик не заведён.
+    supply <= 0 — эмиссия не задана, лимита нет.
     """
     supply = float(coin.get("supply") or 0)
     if supply <= 0:
         return float("inf")
+    if "emission_sold" in coin:
+        return max(0.0, supply - float(coin.get("bot_held") or 0) - float(coin["emission_sold"] or 0))
     held = 0.0
     async for h in db.crypto_holdings.aggregate([
         {"$match": {"symbol": coin["symbol"]}},
@@ -608,41 +664,71 @@ async def trade_crypto(
     fee = round(total * CRYPTO_TRADE_FEE_RATE, 2)
 
     if payload.action == "buy":
-        # Проверяем ДО списания, чтобы отклонённая сделка не трогала баланс.
         supply = float(coin.get("supply") or 0)
+        # 1) Атомарный резерв эмиссии: guarded $inc на документе монеты.
+        # Прежний check-then-act по _free_supply пропускал параллельные
+        # покупки (все читали один и тот же остаток) — суммарно игроки
+        # выкупали больше выпуска.
         if supply > 0:
-            # Персональный лимит: один игрок не может купить больше 90% всех монет.
-            held_qty = float((holding or {}).get("quantity", 0.0) or 0.0)
-            max_qty = round(supply * MAX_HOLD_SHARE - held_qty, 8)
-            if qty > max_qty:
+            if not await _reserve_emission(db, symbol, qty):
+                free_now = await _free_supply(db, coin)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Лимит эмиссии: один игрок может держать максимум "
-                           f"{int(MAX_HOLD_SHARE * 100)}% всех {symbol} "
-                           f"(можно купить ещё {max_qty:g})",
+                    detail=f"Эмиссия исчерпана: свободно {free_now:g} {symbol}",
                 )
-        # Общий лимит эмиссии: суммарные холдинги всех игроков + бот не могут
-        # превысить выпуск. Свободный остаток считает _free_supply — та же
-        # формула, что у ботов.
-        free = round(await _free_supply(db, coin), 8)
-        if qty > free:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Эмиссия исчерпана: в обращении свободно ещё {free:g} {symbol}",
-            )
-        # Покупатель платит стоимость + комиссию.
+        # 2) Списание денег (атомарно по балансу).
         new_balance = await adjust_balance(db, user_id, -round(total + fee, 2))
         if new_balance is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недостаточно средств")
-        old_qty = holding.get("quantity", 0.0) if holding else 0.0
-        old_avg = holding.get("avg_price", 0.0) if holding else 0.0
-        new_qty = old_qty + qty
-        new_avg = round((old_qty * old_avg + total) / new_qty, 6) if new_qty else price
-        await db.crypto_holdings.update_one(
-            {"userId": user_id, "symbol": symbol},
-            {"$set": {"quantity": round(new_qty, 8), "avg_price": new_avg}},
-            upsert=True,
+            if supply > 0:
+                await _release_emission(db, symbol, qty)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Недостаточно средств",
+            )
+        # 3) Атомарное начисление холдинга: $inc через pipeline-обновление
+        # (не read-modify-$set — параллельные покупки теряли инкременты,
+        # деньги при этом списывались). Личный лимит концентрации — в
+        # условии обновления: оценивается атомарно с инкрементом.
+        cap_q = round(supply * MAX_HOLD_SHARE, 8) if supply > 0 else None
+        # $expr запрещён в upsert-запросах: гарантируем существование холдинга
+        # до guarded-обновления (для новой эмиссии лимит проверим так же).
+        if holding is None:
+            await db.crypto_holdings.update_one(
+                {"userId": user_id, "symbol": symbol},
+                {"$setOnInsert": {"userId": user_id, "symbol": symbol,
+                                  "quantity": 0.0, "avg_price": 0.0}},
+                upsert=True,
+            )
+        hq = {"userId": user_id, "symbol": symbol}
+        if cap_q is not None:
+            hq["$expr"] = {"$lte": [
+                {"$add": [{"$ifNull": ["$quantity", 0.0]}, qty]}, cap_q]}
+        updated = await db.crypto_holdings.find_one_and_update(
+            hq,
+            [{"$set": {
+                "quantity": {"$round": [
+                    {"$add": [{"$ifNull": ["$quantity", 0.0]}, qty]}, 8]},
+                "avg_price": {"$cond": [
+                    {"$gt": [{"$add": [{"$ifNull": ["$quantity", 0.0]}, qty]}, 0]},
+                    {"$round": [{"$divide": [
+                        {"$add": [
+                            {"$multiply": [{"$ifNull": ["$quantity", 0.0]}, {"$ifNull": ["$avg_price", 0.0]}]},
+                            total]},
+                        {"$add": [{"$ifNull": ["$quantity", 0.0]}, qty]}]}, 6]},
+                    price]}},
+            }],
+            return_document=True,
         )
+        if updated is None:
+            # Личный лимит концентрации: откат денег и резерва эмиссии.
+            await adjust_balance(db, user_id, round(total + fee, 2))
+            if supply > 0:
+                await _release_emission(db, symbol, qty)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Лимит эмиссии: один игрок может держать максимум "
+                       f"{int(MAX_HOLD_SHARE * 100)}% всех {symbol}",
+            )
         await record_transaction(
             db, user_id, EXPENSE, round(total + fee, 2), CAT_CRYPTO,
             f"Покупка {qty:g} {symbol}", symbol=symbol, price=price,
@@ -700,6 +786,9 @@ async def trade_crypto(
         balance_after=new_balance, meta={"quantity": qty, "action": "sell", "fee": fee},
     )
     await _apply_trade_impact(db, symbol, "sell", qty * ref_price)
+    # Монеты вернулись в свободный оборот: уменьшаем счётчик эмиссии.
+    if float(coin.get("supply") or 0) > 0:
+        await _release_emission(db, symbol, qty)
     # Выкуп из бюджета компании уже выполнен выше — гейтом перед выплатой.
     return {"message": "Продажа выполнена", "symbol": symbol, "quantity": qty,
             "price": price, "total": total, "fee": fee, "balance": new_balance}
@@ -744,13 +833,34 @@ async def _bot_coin_trade(
         return False
     qty = round(qty, 8)
 
+    if action == "buy":
+        # Атомарный резерв свободной эмиссии под бота: guarded $inc bot_held
+        # (bot_held + qty <= supply - emission_sold). Прежний check-then-act
+        # по _free_supply в гонке с покупками игроков позволял выкупить
+        # больше выпуска.
+        if "emission_sold" not in coin:
+            await _init_emission_sold(db, symbol, coin)
+        res = await db.crypto_assets.find_one_and_update(
+            {"symbol": symbol,
+             "$expr": {"$lte": [
+                 {"$add": [{"$ifNull": ["$bot_held", 0.0]}, qty]},
+                 {"$max": [{"$subtract": [{"$ifNull": ["$supply", 0.0]},
+                                          {"$ifNull": ["$emission_sold", 0.0]}]}, 0.0]}]}},
+            {"$inc": {"bot_held": qty}},
+            return_document=True,
+        )
+        if res is None:
+            return False   # свободной эмиссии нет
+
     new_price = await _apply_trade_impact(db, symbol, action, qty * price)
     if new_price is None:
+        if action == "buy":
+            # откат резерва: сделка не состоялась
+            await db.crypto_assets.update_one({"symbol": symbol}, {"$inc": {"bot_held": -qty}})
         return False
-    await db.crypto_assets.update_one(
-        {"symbol": symbol},
-        {"$inc": {"bot_held": qty if action == "buy" else -qty}},
-    )
+    if action == "sell":
+        await db.crypto_assets.update_one(
+            {"symbol": symbol}, {"$inc": {"bot_held": -qty}})
     await db.crypto_events.insert_one({
         "symbol": symbol,
         "type": action,

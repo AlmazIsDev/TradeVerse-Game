@@ -2004,6 +2004,12 @@ async def tick_all(db: AsyncIOMotorDatabase):
             await record_transaction(db, user_id, INCOME, revenue, CAT_MINING,
                                      f"Добыча {coin_qty:g} {coin_sym}", symbol=coin_sym,
                                      price=coin_price, meta={"quantity": coin_qty})
+            # Добыча минтит новые монеты: держим счётчик эмиссии точным, чтобы
+            # покупки не могли превысить остаток выпуска.
+            coin_doc = await db.crypto_assets.find_one({"symbol": coin_sym}, {"supply": 1})
+            if coin_doc and float(coin_doc.get("supply") or 0) > 0:
+                await db.crypto_assets.update_one(
+                    {"symbol": coin_sym}, {"$inc": {"emission_sold": coin_qty}})
 
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": set_fields})
 

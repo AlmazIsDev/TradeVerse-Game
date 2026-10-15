@@ -3093,3 +3093,12 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   border-radius: var(--radius-md, 10px);
   font-size: 13px; color: #facc15;
 }
+
+.mining-house-rename-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: none; background: transparent; color: var(--color-text-dim, #9ca3af);
+  cursor: pointer; border-radius: 6px; flex: none;
+}
+.mining-house-rename-btn:hover { color: var(--color-text, #fff); background: rgba(255, 255, 255, 0.08); }
+.mining-house-rename { min-width: 0; flex: 1; height: 26px; padding: 2px 8px; font-size: 14px; }

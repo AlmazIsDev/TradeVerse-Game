@@ -938,6 +938,8 @@
     "fillHouseSlots": "Fill free slots",
     "bulkCreated": "Farms created: {{n}}",
     "group": "Group",
+    "renameHouse": "Rename house",
+    "renamePlaceholder": "House name",
     "groupPlaceholder": "—",
     "noGroup": "Ungrouped",
     "slotsAvailable": "Free slots",
@@ -1788,6 +1790,9 @@
     "markAllRead": "Mark all read",
     "noNotifications": "No notifications",
     "new": "New",
+    "tabAll": "All",
+    "tabAuto": "Auto",
+    "tabAnnounce": "Announcements",
     "worldEventStarted": "World event: {{name}}",
     "worldEventEnded": "Ended: {{name}}"
   },

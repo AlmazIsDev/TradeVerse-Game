@@ -1542,6 +1542,9 @@ async def bulk_create_farms(
                 free_before += 1
     cap = min(payload.qty, free_before) if payload.qty else free_before
 
+    # Имена — сквозные по ВСЕМ фермам игрока (а не по слоту дома): иначе в
+    # каждом доме была своя «Ферма #1», и по имени фермы не отличить.
+    base = await db.mining_farms.count_documents({"userId": user_id})
     docs = []
     for h in houses:
         if len(docs) >= cap:
@@ -1553,7 +1556,7 @@ async def bulk_create_farms(
             if (hid, i) in occupied:
                 continue
             docs.append({
-                "userId": user_id, "name": f"{payload.prefix} #{i + 1}",
+                "userId": user_id, "name": f"{payload.prefix} #{base + len(docs) + 1}",
                 "houseId": h["_id"], "slotIndex": i,
                 "components": {"gpus": [], "fans": []},
                 "overclock": 1.0, "condition": 100.0, "coolant": 0, "coolant_until": None,

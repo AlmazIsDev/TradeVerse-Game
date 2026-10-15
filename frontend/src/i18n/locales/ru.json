@@ -938,6 +938,8 @@
     "fillHouseSlots": "Заполнить свободные слоты",
     "bulkCreated": "Создано ферм: {{n}}",
     "group": "Группа",
+    "renameHouse": "Переименовать дом",
+    "renamePlaceholder": "Название дома",
     "groupPlaceholder": "—",
     "noGroup": "Без группы",
     "slotsAvailable": "Свободно слотов",
@@ -1788,6 +1790,9 @@
     "markAllRead": "Прочитать все",
     "noNotifications": "Нет уведомлений",
     "new": "Новое",
+    "tabAll": "Все",
+    "tabAuto": "Авто",
+    "tabAnnounce": "Объявления",
     "worldEventStarted": "Мировое событие: {{name}}",
     "worldEventEnded": "Завершено: {{name}}"
   },

@@ -5,6 +5,7 @@ import {
   createFarm, deleteFarm, installComponent, installComponentsBatch,
   uninstallComponent, startMining, stopMining, setFarmCoin, setOverclock,
   repairFarm, farmManager, addCoolant, bulkCreateFarms, setHouseGroup,
+  renameAsset,
 } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
@@ -13,7 +14,7 @@ import MiningBulkView from './MiningBulkView'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
   Plus, X, AlertTriangle, Check, Bot, TrendingUp, HardDrive, Server, Cpu,
-  Home, ChevronLeft, ChevronRight, Droplet,
+  Home, ChevronLeft, ChevronRight, Droplet, Pencil,
 } from 'lucide-react'
 
 // Категории компонентов: обязательные помечены req; multi — можно несколько.
@@ -57,8 +58,9 @@ function OverclockSlider({ value, disabled, label, onCommit }) {
 }
 
 // ── Экран выбора дома ──────────────────────────────────────────────────────
-function HousesView({ houses, onPickHouse, onBack, onSetGroup }) {
+function HousesView({ houses, onPickHouse, onBack, onSetGroup, onRename }) {
   const { t } = useTranslation()
+  const [editId, setEditId] = useState(null)
   if (houses.length === 0) {
     return (
       <div className="crypto-onboard mining-onboard">
@@ -87,7 +89,32 @@ function HousesView({ houses, onPickHouse, onBack, onSetGroup }) {
               onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) onPickHouse(h) }}>
               <div className="mining-house-head">
                 <Home size={22} className="icon" />
-                <span className="mining-house-name">{h.name}</span>
+                {editId === h.id ? (
+                  <input
+                    className="tx-input mining-house-rename" autoFocus
+                    defaultValue={h.name} maxLength={40}
+                    placeholder={t('mining.renamePlaceholder', 'Название дома')}
+                    onClick={e => e.stopPropagation()}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') e.target.blur()
+                      if (e.key === 'Escape') { setEditId(null) }
+                    }}
+                    onBlur={e => {
+                      const v = e.target.value.trim()
+                      setEditId(null)
+                      if (v && v !== h.name) onRename?.(h.id, v)
+                    }}
+                  />
+                ) : (
+                  <>
+                    <span className="mining-house-name">{h.name}</span>
+                    <button
+                      className="mining-house-rename-btn" title={t('mining.renameHouse', 'Переименовать дом')}
+                      onClick={e => { e.stopPropagation(); setEditId(h.id) }}>
+                      <Pencil size={13} />
+                    </button>
+                  </>
+                )}
                 <span className={`rarity-badge rarity-${h.rarity || 'common'}`}>{h.rarity}</span>
               </div>
               <div className="mining-house-info">
@@ -459,6 +486,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             houses={houses}
             onPickHouse={pickHouse}
             onSetGroup={(id, g) => run(() => setHouseGroup(id, g)).then(loadHouses)}
+            onRename={(id, name) => run(() => renameAsset(id, name)).then(loadHouses)}
           />
         )}
       </div>

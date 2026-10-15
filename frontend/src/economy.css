@@ -3080,3 +3080,16 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .asm-qty { width: 64px !important; text-align: center; }
 .asm-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: var(--spacing-md, 16px); flex-wrap: wrap; }
 .asm-summary { font-size: 14px; color: var(--color-text-dim, #9ca3af); }
+
+.asm-line { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+.asm-hint { font-size: 12px; line-height: 1.35; opacity: 0.75; }
+.asm-hint.short { opacity: 1; color: #f87171; font-weight: 600; }
+.asm-warn {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 var(--spacing-md, 16px);
+  padding: 10px 14px;
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.06);
+  border-radius: var(--radius-md, 10px);
+  font-size: 13px; color: #facc15;
+}

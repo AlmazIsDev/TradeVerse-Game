@@ -1428,7 +1428,7 @@ async def bulk_assemble(
             pool = deque((None, h) for h in hw_ids)
         else:
             item_id = str(it.get("itemId") or "").strip() or None
-            qty = max(1, min(int(it.get("qty") or 1), 2000))
+            qty = max(1, min(int(it.get("qty") or 1), 20000))
             pool = deque((item_id, None) for _ in range(qty))
         if pool and any(h is None for _, h in pool):
             item_id = next(i for i, h in pool if i)

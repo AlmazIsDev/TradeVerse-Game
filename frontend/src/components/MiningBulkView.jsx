@@ -174,7 +174,9 @@ export default function MiningBulkView({ onBack }) {
       for (let i = 0; i < total; i += CH) {
         const chunk = farmList.slice(i, i + CH)
         setProgress({ label: t('mining.bulk.assembling', 'Сборка ферм'), done: i, total })
-        const payload = items.map(it => ({ ...it, qty: it.qtyPerChunk ? chunk.length : it.qty }))
+        // multi: qty в items = шт. на ферму — на каждый чанк отправляем пул
+        // на все фермы чанка (неизрасходованный остаток не списывается)
+        const payload = items.map(it => ({ ...it, qty: it.qtyPerChunk ? chunk.length : it.qty * chunk.length }))
         const res = await bulkAssemble(chunk, payload)
         assembled += res?.assembled || 0
         if (!firstErr) {
@@ -391,43 +393,59 @@ export default function MiningBulkView({ onBack }) {
           <div className="modal-content asm-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setAsmOpen(false)}><X size={18} /></button>
             <h3><Hammer size={17} /> {t('mining.bulk.assemble', 'Авто-сборка')}</h3>
-            <p className="modal-price">{t('mining.bulk.asmDesc', 'Детали ставятся в выбранные несобранные фермы по очереди; закончатся — сборка остановится.')}</p>
+            <p className="modal-price">{t('mining.bulk.asmDesc', 'Выберите по одному товару на категорию — он ставится на каждую выбранную несобранную ферму. Чего не хватит или куда не влезет — категория пропустится, установленное останется (причина — в уведомлении). Порядок: корпус/стойка → мат. плата → процессор → ОЗУ → SSD → охлаждение → ИБП → сеть → БП → видеокарты → вентиляторы.')}</p>
             <div className="asm-grid">
               {ASM_CATS.map(({ cat, multi }) => {
                 const chosen = choice[cat]?.itemId
                 const cnt = (parts[cat] || []).find(p => p.itemId === chosen)?.count || 0
+                const need = selectedUnassembled.length
+                const mqty = choice[cat]?.qty || 1
+                const hint = !chosen ? null
+                  : multi
+                    ? t('mining.bulk.asmMultiHint', { qty: mqty, free: cnt })
+                      + (cnt < need * mqty ? ' — ' + t('mining.bulk.asmMultiShort', { need, total: need * mqty, free: cnt }) : '')
+                    : t('mining.bulk.asmSingleHint', { need, free: cnt })
+                const short = chosen && (multi ? cnt < need * mqty : cnt < need)
                 return (
-                  <div key={cat} className={`asm-row${chosen ? ' chosen' : ''}`}>
-                    <span className="asm-cat">{t(`mining.comp.${cat}`, cat)}</span>
-                    <select className="mslot-pick" disabled={busy} value={chosen || ''}
-                      onChange={e => {
-                        const v = e.target.value
-                        setAsmChoice(c => {
-                          const n = { ...c }
-                          if (!v) delete n[cat]
-                          // multi по умолчанию берём весь свободный остаток товара:
-                          // ферма возьмёт по ёмкости, лишнее останется в инвентаре
-                          else n[cat] = { itemId: v, qty: multi ? Math.min(2000, (parts[cat] || []).find(p => p.itemId === v)?.count || 1) : 1 }
-                          return n
-                        })
-                      }}>
-                      <option value="">{t('mining.bulk.notSet', '— не ставить —')}</option>
-                      {(parts[cat] || []).map(p => (
-                        <option key={p.itemId} value={p.itemId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}{p.count > 1 ? ` (×${p.count})` : ''}</option>
-                      ))}
-                    </select>
-                    {multi && chosen && (
-                      <input type="number" min="1" max={Math.max(1, cnt)} disabled={busy} className="tx-input asm-qty"
-                        value={choice[cat]?.qty || 1}
-                        onChange={e => setAsmChoice(c => ({ ...c, [cat]: { ...c[cat], qty: Math.max(1, Math.min(cnt || 1, parseInt(e.target.value, 10) || 1)) } }))} />
-                    )}
-                    {chosen && (
-                      <button className="mslot-rm" onClick={() => setAsmChoice(c => { const n = { ...c }; delete n[cat]; return n })}><X size={12} /></button>
-                    )}
+                  <div key={cat} className={`asm-row${chosen ? ' chosen' : ''}`}
+                    title={t(`mining.bulk.tip.${cat}`, '')}>
+                    <div className="asm-line">
+                      <span className="asm-cat">{t(`mining.comp.${cat}`, cat)}</span>
+                      <select className="mslot-pick" disabled={busy} value={chosen || ''}
+                        onChange={e => {
+                          const v = e.target.value
+                          setAsmChoice(c => {
+                            const n = { ...c }
+                            if (!v) delete n[cat]
+                            // multi: поле = шт. НА КАЖДУЮ ферму; дефолт — весь
+                            // остаток поровну по фермам (лишнее останется в инвентаре)
+                            else n[cat] = { itemId: v, qty: multi ? Math.max(1, Math.min(2000, Math.ceil(((parts[cat] || []).find(p => p.itemId === v)?.count || 1) / Math.max(1, need)))) : 1 }
+                            return n
+                          })
+                        }}>
+                        <option value="">{t('mining.bulk.notSet', '— не ставить —')}</option>
+                        {(parts[cat] || []).map(p => (
+                          <option key={p.itemId} value={p.itemId}>{hwName(p, t)}{partSpec(cat, p.specs, t)}{p.count > 1 ? ` (×${p.count})` : ''}</option>
+                        ))}
+                      </select>
+                      {multi && chosen && (
+                        <input type="number" min="1" max="2000" disabled={busy} className="tx-input asm-qty"
+                          title={t('mining.bulk.asmPerFarmTitle', '')}
+                          value={choice[cat]?.qty || 1}
+                          onChange={e => setAsmChoice(c => ({ ...c, [cat]: { ...c[cat], qty: Math.max(1, Math.min(2000, parseInt(e.target.value, 10) || 1)) } }))} />
+                      )}
+                      {chosen && (
+                        <button className="mslot-rm" onClick={() => setAsmChoice(c => { const n = { ...c }; delete n[cat]; return n })}><X size={12} /></button>
+                      )}
+                    </div>
+                    {hint && <small className={`asm-hint${short ? ' short' : ''}`}>{hint}</small>}
                   </div>
                 )
               })}
             </div>
+            {choice['rack']?.itemId && choice['case']?.itemId && (
+              <div className="asm-warn">{t('mining.bulk.asmCaseRackWarn', 'Стойка и корпус взаимоисключающие — выберите что-то одно. Стойка — общий пул слотов на несколько ферм.')}</div>
+            )}
             <div className="asm-footer">
               <span className="asm-summary">
                 {t('mining.bulk.asmSummary', { farms: selectedUnassembled.length, cats: ASM_CATS.filter(({ cat }) => choice[cat]?.itemId).length })}

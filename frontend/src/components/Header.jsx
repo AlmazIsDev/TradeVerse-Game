@@ -7,7 +7,7 @@ import {
 } from '../services/api'
 import ProfileCard from './ProfileCard'
 import { formatCompact } from './TransactionsPanel'
-import { Bell, LogOut, X, Check, Wallet } from 'lucide-react'
+import { Bell, LogOut, X, Check, Wallet, Megaphone } from 'lucide-react'
 
 function formatMoney(n) {
   return Number(n || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -27,7 +27,9 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
   const { t } = useTranslation()
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState([])
+  const [notifTab, setNotifTab] = useState('all') // all | auto | announce
   const notifRef = useRef(null)
+  const dropdownRef = useRef(null)
 
   const storedUser = getStoredUser()
   const [cardNumber, setCardNumber] = useState(storedUser?.card_number || null)
@@ -40,6 +42,51 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
   const avatar = user?.avatar || storedUser?.avatar || null
   const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'TV'
   const unreadCount = notifications.filter(n => !n.read).length
+
+  // Категории уведомлений: «Объявления» (broadcast от админов) отдельно,
+  // «Авто» — автоматические (зарплата, аренда, майнинг и т.п.), приглашения/
+  // заявки с кнопками видны только во «Все», чтобы не терялись.
+  const isAnnounce = useCallback((n) => n.type === 'broadcast', [])
+  const isActionable = useCallback(
+    (n) =>
+      (n.type === 'company_invite' && n.data?.inviteId) ||
+      (n.type === 'company_application' && n.data?.applicationId),
+    [],
+  )
+
+  // Панель не должна вылезать за экран: после открытия (и на resize) измеряем
+  // её и при нехватке места сужаем и/или сдвигаем обратно в вьюпорт.
+  const clampDropdown = useCallback(() => {
+    const el = dropdownRef.current
+    if (!el) return
+    el.style.transform = ''
+    el.style.maxWidth = ''
+    const m = 8
+    const vw = document.documentElement.clientWidth
+    let rect = el.getBoundingClientRect()
+    if (rect.width > vw - m * 2) {
+      el.style.maxWidth = `${vw - m * 2}px`
+      rect = el.getBoundingClientRect()
+    }
+    let dx = 0
+    if (rect.right > vw - m) dx = vw - m - rect.right
+    if (rect.left + dx < m) dx = m - rect.left
+    if (dx) el.style.transform = `translateX(${dx}px)`
+  }, [])
+
+  useEffect(() => {
+    if (!showNotifications) return undefined
+    clampDropdown()
+    window.addEventListener('resize', clampDropdown)
+    return () => window.removeEventListener('resize', clampDropdown)
+  }, [showNotifications, clampDropdown])
+
+  const visibleNotifications = notifications.filter((n) => {
+    if (notifTab === 'announce') return isAnnounce(n)
+    if (notifTab === 'auto') return !isAnnounce(n) && !isActionable(n)
+    return true
+  })
+  const tabUnread = (match) => notifications.filter((n) => !n.read && match(n)).length
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -211,7 +258,7 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
             )}
           </button>
           {showNotifications && (
-            <div className="notification-dropdown">
+            <div className="notification-dropdown" ref={dropdownRef}>
               <div className="notification-header">
                 <span>{t('header.notifications')}</span>
                 {unreadCount > 0 && (
@@ -223,26 +270,48 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
                   <X size={16} />
                 </button>
               </div>
+              <div className="notification-tabs">
+                {[
+                  ['all', 'tabAll', () => true],
+                  ['auto', 'tabAuto', (n) => !isAnnounce(n) && !isActionable(n)],
+                  ['announce', 'tabAnnounce', isAnnounce],
+                ].map(([id, key, match]) => {
+                  const unread = tabUnread(match)
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`notification-tab ${notifTab === id ? 'active' : ''}`}
+                      onClick={() => setNotifTab(id)}
+                    >
+                      {t(`notifications.${key}`)}
+                      {unread > 0 && <span className="notification-tab-badge">{unread}</span>}
+                    </button>
+                  )
+                })}
+              </div>
               <div className="notification-list">
-                {notifications.length === 0 && (
+                {visibleNotifications.length === 0 && (
                   <div className="notification-empty">{t('notifications.noNotifications')}</div>
                 )}
-                {notifications.map(n => {
-                  const isActionable =
-                    (n.type === 'company_invite' && n.data?.inviteId) ||
-                    (n.type === 'company_application' && n.data?.applicationId)
+                {visibleNotifications.map(n => {
+                  const actionable = isActionable(n)
+                  const announce = isAnnounce(n)
                   return (
                     <div
                       key={n.id}
-                      className={`notification-item ${n.read ? 'read' : 'unread'}`}
-                      onClick={() => !isActionable && markAsRead(n.id)}
+                      className={`notification-item ${n.read ? 'read' : 'unread'} ${announce ? 'announce' : ''}`}
+                      onClick={() => !actionable && markAsRead(n.id)}
                     >
                       {!n.read && <div className="notification-dot" />}
                       <div className="notification-content">
-                        <span className="notification-title">{n.title}</span>
+                        <span className="notification-title">
+                          {announce && <Megaphone size={14} className="notification-announce-icon" />}
+                          {n.title}
+                        </span>
                         {n.body && <span className="notification-text">{n.body}</span>}
                         <span className="notification-time">{formatNotifTime(n.createdAt)}</span>
-                        {isActionable && (
+                        {actionable && (
                           <div className="notification-actions">
                             <button className="notif-accept" onClick={(e) => { e.stopPropagation(); notifAction(n, true) }}>
                               <Check size={13} /> {t('company.accept')}

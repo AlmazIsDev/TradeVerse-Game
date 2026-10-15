@@ -2187,6 +2187,70 @@ body {
   font-family: var(--font-primary);
 }
 
+/* Вкладки разделов уведомлений: Все / Авто / Объявления */
+.notification-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+}
+
+.notification-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-family: var(--font-primary);
+}
+
+.notification-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.notification-tab.active {
+  color: var(--color-accent);
+  background: var(--fill-soft);
+  border-color: var(--hairline);
+}
+
+.notification-tab-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: var(--color-danger);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* Объявления администрации — визуально выделены */
+.notification-item.announce {
+  background: rgba(255, 149, 0, 0.08);
+  border-left: 3px solid var(--color-warning);
+}
+
+.notification-item.announce .notification-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-warning);
+}
+
+.notification-item.announce .notification-announce-icon {
+  flex-shrink: 0;
+  color: var(--color-warning);
+}
+
 .mark-all-btn:hover {
   color: var(--color-accent-hover);
 }

@@ -1404,10 +1404,15 @@ async def bulk_assemble(
     """Авто-сборка нескольких ферм указанными комплектующими.
 
     Пул деталей на категорию распределяется по фермам. Фермы обрабатываются
-    ПАРАЛЛЕЛЬНО (семафор 20): путь установки — 4-5 запросов к Mongo на ферму,
+    ПАРАЛЛЕЛЬНО (семафор 80): путь установки — 4-5 запросов к Mongo на ферму,
     при удалённой БД (~130 мс/запрос) последовательная сборка 2000 ферм
-    растянулась бы на десятки минут. Неудавшаяся ферма откатывается
-    индивидуально и не мешает остальным."""
+    растянулась бы на десятки минут.
+
+    Ошибка одной категории НЕ проваливает ферму: категория пропускается
+    (не хватает деталей, места или зависимости — например GPU без материнки),
+    уже установленное остаётся. Раньше ферма откатывалась целиком — при сборке
+    «тем, что есть» из-за GPU без материнки ферма теряла и корпус с БП,
+    и выглядело так, будто БП «не ставится»."""
     user_id = str(current_user["_id"])
     # Пул деталей на КАТЕГОРИЮ (общий для всех ферм): либо конкретные hwId,
     # либо qty автоподборов товара (itemId). Автоподбор разрешаем ЗАРАНЕЕ
@@ -1443,13 +1448,12 @@ async def bulk_assemble(
                 {"_id": ObjectId(fid), "userId": user_id}) if ObjectId.is_valid(fid) else None
             if not farm:
                 return {"farmId": fid, "ok": False, "error": "Ферма не найдена"}
-            installed_now = []
-            err = None
+            skipped: dict[str, str] = {}
             for cat, pool in norm_items:
+                if not pool:
+                    skipped[cat] = "детали в пуле закончились"
+                    continue
                 single = not CATEGORY_ROLE[cat].get("multi", False)
-                if single and not pool:
-                    err = f"{cat}: детали в пуле закончились"
-                    break
                 while pool:
                     # Резервируем единицу ДО await: параллельная ферма иначе
                     # успеет установить ту же деталь (peek до завершения).
@@ -1457,26 +1461,18 @@ async def bulk_assemble(
                     try:
                         fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
                         got = await _install_one(db, user_id, fresh, cat, hw_id, item_id)
-                        installed_now.append(got)
                     except HTTPException as e:
                         pool.appendleft((item_id, hw_id))   # не израсходована
-                        if not single and _is_capacity_error(e.detail):
-                            # Ферма заполнена — остаток пула уходит следующим фермам.
-                            break
-                        err = f"{cat}: {e.detail}"
+                        # Любая ошибка категории — пропуск категории, не провал
+                        # фермы: установленное в другие слоты остаётся, а деталь
+                        # уходит следующим фермам.
+                        skipped[cat] = str(e.detail)
                         break
                     if single:
                         # Однорольной категории ферме нужна 1 деталь; остаток пула —
                         # следующим фермам (не чистим пул!).
                         break
-                if err:
-                    break
-            if err:
-                fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
-                for hw_id in installed_now:
-                    await _uninstall_hw(db, fresh, hw_id)
-                return {"farmId": fid, "ok": False, "error": err}
-            return {"farmId": fid, "ok": True}
+            return {"farmId": fid, "ok": True, "skipped": skipped or None}
 
     async with _bulk_gate(user_id):
         results = await asyncio.gather(*(_do_farm(fid) for fid in payload.farmIds))

@@ -177,16 +177,22 @@ export default function MiningBulkView({ onBack }) {
         const payload = items.map(it => ({ ...it, qty: it.qtyPerChunk ? chunk.length : it.qty }))
         const res = await bulkAssemble(chunk, payload)
         assembled += res?.assembled || 0
-        if (!firstErr) firstErr = (res?.results || []).find(r => !r.ok)?.error || null
+        if (!firstErr) {
+          for (const r of res?.results || []) {
+            if (r.error) { firstErr = r.error; break }
+            // Категория пропущена (нет деталей/мест/зависимости) — показываем
+            // первую причину, ферма при этом собирается частично.
+            if (r.skipped) {
+              const [cat, msg] = Object.entries(r.skipped)[0]
+              firstErr = `${t(`mining.comp.${cat}`, cat)}: ${msg}`
+              break
+            }
+          }
+        }
         setProgress({ label: t('mining.bulk.assembling', 'Сборка ферм'), done: Math.min(i + CH, total), total })
       }
-      if (assembled === 0 && firstErr) {
-        toast(firstErr, 'error')
-      } else {
-        toast(t('mining.bulk.assembled', { n: assembled }))
-        if (firstErr) toast(firstErr, 'error')
-        else if (assembled < total) toast(t('mining.bulk.poolRanOut', 'Пул деталей закончился — часть ферм не собрана'), 'error')
-      }
+      toast(t('mining.bulk.assembled', { n: assembled }))
+      if (firstErr) toast(firstErr, 'error')
       setAsmOpen(false)
       await load()
     } catch (e) {

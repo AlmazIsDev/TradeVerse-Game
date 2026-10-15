@@ -1438,7 +1438,13 @@ async def bulk_assemble(
                 {"_id": 1}).limit(need)]
             unit_iter = iter(units)
             pool = deque((i, h if h is not None else next(unit_iter, None)) for i, h in pool)
-        norm_items.append((cat, pool))
+        # perFarm: лимит установок этой категории НА ОДНУ ферму (фронтенд шлёт
+        # «шт. на каждую ферму»). Без perFarm — как раньше, по ёмкости фермы.
+        if it.get("perFarm"):
+            per_farm = max(1, min(int(it["perFarm"]), 20000))
+        else:
+            per_farm = 1 if not CATEGORY_ROLE[cat].get("multi", False) else 10 ** 9
+        norm_items.append((cat, pool, per_farm))
 
     sem = asyncio.Semaphore(80)   # упираемся в latency БД: больше параллелизма = выше throughput
 
@@ -1449,23 +1455,28 @@ async def bulk_assemble(
             if not farm:
                 return {"farmId": fid, "ok": False, "error": "Ферма не найдена"}
             skipped: dict[str, str] = {}
-            for cat, pool in norm_items:
+            for cat, pool, per_farm in norm_items:
                 if not pool:
                     skipped[cat] = "детали в пуле закончились"
                     continue
                 single = not CATEGORY_ROLE[cat].get("multi", False)
-                while pool:
+                cat_installed = 0
+                while pool and cat_installed < per_farm:
                     # Резервируем единицу ДО await: параллельная ферма иначе
                     # успеет установить ту же деталь (peek до завершения).
                     item_id, hw_id = pool.popleft()
                     try:
                         fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
-                        got = await _install_one(db, user_id, fresh, cat, hw_id, item_id)
+                        await _install_one(db, user_id, fresh, cat, hw_id, item_id)
+                        cat_installed += 1
                     except HTTPException as e:
                         pool.appendleft((item_id, hw_id))   # не израсходована
-                        # Любая ошибка категории — пропуск категории, не провал
-                        # фермы: установленное в другие слоты остаётся, а деталь
-                        # уходит следующим фермам.
+                        # Ёмкость исчерпана, когда категория уже частично встала —
+                        # это нормальный стоп, а не сбой (иначе «Нет мест под БП»
+                        # при уже стоящих 2 БП выглядело как ошибка). Причину
+                        # записываем, только если категория не встала вовсе.
+                        if _is_capacity_error(e.detail) and cat_installed:
+                            break
                         skipped[cat] = str(e.detail)
                         break
                     if single:

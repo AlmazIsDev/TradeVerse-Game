@@ -160,7 +160,10 @@ export default function MiningBulkView({ onBack }) {
       // qtyPerChunk: однорольной категории нужна 1 деталь на каждую ферму
       // чанка; multi — полный qty в каждом чанке безопасен: ферма берёт по
       // ёмкости, неизрасходованный остаток пула в запросе не списывается.
-      items.push({ category: cat, itemId: c.itemId, qty: multi ? (c.qty || 1) : 0, qtyPerChunk: !multi })
+      // perFarm: лимит установки НА ферму (мульти — поле «шт. на ферму»);
+      // qty ниже умножается на фермы чанка — это общий пул запроса.
+      items.push({ category: cat, itemId: c.itemId, qty: multi ? (c.qty || 1) : 0,
+        perFarm: multi ? (c.qty || 1) : 1, qtyPerChunk: !multi })
     }
     if (!items.length) { toast(t('mining.bulk.noPartsChosen', 'Комплектующие не выбраны'), 'error'); return }
     setBusy(true)

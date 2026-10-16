@@ -1896,7 +1896,30 @@ async def tick_all(db: AsyncIOMotorDatabase):
         if sym:
             live_hashrate_by_coin[sym] = live_hashrate_by_coin.get(sym, 0.0) + _farm_hashrate(farm)
 
-    async def _tick_one(farm: dict) -> None:
+    # Кэш на тик: бонусы города предзагружаются один раз на пользователя —
+    # иначе это 2 запроса на КАЖДУЮ ферму за тик (при ~100мс RTT до Mongo
+    # сотни ферм растягивают тик на минуты и забивают БД для всех запросов).
+    city_cache: dict[str, dict] = {}
+    for uid in {f["userId"] for f in active_farms}:
+        city_cache[uid] = await _city_bonus(db, uid)
+
+    coins_with_supply = {
+        c["symbol"] async for c in db.crypto_assets.find({"supply": {"$gt": 0}}, {"symbol": 1})
+    }
+
+    # Ledger-накопители тика: одна запись дохода (по монете) и одна расхода на
+    # пользователя вместо двух записей на каждую ферму. Раньше 200 активных ферм
+    # писали ~400 транзакций в минуту — transactions разросся до 1.3M, и
+    # weekly-аналитика тянула сотни тысяч документов (запрос > 60с).
+    inc_acc: dict[tuple[str, str], dict] = {}
+    exp_acc: dict[str, dict] = {}
+    emission_acc: dict[str, float] = {}
+
+    # План тика: чистый CPU-расчёт на каждую ферму, все записи в БД — потом,
+    # батчами по пользователям/коллекциям.
+    plans: list[dict] = []
+
+    def _plan_one(farm: dict) -> None:
         last = _aware(farm.get("last_tick"))
         elapsed_h = min(MAX_ACCRUAL_H, (now - last).total_seconds() / 3600.0) if isinstance(last, datetime) else 0.0
         if elapsed_h < MINING_MIN_ELAPSED_H:
@@ -1920,7 +1943,7 @@ async def tick_all(db: AsyncIOMotorDatabase):
         coin_sym_for_live = farm.get("coin")
         live_on_coin = max(0.0, live_hashrate_by_coin.get(coin_sym_for_live, 0.0) - own_hashrate) if coin_sym_for_live else 0.0
 
-        city = await _city_bonus(db, user_id)
+        city = city_cache.get(user_id) or {}
         stats = _compute(farm, market, ec, em, city, live_hashrate_on_coin=live_on_coin)
 
         # ИБП: шанс просадки питания за тик. Резерв покрывает долю мощности —
@@ -1983,61 +2006,120 @@ async def tick_all(db: AsyncIOMotorDatabase):
             farm["coolant"] = set_fields["coolant"]
             farm["coolant_until"] = set_fields["coolant_until"]
 
-        # 1) Списываем денежные расходы (если ферма их не тянет — отключаем).
-        if costs > 0.01:
-            nb = await adjust_balance(db, user_id, -costs)
-            if nb is None:
-                # Денег не хватило: откатываем авто-ремонт (не чиним бесплатно) и
-                # отключаем ферму. Долг фиксируем без стоимости ремонта.
-                owed = round(electricity + salary, 2)
-                set_fields["condition"] = round(worn_condition, 2)
-                set_fields["status"] = "off"
-                set_fields["electricity_owed"] = round(farm.get("electricity_owed", 0.0) + owed, 2)
-                set_fields["total_spent"] = round(farm.get("total_spent", 0.0), 2)
-                await push_notification(db, user_id, "mining", "Ферма отключена",
-                                        f"«{farm.get('name')}»: недостаточно денег на электричество.",
-                                        data={"farmId": str(farm["_id"])})
-                await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": set_fields})
-                return
-            await record_transaction(db, user_id, EXPENSE, costs, CAT_MINING,
-                                     f"Расходы фермы «{farm.get('name')}»", balance_after=nb)
+        # Расходы/доходы/эмиссия в БД не пишутся здесь: план тика исполняется
+        # батчами после расчёта всех ферм — см. фазу исполнения ниже.
+        plans.append({
+            "_id": farm["_id"],
+            "user_id": user_id,
+            "name": farm.get("name"),
+            "costs": costs,
+            "revenue": revenue,
+            "coin_sym": coin_sym,
+            "coin_price": coin_price,
+            "coin_qty": coin_qty,
+            "set_fields": set_fields,
+            "stats": stats,
+            "new_condition": round(new_condition, 2),
+            # для отката при нехватке денег (ферма отключается, ремонт не чинится)
+            "worn_condition": round(worn_condition, 2),
+            "owed": round(electricity + salary, 2),
+            "old_owed": round(farm.get("electricity_owed", 0.0), 2),
+            "old_total_spent": round(farm.get("total_spent", 0.0), 2),
+        })
 
-        # 2) Зачисляем добытые монеты в холдинги (upsert по userId+symbol, как в crypto.py).
-        if coin_qty > 0 and coin_sym:
-            await db.crypto_holdings.update_one(
-                {"userId": user_id, "symbol": coin_sym},
-                {"$inc": {"quantity": coin_qty},
-                 "$setOnInsert": {"userId": user_id, "symbol": coin_sym, "avg_price": round(coin_price, 6)}},
-                upsert=True,
-            )
-            # В реестр пишем USD-эквивалент добытого (для аналитики), symbol = монета.
-            await record_transaction(db, user_id, INCOME, revenue, CAT_MINING,
-                                     f"Добыча {coin_qty:g} {coin_sym}", symbol=coin_sym,
-                                     price=coin_price, meta={"quantity": coin_qty})
-            # Добыча минтит новые монеты: держим счётчик эмиссии точным, чтобы
-            # покупки не могли превысить остаток выпуска.
-            coin_doc = await db.crypto_assets.find_one({"symbol": coin_sym}, {"supply": 1})
-            if coin_doc and float(coin_doc.get("supply") or 0) > 0:
-                await db.crypto_assets.update_one(
-                    {"symbol": coin_sym}, {"$inc": {"emission_sold": coin_qty}})
-
-        await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": set_fields})
-
-        # Realtime-обновление показателей владельцу.
-        try:
-            from ws import push_to_user
-            await push_to_user(user_id, {"type": "mining", "farmId": str(farm["_id"]), "stats": stats,
-                                         "condition": round(new_condition, 2), "status": set_fields.get("status", "mining")})
-        except Exception:
-            pass
-
+    # Одна битая ферма (кривые данные в БД) не должна валить весь тик.
     for farm in active_farms:
-        # Одна битая ферма (кривые данные в БД) не должна валить весь тик:
-        # ошибка логируется, остальные фермы добывают дальше.
         try:
-            await _tick_one(farm)
+            _plan_one(farm)
         except Exception:
             logger.exception("mining tick failed for farm %s", farm.get("_id"))
+
+    # ── Фаза исполнения плана ────────────────────────────────────────────────
+    # Списание расходов: ОДНА атомарная операция на пользователя за тик вместо
+    # списания с каждой фермы. При нехватке — откат к поштучной оплате: фермы
+    # без оплаты отключаются, как раньше.
+    paid: list[dict] = []
+    by_user: dict[str, list[dict]] = {}
+    for p in plans:
+        by_user.setdefault(p["user_id"], []).append(p)
+
+    for user_id, plist in by_user.items():
+        total = round(sum(p["costs"] for p in plist), 2)
+        if total <= 0.01:
+            paid.extend(plist)
+            continue
+        nb = await adjust_balance(db, user_id, -total)
+        if nb is not None:
+            exp_acc[user_id] = {"amount": total, "farms": len(plist)}
+            paid.extend(plist)
+            continue
+        # Денег на все фермы не хватило — платим по одной, пока хватает.
+        for p in plist:
+            if p["costs"] <= 0.01:
+                paid.append(p)
+            elif await adjust_balance(db, user_id, -p["costs"]) is not None:
+                acc = exp_acc.setdefault(user_id, {"amount": 0.0, "farms": 0})
+                acc["amount"] = round(acc["amount"] + p["costs"], 2)
+                acc["farms"] += 1
+                paid.append(p)
+            else:
+                # Откатываем авто-ремонт и отключаем ферму.
+                sf = p["set_fields"]
+                sf["condition"] = p["worn_condition"]
+                sf["status"] = "off"
+                sf["electricity_owed"] = round(p["old_owed"] + p["owed"], 2)
+                sf["total_spent"] = p["old_total_spent"]
+                await push_notification(db, user_id, "mining", "Ферма отключена",
+                                        f"«{p['name']}»: недостаточно денег на электричество.",
+                                        data={"farmId": str(p["_id"])})
+
+    # Доходы/холдинги/эмиссия/апдейты ферм — батчами (bulk_write), а не запрос
+    # на каждую ферму: при ~100мс RTT до Mongo 2500 ферм × 3 запроса = минуты.
+    from pymongo import UpdateOne
+
+    paid_ids = {id(p) for p in paid}
+    hold_ops = []
+    farm_ops = []   # апдейты ВСЕХ планов — включая отключённые за неуплату
+    for p in plans:
+        if id(p) in paid_ids and p["coin_qty"] > 0 and p["coin_sym"]:
+            sym = p["coin_sym"]
+            acc = inc_acc.setdefault((p["user_id"], sym), {"amount": 0.0, "qty": 0.0, "price": p["coin_price"]})
+            acc["amount"] = round(acc["amount"] + p["revenue"], 2)
+            acc["qty"] = round(acc["qty"] + p["coin_qty"], 8)
+            if sym in coins_with_supply:
+                emission_acc[sym] = emission_acc.get(sym, 0.0) + p["coin_qty"]
+            hold_ops.append(UpdateOne(
+                {"userId": p["user_id"], "symbol": sym},
+                {"$inc": {"quantity": p["coin_qty"]},
+                 "$setOnInsert": {"userId": p["user_id"], "symbol": sym, "avg_price": round(p["coin_price"], 6)}},
+                upsert=True,
+            ))
+        farm_ops.append(UpdateOne({"_id": p["_id"]}, {"$set": p["set_fields"]}))
+
+    if hold_ops:
+        await db.crypto_holdings.bulk_write(hold_ops, ordered=False)
+    if farm_ops:
+        await db.mining_farms.bulk_write(farm_ops, ordered=False)
+
+    # Итоги тика — по одной ledger-записи на пользователя/монету.
+    for (user_id, sym), acc in inc_acc.items():
+        await record_transaction(db, user_id, INCOME, acc["amount"], CAT_MINING,
+                                 f"Добыча {acc['qty']:g} {sym}", symbol=sym,
+                                 price=acc["price"], meta={"quantity": acc["qty"]})
+    for user_id, acc in exp_acc.items():
+        await record_transaction(db, user_id, EXPENSE, acc["amount"], CAT_MINING,
+                                 f"Расходы ферм ({acc['farms']})")
+    for sym, qty in emission_acc.items():
+        await db.crypto_assets.update_one({"symbol": sym}, {"$inc": {"emission_sold": qty}})
+
+    # Realtime-обновление показателей владельцам оплаченных ферм.
+    for p in paid:
+        try:
+            from ws import push_to_user
+            await push_to_user(p["user_id"], {"type": "mining", "farmId": str(p["_id"]), "stats": p["stats"],
+                                              "condition": p["new_condition"], "status": p["set_fields"].get("status", "mining")})
+        except Exception:
+            pass
 
 
 # ── Admin ────────────────────────────────────────────────────────────────────

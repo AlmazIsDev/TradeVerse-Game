@@ -43,7 +43,6 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
   const [activeTab, setActiveTab] = useState('account')
   const [showAdmin, setShowAdmin] = useState(false)
   const [balance, setBalance] = useState(user?.balance ?? 0)
-  const [rtKey, setRtKey] = useState(0)
 
   const isAdmin = user?.role === 'admin'
 
@@ -70,7 +69,6 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       debounce = setTimeout(() => {
         debounce = null
         fetchCurrentUser().then(d => { if (d?.balance != null) setBalance(d.balance) }).catch(() => {})
-        setRtKey(k => k + 1)
       }, 1200)
     }
     const connect = async () => {
@@ -208,7 +206,6 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
           user={user}
           balance={balance}
           onLogout={onLogout}
-          rtKey={rtKey}
           onOpenSettings={() => setActiveTab('settings')}
         />
         <div className="dashboard-content">

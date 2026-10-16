@@ -23,7 +23,7 @@ function getStoredUser() {
   return null
 }
 
-function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
+function Header({ user, balance, onLogout, onOpenSettings }) {
   const { t } = useTranslation()
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -134,19 +134,13 @@ function Header({ user, balance, onLogout, rtKey = 0, onOpenSettings }) {
     } catch { /* ignore */ }
   }, [])
 
-  // 30с был основным источником обновлений до WS; теперь rtKey (см. ниже) и
-  // tv:notif уже покрывают live-обновления, поэтому интервал — редкий
-  // резервный фолбэк на случай пропущенного push, как и у остальных вкладок.
+  // 30с был основным источником обновлений до WS; tv:notif покрывает
+  // live-обновления, поэтому интервал — редкий резервный фолбэк.
   useEffect(() => {
     loadNotifs()
     const id = setInterval(loadNotifs, 120000)
     return () => clearInterval(id)
   }, [loadNotifs])
-
-  // Мгновенная перезагрузка при realtime-событии (WebSocket из Dashboard).
-  useEffect(() => {
-    if (rtKey) loadNotifs()
-  }, [rtKey, loadNotifs])
 
   // Push-событие от NotificationCenter — обновляем ленту без задержки debounce.
   useEffect(() => {

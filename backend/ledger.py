@@ -243,28 +243,34 @@ async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str, period: str =
     total_expense = 0.0
     operations = 0
 
-    cursor = db.transactions.find({
-        "userId": str(user_id),
-        "timestamp": {"$gte": start, "$lt": end},
-    })
-    async for doc in cursor:
-        ts = doc.get("timestamp")
-        if not isinstance(ts, datetime):
+    # Серверная агрегация вместо выгрузки документов: у активного игрока за
+    # неделю сотни тысяч транзакций (тик майнинга писал по 2 записи на ферму),
+    # и прежний курсор тянул их по сети — запрос занимал >60с.
+    cursor = db.transactions.aggregate([
+        {"$match": {"userId": str(user_id), "timestamp": {"$gte": start, "$lt": end}}},
+        {"$group": {
+            "_id": {"day": {"$dateToString": {"format": "%Y-%m-%d", "date": "$timestamp"}},
+                    "dir": {"$cond": [
+                        {"$in": ["$direction", [INCOME, EXPENSE]]},
+                        "$direction",
+                        {"$cond": [{"$eq": ["$type", "sell"]}, INCOME, EXPENSE]},
+                    ]}},
+            "amount": {"$sum": "$amount"},
+            "n": {"$sum": 1},
+        }},
+    ])
+    day_by_date = {d["date"]: d for d in days}
+    async for row in cursor:
+        info = day_by_date.get(row["_id"]["day"])
+        if not info:
             continue
-        idx = (ts.replace(hour=0, minute=0, second=0, microsecond=0) - start).days
-        if idx < 0 or idx >= span_days:
-            continue
-        amount = float(doc.get("amount", 0.0))
-        direction = doc.get("direction")
-        if direction is None:
-            direction = INCOME if doc.get("type") == "sell" else EXPENSE
-        operations += 1
-        if direction == INCOME:
-            days[idx]["income"] += amount
-            total_income += amount
+        operations += row["n"]
+        if row["_id"]["dir"] == INCOME:
+            info["income"] += row["amount"]
+            total_income += row["amount"]
         else:
-            days[idx]["expense"] += amount
-            total_expense += amount
+            info["expense"] += row["amount"]
+            total_expense += row["amount"]
 
     for d in days:
         d["income"] = round(d["income"], 2)

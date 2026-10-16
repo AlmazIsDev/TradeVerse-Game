@@ -12,12 +12,13 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import logging
 import os
 import random
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -103,6 +104,24 @@ def _build_walk_docs(market: str, symbol: str, current_price: float, volatility:
 class MarketDataService:
     """Единая точка работы с историей цен."""
 
+    # In-process TTL-кэш чтения: prices живут в БД и меняются раз в тик
+    # планировщика (60с), а /api/market/asset|history фронт опрашивает
+    # многократно за минуту — агрегаты по миллионам точек price_history
+    # при ~100мс RTT до Mongo стоили каждому запросу секунды.
+    # ponytail: dict без инвалидации — данные устаревают максимум на TTL.
+    READ_CACHE_TTL_S = 30.0
+    _read_cache: dict[tuple, tuple[float, Any]] = {}
+
+    @classmethod
+    async def _cached(cls, key: tuple, producer) -> Any:
+        now = time.monotonic()
+        hit = cls._read_cache.get(key)
+        if hit is not None and now - hit[0] < cls.READ_CACHE_TTL_S:
+            return hit[1]
+        value = await producer()
+        cls._read_cache[key] = (now, value)
+        return value
+
     @staticmethod
     async def record_snapshot(db, market: str, symbol: str, price: float, *, force: bool = False):
         """Добавляет снимок цены (с троттлингом, если не force)."""
@@ -140,6 +159,15 @@ class MarketDataService:
 
     @staticmethod
     async def get_history(db, market: str, symbol: str, interval: str) -> dict:
+        """Свечи OHLC + линия по интервалу (TTL-кэш 30с)."""
+        symbol = symbol.upper()
+        return await MarketDataService._cached(
+            ("hist", market, symbol, interval),
+            lambda: MarketDataService._get_history_uncached(db, market, symbol, interval),
+        )
+
+    @staticmethod
+    async def _get_history_uncached(db, market: str, symbol: str, interval: str) -> dict:
         """Свечи OHLC + линия по интервалу."""
         symbol = symbol.upper()
         lookback, bucket = INTERVALS.get(interval, INTERVALS["7d"])
@@ -171,6 +199,15 @@ class MarketDataService:
 
     @staticmethod
     async def stats(db, market: str, symbol: str) -> dict:
+        """Изменение за 24ч/7д/1м/1г, ATH/ATL (TTL-кэш 30с)."""
+        symbol = symbol.upper()
+        return await MarketDataService._cached(
+            ("stats", market, symbol),
+            lambda: MarketDataService._stats_uncached(db, market, symbol),
+        )
+
+    @staticmethod
+    async def _stats_uncached(db, market: str, symbol: str) -> dict:
         """Изменение за 24ч/7д/1м/1г, ATH/ATL по накопленной истории.
 
         Считается агрегацией и точечными выборками по индексу (market, symbol, ts),

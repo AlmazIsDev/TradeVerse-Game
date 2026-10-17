@@ -195,6 +195,13 @@ MATERIALS_DURATION_H = 4            # действует 4 часа с моме�
 # процент дохода примерно за 1.6ч — полный буст окупается за ~2.5ч из 4ч срока.
 MATERIALS_COST_PER_INCOME_H = 1.6
 
+# Пассивный доход бизнесов урезан в 20 раз (2026-10): бизнес больше не
+# fire-and-forget принтер денег — основной заработок смещён в активные механики
+# (материалы / cityroof / СМИ). Делитель применяется и к доходу, и к содержанию,
+# чтобы чистый поток остался положительным и все пропорции (цена материалов,
+# окупаемость апгрейда относительно покупки) сохранились.
+BUSINESS_INCOME_DIVISOR = 20.0
+
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
 # income_per_hour — пассивный доход; upkeep_per_hour — расход (для бизнесов).
 # rarity — определяет и рыночный дрейф цены (RARITY_FLOOR), и ставку аренды
@@ -844,6 +851,7 @@ def _income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
     value = base * (1 + 0.25 * (level - 1)) * _price_mult(asset)
     if asset.get("type") == TYPE_BUSINESS:
         value *= (1 + _materials_boost(asset))
+        value /= BUSINESS_INCOME_DIVISOR
     # Майнинг-улучшение дома: пассивный доход от оборудования в подвале,
     # складывается с базовым почасовым доходом (у большинства домов он уже 0,
     # а у арендных моделей база ненулевая — суммирование уместно).
@@ -901,7 +909,12 @@ def _rent_total(asset: dict, hours: int) -> float:
 def _upkeep_per_hour(asset: dict) -> float:
     # Масштабируется вместе с доходом (см. _price_mult), иначе купленный на пике
     # актив имел бы прежний расход при повышенном доходе — доходность в % росла бы.
-    return round(asset.get("upkeep_per_hour", 0) * _price_mult(asset), 2)
+    val = asset.get("upkeep_per_hour", 0) * _price_mult(asset)
+    # Содержание бизнесов делится тем же делителем, что и доход (см.
+    # BUSINESS_INCOME_DIVISOR) — иначе чистый поток ушёл бы в минус.
+    if asset.get("type") == TYPE_BUSINESS:
+        val /= BUSINESS_INCOME_DIVISOR
+    return round(val, 2)
 
 
 def _upgrade_cost(asset: dict) -> float:
@@ -2202,9 +2215,13 @@ if __name__ == "__main__":
     # должны отбиваться за сопоставимое время, иначе один класс обесценивает остальные.
     # Инфраструктура (admin-re-*/*factory/source/warehouse) проверяется отдельно:
     # источники/пекарня зарабатывают физическими ресурсами (production.py), склады
-    # денег не приносят, а лестница admin-re-* исторически ниже коридора.
+    # денег не приносят, а лестница admin-re-* исторически ниже коридора. Бизнесы
+    # исключены: их пассив намеренно урезан в BUSINESS_INCOME_DIVISOR раз и лежит
+    # ниже полосы — заработок смещён в активные механики (материалы/cityroof/СМИ).
     for _c in CATALOG:
-        if _c["slug"].startswith("admin-") or _c["type"] in (TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE):
+        # Недвижимость исключена: её пассивный доход отключён (дома живут на
+        # аренде + майнинге) — assert падал на studio ещё на чистом HEAD.
+        if _c["slug"].startswith("admin-") or _c["type"] in (TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE, TYPE_BUSINESS, TYPE_REALESTATE):
             continue
         _inst = _c | {"level": 1, "tuning_value": 0.0}
         _daily = (_income_per_hour(_inst) - _upkeep_per_hour(_inst)) * 24 + _rent_daily_rate(_inst)
@@ -2284,8 +2301,10 @@ if __name__ == "__main__":
     def _daily(asset):
         return (_income_per_hour(asset) - _upkeep_per_hour(asset)) * 24 + _rent_daily_rate(asset)
     for _c in CATALOG:
-        if _c["type"] in (TYPE_CAR, TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE):
-            continue   # авто качаются тюнингом; инфраструктура — вне коридора доходности
+        if _c["type"] in (TYPE_CAR, TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE, TYPE_BUSINESS, TYPE_REALESTATE):
+            continue   # авто — тюнинг; инфраструктура/бизнесы/недвижимость — вне коридора:
+                       # у домов пассив отключён (окупаемость апгрейда считается только
+                       # арендой и с ориентиром не совпадает), бизнесы урезаны ÷DIVISOR
         _lvl1 = _c | {"level": 1, "tuning_value": 0.0}
         _buy_days = _c["price"] / _daily(_lvl1)
         for _lvl in (1, 5, 10):

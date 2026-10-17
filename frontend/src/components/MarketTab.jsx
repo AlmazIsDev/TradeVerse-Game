@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatMoney } from './TransactionsPanel'
-// Модалка подтверждения покупки для вкладки «Рынок»: показывает товар,
-// баланс, цену и кнопку «Купить».
 import MarketBuyModal from './MarketBuyModal'
 import { fetchAssetMarket, buyAsset } from '../services/api'
 import { toast } from './Toast'
@@ -24,13 +22,8 @@ import {
 } from 'lucide-react'
 import { assetImage } from '../utils/assetImages'
 
-// Ранг редкости для сортировки (common < uncommon < rare < epic < legendary).
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 }
 
-// Категории-пилюли. Транспорт (car) удалён по требованию — на вкладке «Рынок»
-// остались только недвижимость и бизнесы.
-// Категории-пилюли на вкладке «Рынок». Добавлены разделы «Заводы» и
-// «Источники». Иконки импортированы из lucide-react.
 const CATEGORIES = [
   { id: 'all', icon: LayoutGrid },
   { id: 'realestate', icon: Home },
@@ -40,23 +33,20 @@ const CATEGORIES = [
   { id: 'warehouse', icon: Warehouse },
 ]
 
-// Разрешённые slug-ы на вкладке «Рынок». Включают недвижимость, бизнесы,
-// заводы и источники из admin-каталога (frontend/src/utils/adminCatalog.js).
-// Любые другие slug-и (старые 6 базовых домов, 8 базовых бизнесов, itstudio_*,
-// media_holding, машины) НЕ отображаются и НЕ покупаются здесь — даже если
-// бэкенд их возвращает. Это гарантирует, что витрина показывает только новую
-// линейку независимо от того, перезапущен ли бэкенд.
+// Разрешённые slug-и вкладки «Рынок»: только admin-* из adminCatalog.js.
+// Остальные (старые базовые дома/бизнесы, itstudio_*, media_holding, машины)
+// не показываются и не покупаются здесь, даже если бэкенд их вернёт — витрина
+// всегда выдаёт новую линейку независимо от перезапуска бэкенда.
 const ADMIN_SLUG_PREFIXES = ['admin-re-', 'admin-biz-', 'admin-fac-', 'admin-src-', 'admin-wh-']
 function isAdminMarketSlug(slug) {
   if (!slug) return false
   return ADMIN_SLUG_PREFIXES.some(p => slug.startsWith(p))
 }
 
-// Fallback: локальный каталог из adminCatalog.js. Используется, если бэкенд
-// по какой-то причине не вернул admin-re-*/admin-biz-* (например, ещё не
-// перезапущен после миграции). Структура записей приведена к формату
+// Fallback: локальный каталог adminCatalog.js, если бэкенд ещё не вернул
+// admin-* (не перезапущен после миграции). Записи приведены к формату
 // /api/assets/market (slug, type, name, price, rarity, ...), чтобы рендер
-// MarketTab работал без изменений остального кода.
+// MarketTab не менялся.
 function buildLocalCatalog() {
   const houses = ADMIN_REAL_ESTATE_CATALOG.map(h => ({
     slug: h.slug,
@@ -92,8 +82,6 @@ function buildLocalCatalog() {
     profitPerHour: 0,
     meta: {},
   }))
-  // Заводы: type='factory', category='gpu'/'cpu'/... — что именно фабрика
-  // производит. incomePerHour = выпуск в час (для карточки).
   const factories = ADMIN_FACTORIES_CATALOG.map(f => ({
     slug: f.slug,
     type: 'factory',
@@ -112,7 +100,6 @@ function buildLocalCatalog() {
     specs: f.specs || {},
     meta: { produces: f.specs?.produces },
   }))
-  // Источники ресурсов: type='source', category='mine'/'field'/'sawmill'/...
   const sources = ADMIN_SOURCES_CATALOG.map(s => ({
     slug: s.slug,
     type: 'source',
@@ -131,7 +118,6 @@ function buildLocalCatalog() {
     specs: s.specs || {},
     meta: { resource: s.specs?.resource },
   }))
-  // Склады: type='warehouse'. Главная характеристика — площадь (areaSqm).
   const warehouses = ADMIN_WAREHOUSES_CATALOG.map(w => ({
     slug: w.slug,
     type: 'warehouse',
@@ -176,7 +162,6 @@ const BIZ_CAT_EMOJI = {
   office: '🏢',
 }
 
-// Эмодзи для подкатегорий заводов (что именно фабрика производит).
 const FAC_PRODUCES_EMOJI = {
   gpu: '🎮',
   cpu: '🧠',
@@ -186,7 +171,6 @@ const FAC_PRODUCES_EMOJI = {
   bread: '🍞',
 }
 
-// Эмодзи для подкатегорий источников (что именно добывается).
 const SRC_RESOURCE_EMOJI = {
   metal: '⛓️',
   food: '🌾',
@@ -206,14 +190,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   const [loading, setLoading] = useState(true)
   // busy[id] = true, пока идёт покупка (защита от двойного клика).
   const [busy, setBusy] = useState({})
-  // pendingBuy — выбранный для покупки товар (для модалки подтверждения).
-  // null, если модалка закрыта.
   const [pendingBuy, setPendingBuy] = useState(null)
-  // Две независимые сортировки:
-  //   sortBy  — по какому полю: 'price' | 'rarity'
-  //   sortDir — направление: 'asc' | 'desc'
-  // Клик по активной кнопки — переключает направление. Клик по неактивной —
-  // делает её активной и сбрасывает направление в 'asc'.
   const [sortBy, setSortBy] = useState('price')   // 'price' | 'rarity'
   const [sortDir, setSortDir] = useState('asc')   // 'asc' | 'desc'
   const toggleSort = useCallback((by) => {
@@ -231,9 +208,8 @@ function MarketTab({ balance = 0, onBalanceChange }) {
     return () => clearTimeout(id)
   }, [searchInput])
 
-  // Загрузка каталога: 81 дом + 12 бизнесов из adminCatalog.js.
-  // Бэкенд (GET /api/assets/market) подмешивает живую цену/trend.
-  // Покупка идёт POST /api/assets/buy по slug (admin-re-N / admin-biz-N).
+  // Бэкенд (GET /api/assets/market) подмешивает живую цену/trend к локальному
+  // каталогу; покупка — POST /api/assets/buy по slug (admin-re-N / admin-biz-N).
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -285,13 +261,8 @@ function MarketTab({ balance = 0, onBalanceChange }) {
 
   useEffect(() => { load() }, [load])
 
-  // Финальный фильтр витрины: только admin-slug-и + исключаем машины.
-  // Это «защитный пояс» — даже если в бэкенде остались старые позиции,
-  // они не проберутся на экран.
-  // Сортировка управляется двумя независимыми состояниями:
-  //   sortBy  = 'price' | 'rarity'   (по какому полю)
-  //   sortDir = 'asc'  | 'desc'      (направление)
-  // Внутри одной редкости (если sortBy='rarity') — сортируем по цене.
+  // Защитный пояс: не-admin позиции не проберутся на экран, даже если бэкенд
+  // их вернёт. Внутри одной редкости (sortBy='rarity') — сортировка по цене.
   const view = useMemo(() => {
     let r = items.filter(it => isAdminMarketSlug(it.slug))
     if (search) {
@@ -321,7 +292,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
       return BIZ_CAT_EMOJI[it.category] || '🏢'
     }
     if (it.type === 'factory') {
-      // Приоритет: подкатегория производимого продукта, иначе общая иконка.
       return FAC_PRODUCES_EMOJI[it.category] || TYPE_EMOJI.factory
     }
     if (it.type === 'source') {
@@ -330,11 +300,9 @@ function MarketTab({ balance = 0, onBalanceChange }) {
     return TYPE_EMOJI[it.type] || '📦'
   }, [])
 
-  // Клик по «Купить» в карточке → открываем модалку подтверждения.
   const handleBuy = useCallback((item) => {
     if (!item?.slug) return
-    // Эмодзи-иконку берём из cardEmoji(), чтобы баннер в модалке совпадал
-    // с тем, что игрок видит на карточке.
+    // emoji из cardEmoji — баннер модалки совпадает с карточкой.
     setPendingBuy({
       ...item,
       emoji: cardEmoji(item),
@@ -350,10 +318,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
     })
   }, [t, cardEmoji])
 
-  // Подтверждение покупки из модалки. Списывает баланс, создаёт экземпляр
-  // во владении. На успехе обновляем локальный баланс через onBalanceChange.
-  // Фолбэк: если основной /api/assets/buy вернул 404 (например, на сервере
-  // прокси режет POST или бэкенд ещё не перезапущен со старым кодом),
   const handleConfirm = useCallback(async () => {
     const item = pendingBuy
     if (!item?.slug) return
@@ -404,7 +368,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
           })}
         </div>
         <div className="shop-toolbar-right">
-          {/* Две независимые кнопки сортировки: по цене и по редкости. */}
           <button
             type="button"
             className={`tx-pill${sortBy === 'price' ? ' active' : ''}`}
@@ -525,14 +488,12 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                       <span>{t('market.basement')}</span><b>{item.basement}</b>
                     </div>
                   )}
-                  {/* Заводы: показываем выпуск в час (outputPerHour). */}
                   {item.type === 'factory' && item.specs?.outputPerHour != null && (
                     <div className="asset-stat">
                       <span>{t('market.productionPerHour', 'Производство/ч')}</span>
                       <b>{item.specs.outputPerHour}</b>
                     </div>
                   )}
-                  {/* Источники: показываем добычу и запас. */}
                   {item.type === 'source' && item.specs?.outputPerHour != null && (
                     <div className="asset-stat">
                       <span>{t('market.productionPerHour', 'Производство/ч')}</span>
@@ -545,7 +506,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                       <b>{item.specs.capacity}</b>
                     </div>
                   )}
-                  {/* Склады: главное — площадь (м²) и расчётный запас хранения. */}
                   {item.type === 'warehouse' && item.specs?.areaSqm != null && (
                     <div className="asset-stat">
                       <span>{t('market.areaSqm', 'Площадь')}</span>
@@ -576,7 +536,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         </div>
       )}
 
-      {/* Модалка подтверждения покупки. */}
       <MarketBuyModal
         open={!!pendingBuy}
         item={pendingBuy}

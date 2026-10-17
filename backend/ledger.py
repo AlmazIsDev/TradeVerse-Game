@@ -1,10 +1,4 @@
-"""Единый денежный реестр (ledger).
-
-Любое движение денег игрока проходит через record_transaction, что даёт
-единую историю операций, аналитику и корректный баланс. Заменяет разрозненные
-buy/sell-записи обобщённой моделью (direction + category), сохраняя обратную
-совместимость со старыми полями (type/symbol/price).
-"""
+"""Единый источник истины по деньгам: любое движение — через record_transaction."""
 import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
@@ -14,11 +8,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from timeutil import now_utc
 
-# Направление движения денег с точки зрения владельца операции
 INCOME = "income"
 EXPENSE = "expense"
 
-# Категории операций (расширяются по мере роста фич)
 CAT_TRANSFER = "transfer"
 CAT_TRADE = "trade"
 CAT_CRYPTO = "crypto"
@@ -31,11 +23,8 @@ CAT_SHOP = "shop"
 CAT_MINING = "mining"
 CAT_SYSTEM = "system"
 CAT_MARKET = "market"
-# Категории для «инфраструктурных» активов рынка: заводы (factory), источники
-# ресурсов (source) и склады (warehouse). Покупка/продажа проходят через те же
-# /api/assets/buy и /api/assets/{id}/sell, но в реестре помечаются отдельно —
-# чтобы в аналитике и истории операций можно было отфильтровать только такие
-# покупки. Не заменяют CAT_BUSINESS/CAT_REALESTATE, а дополняют их.
+# Инфраструктура рынка (заводы/источники/склады): те же /api/assets, но в
+# реестре отдельно — дополняют CAT_BUSINESS/CAT_REALESTATE, не заменяют.
 CAT_FACTORY = "factory"
 CAT_SOURCE = "source"
 CAT_WAREHOUSE = "warehouse"
@@ -49,16 +38,11 @@ VALID_DIRECTIONS = {INCOME, EXPENSE}
 async def adjust_balance(
     db: AsyncIOMotorDatabase, user_id: str, delta: float
 ) -> Optional[float]:
-    """Атомарно меняет баланс на delta.
-
-    При списании (delta < 0) используется условие balance >= |delta|, чтобы
-    исключить гонки и уход в минус. Возвращает новый баланс либо None, если
-    средств недостаточно / пользователь не найден.
-    """
+    """Атомарный сдвиг баланса. Списать больше остатка нельзя (условие в БД —
+    без гонок и минуса); None при недостатке средств / нет пользователя."""
     oid = ObjectId(user_id)
-    # Дробная арифметика $inc накапливает пыль (0.1+0.2-стиль), поэтому баланс
-    # клампится в 0 и округляется до сотых прямо в атомарном обновлении —
-    # все модули идут через эту функцию, так что деньги в БД всегда в сотых.
+    # $inc по float накапливает пыль: клампим в 0 и округляем до сотых прямо в
+    # атомарном апдейте — все идут через эту функцию, деньги в БД всегда в сотых.
     _rounded = [{"$set": {"balance": {"$round": [
         {"$max": [{"$add": ["$balance", delta]}, 0.0]}, 2]}}}]
     if delta < 0:
@@ -76,9 +60,8 @@ async def adjust_balance(
     if not result:
         return None
     new_balance = result.get("balance", 0.0)
-    # Realtime: сообщаем игроку новый баланс по WebSocket, чтобы верхняя панель
-    # обновлялась мгновенно при ЛЮБОМ изменении (аренда, майнинг, зарплата, дивиденды…),
-    # а не только при действиях в текущей вкладке. Безопасно — ошибки проглатываются.
+    # Единая WS-рассылка баланса отсюда: панель обновляется при любом изменении,
+    # а не только в текущей вкладке. Ошибки проглатываем намеренно.
     try:
         from ws import push_to_user
         await push_to_user(user_id, {"type": "balance", "balance": round(float(new_balance), 2)})
@@ -101,7 +84,6 @@ async def record_transaction(
     price: Optional[float] = None,
     meta: Optional[dict] = None,
 ) -> dict:
-    """Записывает операцию в реестр и возвращает сохранённый документ."""
     if direction not in VALID_DIRECTIONS:
         raise ValueError(f"Invalid direction: {direction}")
 
@@ -127,7 +109,6 @@ async def record_transaction(
 
 
 def _normalize(doc: dict) -> dict:
-    """Приводит документ реестра к API-виду (id вместо _id, isoformat даты)."""
     doc = dict(doc)
     if "_id" in doc:
         doc["id"] = str(doc.pop("_id"))
@@ -157,14 +138,9 @@ async def query_transactions(
     limit: int = 20,
     meta_filter: Optional[dict] = None,
 ) -> dict:
-    """Фильтрация / поиск / сортировка / пагинация истории операций.
-
-    ``meta_filter`` — доп. точечные условия по вложенным полям meta (например
-    ``{"companyId": cid}`` → ключ ``meta.companyId``), чтобы историю можно было
-    сузить до конкретной сущности, а не только по категории.
-
-    Возвращает {items, total, skip, limit}.
-    """
+    """История операций: фильтры/поиск/сортировка/пагинация. meta_filter сужает
+    до сущности по полям meta (companyId → meta.companyId).
+    Возвращает {items, total, skip, limit}."""
     query: dict[str, Any] = {"userId": str(user_id)}
     if direction in VALID_DIRECTIONS:
         query["direction"] = direction
@@ -190,11 +166,9 @@ async def query_transactions(
     }
     sort_field, sort_dir = sort_map.get(sort, ("timestamp", -1))
 
-    # Эффективная пагинация без полного count_documents по миллиону записей:
-    # Запрашиваем limit + 1 документ. Если вернулось больше limit — значит есть
-    # следующая страница (hasMore = True).
-    # Для совместимости с UI: total возвращает оценку (skip + len(items) + (1 if has_more else 0)),
-    # а hasMore и totalExact=False позволяют фронтенду красиво отобразить «Страница X».
+    # Пагинация без count-скана по миллиону записей: limit+1 → hasMore.
+    # total — оценка; фронт обязан смотреть totalExact/hasMore, а не строить
+    # страницы по total.
     page_limit = max(1, min(limit, 100))
     cursor = (
         db.transactions.find(query)
@@ -230,9 +204,7 @@ _wcache: dict[tuple, tuple[float, dict]] = {}
 
 
 async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str, period: str = "week") -> dict:
-    """Аналитика за период: доход, расход, изменение капитала, число операций
-    и посуточный ряд для графика. period: today|yesterday|week|month|all.
-    """
+    """Аналитика за period (today|yesterday|week|month|all): доход/расход/операции + посуточный ряд."""
     key = (user_id, period)
     hit = _wcache.get(key)
     mono = time.monotonic()
@@ -247,7 +219,6 @@ async def _weekly_analytics_uncached(db: AsyncIOMotorDatabase, user_id: str, per
     now = now_utc()
     today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Диапазон дней по периоду (start — начало первого дня корзины).
     if period == "today":
         start, span_days = today0, 1
     elif period == "yesterday":
@@ -268,7 +239,6 @@ async def _weekly_analytics_uncached(db: AsyncIOMotorDatabase, user_id: str, per
     # Верхняя граница выборки: для «вчера» отсекаем сегодняшние транзакции.
     end = start + timedelta(days=span_days)
 
-    # Посуточные корзины (индекс 0 = start ... span_days-1 = последний день)
     days = []
     for i in range(span_days):
         d = start + timedelta(days=i)
@@ -283,9 +253,8 @@ async def _weekly_analytics_uncached(db: AsyncIOMotorDatabase, user_id: str, per
     total_expense = 0.0
     operations = 0
 
-    # Серверная агрегация вместо выгрузки документов: у активного игрока за
-    # неделю сотни тысяч транзакций (тик майнинга писал по 2 записи на ферму),
-    # и прежний курсор тянул их по сети — запрос занимал >60с.
+    # Серверная агрегация: сотни тысяч транзакций в неделю (тик майнинга = 2
+    # записи на ферму) через удалённую Mongo — выгрузка стоила >60 с.
     cursor = db.transactions.aggregate([
         {"$match": {"userId": str(user_id), "timestamp": {"$gte": start, "$lt": end}}},
         {"$group": {

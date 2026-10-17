@@ -1,25 +1,8 @@
 """Ферма: поле (сетка клеток), культуры, машины (комбайн/трактор), топливо.
 
-Модель данных
--------------
-* users.fuel — отдельная валюта (литры), покупается за деньги.
-* user_fields — одна запись на (userId, assetId) для каждого купленного «поля»:
-    { userId, assetId, cells:[{x,y,status,crop,planted_at,ready_at}], storage:{} }
-  status ∈ {"empty","growing","ready"}. Storage: {crop_id: qty_kg}.
-* user_hardware — машины фермы живут там же, что и GPU: type=vehicle, и
-  поле "vehicleId" = slug из farmsCatalog.js ('combine_basic', 'tractor_basic'
-  и т.п.). Пока машина занята — busy_until > now.
-
-Баланс и баланс-механики — в game_config.FARM_CONFIG.
-
-API (prefix=/api/farm):
-  GET  /catalog        — справочник культур и машин (из RESOURCES + FARM_CONFIG)
-  GET  /my             — мои поля + машина + топливо + культуры в складах
-  POST /cells/buy      — докупить блок клеток на конкретном поле
-  POST /plant          — посадить культуру на клетках (требует трактор)
-  POST /harvest        — собрать урожай на клетках (требует комбайн)
-  POST /fuel/buy       — купить топливо (литры за деньги)
-  POST /sell-storage   — продать культуру со склада (запас на будущее)
+Рост пересчитывается от planted_at/ready_at при сборе — тикера нет. Склад поля
+(user_fields.storage) хранит культуры в кг, не деньги. Машина занята, пока
+busy_until > now. Баланс — в game_config.FARM_CONFIG.
 """
 from __future__ import annotations
 
@@ -42,7 +25,7 @@ from timeutil import now_utc
 
 router = APIRouter(prefix="/api/farm", tags=["farm"])
 
-# ── Константы, продублированные из game_config для быстрого доступа ───────────
+# ── Доступ к FARM_CONFIG ──────────────────────────────────────────────────────
 
 
 def _cfg():
@@ -55,12 +38,7 @@ def _now() -> datetime:
 
 
 def _as_aware_utc(value) -> datetime | None:
-    """Нормализует datetime из Mongo (naive-UTC) к aware-UTC.
-
-    Mongo отдаёт datetime без tzinfo, а now_utc() возвращает aware — прямое
-    сравнение падает с TypeError. Если value None или не datetime — вернём
-    None и пусть вызывающий код обработает это как «нет даты».
-    """
+    """Mongo отдаёт naive-UTC; сравнение с aware now_utc() падает с TypeError."""
     if not isinstance(value, datetime):
         return None
     if value.tzinfo is None:
@@ -72,11 +50,7 @@ def _as_aware_utc(value) -> datetime | None:
 
 
 async def _get_or_create_field(db, user_id: str, asset_id: str) -> dict:
-    """Возвращает документ user_fields для (user_id, asset_id).
-
-    Перед созданием проверяет, что актив «Поле» существует и принадлежит
-    игроку. Клетки — плоский список; index = y*side + x.
-    """
+    """Документ user_fields поля; создаётся лениво. Клетки — плоский список."""
     cfg = _cfg()
     side = int(cfg["cells_per_side"])
     cell_count = side * side
@@ -105,13 +79,8 @@ async def _get_or_create_field(db, user_id: str, asset_id: str) -> dict:
 
 
 async def _vehicle_for_job(db, user_id: str, kind: str) -> Optional[dict]:
-    """Ищет свободную машину нужного вида (kind='combine'|'tractor').
-
-    vehicleId = slug машины (см. farmsCatalog.js: 'combine_basic' и т.д.).
-    Занятость — busy_until > now. Возвращает первый подходящий экземпляр.
-    """
+    """Свободная машина вида kind: itemId = '<kind>_<tier>'; занята, пока busy_until > now."""
     now = _now()
-    # Любой экземпляр user_hardware, у которого vehicleId начинается с kind.
     prefix = f"{kind}_"
     async for h in db.user_hardware.find(
         {"userId": user_id, "itemId": {"$regex": f"^{prefix}"}}
@@ -123,7 +92,6 @@ async def _vehicle_for_job(db, user_id: str, kind: str) -> Optional[dict]:
 
 
 def _job_duration_minutes(vehicle_id: str, kind: str, area_sqm: int) -> float:
-    """Длительность работы машины на area_sqm м². Использует скорость из FARM_CONFIG."""
     cfg = _cfg()
     speed_key = f"{kind}_{vehicle_id.split('_', 1)[-1]}" if "_" in vehicle_id else f"{kind}_basic"
     speed = float(cfg["work_speed_sqm_per_min"].get(speed_key, 5.0))
@@ -133,7 +101,6 @@ def _job_duration_minutes(vehicle_id: str, kind: str, area_sqm: int) -> float:
 
 
 def _job_fuel_cost(vehicle_id: str, kind: str, area_sqm: int) -> float:
-    """Расход топлива (л) для работы машины на area_sqm м²."""
     cfg = _cfg()
     speed_key = f"{kind}_{vehicle_id.split('_', 1)[-1]}" if "_" in vehicle_id else f"{kind}_basic"
     rate = float(cfg["fuel_per_sqm"].get(speed_key, 1.0))
@@ -141,27 +108,23 @@ def _job_fuel_cost(vehicle_id: str, kind: str, area_sqm: int) -> float:
 
 
 def _growth_hours(crop_id: str) -> float:
-    """Время роста культуры (реальных часов)."""
     cfg = _cfg()
     return float(cfg["crops"][crop_id]["growth_hours"])
 
 
 def _volume_per_cell(crop_id: str) -> float:
-    """Урожай с м² (кг) — для добавления в склад поля."""
     cfg = _cfg()
     return float(cfg["crops"][crop_id]["volume_per_cell"])
 
 
 def _storage_cap(level: int = 1) -> int:
-    """Ёмкость склада поля на культуру. Уровень (1..10) — из prod.storageLevel
-    актива-поля (качается в панели производства, см. production.py)."""
+    """Ёмкость склада поля на культуру; уровень (1..10) качается в production.py."""
     cfg = _cfg()
     return int(cfg["storage_slots_per_resource"] * max(1, int(level)))
 
 
 def _crop_unit_price(crop_id: str, econ: dict) -> float:
-    """Базовая цена за кг культуры для UI/превью продаж. Берём base_price из
-    RESOURCES_BY_ID и нормализуем на кг (тут unit уже кг для всех культур)."""
+    """Цена за кг для UI-превью: base_price × economy_mult (unit культур — кг)."""
     rec = RESOURCES_BY_ID.get(crop_id)
     if not rec:
         return 0.0
@@ -174,20 +137,17 @@ def _crop_unit_price(crop_id: str, econ: dict) -> float:
 class PlantRequest(BaseModel):
     assetId: str
     cropId: str
-    # Клетки задаются как список индексов или как список [x,y]. Если пусто —
-    # всё доступное (все 'empty') за один прогон.
     cellIndices: list[int] = Field(default_factory=list)
 
 
 class HarvestRequest(BaseModel):
     assetId: str
-    # Клетки, с которых собирать. Пустой список = собрать всё готовое.
     cellIndices: list[int] = Field(default_factory=list)
 
 
 class BuyCellsRequest(BaseModel):
     assetId: str
-    # Сколько блоков клеток купить. 1 блок = FARM_CONFIG.cells_buy.step клеток.
+    # 1 блок = cells_buy.step клеток.
     blocks: int = 1
 
 
@@ -261,9 +221,7 @@ async def get_my_farm(
     cfg = _cfg()
     now = _now()
 
-    # Автосоздание полей для купленных источников категории 'field'.
-    # Покупка актива создаёт запись в user_assets; документ user_fields
-    # (сетка клеток + склад) создаётся лениво здесь при первом обращении.
+    # user_fields создаётся лениво: покупка актива пишет только user_assets.
     owned_assets = await db.user_assets.find(
         {"userId": user_id, "type": "source", "category": "field"}
     ).to_list(length=100)
@@ -275,7 +233,6 @@ async def get_my_farm(
         if aid not in existing:
             await _get_or_create_field(db, user_id, aid)
 
-    # Все поля игрока. Ёмкость склада — с уровнем из prod актива (1..10).
     fields = []
     prods = {str(a["_id"]): (a.get("prod") or {}) for a in await db.user_assets.find(
         {"userId": user_id, "type": "source", "category": "field"}, {"prod": 1}).to_list(100)}
@@ -283,7 +240,6 @@ async def get_my_farm(
         level = max(1, int(prods.get(str(f.get("assetId")), {}).get("storageLevel", 1)))
         fields.append(_serialize_field(f, cfg, _storage_cap(level)))
 
-    # Машины фермы: все экземпляры user_hardware с itemId вида "combine_*" или "tractor_*".
     machines = []
     async for h in db.user_hardware.find(
         {"userId": user_id, "itemId": {"$regex": "^(combine|tractor)_"}}
@@ -299,7 +255,6 @@ async def get_my_farm(
             "remainingMinutes": remaining_min,
         })
 
-    # Топливо из users.fuel.
     user_doc = await db.users.find_one({"_id": current_user["_id"]})
     fuel = float((user_doc or {}).get("fuel", 0.0) or 0.0)
 
@@ -317,7 +272,6 @@ def _serialize_field(f: dict, cfg: dict, storage_cap: int | None = None) -> dict
         if st == "ready": ready_count += 1
         elif st == "growing": growing_count += 1
         else: empty_count += 1
-    # Полные данные клеток для рендера сетки на фронте.
     cells_out = []
     for c in cells:
         ready_at = c.get("ready_at")
@@ -356,8 +310,6 @@ async def buy_cells(
 
     blocks = max(1, min(int(payload.blocks), int(cb["max_blocks"])))
     doc = await _get_or_create_field(db, user_id, payload.assetId)
-    # Цена — сумма экспоненциальной кривой: каждый следующий блок дороже
-    # предыдущего (base * scale^k), а не «цена последнего блока × количество».
     already_bought = max(0, len(doc["cells"]) - cfg["cells_per_side"] ** 2)
     step = int(cb["step"])
     total_cost = 0.0
@@ -369,16 +321,14 @@ async def buy_cells(
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
 
-    # Новые клетки добавляем за пределы текущей сетки (append в конец).
     side = int(doc["side"])
     new_cells = []
     for i in range(blocks * step):
         idx = len(doc["cells"]) + i
-        # Координаты — расширяем сетку вправо от текущего края.
         col = idx % side
         row = idx // side
         new_cells.append({
-            "x": col + side,  # сдвиг — новые клетки всегда справа от стартовой сетки
+            "x": col + side,  # новые клетки — справа от стартовой сетки
             "y": row, "status": "empty", "crop": None,
             "planted_at": None, "ready_at": None,
         })
@@ -416,7 +366,6 @@ async def plant(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Поле не найдено")
 
     cells = field["cells"]
-    # Выбираем клетки: либо явные индексы, либо все пустые.
     if payload.cellIndices:
         targets = []
         for idx in payload.cellIndices:
@@ -430,7 +379,6 @@ async def plant(
     if not targets:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных клеток для посадки")
 
-    # Трактор.
     tractor = await _vehicle_for_job(db, user_id, "tractor")
     if not tractor:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нужен свободный трактор")
@@ -439,7 +387,6 @@ async def plant(
     duration_min = _job_duration_minutes(tractor["itemId"], "tractor", area)
     fuel_cost = _job_fuel_cost(tractor["itemId"], "tractor", area)
 
-    # Топливо.
     user_doc = await db.users.find_one({"_id": current_user["_id"]})
     current_fuel = float((user_doc or {}).get("fuel", 0.0) or 0.0)
     if current_fuel < fuel_cost:
@@ -452,7 +399,6 @@ async def plant(
         {"$inc": {"fuel": -fuel_cost}},
     )
 
-    # Маркируем клетки как 'growing', ставим crop и planted_at.
     growth_hours = _growth_hours(payload.cropId)
     planted_at = _now()
     ready_at = planted_at + timedelta(hours=growth_hours)
@@ -496,7 +442,7 @@ async def harvest(
     now = _now()
     cells = field["cells"]
 
-    # Только 'ready' клетки. Если ready_at прошёл, но status ещё 'growing' — обновляем.
+    # Тикера нет: ready_at прошёл, а status ещё 'growing' — обновляем при сборе.
     ready_indices: list[int] = []
     for idx, c in enumerate(cells):
         if c.get("status") == "growing":
@@ -533,14 +479,13 @@ async def harvest(
     prod = (asset or {}).get("prod") or {}
     workers = int(prod.get("workers", 0))
     level = max(1, int(prod.get("storageLevel", 1)))
-    # Урожай × эффективность штата: без найма — базовый режим (×1); с наймом
-    # эффективность = workers/штат (×2 max) и ×0.6, если еда кончилась.
+    # В отличие от production.py: без найма урожай ×1; с наймом — workers/штат
+    # (потолок ×2), ×0.6 без еды.
     yield_mult = 1.0
     if workers > 0:
         base = int(asset.get("employees") or ((asset.get("meta") or {}).get("employees") or 6))
         yield_mult = min(2.0, workers / max(1, base)) * (1.0 if float(prod.get("food", 0.0)) > 0 else 0.6)
 
-    # Пересчитываем склад и очищаем клетки. Группируем по культуре.
     storage = field.setdefault("storage", {})
     total_by_crop: dict[str, float] = {}
     for idx in ready_indices:
@@ -553,7 +498,7 @@ async def harvest(
         cap = _storage_cap(level)
         current = float(storage.get(crop, 0.0) or 0.0)
         if current + volume > cap:
-            # Пропуск: склад полон для этой культуры. Возвращаем клетку.
+            # Склад полон — клетка остаётся с урожаем.
             continue
         storage[crop] = round(current + volume, 2)
         total_by_crop[crop] = total_by_crop.get(crop, 0.0) + volume
@@ -565,8 +510,7 @@ async def harvest(
             "Склад поля полон для собираемой культуры — освободите место",
         )
 
-    # Топливо списываем только после того, как убедились, что есть что собирать:
-    # при «склад полон» endpoint раньше сжигал топливо с пустым результатом.
+    # Топливо — только после успешного сбора: иначе «склад полон» сжигал бы литры.
     await db.users.update_one(
         {"_id": current_user["_id"]},
         {"$inc": {"fuel": -fuel_cost}},
@@ -634,11 +578,7 @@ async def sell_storage(
     current_user: dict = Depends(require_allowed("farm")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Продать культуру со склада поля. Берём базовую цену за кг из RESOURCES.
-
-    Атомарно: списание со склада — условный find_one_and_update ($inc при
-    storage.crop >= qty), выплата после фактического списания.
-    """
+    """Продать культуру со склада поля; списание атомарное, выплата после него."""
     user_id = str(current_user["_id"])
     if payload.cropId not in _cfg()["crops"]:
         crop_keys = ", ".join(_cfg()["crops"].keys())
@@ -655,8 +595,7 @@ async def sell_storage(
     unit_price = _crop_unit_price(payload.cropId, econ)
     total = round(qty * unit_price, 2)
 
-    # Атомарное списание: условие «на складе не меньше qty» проверяется в БД,
-    # поэтому двойной клик / гонка не продаст урожай дважды.
+    # Условие «на складе ≥ qty» проверяется в БД: гонка не продаст урожай дважды.
     updated = await db.user_fields.find_one_and_update(
         {
             "_id": field["_id"],
@@ -689,13 +628,8 @@ async def sell_storage(
 
 
 # ── Машины: витрина и покупка ───────────────────────────────────────────────
-#
-# Фермерские машины НЕ попадают в обычный каталог shop.py (там железо для майнинга).
-# Они — отдельный каталог, который покупается на вкладке «Автосалон» (CarsTab) и
-# попадает в user_hardware с itemId вида "combine_basic" / "tractor_pro".
-#
-# Расход топлива и скорость работы берём из FARM_CONFIG.fuel_per_sqm /
-# work_speed_sqm_per_min по ключу "<kind>_<tier>" (см. _job_duration_minutes).
+# Отдельный от shop.py каталог (там только майнинг-железо): покупка кладёт
+# экземпляр в user_hardware с itemId = id из FARM_VEHICLES.
 
 FARM_VEHICLES: list[dict] = [
     {

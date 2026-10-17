@@ -112,10 +112,7 @@ async def lifespan(app: FastAPI):
     await db.transactions.create_index("userId")
     await db.transactions.create_index([("userId", 1), ("timestamp", -1)])
     await db.transactions.create_index([("userId", 1), ("category", 1), ("timestamp", -1)])
-    # timestamp — выборки «за 24ч» (аналитика экономики, profit за 7д);
-    # (category, timestamp) — фильтр по категориям в админ-таблице транзакций
-    # с сортировкой по времени: без него матч по category сканирует всю
-    # коллекцию и блокирующе сортирует результат (секунды на ответ).
+    # Timestamp/category indexes keep time-window and admin transaction queries bounded.
     await db.transactions.create_index("timestamp")
     await db.transactions.create_index([("category", 1), ("timestamp", -1)])
     # covering для aggregate прибыли лидерборда: окно по timestamp +
@@ -163,7 +160,7 @@ async def lifespan(app: FastAPI):
     await db.cityroof_itstudio_jobs.create_index("orderedBy")
     await db.cityroof_itstudio_jobs.create_index([("status", 1), ("ready_at", 1)])
     await db.cityroof_itstudio_jobs.create_index([("studioAssetId", 1), ("status", 1)])
-    # Ферма: одно поле на (userId, assetId). Индексы для полей и занятости машин.
+    # One field per (userId, assetId); indexes also track machine occupancy.
     await db.user_fields.create_index([("userId", 1), ("assetId", 1)], unique=True)
     await db.user_hardware.create_index("busy_until")
     # Refresh-токены: уникальный индекс по хешу + TTL для авто-очистки истёкших.

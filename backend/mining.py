@@ -41,11 +41,9 @@ router = APIRouter(prefix="/api/mining", tags=["mining"])
 logger = logging.getLogger("tradeverse.mining")
 
 # Обязательные компоненты для запуска добычи (psu проверяется отдельно — список).
-# Сеть обязательна: без неё эффективность режется в EFF_FLOOR (15%) — молчаливая
-# ловушка, когда «идентичная» ферма даёт в 6.7 раза меньше (см. _net_efficiency).
+# Сеть обязательна: без неё эффективность режется до EFF_FLOOR (15%).
 REQUIRED_ROLES = ["motherboard", "cpu", "ram", "ssd", "cooling", "network"]  # + хотя бы 1 gpu и 1 psu
 
-# Ёмкость по вентиляторам, когда корпус не установлен (открытый стенд).
 FAN_BASE_CAP = 6
 
 # Лимит подвалов и корпусов:
@@ -105,20 +103,14 @@ MANAGER_BASE_COST = 120000.0
 MANAGER_UPGRADE_COST = 90000.0         # × текущий уровень
 MANAGER_MAX_LEVEL = 5
 MANAGER_SALARY_PER_H = 100.0           # × уровень
-# ИИ-управляющий поддерживает ферму в рабочем состоянии, не дожидаясь
-# критического износа. Порог ремонта растёт с уровнем: чем опытнее управляющий,
-# тем в лучшем состоянии он держит оборудование (level 1 → ~56%, level 5 → 80%).
+# ИИ поддерживает ферму выше порога обслуживания; порог растёт с уровнем.
 MANAGER_REPAIR_BASE = 88.0
 MANAGER_REPAIR_PER_LEVEL = 2.0
-# Переключатели автономности ИИ (farm.manager.settings, по умолчанию всё включено).
 MANAGER_SETTINGS = ("autoRepair", "autoCoin", "autoRestart")
 
 # Полное восстановление фермы с 0% износа стоит эту долю от цены её железа.
-# Калибровано так, чтобы разгон 1.5× оставался выгодным на ферме любого размера
-# (+14…+26% к чистой прибыли после ремонта) — см. _repair_cost.
-# Цена за единицу износа от СТОИМОСТИ железа. Железо подорожало ×10
-# (глобальная инфляция каталога), поэтому доля уменьшена /10 — ремонт
-# остаётся той же долей дохода, что и до инфляции цен.
+# Ремонт: доля стоимости железа; каталог подорожал ×10, поэтому ставка снижена /10.
+# Калибровка сохраняет выгоду разгона 1.5×: +14…+26% чистой прибыли после ремонта.
 REPAIR_COST_PCT = 0.01
 
 
@@ -204,7 +196,6 @@ def _farm_hw_profile(farm: dict) -> dict:
     comp = farm.get("components", {})
 
     def spec(role: str, key: str, default=0):
-        # Снятый компонент хранится как None (см. uninstall_component) — не {}.
         return (comp.get(role) or {}).get("specs", {}).get(key, default)
 
     return {
@@ -319,7 +310,6 @@ def _check_psu(farm: dict, overclock: float) -> None:
 
 def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float = 1.0,
              city: Optional[dict] = None, live_hashrate_on_coin: float = 0.0) -> dict:
-    # city — бонусы зданий «Крыши города»: yield (+% к добыче), energy (−% к счёту за свет).
     city = city or {}
     yield_bonus = float(city.get("yield", 0.0))
     energy_discount = min(0.5, float(city.get("energy", 0.0)))
@@ -338,13 +328,11 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
     cool_bonus = min(0.5, ai_level * 0.06)
     base_temp = TEMP_AMBIENT + (total_power / max(1, cooling_cap)) * TEMP_FACTOR * (1 - cool_bonus)
     # Бонус охлаждающей жидкости: пока datetime coolant_until не наступила,
-    # температура считается сниженной на 25%.
     # _aware: в БД попадались naive-даты (legacy-запись) — сравнение с aware
     # _now() валило весь тик майнинга TypeError'ом (ИИ и добыча стояли у всех).
     coolant_until = _aware(farm.get("coolant_until"))
     coolant_active = bool(coolant_until and coolant_until > _now())
     if coolant_active:
-        # Снижение от дельты (превышения над TEMP_AMBIENT), сохраняя базу.
         base_temp = TEMP_AMBIENT + (base_temp - TEMP_AMBIENT) * (1 - COOLANT_TEMP_REDUCTION)
     temperature = round(base_temp, 1)
 
@@ -365,15 +353,12 @@ def _compute(farm: dict, market: dict, energy_cost: float, economy_mult: float =
 
     overclock_excess = max(0.0, overclock - 1.0)
     # Реалистичный износ: при t < 40°C детали практически не изнашиваются,
-    # при 40+ — линейный рост, при 80+ — критический. Бонус жидкости уже
     # уменьшает температуру, так что износ падает автоматически.
     if temperature < WEAR_TEMP_START:
         temp_wear = 0.0
     elif temperature < WEAR_TEMP_HOT:
-        # 40..60 → 0..WEAR_AT_HOT
         temp_wear = (temperature - WEAR_TEMP_START) / (WEAR_TEMP_HOT - WEAR_TEMP_START) * WEAR_AT_HOT
     elif temperature < WEAR_TEMP_CRIT:
-        # 60..80 → WEAR_AT_HOT..WEAR_AT_CRIT
         ratio = (temperature - WEAR_TEMP_HOT) / (WEAR_TEMP_CRIT - WEAR_TEMP_HOT)
         temp_wear = WEAR_AT_HOT + (WEAR_AT_CRIT - WEAR_AT_HOT) * ratio
     else:
@@ -458,7 +443,6 @@ def _serialize(farm: dict, stats: dict, capacity: Optional[dict] = None) -> dict
         "coolant": int(farm.get("coolant", 0) or 0),
         "coolantUntil": farm["coolant_until"].isoformat() if farm.get("coolant_until") else None,
         # Верхний уровень для UI (фронт читает farm.coolantActive/coolantMax,
-        # а не farm.stats.*): без этого пилюля охлаждения всегда «off».
         "coolantActive": bool(farm.get("coolant_until") and farm["coolant_until"] > _now()),
         "coolantMax": COOLANT_MAX,
         "components": {
@@ -558,7 +542,6 @@ async def _serialize_with_stats(db, farm: dict, user_id: str) -> dict:
     cap = _capacity(farm)
     missing = _missing_required(farm)
     if missing:
-        # Ферма не собрана — не считаем показатели.
         item = _serialize(farm, {}, cap)
         item["missing"] = missing
         return item
@@ -708,7 +691,6 @@ async def _best_farm_profile(db, user_id: str) -> Optional[dict]:
     best = None
     # Проекция: профиль и проверка сборки читают только components — полные
     # документы тысяч ферм через удалённую Mongo гонят мегабайты на каждый
-    # /api/mining/market.
     async for farm in db.mining_farms.find({"userId": user_id}, {"components": 1}):
         if _missing_required(farm):
             continue
@@ -773,9 +755,7 @@ async def my_hardware_inventory(
     farm_names = {str(f["_id"]): f.get("name") async for f in
                   db.mining_farms.find({"userId": user_id}, {"name": 1})}
     items = []
-    # Установленное тоже группируем (товар + состояние): при тысячах ферм
     # поштучный список (8-10 единиц на ферму) убивал и ответ, и рендер.
-    # farmsCount/farmSample — для показа «на N фермах» вместо одной фермы.
     async for g in db.user_hardware.aggregate([
         {"$match": {"userId": user_id, "farmId": {"$ne": None}}},
         {"$group": {
@@ -937,7 +917,6 @@ async def get_farms(
     out = []
     async for farm in db.mining_farms.find(q):
         missing = _missing_required(farm)
-        # Пока ферма не собрана — показатели не рассчитываются (пустые).
         stats = {} if missing else _compute(farm, market, ec, em, city)
         item = _serialize(farm, stats, _capacity(farm))
         item["missing"] = missing
@@ -972,7 +951,6 @@ async def create_farm(payload: CreateFarm, current_user: dict = Depends(require_
             status.HTTP_400_BAD_REQUEST,
             f"Слот {payload.slotIndex} вне диапазона (0..{basement - 1})",
         )
-    # Слот свободен?
     existing = await db.mining_farms.find_one({
         "userId": user_id,
         "houseId": ObjectId(payload.houseId),
@@ -1066,7 +1044,6 @@ async def _install_one(db, user_id: str, farm: dict, category: str,
     role = meta["role"]
     multi = meta.get("multi", False)
 
-    # Игрок может выбрать КОНКРЕТНУЮ деталь (hwId) — иначе берётся любая свободная.
     if hw_id:
         if not ObjectId.is_valid(hw_id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID детали")
@@ -1104,7 +1081,6 @@ async def _install_one(db, user_id: str, farm: dict, category: str,
             if cap["fan"] <= 0:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет свободных мест для вентиляторов (установите корпус/стойку большего размера)")
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": category}
-        # Миграция старого одиночного поля psu → список psus при первой установке.
         if role == "psu" and comp.get("psu") and not comp.get("psus"):
             await db.mining_farms.update_one(
                 {"_id": farm["_id"]},
@@ -1121,8 +1097,6 @@ async def _install_one(db, user_id: str, farm: dict, category: str,
                     "Ферма не привязана к дому - корпус нельзя установить",
                 )
         # Совместимость материнской платы и корпуса:
-        #   - при установке материнки: в корпусе должно быть >= слотов;
-        #   - при установке корпуса: в материнке должно быть >= слотов;
         #   - в обоих случаях нельзя превышать жёсткий лимит CASE_MAX_GPUS (5).
         if role == "motherboard":
             mb_slots = int(hw.get("specs", {}).get("gpuSlots", 0) or 0)
@@ -1180,7 +1154,6 @@ async def _install_one(db, user_id: str, farm: dict, category: str,
                 db, user_id, str(hw["_id"]), rack_slots, my_mb_slots,
                 exclude_farm_id=str(farm["_id"]),
             )
-        # Освобождаем ранее установленный компонент этой роли; при замене
         # размещения (корпус <-> стойка) освобождаем и второе.
         roles_to_free = [role]
         if role in ("case", "rack"):
@@ -1194,8 +1167,6 @@ async def _install_one(db, user_id: str, farm: dict, category: str,
         entry = {"hwId": str(hw["_id"]), "name": hw["name"], "specs": hw.get("specs", {}), "category": category}
         await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {f"components.{role}": entry}})
 
-    # Экземпляр закрепляется за фермой: занятое железо не показывается как
-    # свободное (/parts, продажа, ЦР) и не может быть установлено второй раз.
     # Стойка — исключение: это общий пул слотов на несколько ферм, её
     # занятость отслеживается отдельно (см. in_use_rack_ids).
     if role != "rack":
@@ -1281,7 +1252,6 @@ async def bulk_action(
     city = await _city_bonus(db, user_id)
     # Фермы обрабатываются ПАРАЛЛЕЛЬНО (семафор ниже): при удалённой БД
     # последовательные запросы к Mongo растягивали массовое действие на
-    # десятки минут. Ошибка одной фермы не мешает остальным.
     gate = _bulk_gate(user_id)
     sem = asyncio.Semaphore(40)
 
@@ -1320,7 +1290,6 @@ async def bulk_action(
                             cur[k] = bool(v)
                     await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"manager.settings": cur}})
                 elif payload.action == "overclock":
-                    # БП каждой фермы проверяется индивидуально: где БП слаб,
                     # ферма получает ошибку в results, остальные разгоняются.
                     _check_psu(farm, oc)
                     await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"overclock": oc}})
@@ -1423,8 +1392,6 @@ async def bulk_assemble(
     и выглядело так, будто БП «не ставится»."""
     user_id = str(current_user["_id"])
     # Пул деталей на КАТЕГОРИЮ (общий для всех ферм): либо конкретные hwId,
-    # либо qty автоподборов товара (itemId). Автоподбор разрешаем ЗАРАНЕЕ
-    # одним запросом на категорию и раздаём явные hwId — иначе параллельные
     # фермы схватили бы одну и ту же единицу (find_one не атомарен).
     norm_items: list[tuple[str, deque]] = []
     for it in payload.items:
@@ -1447,7 +1414,6 @@ async def bulk_assemble(
             unit_iter = iter(units)
             pool = deque((i, h if h is not None else next(unit_iter, None)) for i, h in pool)
         # perFarm: лимит установок этой категории НА ОДНУ ферму (фронтенд шлёт
-        # «шт. на каждую ферму»). Без perFarm — как раньше, по ёмкости фермы.
         if it.get("perFarm"):
             per_farm = max(1, min(int(it["perFarm"]), 20000))
         else:
@@ -1471,7 +1437,6 @@ async def bulk_assemble(
                 cat_installed = 0
                 while pool and cat_installed < per_farm:
                     # Резервируем единицу ДО await: параллельная ферма иначе
-                    # успеет установить ту же деталь (peek до завершения).
                     item_id, hw_id = pool.popleft()
                     try:
                         fresh = await db.mining_farms.find_one({"_id": farm["_id"]})
@@ -1479,9 +1444,6 @@ async def bulk_assemble(
                         cat_installed += 1
                     except HTTPException as e:
                         pool.appendleft((item_id, hw_id))   # не израсходована
-                        # Ёмкость исчерпана, когда категория уже частично встала —
-                        # это нормальный стоп, а не сбой (иначе «Нет мест под БП»
-                        # при уже стоящих 2 БП выглядело как ошибка). Причину
                         # записываем, только если категория не встала вовсе.
                         if _is_capacity_error(e.detail) and cat_installed:
                             break
@@ -1550,8 +1512,6 @@ async def bulk_create_farms(
                 free_before += 1
     cap = min(payload.qty, free_before) if payload.qty else free_before
 
-    # Имена — сквозные по ВСЕМ фермам игрока (а не по слоту дома): иначе в
-    # каждом доме была своя «Ферма #1», и по имени фермы не отличить.
     base = await db.mining_farms.count_documents({"userId": user_id})
     docs = []
     for h in houses:
@@ -1573,7 +1533,6 @@ async def bulk_create_farms(
                 "created_at": _now(),
             })
     # Вставка параллельно: последовательные insert по одному при удалённой БД
-    # растягивали создание сотен ферм на минуты.
     gate = _bulk_gate(user_id)
     async with gate:
         rets = await asyncio.gather(*(db.mining_farms.insert_one(d) for d in docs))
@@ -1667,7 +1626,6 @@ async def set_overclock(farm_id: str, payload: OverclockBody, current_user: dict
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
     # Проверяем ДО применения: разгон повышает потребление, и запущенная ферма
-    # не может потреблять больше, чем выдаёт её БП.
     _check_psu(farm, payload.value)
     await db.mining_farms.update_one({"_id": farm["_id"]}, {"$set": {"overclock": payload.value}})
     return {"ok": True, "overclock": payload.value}
@@ -1684,7 +1642,6 @@ async def _take_coolant(db, user_id: str, farm: dict) -> None:
             f"В ферме уже максимум жидкости ({COOLANT_MAX} шт.)",
         )
     # Списываем одну шт. из инвентаря игрока. Ищем именно нераспределённую
-    # (farmId не задан). ВАЖНО: обновляем farmId, чтобы при разборке фермы
     # деталь вернулась в инвентарь.
     taken = await db.user_hardware.find_one_and_update(
         {
@@ -1770,7 +1727,6 @@ async def manage_manager(farm_id: str, payload: ManagerBody, current_user: dict 
     if payload.action == "hire":
         if manager.get("type") == "ai":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Управляющий уже нанят")
-        # Нельзя нанять управляющего на несобранную ферму — управлять пока нечем.
         missing = _missing_required(farm)
         if missing:
             raise HTTPException(
@@ -1823,9 +1779,7 @@ async def soft_reset_farms(db: AsyncIOMotorDatabase) -> None:
 
 
 # ── Миграция: разбор сиротских ферм (houseId=None) ────────────────────────────
-# Фермы, созданные до привязки к домам, не видны в новой системе (слоты
 # подвала). Разбираем их при старте: железо возвращается в инвентарь,
-# ферма удаляется, владелец получает уведомление. Идемпотентно: сироты
 # появляются только из старых данных.
 async def dismantle_orphan_farms(db: AsyncIOMotorDatabase) -> None:
     """Разбор «потерянных» ферм при старте: не привязанных к дому (houseId=None)
@@ -1861,14 +1815,9 @@ async def tick_all(db: AsyncIOMotorDatabase):
     ec, em = econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0)
     now = _now()
 
-    # ИИ авто-перезапуск: ферму с управляющим, отключённую за неуплату, снова
     # запускаем, как только она собрана, прибыльна И у игрока есть кэш на тик
     # расходов. Проверка баланса обязательна: выручка идёт в монеты, а
-    # электричество/зарплата списываются с кэша — без неё ферма «прибыльной»,
-    # но безденежной, щёлкала бы off↔mining каждый тик со спамом уведомлений.
     async for farm in db.mining_farms.find({"status": "off", "manager.type": "ai"}):
-        # Одна битая ферма (кривые данные в БД) не должна валить весь тик:
-        # ошибка логируется и тик идёт дальше по остальным.
         try:
             if _missing_required(farm):
                 continue
@@ -1878,8 +1827,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
             stats = _compute(farm, market, ec, em, city)
             if stats.get("profitPerHour", 0) <= 0:
                 continue
-            # кэш на ~1 тик (60с планировщика) расходов; иначе не трогаем — пусть
-            # ждёт пополнения, а не мигает статусом.
             tick_h = 60.0 / 3600.0
             tick_cost = (stats.get("electricityPerHour", 0.0) + stats.get("salaryPerHour", 0.0)) * tick_h
             owner = await db.users.find_one({"_id": ObjectId(farm["userId"])}, {"balance": 1}) if ObjectId.is_valid(farm["userId"]) else None
@@ -1895,7 +1842,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
         except Exception:
             logger.exception("autoRestart failed for farm %s", farm.get("_id"))
 
-    # Живой вклад игроков в сложность (второстепенный сигнал, см. LIVE_WEIGHT):
     # суммарный хешрейт активных ферм по монетам, O(активных ферм) за тик.
     active_farms = await db.mining_farms.find({"status": "mining"}).to_list(length=None)
     live_hashrate_by_coin: dict = {}
@@ -1904,9 +1850,7 @@ async def tick_all(db: AsyncIOMotorDatabase):
         if sym:
             live_hashrate_by_coin[sym] = live_hashrate_by_coin.get(sym, 0.0) + _farm_hashrate(farm)
 
-    # Кэш на тик: бонусы города предзагружаются один раз на пользователя —
     # иначе это 2 запроса на КАЖДУЮ ферму за тик (при ~100мс RTT до Mongo
-    # сотни ферм растягивают тик на минуты и забивают БД для всех запросов).
     city_cache: dict[str, dict] = {}
     for uid in {f["userId"] for f in active_farms}:
         city_cache[uid] = await _city_bonus(db, uid)
@@ -1916,15 +1860,10 @@ async def tick_all(db: AsyncIOMotorDatabase):
     }
 
     # Ledger-накопители тика: одна запись дохода (по монете) и одна расхода на
-    # пользователя вместо двух записей на каждую ферму. Раньше 200 активных ферм
-    # писали ~400 транзакций в минуту — transactions разросся до 1.3M, и
-    # weekly-аналитика тянула сотни тысяч документов (запрос > 60с).
     inc_acc: dict[tuple[str, str], dict] = {}
     exp_acc: dict[str, dict] = {}
     emission_acc: dict[str, float] = {}
 
-    # План тика: чистый CPU-расчёт на каждую ферму, все записи в БД — потом,
-    # батчами по пользователям/коллекциям.
     plans: list[dict] = []
 
     def _plan_one(farm: dict) -> None:
@@ -1939,7 +1878,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
         ai_level = manager.get("level", 0) if ai else 0
         own_hashrate = _farm_hashrate(farm)
 
-        # ИИ автоматически выбирает монету, максимизирующую ЕГО СОБСТВЕННУЮ выручку.
         if ai and (manager.get("settings") or {}).get("autoCoin", True):
             profile = _farm_hw_profile(farm)
             live_excl_self = {sym: h - (own_hashrate if sym == farm.get("coin") else 0.0)
@@ -1954,7 +1892,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
         city = city_cache.get(user_id) or {}
         stats = _compute(farm, market, ec, em, city, live_hashrate_on_coin=live_on_coin)
 
-        # ИБП: шанс просадки питания за тик. Резерв покрывает долю мощности —
         # выручка и доп. износ режутся пропорционально непокрытой части.
         extra_wear = 0.0
         if random.random() < BROWNOUT_CHANCE:
@@ -1975,7 +1912,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
         # ИИ авто-ремонт: держит ферму в рабочем состоянии, не дожидаясь
         # критического износа (порог растёт с уровнем управляющего). Ремонт
         # применяется только если добыча покрывает его стоимость — иначе
-        # управляющий не загоняет игрока в минус ради обслуживания.
         repair_cost = 0.0
         worn_condition = new_condition   # износ без учёта возможного авто-ремонта
         if ai and (manager.get("settings") or {}).get("autoRepair", True):
@@ -1985,8 +1921,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
                 repair_cost = candidate_cost
                 new_condition = 100.0
 
-        # Майнинг добывает МОНЕТУ, а не деньги: выручка (USD-эквивалент) конвертируется
-        # в количество монет по текущему курсу и зачисляется в crypto_holdings.
         # Электричество/зарплата/ремонт — реальные РАСХОДЫ, списываются с баланса.
         coin_sym = farm.get("coin")
         coin_price = float((market.get(coin_sym) or {}).get("price", 0.0))
@@ -2004,7 +1938,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
         }
         # Расход охлаждающей жидкости: бонус истёк — списываем одну шт. и
         # продлеваем бонус на следующий период. Раньше coolant_until обнулялся:
-        # списанная канистра не активировала бонус, а остаток застревал —
         # условие расхода требует активный coolant_until.
         cur_coolant = int(farm.get("coolant", 0) or 0)
         coolant_until = _aware(farm.get("coolant_until"))
@@ -2014,8 +1947,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
             farm["coolant"] = set_fields["coolant"]
             farm["coolant_until"] = set_fields["coolant_until"]
 
-        # Расходы/доходы/эмиссия в БД не пишутся здесь: план тика исполняется
-        # батчами после расчёта всех ферм — см. фазу исполнения ниже.
         plans.append({
             "_id": farm["_id"],
             "user_id": user_id,
@@ -2035,7 +1966,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
             "old_total_spent": round(farm.get("total_spent", 0.0), 2),
         })
 
-    # Одна битая ферма (кривые данные в БД) не должна валить весь тик.
     for farm in active_farms:
         try:
             _plan_one(farm)
@@ -2043,9 +1973,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
             logger.exception("mining tick failed for farm %s", farm.get("_id"))
 
     # ── Фаза исполнения плана ────────────────────────────────────────────────
-    # Списание расходов: ОДНА атомарная операция на пользователя за тик вместо
-    # списания с каждой фермы. При нехватке — откат к поштучной оплате: фермы
-    # без оплаты отключаются, как раньше.
     paid: list[dict] = []
     by_user: dict[str, list[dict]] = {}
     for p in plans:
@@ -2061,7 +1988,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
             exp_acc[user_id] = {"amount": total, "farms": len(plist)}
             paid.extend(plist)
             continue
-        # Денег на все фермы не хватило — платим по одной, пока хватает.
         for p in plist:
             if p["costs"] <= 0.01:
                 paid.append(p)
@@ -2081,7 +2007,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
                                         f"«{p['name']}»: недостаточно денег на электричество.",
                                         data={"farmId": str(p["_id"])})
 
-    # Доходы/холдинги/эмиссия/апдейты ферм — батчами (bulk_write), а не запрос
     # на каждую ферму: при ~100мс RTT до Mongo 2500 ферм × 3 запроса = минуты.
     from pymongo import UpdateOne
 
@@ -2120,7 +2045,6 @@ async def tick_all(db: AsyncIOMotorDatabase):
     for sym, qty in emission_acc.items():
         await db.crypto_assets.update_one({"symbol": sym}, {"$inc": {"emission_sold": qty}})
 
-    # Realtime-обновление показателей владельцам оплаченных ферм.
     for p in paid:
         try:
             from ws import push_to_user
@@ -2215,16 +2139,13 @@ if __name__ == "__main__":
     assert _ai_should_repair(False, 0, 10.0, 100.0) is False
     # Уровень 1 → порог ~56%; износ 40% ниже порога, ферма прибыльна → чинит.
     assert _ai_should_repair(True, 1, 89.0, 85.0) is True      # ниже порога L1 (90)
-    # Ниже порога, но ферма убыточна (profit ≤ 0) — не чинит.
     assert _ai_should_repair(True, 1, 40.0, 0.0) is False
     assert _ai_should_repair(True, 1, 40.0, -5.0) is False
-    # Состояние выше порога — чинить рано.
     assert _ai_should_repair(True, 5, 99.0, 1000.0) is False   # выше порога L5 (98)
     # Порог растёт с уровнем: level 5 → 80%, износ 70% уже требует ремонта.
     assert _ai_should_repair(True, 5, 70.0, 1000.0) is True
     assert _ai_should_repair(True, 1, 91.0, 85.0) is False     # ещё выше порога L1
 
-    # Майнинг добывает МОНЕТУ: qty = revenue_usd / price; расходы остаются в кэше.
     assert _mined_qty(100.0, 50.0) == 2.0           # 100$ по курсу 50 → 2 монеты
     assert _mined_qty(100.0, 0.0) == 0.0            # нет курса → ничего не добыто
     assert _mined_qty(0.0, 50.0) == 0.0             # нет выручки → 0 монет
@@ -2244,10 +2165,8 @@ if __name__ == "__main__":
                                  "rack": {"specs": {"slots": 45}}, "gpus": [{}] * 3}}
     assert _capacity(_farm_rack)["gpu"] == 5                       # упираемся в плату, не в стойку
 
-    # БП — multi-компонент: открытый стенд даёт 2 места, корпус больше;
     # старое одиночное поле psu совместимо со списком psus.
     assert _psu_max({}) == 2
-    # Корпус капируется на CASE_MAX_GPUS=5 мест → 5//3+1 = 2 БП.
     assert _psu_max({"case": {"specs": {"slots": 8}}}) == 2
     # Стойка на 45 мест → 45//3+1 = 16 БП.
     assert _psu_max({"rack": {"specs": {"slots": 45}}}) == 16
@@ -2269,7 +2188,6 @@ if __name__ == "__main__":
     assert _weak_best == "CHEAP", f"ожидали CHEAP, получили {_weak_best}"
     _strong_best = choose_best_coin(_market, _strong)
     assert _strong_best == "EXPENSIVE", f"сильная ферма должна тянуться к дорогим монетам, получили {_strong_best}"
-    # Без профиля (нет собранной фермы) — откат на сортировку по цене.
     assert choose_best_coin(_market, None) == "EXPENSIVE"
 
     # ── _compute: доход, мощность и счётчик GPU на собранной ферме ──
@@ -2350,7 +2268,6 @@ if __name__ == "__main__":
         _farm["coin"] = choose_best_coin(_rec_market, _farm_hw_profile(_farm))
         return _farm
     _small, _big = _priced(_shop_gpu, 2), _priced(_shop_asic, 19)
-    # Неизвестное имя (снятый с продажи товар) не роняет расчёт, а стоит 0.
     assert _hardware_value(_small) == _shop_gpu["base_price"] * 2
     assert _repair_cost(dict(_small, condition=0.0)) > 0
     assert _repair_cost(dict(_small, condition=100.0)) == 0.0

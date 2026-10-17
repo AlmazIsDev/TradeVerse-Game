@@ -1,14 +1,8 @@
-"""Единый сервис рыночных данных (MarketDataService).
+"""Рыночные данные: история цен акций/крипты в коллекции price_history.
 
-Отвечает за ИСТОРИЮ цен акций и криптовалют:
-- хранит снимки цен в коллекции ``price_history`` (накапливается со временем);
-- при первом обращении к символу делает ОДНОРАЗОВЫЙ бэкфилл (год истории),
-  дальше история только дополняется реальными снимками — не пересоздаётся;
-- отдаёт агрегированные свечи (OHLC) и линию по интервалам;
-- считает изменение цены за 24ч / 7д / 1м / 1г, ATH/ATL.
-
-Также здесь живёт роутер /api/market/* (история, детальная карточка актива)
-и /api/favorites/* (избранное игрока).
+Бэкфилл одноразовый (год), дальше история только дополняется реальными снимками —
+не пересоздаётся. Свечи OHLC/линия по интервалам, изменения 24ч/7д/1м/1г, ATH/ATL.
+Здесь же роутеры /api/market/* и /api/favorites/*.
 """
 from __future__ import annotations
 
@@ -38,7 +32,7 @@ MARKET_STOCK = "stock"
 MARKET_CRYPTO = "crypto"
 VALID_MARKETS = {MARKET_STOCK, MARKET_CRYPTO}
 
-# Кэширование: как часто обновлять цены из внешнего API (сек).
+# Частота обновления цен из внешнего API (сек).
 REFRESH_INTERVAL_S = int(os.getenv("MARKET_REFRESH_SECONDS", "120"))
 CRYPTO_COUNT = int(os.getenv("MARKET_CRYPTO_COUNT", "15"))
 
@@ -76,12 +70,8 @@ def _aware(dt: datetime) -> datetime:
 
 
 def _build_walk_docs(market: str, symbol: str, current_price: float, volatility: float = 0.03) -> list[dict]:
-    """Строит историю случайным блужданием назад во времени от текущей цены.
-
-    Год по дням + последние 3 суток плотнее (для интервалов 1h/24h). Чистая
-    функция — не трогает БД, используется и одноразовым бэкфиллом, и
-    принудительным regenerate.
-    """
+    """Случайное блуждание назад: год по дням + 72ч по 30 мин (для 1h/24h).
+    Чистая функция — БД не трогает; используют бэкфилл и regenerate."""
     symbol = symbol.upper()
     now = _now()
     docs: list[dict] = []
@@ -104,10 +94,9 @@ def _build_walk_docs(market: str, symbol: str, current_price: float, volatility:
 class MarketDataService:
     """Единая точка работы с историей цен."""
 
-    # In-process TTL-кэш чтения: prices живут в БД и меняются раз в тик
-    # планировщика (60с), а /api/market/asset|history фронт опрашивает
-    # многократно за минуту — агрегаты по миллионам точек price_history
-    # при ~100мс RTT до Mongo стоили каждому запросу секунды.
+    # In-process TTL-кэш чтения: фронт опрашивает /api/market/* многократно за
+    # минуту, а агрегаты по миллионам точек price_history при ~100 мс RTT до
+    # Mongo стоили секунду на запрос; цены меняются раз в тик (60с).
     # ponytail: dict без инвалидации — данные устаревают максимум на TTL.
     READ_CACHE_TTL_S = 30.0
     _read_cache: dict[tuple, tuple[float, Any]] = {}
@@ -168,12 +157,8 @@ class MarketDataService:
 
     @staticmethod
     async def _get_history_uncached(db, market: str, symbol: str, interval: str) -> dict:
-        """Свечи OHLC + линия по интервалу.
-
-        Бакетинг — агрегацией на стороне Mongo ($group по номеру бакета),
-        а не выгрузкой всех точек в Python: 7d × снимок/45с ≈ 10k документов
-        через удалённую Mongo стоили холодному графику 2+ с.
-        """
+        """OHLC + линия; бакетинг агрегацией в Mongo, не выгрузкой в Python:
+        7d × снимок/45с ≈ 10k документов — холодный график стоил 2+ с."""
         symbol = symbol.upper()
         lookback, bucket = INTERVALS.get(interval, INTERVALS["7d"])
         query: dict = {"market": market, "symbol": symbol}
@@ -218,21 +203,15 @@ class MarketDataService:
 
     @staticmethod
     async def _stats_uncached(db, market: str, symbol: str) -> dict:
-        """Изменение за 24ч/7д/1м/1г, ATH/ATL по накопленной истории.
-
-        Считается агрегацией и точечными выборками по индексу (market, symbol, ts),
-        а НЕ полной выгрузкой истории символа в Python: с бэкфиллом-годом и
-        накопленными снимками у символа тысячи документов, и прежняя выгрузка
-        всей коллекции на каждый /api/market/asset тормозила открытие карточки.
-        """
+        """Изменения 24ч/7д/1м/1г и ATH/ATL — агрегацией и точечными выборками,
+        не полной выгрузкой истории в Python (тысячи документов на символ)."""
         symbol = symbol.upper()
         base_q = {"market": market, "symbol": symbol}
         latest = await db.price_history.find_one(base_q, {"price": 1}, sort=[("ts", -1)])
         if not latest:
             return {"ath": None, "atl": None, "changes": {}}
-        # ATH/ATL — из документа актива (их ведёт scheduler), НЕ агрегатом по
-        # всей истории: 100–300k точек на символ × слабый сервер = 4–11 с на
-        # каждый холодный /api/market/asset.
+        # ATH/ATL — из документа актива (ведёт scheduler), НЕ агрегатом: 100–300k
+        # точек на символ × слабый сервер = 4–11 с на холодный /api/market/asset.
         asset_coll = db.crypto_assets if market == MARKET_CRYPTO else db.stocks
         asset = await asset_coll.find_one({"symbol": symbol}, {"ath": 1, "atl": 1})
         ath, atl = (asset or {}).get("ath"), (asset or {}).get("atl")
@@ -245,7 +224,6 @@ class MarketDataService:
                 ath, atl = extrema[0]["ath"], extrema[0]["atl"]
 
         async def change(window: timedelta) -> Optional[float]:
-            # Первая цена в окне — та же семантика, что и у полной выгрузки.
             base = await db.price_history.find_one(
                 {**base_q, "ts": {"$gte": _now() - window}}, {"price": 1}, sort=[("ts", 1)],
             )
@@ -287,11 +265,8 @@ class MarketDataService:
 
     @staticmethod
     async def refresh_crypto(db) -> str:
-        """Обновляет крипторынок реальными данными CoinGecko (раз в REFRESH_INTERVAL_S).
-
-        Возвращает 'live' при успехе, 'sim' — если API недоступен (тогда цены
-        остаются последними сохранёнными / двигаются симуляцией как fallback).
-        """
+        """Обновление крипты из CoinGecko (не чаще REFRESH_INTERVAL_S). 'live' при
+        успехе, 'sim' при недоступности API (fallback — сохранённые цены)."""
         if await MarketDataService._throttled(db, "crypto"):
             return await MarketDataService._mode(db, "crypto")
         try:
@@ -312,8 +287,7 @@ class MarketDataService:
                     upsert=True,
                 )
                 await MarketDataService.record_snapshot(db, "crypto", m["symbol"], m["price"], force=True)
-            # Подчищаем API-монеты, выпавшие из топ-N (напр. после снижения лимита):
-            # только coingecko-источник, игровые/компанийные (без source) не трогаем.
+            # Чистим только coingecko-монеты вне топ-N; игровые/компанийные (без source) не трогаем.
             keep = [m["symbol"] for m in markets]
             stale = [c["symbol"] async for c in db.crypto_assets.find(
                 {"source": "coingecko", "symbol": {"$nin": keep}}, {"symbol": 1})]
@@ -530,8 +504,7 @@ def _format_point(doc: dict) -> dict:
 
 # Точки истории у одного символа — десятки тысяч, поэтому список только страницами.
 PH_SORT_FIELDS = {"ts", "price"}
-# Формат совпадает с тем, что рисует редактор, — иначе поиск «по тому, что написано»
-# не находил бы введённую дату.
+# Формат = тот, что рисует фронт-редактор: иначе поиск «по написанному» не находит дату.
 PH_TS_FORMAT = "%Y-%m-%d %H:%M"
 
 

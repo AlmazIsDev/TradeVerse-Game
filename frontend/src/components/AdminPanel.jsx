@@ -39,7 +39,6 @@ function Tooltip({ text }) {
 
 const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
 
-// Единый читаемый формат времени для админ-панели (вместо сырых ISO-строк).
 const fmtTs = (ts) => {
   if (!ts || typeof ts !== 'string') return '—'
   const d = new Date(ts)
@@ -48,7 +47,6 @@ const fmtTs = (ts) => {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-// Подсветка полей документа по типу значения — чтобы не путаться где что.
 // refs: карта id-строка -> человекочитаемое имя (юзернейм/название бизнеса).
 function DbDocPreview({ doc, refs = {} }) {
   const entries = Object.entries(doc).filter(([k]) => k !== '_id')
@@ -79,17 +77,15 @@ function DbDocPreview({ doc, refs = {} }) {
 }
 const DB_PAGE_SIZE = 50
 const TX_PAGE_SIZE = 50
-// Пресеты фильтров транзакций ({имя: {filters, sort, order}}) — в localStorage.
 const TX_PRESETS_KEY = 'tradeverse_admin_tx_presets'
 
-// Сортировки списка пользователей (клиентские — список и так полный).
+// Сортировки клиентские — список юзеров и так полный.
 const USER_SORTS = [
   { key: 'created_at', defOrder: -1 },
   { key: 'username', defOrder: 1 },
   { key: 'balance', defOrder: -1 },
   { key: 'netWorth', defOrder: -1 },
 ]
-// Разбивка денег под именем — те же чипы, что в таблице лидеров.
 const USER_MONEY_CHIPS = [
   { key: 'balance', col: 'cash' },
   { key: 'stocks', col: 'stocks' },
@@ -116,7 +112,6 @@ function AdminPanel({ user, onClose }) {
   const can = (func) => !func || !user?.adminFunctions || user.adminFunctions.includes(func)
   const canEditAdmins = (user?.adminLevel || 0) >= 4
 
-  // Защита на уровне компонента: если пользователь не админ — показываем сообщение
   if (user?.role !== 'admin') {
     return (
       <div className="admin-panel">
@@ -134,8 +129,6 @@ function AdminPanel({ user, onClose }) {
       </div>
     )
   }
-  // Последний открытый раздел запоминается: при переоткрытии панели продолжаем
-  // с того же места. Стартовый раздел — «Пользователи».
   const [activeSection, setActiveSection] = useState(() => localStorage.getItem('tradeverse_admin_section') || 'users')
   const [stocks, setStocks] = useState([])
   const [stocksV2, setStocksV2] = useState([])
@@ -169,7 +162,6 @@ function AdminPanel({ user, onClose }) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newConfig, setNewConfig] = useState({ key: '', value: '' })
 
-  // Состояние для редактирования пользователя
   const [editingUser, setEditingUser] = useState(null)
   const [userSearch, setUserSearch] = useState('')
   const [userSort, setUserSort] = useState('created_at')
@@ -187,19 +179,15 @@ function AdminPanel({ user, onClose }) {
   const [newPassword, setNewPassword] = useState('')
   const [pwdBusy, setPwdBusy] = useState(false)
   const [propertyUser, setPropertyUser] = useState(null)
-  // ── Лоты ЦР (модерация) и глобальное объявление ──────────────────────────
   const [lots, setLots] = useState([])
   const [lotsStatus, setLotsStatus] = useState('active')
   const [bcForm, setBcForm] = useState({ title: '', message: '' })
   const [bcBusy, setBcBusy] = useState(false)
-  // ── Состояние раздела «Доступы» (только L4) ──────────────────────────────
   const [perms, setPerms] = useState(null)
   const [permsSaving, setPermsSaving] = useState(false)
-  // ── Баны: черновик {func: {on, reason, until}} ───────────────────────────
-  const [banDraft, setBanDraft] = useState({})
+  const [banDraft, setBanDraft] = useState({}) // {func: {on, reason, until}}
   const [bansSaving, setBansSaving] = useState(false)
 
-  // ── Состояние для вкладки "База данных" ─────────────────────────────────
   const [dbCollections, setDbCollections] = useState([])
   const [dbActiveCollection, setDbActiveCollection] = useState('')
   const [dbDocs, setDbDocs] = useState({ items: [], total: 0 })
@@ -211,7 +199,6 @@ function AdminPanel({ user, onClose }) {
   const [dbEditingDoc, setDbEditingDoc] = useState(null) // { id, text } | { id: null, text } для нового документа
   const [dbJsonError, setDbJsonError] = useState(null)
 
-  // ── Состояние для вкладки "Крипта" ──────────────────────────────────────
   const [coins, setCoins] = useState([])
   const [coinSearch, setCoinSearch] = useState('')
   const [editingCoin, setEditingCoin] = useState(null) // символ редактируемой монеты
@@ -220,9 +207,8 @@ function AdminPanel({ user, onClose }) {
   const [newCoin, setNewCoin] = useState({ symbol: '', name: '', price: '', volatility: '0.05', color: '#6366f1', supply: '', description: '' })
   const [chartAsset, setChartAsset] = useState(null) // { market, symbol } | null — открывает PriceHistoryEditor
 
-  // ── Состояние раздела «Синтетика» (боты-маркетмейкеры) ──────────────────
-  // Драфт параметров: числовые поля строками, enabled — булево.
-  const [synthForm, setSynthForm] = useState(null) // { stocks: {enabled, ...}, crypto: {...} }
+  // Боты-маркетмейкеры: драфт — числа строками, enabled — булево.
+  const [synthForm, setSynthForm] = useState(null) // { stocks: {...}, crypto: {...} }
   const [synthStats, setSynthStats] = useState(null)
   const [synthOrders, setSynthOrders] = useState([])
   const [synthManual, setSynthManual] = useState({ symbol: '', side: '', quantity: '' })
@@ -232,12 +218,10 @@ function AdminPanel({ user, onClose }) {
     loadData()
   }, [activeSection])
 
-  // Запоминаем открытый раздел админ-панели.
   useEffect(() => {
     localStorage.setItem('tradeverse_admin_section', activeSection)
   }, [activeSection])
 
-  // Смена фильтра статуса лотов ЦР — перезагрузка списка.
   useEffect(() => {
     if (activeSection === 'lots') loadData()
   }, [lotsStatus])
@@ -250,7 +234,6 @@ function AdminPanel({ user, onClose }) {
     }
   }, [user?.adminFunctions])
 
-  // Сброс на первую страницу при смене коллекции, поиска или сортировки.
   useEffect(() => { setDbPage(0) }, [dbActiveCollection, dbSearch, dbSort, dbOrder])
 
   // Дебаунс поискового ввода — regex-поиск по 900k дорогой, не дёргаем на каждый символ.
@@ -280,7 +263,6 @@ function AdminPanel({ user, onClose }) {
     return { q: '', filters: next }
   }
 
-  // Переключение значения в include/exclude; из противоположной стороны снимается.
   const toggleTxValue = (field, value, mode) => setTxFilters(f => {
     const cur = f[mode][field] || []
     const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value]
@@ -293,7 +275,6 @@ function AdminPanel({ user, onClose }) {
     return { ...f, [mode]: side, [other]: otherSide }
   })
 
-  // Смена режима дропдауна (включить/кроме): значения переезжают между сторонами.
   const setTxMode = (field, mode) => setTxFilters(f => {
     const other = mode === 'include' ? 'exclude' : 'include'
     const vals = f[other][field] || []
@@ -310,7 +291,6 @@ function AdminPanel({ user, onClose }) {
     return { ...f, ranges }
   })
 
-  // ── Пресеты фильтров транзакций ────────────────────────────────────────────
   const saveTxPreset = () => {
     const name = prompt(t('admin.txPresets.namePrompt'))?.trim()
     if (!name) return
@@ -340,7 +320,6 @@ function AdminPanel({ user, onClose }) {
     localStorage.setItem(TX_PRESETS_KEY, JSON.stringify(next))
   }
 
-  // Сброс на первую страницу при смене фильтра, поиска или сортировки.
   useEffect(() => { setTxPage(0) }, [txFilters, txSearch, txSort, txOrder])
 
   // Дебаунс: regex-поиск идёт по 180k записям, не дёргаем сервер на каждый символ.
@@ -452,8 +431,6 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
-  // ── Валидация формы редактирования пользователя ────────────────────────────
-
   const validateEditForm = () => {
     const errors = {}
 
@@ -477,8 +454,6 @@ function AdminPanel({ user, onClose }) {
     setEditErrors(errors)
     return Object.keys(errors).length === 0
   }
-
-  // ── Обработчики пользователя ───────────────────────────────────────────────
 
   const handleStartEditUser = (u) => {
     setEditingUser(u.id)
@@ -522,7 +497,6 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
-  // Сброс аватара игрока (users_edit): PATCH avatar=null.
   const handleResetAvatar = async () => {
     if (!confirm(t('admin.avatarResetConfirm'))) return
     try {
@@ -534,7 +508,6 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
-  // Модерация лотов ЦР.
   const handleCancelLot = async (lot) => {
     if (!confirm(t('admin.lots.cancelConfirm', { name: lot.name }))) return
     try {
@@ -546,7 +519,6 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
-  // Глобальное объявление всем игрокам.
   const handleBroadcast = async () => {
     if (!bcForm.title.trim()) return
     setBcBusy(true)
@@ -589,7 +561,6 @@ function AdminPanel({ user, onClose }) {
       leaderboard_lock: editForm.leaderboard_lock,
     }
 
-    // Добавляем card_number только если заполнен
     if (editForm.card_number.trim()) {
       payload.card_number = editForm.card_number.trim()
     }
@@ -634,7 +605,6 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
-  // Сохранение распределения функций по уровням (раздел «Доступы», L4).
   const handleSavePerms = async () => {
     setPermsSaving(true)
     try {
@@ -648,8 +618,6 @@ function AdminPanel({ user, onClose }) {
       setPermsSaving(false)
     }
   }
-
-  // ── Обработчики акций ──────────────────────────────────────────────────────
 
   const handleAddStock = async () => {
     if (!newStock.symbol || !newStock.name || !newStock.price) {
@@ -735,8 +703,6 @@ function AdminPanel({ user, onClose }) {
     }
   }
 
-  // ── Обработчики конфига акций ────────────────────────────────────────────
-
   const handleEditStockConfig = (stock) => {
     setEditingStockConfig(stock.symbol)
     const overrides = stock.configOverrides || {}
@@ -766,8 +732,6 @@ function AdminPanel({ user, onClose }) {
       toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
-
-  // ── Обработчики базы данных ────────────────────────────────────────────────
 
   const handleDbOpenNew = () => {
     setDbJsonError(null)
@@ -824,8 +788,6 @@ function AdminPanel({ user, onClose }) {
       toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
-
-  // ── Обработчики крипты ─────────────────────────────────────────────────────
 
   const handleStartEditCoin = (coin) => {
     setEditingCoin(coin.symbol)
@@ -891,8 +853,6 @@ function AdminPanel({ user, onClose }) {
       toast(t('admin.error') + ': ' + err.message, 'error')
     }
   }
-
-  // ── Синтетические транзакции (боты) ──────────────────────────────────────
 
   const handleSaveSynthetic = async () => {
     setSynthBusy(true)
@@ -1023,7 +983,6 @@ function AdminPanel({ user, onClose }) {
               </div>
             )}
 
-            {/* Stock Config Section */}
             <div className="admin-section-divider">
               <h3>{t('admin.stockConfig') || 'Конфигурация акций'}</h3>
               <p className="admin-section-hint">{t('admin.stockConfigHint') || 'Настройте параметры волатильности и поведения для каждой акции'}</p>
@@ -1091,7 +1050,6 @@ function AdminPanel({ user, onClose }) {
         )}
 
         {!loading && activeSection === 'database' && (() => {
-          // Поля для сортировки — объединение ключей документов текущей страницы.
           const sortFields = [...new Set(dbDocs.items.flatMap(d => Object.keys(d)))]
           // total известен только без поиска; при поиске листаем по has_more.
           const knownTotal = dbDocs.total != null
@@ -1401,7 +1359,6 @@ function AdminPanel({ user, onClose }) {
           />
         )}
 
-        {/* Config Modal */}
         {editingStockConfig && (
           <div className="modal-overlay" onClick={() => setEditingStockConfig(null)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>

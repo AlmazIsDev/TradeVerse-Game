@@ -34,24 +34,14 @@ router = APIRouter(prefix="/api/assets", tags=["assets"])
 TYPE_REALESTATE = "realestate"
 TYPE_BUSINESS = "business"
 TYPE_CAR = "car"
-# Инфраструктурные типы: заводы (factory), источники ресурсов (source) и
-# склады (warehouse). Согласованы с frontend/src/utils/adminCatalog.js
-# (ADMIN_FACTORIES_CATALOG, ADMIN_SOURCES_CATALOG, ADMIN_WAREHOUSES_CATALOG)
-# и с категориями витрины MarketTab. Изначально витрина магазина отдавала
-# slug-и admin-fac-*/admin-src-*/admin-wh-*, а бэкенд их не знал - поэтому
-# покупка отвечала 404 «Актив не найден». После добавления этих типов в
-# CATALOG и ASSET_TYPES покупка корректно создаёт запись в user_assets и
-# инвентаре игрока.
+# Инфраструктурные типы: заводы, источники ресурсов, склады.
+# Синхронизировано с adminCatalog.js и категориями MarketTab.
 TYPE_FACTORY = "factory"
 TYPE_SOURCE = "source"
 TYPE_WAREHOUSE = "warehouse"
 ASSET_TYPES = {TYPE_REALESTATE, TYPE_BUSINESS, TYPE_CAR, TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE}
 
-# Маппер типа актива -> категория реестра (ledger). Используется в buy/sell/
-# upgrade/collect, чтобы покупка завода попадала в категорию CAT_FACTORY, а не
-# в CAT_REALESTATE (старое поведение тернарника). Для типов без отдельной
-# категории фолбэк - CAT_REALESTATE (например, авто идут как realestate -
-# раньше так и было).
+# Тип актива -> категория реестра (ledger); без отдельной категории — CAT_REALESTATE.
 _ASSET_CATEGORY = {
     TYPE_BUSINESS: CAT_BUSINESS,
     TYPE_FACTORY: CAT_FACTORY,
@@ -74,10 +64,12 @@ SELL_RATE = 0.7          # возврат при продаже — 70% теку
 MAX_ACCRUAL_HOURS = 24   # максимум накопленного дохода за один сбор
 
 UPGRADE_COST_PCT = 0.32  # доля базовой цены за уровень (см. _upgrade_cost)
+# Прирост дохода ЗА УРОВЕНЬ. Содержание бизнесов растёт тем же шагом (см.
+# _upkeep_per_hour) — единая константа на оба, чтобы маржа не могла уехать.
+LEVEL_INCOME_STEP = 0.25
 
 # ── Тюнинг автомобилей ────────────────────────────────────────────────────────
-# Каждая деталь повышает престиж авто; стоимость улучшения зависит от цены авто
-# и текущего уровня детали. Вложения в тюнинг увеличивают стоимость авто (капитал).
+# Деталь повышает престиж; вложения частично идут в стоимость авто (капитал).
 TUNE_PARTS = {
     "engine": 18, "turbo": 22, "gearbox": 15, "suspension": 12,
     "brakes": 10, "tires": 9, "exhaust": 8,
@@ -92,21 +84,16 @@ def _tune_cost(asset: dict, level: int) -> float:
     return round(asset.get("price", 0) * TUNE_COST_FACTOR * (level + 1), 2)
 
 RENT_MIN_WAIT_H = 1      # минимум ожидания арендатора
-# Ожидание арендатора НЕ оплачивается, поэтому оно работает как налог на аренду:
-# при разбросе 1–48ч (в среднем 24.5ч) суточная сдача приносила лишь 49% ставки,
-# а часовая — 4%. Диапазон 1–6ч (в среднем 3.5ч) поднимает те же сценарии до
-# 87% и 22% — сдавать становится осмысленно и на короткий срок.
+# Ожидание арендатора не оплачивается — работает как налог на аренду:
+# диапазон 1–6ч даёт суточной сдаче 87% ставки, часовой — 22%.
 RENT_MAX_WAIT_H = 6      # максимум ожидания арендатора
 RENT_MAX_HOURS = 720     # максимальный срок аренды (30 суток)
 RENTABLE_TYPES = {"realestate", "car", "business"}
-# Среди бизнесов в аренду сдаются только те, у кого есть полезная для арендатора
-# механика: IT-студия (заказы «Крыши города», cityroof.py) и Медиахолдинг
-# (разоблачения в СМИ, media.py). Остальные бизнесы (шаурмечная, кофейня, завод…)
-# сдавать нельзя — арендовать в них нечего, кроме голого дохода.
+# Из бизнесов сдаются только IT-студия (cityroof.py) и Медиахолдинг (media.py) —
+# у остальных нет механики, полезной арендатору.
 RENTABLE_BUSINESS_SLUGS = {"media_holding"}   # + любые itstudio_* (по префиксу slug)
 
-# Лимиты владения на игрока (учёт по userId, включая переданные компании —
-# они остаются в портфеле владельца). Проверяется при покупке и в ЦР.
+# Лимиты владения на игрока (переданные компании остаются в портфеле владельца).
 TYPE_LIMITS = {TYPE_REALESTATE: 40, TYPE_BUSINESS: 20}
 _LIMIT_NAMES = {TYPE_REALESTATE: "домов", TYPE_BUSINESS: "бизнесов"}
 
@@ -137,22 +124,10 @@ def _is_rentable(asset: dict) -> bool:
     return True
 
 # ── Экономика аренды ─────────────────────────────────────────────────────────
-# У каждого актива — своя суточная ставка аренды: она НЕ одинакова для всего
-# имущества, а рассчитывается из совокупности факторов:
-#   1) текущая стоимость актива (цена + уровень апгрейда + тюнинг, см. _current_value);
-#   2) редкость/класс объекта (rarity) — определяет % от стоимости в сутки;
-# Чем реже и роскошнее объект — тем выше именно ПРОЦЕНТ доходности (не только
-# абсолютная сумма за счёт более высокой цены). Поэтому дешёвая недвижимость
-# даёт скромный доход, а элитная — кратно выгоднее как в долларах, так и в %,
-# и не бывает ситуации, когда дешёвый объект почти не уступает дорогому.
-#
-# Ориентир баланса (единый для всей экономики): суммарная доходность актива —
-# 24–30% в сутки, то есть окупаемость 3.3–4.2 дня. Пассивный доход несёт 3/4
-# этой цели, аренда — оставшуюся 1/4 (АКТИВНАЯ часть, её надо выставлять
-# руками). Раньше пропорция была обратной, и сдаваемый актив в магазине
-# выглядел втрое хуже несдаваемого той же цены — карточка показывает только
-# пассивный доход. Прежние ставки 2.4–7.8%/сутки давали окупаемость 13–42 дня —
-# «поставил и ушёл на месяц», из-за чего активы ощущались бесполезными.
+# Ставка аренды своя для каждого объекта: текущая стоимость (_current_value) ×
+# процент по редкости (RARITY_RENT_PCT) — реже объект, тем выше именно %.
+# Ориентир баланса: суммарная доходность 24–30%/сутки (окупаемость 3.3–4.2 дня);
+# пассив несёт 3/4 цели, аренда — 1/4.
 RARITY_RENT_PCT = {
     "common": 0.060,      # 6.0%/сутки
     "uncommon": 0.0625,   # 6.2%/сутки
@@ -160,14 +135,10 @@ RARITY_RENT_PCT = {
     "epic": 0.070,        # 7.0%/сутки
     "legendary": 0.075,   # 7.5%/сутки
 }
-# Автомобили не имеют пассивного дохода (см. _income_per_hour) — аренда для них
-# единственный источник, поэтому она должна нести всю цель целиком, а не 1/4:
-# без множителя авто окупались бы вчетверо дольше недвижимости той же редкости.
+# У авто нет пассивного дохода — аренда несёт всю цель, а не 1/4.
 CAR_RENT_MULT = 4.0
-# Минимальный суточный доход по редкости — подстраховка от вырожденных случаев
-# (например, сильно уценённый на рынке актив), а НЕ основной драйвер экономики,
-# как было раньше (плоский пол в $2000 одинаковый для всех — тот самый баг,
-# из-за которого дешёвая студия зарабатывала как элитная недвижимость).
+# Пол по редкости — страховка от вырожденных случаев, не драйвер экономики
+# (старый баг: плоские $2000 для всех — студия зарабатывала как замок).
 RARITY_RENT_FLOOR = {
     "common": 300.0,
     "uncommon": 850.0,
@@ -177,49 +148,27 @@ RARITY_RENT_FLOOR = {
 }
 
 # ── Материалы для бизнеса ────────────────────────────────────────────────────
-# Цена за единицу = базовая × economy_mult × множитель текущего мирового
-# события (см. market_events.EVENT_TYPES["materials"], настраивается через
-# админ-панель — событие меняется, цена пересчитывается автоматически, без
-# правки кода). Закупка временно поднимает доход бизнеса.
-#
-# Это ГЛАВНАЯ активная механика бизнеса: пассивный доход капает сам, а буст
-# требует зайти и вложиться. Поэтому потолок высокий (+80%), а срок короткий
-# (4ч) — активный игрок обгоняет пассивного примерно в 1.5 раза, но обязан
-# возвращаться. Цена единицы — доля от часового дохода конкретного бизнеса
-# (MATERIALS_COST_PER_INCOME_H), иначе буст премиальной IT-студии стоил бы
-# столько же, сколько буст шаурмечной, то есть был бы бесплатным.
+# Главная активная механика бизнеса: буст временный, поэтому потолок +80% и срок
+# 4ч (активный игрок обгоняет пассивного ~в 1.5 раза). Цена единицы = доля от
+# часового дохода конкретного бизнеса, пересчитывается под мировое событие.
 MATERIALS_BOOST_PER_UNIT = 0.02     # +2% к доходу за единицу
 MATERIALS_BOOST_CAP = 0.80          # максимум +80%
 MATERIALS_DURATION_H = 4            # действует 4 часа с момента закупки
-# Единица материалов стоит столько же, сколько бизнес зарабатывает за этот
-# процент дохода примерно за 1.6ч — полный буст окупается за ~2.5ч из 4ч срока.
+# Единица стоит ~дохода за 1.6ч — полный буст окупается за ~2.5ч из 4ч срока.
 MATERIALS_COST_PER_INCOME_H = 1.6
 
-# Пассивный доход бизнесов урезан в 20 раз (2026-10): бизнес больше не
-# fire-and-forget принтер денег — основной заработок смещён в активные механики
-# (материалы / cityroof / СМИ). Делитель применяется и к доходу, и к содержанию,
-# чтобы чистый поток остался положительным и все пропорции (цена материалов,
-# окупаемость апгрейда относительно покупки) сохранились.
-BUSINESS_INCOME_DIVISOR = 20.0
+# Пассив бизнесов урезан в 20 раз (заработок смещён в активные механики);
+# делитель применяется и к доходу, и к содержанию — пропорции сохраняются.
+BUSINESS_INCOME_DIVISOR = 2.45  # целевая окупаемость бизнеса: примерно 7–15 суток на L1–L11
 
 # ── Каталог рынка (сид) ──────────────────────────────────────────────────────
-# income_per_hour — пассивный доход; upkeep_per_hour — расход (для бизнесов).
-# rarity — определяет и рыночный дрейф цены (RARITY_FLOOR), и ставку аренды
-# (RARITY_RENT_PCT/RARITY_RENT_FLOOR) — есть у всех типов, включая бизнесы.
-#
-# Баланс доходности: чистый пассивный доход (income − upkeep) подобран так,
-# чтобы вместе с арендой актив выходил на 24–30% в сутки (окупаемость 3.3–4.2
-# дня, растёт с редкостью). Пассив несёт 3/4 цели, аренда — 1/4; несдаваемые
-# бизнесы (шаурмечная, кофейня, автомойка, завод) несут всю доходность в
-# income_per_hour. Доход экземпляра масштабируется по уплаченной цене
-# (см. buy_asset) — на пике рынка актив и стоит, и приносит больше.
+# income_per_hour — пассив, upkeep_per_hour — расход; rarity задаёт дрейф цены
+# и ставку аренды. Чистый пассив + аренда дают 24–30%/сутки (пассив 3/4 цели);
+# несдаваемые бизнесы несут всю доходность в income_per_hour.
 
 CATALOG = [
-    # Недвижимость: аренда как доход, налог как расход. Поле basement — ёмкость
-    # подвала в корпусах, определяет цену/доходность улучшения «Майнинг»
-    # Цена/доход за единицу подвала — из econ (mining_basement_cost/income).
-    # чтобы более дорогой дом позволял поставить больше оборудования и быстрее
-    # окупать улучшение.
+    # Недвижимость: аренда как доход, налог как расход. basement — ёмкость подвала
+    # в корпусах для улучшения «Майнинг» (цена/доход за единицу — из econ).
     {"slug": "studio", "type": TYPE_REALESTATE, "name": "Студия", "rarity": "common",
      "price": 5000, "income_per_hour": 50, "upkeep_per_hour": 12, "rooms": 1, "basement": 2, "meta": {"tax": 12}},
     {"slug": "flat2", "type": TYPE_REALESTATE, "name": "Двухкомнатная квартира", "rarity": "common",
@@ -232,17 +181,14 @@ CATALOG = [
      "price": 480000, "income_per_hour": 5600, "upkeep_per_hour": 1400, "rooms": 8, "basement": 16, "meta": {"tax": 1400}},
     {"slug": "castle", "type": TYPE_REALESTATE, "name": "Замок", "rarity": "legendary",
      "price": 1500000, "income_per_hour": 18750, "upkeep_per_hour": 4688, "rooms": 20, "basement": 24, "meta": {"tax": 4688}},
-    # Бизнесы: доход и расходы, есть сотрудники. rarity — экономический класс
-    # бизнеса (отдельно от category, которая отвечает только за тематику/иконку).
+    # Бизнесы: rarity — экономический класс (category — только тематика/иконка).
     {"slug": "shawarma", "type": TYPE_BUSINESS, "name": "Шаурмечная", "category": "retail", "rarity": "common",
      "price": 8000, "income_per_hour": 119, "upkeep_per_hour": 39, "employees": 2},
     {"slug": "coffee", "type": TYPE_BUSINESS, "name": "Кофейня", "category": "retail", "rarity": "uncommon",
      "price": 25000, "income_per_hour": 389, "upkeep_per_hour": 128, "employees": 4},
     {"slug": "carwash", "type": TYPE_BUSINESS, "name": "Автомойка", "category": "service", "rarity": "rare",
      "price": 60000, "income_per_hour": 970, "upkeep_per_hour": 320, "employees": 6},
-    # IT-студия — 4 тира (slug = "itstudio_" + ключ тира в game_config.ITSTUDIO_CONFIG).
-    # Владение экземпляром открывает заказ атаки/защиты «Крыши города»
-    # (см. cityroof.py) — материалы, шанс успеха и опыт зависят от тира.
+    # IT-студия — 4 тира; владение открывает заказ «Крыши города» (cityroof.py).
     {"slug": "itstudio_basic", "type": TYPE_BUSINESS, "name": "IT-студия: Базовая", "category": "tech", "rarity": "epic",
      "price": 200000, "income_per_hour": 2612, "upkeep_per_hour": 862, "employees": 12},
     {"slug": "itstudio_medium", "type": TYPE_BUSINESS, "name": "IT-студия: Средняя", "category": "tech", "rarity": "epic",
@@ -253,8 +199,7 @@ CATALOG = [
      "price": 1800000, "income_per_hour": 25187, "upkeep_per_hour": 8312, "employees": 50},
     {"slug": "factory", "type": TYPE_BUSINESS, "name": "Завод", "category": "office", "rarity": "legendary",
      "price": 750000, "income_per_hour": 13993, "upkeep_per_hour": 4618, "employees": 40},
-    # Медиахолдинг — открывает заказ разоблачений в СМИ (см. media.py): владелец
-    # может ударить по доходам бизнесов конкурента и цене его акции.
+    # Медиахолдинг — заказ разоблачений в СМИ (media.py).
     {"slug": "media_holding", "type": TYPE_BUSINESS, "name": "Медиахолдинг", "category": "media", "rarity": "legendary",
      "price": 1200000, "income_per_hour": 16791, "upkeep_per_hour": 5541, "employees": 45},
     # Автомобили: престиж (без дохода), учитываются в капитале, но сдаются в аренду
@@ -269,12 +214,8 @@ CATALOG = [
 ]
 
 # ── Расширенный каталог недвижимости и бизнесов (admin-re-1..81, admin-biz-1..12) ──
-# Добавлено для согласования с frontend/src/utils/adminCatalog.js:
-# витрина в MarketTab показывает 81 дом и 12 бизнесов. Цены, income, basement
-# и employees рассчитаны по тем же формулам, что и в adminCatalog.js, чтобы
-# карточки в «Рынке» и реальный покупаемый каталог совпадали.
-# Цены admin-re поднимаются плавной лестницей по rarity (5 ступеней × 81 дом),
-# цены admin-biz — лестницей по category (4 ступени × 3 объекта).
+# Синхронизирован с adminCatalog.js (те же формулы цены/income/basement), чтобы
+# витрина и покупаемый каталог совпадали. Лестница цен: по rarity (дома), по category (бизнесы).
 
 _ADMIN_MARKET_HOUSES = [
     {"slug": "admin-re-1", "type": TYPE_REALESTATE, "name": "Sunny Cottage", "rarity": "common", "price": 5000, "income_per_hour": 25, "upkeep_per_hour": 4, "rooms": 1, "basement": 1, "meta": {"tax": 5}},
@@ -376,29 +317,21 @@ _ADMIN_MARKET_BUSINESSES = [
 ]
 
 # ── Каталог инфраструктурных активов (заводы, источники, склады) ──────────────
-# Соответствует frontend/src/utils/adminCatalog.js → ADMIN_FACTORIES_CATALOG /
-# ADMIN_SOURCES_CATALOG / ADMIN_WAREHOUSES_CATALOG. Без этих записей бэкенд
-# отвечал 404 «Актив не найден» на покупку (MarketTab отправлял slug-и
-# admin-fac-*/admin-src-*/admin-wh-*, которые раньше игнорировались). Цены
-# и характеристики согласованы с фронтом: при покупке клиентское значение
-# цены не используется — сервер пересчитывает итог от базовой цены каталога.
+# Синхронизировано с adminCatalog.js. При покупке клиентскую цену игнорируем —
+# сервер считает итог от базовой цены каталога.
 _ADMIN_MARKET_FACTORIES = [
     {"slug": "admin-fac-gpu-1", "type": TYPE_FACTORY, "category": "gpu", "name": "Завод видеокарт",
      "rarity": "rare", "price": 250000, "income_per_hour": 0, "upkeep_per_hour": 0,
      "employees": 24, "meta": {"produces": "gpu", "outputPerHour": 4}},
-    # Пекарня: перерабатывает пшеницу в хлеб (физические ресурсы, не деньги).
-    # Пшеницу возят фуры с поля или со склада (prod.inputId), хлеб вывозится
-    # на склад (prod.destinationId). Механика в production.py.
+    # Пекарня: пшеница → хлеб (физические ресурсы, логистика фур, production.py).
     {"slug": "admin-fac-bakery-1", "type": TYPE_FACTORY, "category": "bakery", "name": "Пекарня",
      "rarity": "rare", "price": 1200000, "income_per_hour": 0, "upkeep_per_hour": 0,
      "employees": 20, "meta": {"produces": "bread", "input": "wheat",
                                "outputPerHour": 120, "consumesPerHour": 240, "capacity": 30000}},
 ]
 
-# Источники: цены ×100 к старым (35k→3.5M, 22k→2.2M, 48k→4.8M), добыча и
-# ёмкость хранилища тоже ×100 — окупаемость сохраняется в игровом коридоре
-# (~4 суток при штатном составе работников). Источник теперь копит РЕСУРС в
-# своём хранилище (см. production.py), а не деньги.
+# Источники копят РЕСУРС в хранилище (production.py), а не деньги; цены/добыча/
+# ёмкость ×100 — окупаемость ~4 суток при штатном составе.
 _ADMIN_MARKET_SOURCES = [
     {"slug": "admin-src-mine-1", "type": TYPE_SOURCE, "category": "mine", "name": "Шахта",
      "rarity": "common", "price": 3500000, "income_per_hour": 0, "upkeep_per_hour": 0,
@@ -411,12 +344,11 @@ _ADMIN_MARKET_SOURCES = [
      "employees": 10, "meta": {"resource": "wood", "outputPerHour": 500, "capacity": 45000}},
 ]
 
-# 16 складов с логарифмической шкалой площади 50..100000 м². Цена и rarity
-# рассчитаны по той же формуле, что и в adminCatalog.js → _warehousePrice.
+# 16 складов, шкала площади 50..100000 м²; цена/rarity — формула adminCatalog.js.
 import math as _math
 
 def _wh_price(area: int) -> int:
-    # 3600 = 1200 × 3 (цены складов подняты ×3 к старым).
+    # 3600 = 1200 × 3.
     return int(round(3600 * area * (1 + 0.5 * _math.log10(area / 50))))
 
 def _wh_rarity(area: int) -> str:
@@ -433,18 +365,15 @@ _ADMIN_MARKET_WAREHOUSES = [
      "name": f"Склад {area:,} м²".replace(",", " "), "rarity": _wh_rarity(area),
      "price": _wh_price(area), "income_per_hour": 0, "upkeep_per_hour": 0,
      "employees": max(2, round(area / 200)),
-     # storageCap — вместимость в кг ресурса (см. production.py), масштаб ×1000
-     # к старым area×20: добыча источников выросла ×100, склад должен вмещать
-     # осмысленный запас между рейсами фур.
+     # storageCap — вместимость в кг (production.py); ×1000 к старым area×20 —
+     # под выросшую добычу источников, запас между рейсами фур.
      "meta": {"areaSqm": area, "storageCap": area * 1000, "slots": 1}}
     for i, area in enumerate(_WAREHOUSE_AREAS)
 ]
 
 # ── Автосалон (cars/trucks/trailers) ─────────────────────────────────────────
-# Согласовано с frontend/src/utils/carsCatalog.js (CarsTab): те же слаги,
-# цены и редкость. Все идут как TYPE_CAR (общая логика владения/тюнинга),
-# категория (car/truck/trailer) и характеристики — в category/meta.
-# При покупке клиентская цена не используется — сервер берёт цену отсюда.
+# Синхронизировано с carsCatalog.js (CarsTab). Все — TYPE_CAR, категория и
+# характеристики в category/meta. Цену берёт сервер отсюда, не от клиента.
 _CAR_CATALOG = [
     # Легковые
     {"slug": "car-hatchback-1", "type": TYPE_CAR, "category": "car", "name": "Хэтчбек «Старт»",
@@ -495,16 +424,14 @@ CATALOG = (CATALOG + _ADMIN_MARKET_HOUSES + _ADMIN_MARKET_BUSINESSES
            + _CAR_CATALOG)
 
 # ── Масштабирование каталога ─────────────────────────────────────────────────
-# Бизнесы ×1000 (цена, доход, расход): топовые сборки майнинга приносят десятки
-# тысяч $/ч, бизнесы за $50k с доходом $400/ч стали бы копеечными.
+# Бизнесы ×1000 (цена/доход/расход): иначе на фоне майнинга они копеечные.
 for _c in CATALOG:
     if _c["type"] == TYPE_BUSINESS:
         _c["price"] = _c["price"] * 1000
         _c["income_per_hour"] = _c.get("income_per_hour", 0) * 1000
         _c["upkeep_per_hour"] = _c.get("upkeep_per_hour", 0) * 1000
-# Дома пассивный доход не приносят: дом — это подвал для майнинга и аренда,
-# деньги делаются майнингом/бизнесами. Существующие экземпляры ловятся
-# guard'ом в _income_per_hour (без миграции).
+# Дома пассив не приносят (это подвал для майнинга + аренда); старые экземпляры
+# ловит guard в _income_per_hour без миграции.
 for _c in CATALOG:
     if _c["type"] == TYPE_REALESTATE:
         _c["income_per_hour"] = 0
@@ -513,18 +440,12 @@ CATALOG_BY_SLUG_CI = {c["slug"].lower(): c for c in CATALOG}
 CATALOG_BY_NAME = {c["name"].strip().lower(): c for c in CATALOG}
 
 
-# Индекс по `id` записи (раньше фронт отправлял slug, а в части старых
-# позиций id и slug различались — это приводило к «Актив не найден» при покупке).
+# Индекс по id записи: у части старых позиций id и slug различаются.
 _CATALOG_BY_ID = {c.get("id", c["slug"]): c for c in CATALOG}
 
 
 def _find_catalog(slug: str):
-    """Найти позицию каталога по slug/id (с учётом регистра) или точному имени.
-
-    Поиск ведётся по нескольким ключам, потому что витрина домов/бизнесов
-    исторически шлёт то `admin-re-1` (slug), то `id` записи из
-    ``adminCatalog.js``. Любой из них должен находить каталог.
-    """
+    """Позиция каталога по slug/id/имени (регистронезависимо): витрина шлёт и slug, и id."""
     s = (slug or "").strip()
     if not s:
         return None
@@ -567,10 +488,8 @@ async def _ensure_asset_market(db: AsyncIOMotorDatabase):
 
 
 async def _drift_asset_market(db: AsyncIOMotorDatabase):
-    """Естественный дрейф цен к целевому уровню, определяемому реальными факторами:
-    спрос (владельцы), предложение (объявления аренды), редкость, денежная масса,
-    инфляция, активность игроков и мировые экономические события. Плавно, без скачков.
-    """
+    """Плавный дрейф ценовых множителей к цели: спрос, предложение, редкость,
+    денежная масса, инфляция, активность, мировые события."""
     meta = await db.asset_market_meta.find_one({"key": "tick"})
     last = meta.get("updated_at") if meta else None
     if isinstance(last, datetime):
@@ -750,13 +669,9 @@ _now = now_utc
 
 
 def _price_mult(asset: dict) -> float:
-    """Во сколько раз экземпляр куплен дороже базовой цены каталога.
-
-    Рынок гоняет цену в ×0.5…×2.5 (ASSET_MULT_MIN/MAX), и без этой привязки
-    доход оставался бы базовым: купленный на пике актив окупался бы 8 дней
-    вместо 3.3, а на просадке — 1.7. Доход масштабируется вместе с ценой,
-    поэтому рыночный множитель решает, СКОЛЬКО вложить, а не насколько
-    выгодна сделка. Активы, купленные до появления поля, считаются как ×1.0."""
+    """Во сколько раз экземпляр куплен дороже базы. Доход/расход масштабируются им,
+    иначе покупка на пике (×2.5) давала бы 8 дней окупаемости вместо 3.3.
+    Активы без поля — ×1.0."""
     return float(asset.get("price_mult", 1.0) or 1.0)
 
 
@@ -783,17 +698,10 @@ def _materials_boost(asset: dict) -> float:
 
 
 # ── Майнинг-улучшение для домов ──────────────────────────────────────────────
-# Подвал дома (поле basement, ёмкость в корпусах) используется как множитель
-# майнинговой фермы. Улучшение «Майнинг» покупается 1 раз: цена и доход за
-# единицу подвала берутся из econ (mining_basement_cost/income). После
-# активации дом начинает приносить пассивный доход, включаемый в общую формулу
-# _income_per_hour, чтобы он собирался тем же /collect и попадал в
-# /collect-all без отдельной механики. Поле mining хранится на документе актива
-# (bool) — повторная покупка запрещена.
-# Коэффициенты майнинг-подвала и инфраструктуры берутся из econ (DEFAULT_ECON),
-# поэтому показываются и списываются одними и теми же числами. В sync-контекстах
-# (_serialize/_income_per_hour без econ) используются значения по умолчанию;
-# расхождение возможно только сразу после смены коэффициента админом.
+# Покупается 1 раз; цена/доход за корпус подвала — из econ (mining_basement_*).
+# Доход вливается в _income_per_hour, чтобы собирался общим /collect.
+# В sync-контекстах без econ — дефолты DEFAULT_ECON (расхождение только сразу
+# после смены коэффициента админом).
 from econ import DEFAULT_ECON
 
 
@@ -822,15 +730,9 @@ def _mining_cost(asset: dict, econ: Optional[dict] = None) -> float:
 
 
 def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
-    """Почасовой доход инфраструктуры.
-
-    Остался только у завода видеокарт (meta.produces='gpu'): продукция продаётся
-    «на сторону» по фиксированной цене из econ. Источники и пекарня теперь
-    производят ФИЗИЧЕСКИЕ ресурсы в собственное хранилище (см. production.py) —
-    деньги приносит продажа ресурсов со склада, поэтому денежный поток
-    источников отключён, чтобы не платить дважды. Склады прибыли не приносят.
-    Коэффициенты берутся из econ; в sync-контексте — дефолты.
-    """
+    """Денежный доход только у GPU-завода (продукция продаётся по цене из econ).
+    Источники/пекарня копят физические ресурсы (production.py), склады не платят —
+    денежный поток источников отключён, чтобы не платить дважды."""
     t = asset.get("type")
     meta = asset.get("meta") or {}
     if t == TYPE_FACTORY and meta.get("produces") == "gpu":
@@ -840,31 +742,25 @@ def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
 
 
 def _income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
-    # Авто не приносят почасового пассивного дохода — только аренда (см. _is_rentable).
-    # Их «уровень» не качается через upgrade, прогресс идёт через тюнинг/престиж.
+    # Авто: только аренда + тюнинг, без уровня и пассива.
     if asset.get("type") == TYPE_CAR:
         return 0.0
-    # Дома тоже: пассивный доход отключён (см. масштабирование CATALOG),
-    # майнинг-улучшение подвала и аренда остаются — они добавляются ниже.
+    # Дома: пассив отключён, майнинг и аренда добавляются ниже.
     base = 0.0 if asset.get("type") == TYPE_REALESTATE else asset.get("income_per_hour", 0)
     level = asset.get("level", 1)
-    value = base * (1 + 0.25 * (level - 1)) * _price_mult(asset)
+    value = base * (1 + LEVEL_INCOME_STEP * (level - 1)) * _price_mult(asset)
     if asset.get("type") == TYPE_BUSINESS:
         value *= (1 + _materials_boost(asset))
         value /= BUSINESS_INCOME_DIVISOR
-    # Майнинг-улучшение дома: пассивный доход от оборудования в подвале,
-    # складывается с базовым почасовым доходом (у большинства домов он уже 0,
-    # а у арендных моделей база ненулевая — суммирование уместно).
+    # Майнинг подвала + доход инфраструктуры — добавляются к базе.
     value += _mining_income_per_hour(asset, econ)
-    # Инфраструктура (завод/источник/склад): доход от продукции/хранения.
     value += _infra_income_per_hour(asset, econ)
     return round(value, 2)
 
 
 def _rent_rarity(asset: dict) -> str:
-    """Редкость актива для расчёта аренды. Берётся из самого экземпляра (в него
-    копируется при покупке из каталога — buy_asset), с запасным вариантом через
-    каталог по slug — на случай активов, купленных до появления rarity у бизнесов."""
+    """Редкость для аренды: из экземпляра, фолбэк — каталог по slug (активы,
+    купленные до появления rarity)."""
     rarity = asset.get("rarity")
     if rarity in RARITY_RENT_PCT:
         return rarity
@@ -873,14 +769,8 @@ def _rent_rarity(asset: dict) -> str:
 
 
 def _rent_daily_rate(asset: dict) -> float:
-    """Суточная ставка аренды — СВОЯ для каждого объекта, а не единый коэффициент
-    для всего имущества. Зависит от текущей стоимости актива (цена + апгрейды +
-    тюнинг — см. _current_value) и его редкости/класса (RARITY_RENT_PCT): чем
-    реже и роскошнее объект, тем выше именно % доходности, а не только сумма.
-    Авто получают повышенную ставку (CAR_RENT_MULT) — у них нет пассивного дохода.
-    RARITY_RENT_FLOOR — лишь подстраховка от вырожденно низких значений, а не
-    основной регулятор (как было раньше с плоским полом в $2000 для всех).
-    Как и пассивный доход, ставка масштабируется по уплаченной цене (_price_mult)."""
+    """Суточная ставка: стоимость (_current_value) × % по редкости, фолбэк — пол
+    RARITY_RENT_FLOOR; авто ×CAR_RENT_MULT (нет пассива). Масштабируется _price_mult."""
     if not _is_rentable(asset):
         return 0.0
     rarity = _rent_rarity(asset)
@@ -907,27 +797,21 @@ def _rent_total(asset: dict, hours: int) -> float:
 
 
 def _upkeep_per_hour(asset: dict) -> float:
-    # Масштабируется вместе с доходом (см. _price_mult), иначе купленный на пике
-    # актив имел бы прежний расход при повышенном доходе — доходность в % росла бы.
+    # Расход масштабируется _price_mult вместе с доходом, иначе % доходности рос.
     val = asset.get("upkeep_per_hour", 0) * _price_mult(asset)
-    # Содержание бизнесов делится тем же делителем, что и доход (см.
-    # BUSINESS_INCOME_DIVISOR) — иначе чистый поток ушёл бы в минус.
     if asset.get("type") == TYPE_BUSINESS:
+        # Баланс: уровень увеличивает не только доход, но и содержание.
+        # Поэтому маржа бизнеса не раздувается при прокачке.
+        val *= 1 + LEVEL_INCOME_STEP * (asset.get("level", 1) - 1)
         val /= BUSINESS_INCOME_DIVISOR
     return round(val, 2)
 
 
 def _upgrade_cost(asset: dict) -> float:
-    """Улучшение стоит фиксированную долю базовой цены — НЕ растёт с уровнем.
-
-    Прирост дохода за уровень плоский (+25% базы, см. _income_per_hour), поэтому
-    цена вида base*0.4*level делала апгрейд всё хуже: L1→L2 окупался за 3.6 суток,
-    а L5→L6 уже за 18 — качать актив было втрое невыгоднее, чем купить второй.
-    При плоской доле окупаемость улучшения (2.9–4.0 суток) совпадает с покупкой
-    нового актива (3.3–4.2), и уровень перестаёт быть ловушкой."""
+    """Фиксированная доля базы, не растёт с уровнем: при плоском +25% дохода/уровень
+    окупаемость апгрейда (2.9–4.0 суток) совпадает с покупкой нового актива (3.3–4.2)."""
     base = asset.get("price", 0)
-    # Доход экземпляра масштабируется ценой покупки (_price_mult) — цена улучшения тоже,
-    # иначе купленный на пике актив качался бы по базовой цене за повышенный доход.
+    # Цена улучшения тоже масштабируется _price_mult — как доход экземпляра.
     return round(base * UPGRADE_COST_PCT * _price_mult(asset), 2)
 
 
@@ -935,10 +819,8 @@ UPGRADE_PREVIEW_LEVELS = 10   # сколько будущих уровней п�
 
 
 def _upgrade_plan(asset: dict, steps: int) -> list[dict]:
-    """Предпросмотр следующих уровней: цена перехода, накопленная стоимость,
-    доход и стоимость актива на каждом уровне. Формулы те же, что в
-    _upgrade_cost / _income_per_hour / _current_value — считаются на сервере,
-    чтобы клиент их не дублировал и не мог разойтись с фактическим списанием."""
+    """Предпросмотр следующих уровней теми же формулами, что и списание, — чтобы
+    клиент не дублировал расчёт."""
     level = asset.get("level", 1)
     cumulative = 0.0
     plan = []
@@ -998,7 +880,6 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
         return asset
     now = _now()
 
-    # Заселение арендатора
     if r.get("status") == "listed":
         tenant_at = to_aware(r.get("tenant_at"))
         if tenant_at and now >= tenant_at:
@@ -1018,12 +899,10 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
             except Exception:
                 pass
 
-    # Завершение аренды и выплата
     if r.get("status") == "rented":
         ends_at = to_aware(r.get("ends_at"))
         if ends_at and now >= ends_at:
             payout = round(float(r.get("price", 0)), 2)
-            # Админ-коэффициент аренды.
             try:
                 econ = await get_econ(db)
                 payout = round(payout * econ.get("rent_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
@@ -1031,7 +910,6 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
                 payout = round(payout * (await event_shifts(db)).get("rental", 1.0), 2)
             except Exception:
                 pass
-            # Бонус «Гранд-отеля» (Крыша города) — +% к доходу от аренды.
             try:
                 from cityroof import player_city_effect
                 bonus = await player_city_effect(db, asset["userId"], "rental_income")
@@ -1049,7 +927,6 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
             if payout > 0:
                 company_id = asset.get("companyId")
                 if company_id and ObjectId.is_valid(company_id):
-                    # Актив компании — доход поступает в бюджет компании.
                     await db.companies.update_one({"_id": ObjectId(company_id)}, {"$inc": {"budget": payout}})
                     company = await db.companies.find_one({"_id": ObjectId(company_id)})
                     from ledger import CAT_COMPANY
@@ -1085,10 +962,8 @@ async def _process_rental(db: AsyncIOMotorDatabase, asset: dict) -> dict:
 
 async def company_income_per_hour(db: AsyncIOMotorDatabase, company_id: str,
                                   media_factor: float = 1.0) -> float:
-    """Чистый доход компании в час от принадлежащих ей активов.
-
-    ``media_factor`` — репутационный множитель СМИ владельца: применяется только
-    к доходной части бизнесов (расходы/содержание и небизнес-активы не трогаем)."""
+    """Чистый доход компании в час от её активов. media_factor — множитель СМИ,
+    только к доходной части бизнесов."""
     total = 0.0
     async for a in db.user_assets.find({"companyId": company_id}):
         income = _income_per_hour(a)
@@ -1136,9 +1011,8 @@ def _studio_view(asset: dict) -> Optional[dict]:
 
 
 def _mining_view(asset: dict) -> Optional[dict]:
-    """Информация об улучшении «Майнинг» для UI. Доступно только для
-    недвижимости; для остальных типов None. Включается в _serialize чтобы
-    клиент мог показать кнопку покупки/статус без отдельного эндпоинта."""
+    """Статус «Майнинга» для UI (недвижимость, иначе None) — в _serialize, чтобы
+    клиент не дёргал отдельный эндпоинт."""
     if asset.get("type") != TYPE_REALESTATE:
         return None
     basement = int(asset.get("basement") or 0)
@@ -1188,28 +1062,14 @@ def _serialize(asset: dict) -> dict:
 
 # ── Админские цены (PriceEditorTab) ──────────────────────────────────────────
 #
-# Админ-редактор цен пишет overrides в общий конфиг "shop_prices" (см.
-# shop.py:SHOP_PRICES_KEY). Магазин железа их применяет сам; рынок активов
-# раньше игнорировал их и брал цену напрямую из статичного CATALOG — из-за
-# этого правки в админ-панели не отражались в MarketTab / при покупке.
-#
-# Ключи в конфиге совпадают с slug актива (admin-re-N / admin-biz-N /
-# admin-fac-... / car-...): раньше дома и бизнесы схлопывались в один
-# числовой ключ 'N' и перезаписывали цены друг друга.
-#
-# Чтобы маппинг совпадал с frontend/src/utils/adminCatalog.js и
-# frontend/src/utils/shopCatalog.js — см. ADMIN_DEFAULT_PRICES и
-# REAL_ESTATE_PRODUCTS / BUSINESS_PRODUCTS.
+# Overrides лежат в конфиге "shop_prices" (shop.py:SHOP_PRICES_KEY), ключ = slug
+# актива (дома и бизнесы не схлопываются в голое 'N'). Маппинг совпадает с
+# adminCatalog.js / shopCatalog.js.
 SHOP_PRICES_KEY = "shop_prices"
 
 
 def _admin_price_key(slug: str) -> str:
-    """slug актива -> ключ в конфиге shop_prices.
-
-    Ключ — сам slug: дома (admin-re-N) и бизнесы (admin-biz-N) живут в одном
-    документе, и схлопывание обеих групп в голое 'N' приводило к тому, что
-    цены домов и бизнесов перезаписывали друг друга.
-    """
+    """Ключ в shop_prices — сам slug: дома и бизнесы не перезаписывают друг друга."""
     return slug
 
 
@@ -1291,10 +1151,8 @@ async def get_market(
 
 
 # ── Заводы/Источники/Склады на лету (фолбэк для старого каталога) ────────────
-# Дублируем определения, чтобы покупка работала даже если в коде на сервере
-# ещё не подхвачены _ADMIN_MARKET_FACTORIES / _ADMIN_MARKET_SOURCES /
-# _ADMIN_MARKET_WAREHOUSES (например, в кэшированном процессе). При наличии
-# каталожной записи в CATALOG используется она (приоритет).
+# Дубль определений на случай кэшированного процесса без новых записей CATALOG;
+# при наличии записи в CATALOG приоритет у неё.
 
 
 def _fallback_factory(slug: str) -> Optional[dict]:
@@ -1354,10 +1212,8 @@ def _fallback_warehouse(slug: str) -> Optional[dict]:
 
 
 def _fallback_catalog(slug: str) -> Optional[dict]:
-    """Собрать каталожную запись на лету для инфраструктурных slug-ов.
-    Используется, если _find_catalog вернул None (например, в кэшированном
-    процессе бэкенда ещё не подхвачены _ADMIN_MARKET_FACTORIES/_SOURCES/
-    _WAREHOUSES). Без этого фолбэка покупка отвечала 404 «Актив не найден»."""
+    """Каталожная запись на лету для инфраструктурных slug-ов, если _find_catalog
+    вернул None (кэшированный процесс без новых записей)."""
     if not slug:
         return None
     if slug.startswith("admin-fac-"):
@@ -1378,8 +1234,7 @@ async def buy_asset(
     """Покупка актива с рынка: списывает баланс, создаёт экземпляр во владении."""
     catalog = _find_catalog(payload.slug)
     if not catalog:
-        # Фолбэк: если slug относится к инфраструктуре (factory/source/
-        # warehouse) и почему-то не попал в CATALOG, собираем запись на лету.
+        # Инфраструктурный slug не попал в CATALOG — собираем запись на лету.
         catalog = _fallback_catalog(payload.slug)
     if not catalog:
         raise HTTPException(
@@ -1391,8 +1246,7 @@ async def buy_asset(
 
     user_id = str(current_user["_id"])
     await check_type_limit(db, user_id, catalog["type"])
-    # Динамическая цена покупки: admin-override (если задан в редакторе цен)
-    # → базовая цена каталога. Затем применяем рыночный множитель.
+    # Цена: admin-override → база каталога, затем рыночный множитель.
     await _ensure_asset_market(db)
     mult = await _asset_mult(db, catalog["slug"])
     overrides = await _admin_prices(db)
@@ -1411,19 +1265,18 @@ async def buy_asset(
         "category": catalog.get("category"),
         "rarity": catalog.get("rarity"),
         "rooms": catalog.get("rooms"),
-        "basement": catalog.get("basement"),   # ёмкость подвала (недвижимость) — для улучшения «Майнинг»
+        "basement": catalog.get("basement"),   # ёмкость подвала — для «Майнинга»
         "employees": catalog.get("employees", 0),
-        "price": float(catalog["price"]),   # базовая цена — для расчёта стоимости/улучшений
-        # Куплено дороже/дешевле базы → доход и расход экземпляра масштабируются
-        # так же (см. _price_mult), иначе покупка на пике рынка была бы ловушкой.
+        "price": float(catalog["price"]),   # базовая цена — для стоимости/улучшений
+        # Доход/расход экземпляра масштабируются _price_mult (иначе пик рынка — ловушка).
         "price_mult": round(mult, 4),
         "income_per_hour": catalog.get("income_per_hour", 0),
         "upkeep_per_hour": catalog.get("upkeep_per_hour", 0),
         "level": 1,
-        "mining": False,         # улучшение «Майнинг» ещё не куплено
+        "mining": False,
         "meta": catalog.get("meta", {}),
-        "companyId": None,      # None = личный актив; иначе принадлежит компании
-        "rental": None,         # активное объявление/аренда (см. rental)
+        "companyId": None,      # None = личный актив
+        "rental": None,
         "purchased_at": _now(),
         "last_collected": _now(),
     }
@@ -1436,7 +1289,6 @@ async def buy_asset(
         f"Покупка: {catalog['name']}", balance_after=new_balance,
         meta={"slug": catalog["slug"], "type": catalog["type"]},
     )
-    # Спрос поднимает рыночную цену этого товара.
     await _bump_demand(db, catalog["slug"], DEMAND_BUY)
     return {"asset": _serialize(doc), "balance": new_balance, "paid": pay_price}
 
@@ -1491,9 +1343,7 @@ async def collect_income(
     """Собрать накопленный доход (за вычетом расходов на содержание)."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    # Актив, переданный в компанию, приносит доход в бюджет компании (отдельный
-    # last_tick). Личный сбор по нему запрещён — иначе один актив платит дважды
-    # (владельцу лично И в бюджет компании).
+    # Актив компании платит в её бюджет; личный сбор запрещён — иначе двойная выплата.
     if asset.get("companyId"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Актив принадлежит компании — доход идёт в бюджет компании")
@@ -1544,17 +1394,10 @@ async def _event_income_factor(db) -> float:
 async def _collect_asset_income(db, user_id: str, asset: dict, econ: dict,
                                 event_income: float, city_bonus: float,
                                 media_factor: float = 1.0) -> float:
-    """Считает и применяет (обнуляет КД) доход одного актива, возвращает сумму.
-    Множители (econ/событие/город/СМИ) передаются готовыми, чтобы при массовом
-    сборе не пересчитывать их на каждый актив.
-
-    ``media_factor`` — репутационный множитель СМИ (media.py): применяется только
-    к бизнесам владельца (недвижимость/авто не затрагиваются разоблачением).
-
-    Присвоение накопления атомарно: last_collected сбрасывается условным
-    апдейтом по ТОМУ ЖЕ значению, что было прочитано. Если два параллельных
-    запроса читают один last_collected, апдейт сработает лишь у одного —
-    второй получит 0 (иначе доход дублировался бы, TOCTOU)."""
+    """Считает и обнуляет КД актива, возвращает сумму. Множители передаются
+    готовыми (не пересчитывать на каждый актив при массовом сборе); media_factor —
+    только к бизнесам. last_collected сбрасывается условным апдейтом по прочитанному
+    значению: параллельный сбор получит 0 (защита от двойной выплаты, TOCTOU)."""
     seen = asset.get("last_collected")
     matched = await db.user_assets.update_one(
         {"_id": asset["_id"], "last_collected": seen},
@@ -1588,9 +1431,8 @@ async def collect_all_income(
     count = 0
     async for asset in db.user_assets.find({"userId": user_id, "companyId": None}):
         if asset.get("income_per_hour", 0) <= 0:
-            # У заводов/источников статичный income_per_hour = 0 — они зарабатывают
-            # только динамически (продукция × цена из econ). Не пропускаем их:
-            # раньше «Собрать всё» молча пропускал завод и источник целиком.
+            # Заводы/источники зарабатывают динамически (income_per_hour=0 в сиде) —
+            # не пропускаем их, иначе «Собрать всё» режет инфраструктуру.
             if _infra_income_per_hour(asset, econ) <= 0 and _mining_income_per_hour(asset, econ) <= 0:
                 continue
         amount = await _collect_asset_income(db, user_id, asset, econ, event_income, city_bonus, media_factor)
@@ -1660,8 +1502,7 @@ async def upgrade_asset(
     """Улучшить актив: повышает стоимость и доход."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    # Авто не улучшаются через уровень — у них нет почасового дохода, а стоимость
-    # растят тюнингом деталей (см. /tune). Поэтому уровень авто всегда 1.
+    # Авто качаются тюнингом (/tune), не уровнем — почасового дохода нет.
     if asset.get("type") == TYPE_CAR:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
@@ -1671,9 +1512,8 @@ async def upgrade_asset(
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
-    # Уровень поднимаем условно — по тому же значению, что прочитали. Иначе два
-    # параллельных запроса, прочитав level=N, оба заплатят цену перехода с N и
-    # поднимут актив на 2·steps — уровни дешевле прайса (TOCTOU).
+    # Условный апдейт по прочитанному level: иначе параллельные запросы купят
+    # 2·steps уровней по цене одного (TOCTOU).
     res = await db.user_assets.update_one(
         {"_id": asset["_id"], "level": seen_level}, {"$inc": {"level": steps}},
     )
@@ -1743,8 +1583,7 @@ async def rename_asset(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Переименовать своё имущество/транспорт. Название игрока приоритетнее
-    каталожного: фронт показывает custom_name, если задан (customName в _serialize)."""
+    """Переименовать свой актив; имя игрока приоритетнее каталожного."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
     await db.user_assets.update_one(
@@ -1762,10 +1601,7 @@ async def hitch_trailer(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Прицепить прицеп к фуре. Правила:
-      - прицеп и фура принадлежат игроку (личные, не в компании);
-      - у фуры в meta.hookable перечислены совместимые slug прицепов;
-      - один прицеп на фуру, прицеп не может быть уже прицеплен."""
+    """Прицепить прицеп к фуре: общие владения, совместимость по meta.hookable, один прицеп на фуру."""
     user_id = str(current_user["_id"])
     trailer = await _load_owned(db, user_id, asset_id)
     if trailer.get("category") != "trailer":
@@ -1819,13 +1655,7 @@ async def buy_mining_upgrade(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Купить улучшение «Майнинг» для дома. Доступно только для недвижимости
-    с подвалом (basement > 0). Покупается ровно 1 раз — повторные вызовы
-    запрещены. Цена всегда пересчитывается сервером от basement (формула
-    econ.mining_basement_cost) — клиентское значение не используется, чтобы цену нельзя
-    было подменить. После покупки дом начинает приносить пассивный доход
-    (basement × mining_basement_income $/ч), собирается тем же /collect, что и обычный
-    доход недвижимости."""
+    """Купить «Майнинг» для дома с подвалом (1 раз); цену сервер пересчитывает от basement."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
     if asset.get("type") != TYPE_REALESTATE:
@@ -1839,10 +1669,8 @@ async def buy_mining_upgrade(
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "У этого дома нет подвала — майнинг недоступен")
     cost = _mining_cost(asset, await get_econ(db))
-    # Атомарно занимаем слот улучшения ДО списания: условие mining != True
-    # сработает только у одного из параллельных запросов, двойной оплаты нет.
-    # last_collected запоминаем: при откате (не хватило денег) его надо
-    # вернуть, иначе накопленный доход дома молча сотрётся.
+    # Слот занимаем атомарно ДО списания (mining != True проходит у одного запроса);
+    # last_collected запоминаем для отката — иначе накопленный доход сотрётся.
     prev_collected = asset.get("last_collected")
     claimed = await db.user_assets.find_one_and_update(
         {"_id": asset["_id"], "mining": {"$ne": True}},
@@ -1853,7 +1681,6 @@ async def buy_mining_upgrade(
                             "Улучшение «Майнинг» уже куплено")
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
-        # Денег не хватило — снимаем заявку и восстанавливаем окно сбора.
         rollback = {"$unset": {"mining": ""}}
         if prev_collected is None:
             rollback["$unset"]["last_collected"] = ""
@@ -1884,10 +1711,8 @@ async def sell_asset(
     """Продать актив обратно (70% текущей стоимости) + невыбранный доход."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
-    # Стоимость продажи учитывает тот же рыночный множитель, что и покупка —
-    # иначе при mult<0.7 возникает арбитраж (купил за 0.5×base, продал за
-    # 0.7×base). Множитель применяется к базовой стоимости экземпляра; тюнинг
-    # (tuning_value) и накопленный доход к рынку не привязаны.
+    # Продажа умножает ту же стоимость, что покупка: иначе при mult<0.7 арбитраж.
+    # Тюнинг и накопленный доход к рынку не привязаны.
     await _ensure_asset_market(db)
     mult = await _asset_mult(db, asset.get("slug"))
     base_value = round(_current_value(asset) - asset.get("tuning_value", 0.0), 2)
@@ -1904,7 +1729,6 @@ async def sell_asset(
         f"Продажа: {asset['name']}", balance_after=new_balance,
         meta={"slug": asset.get("slug")},
     )
-    # Продажа опускает рыночную цену этого товара.
     if asset.get("slug"):
         await _bump_demand(db, asset["slug"], -DEMAND_SELL)
     return {"sold": payout, "balance": new_balance}
@@ -1939,9 +1763,7 @@ async def transfer_to_player(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Подарить личный актив другому игроку по нику. Актив уходит целиком
-    (со всеми улучшениями/материалами) — доход по нему начнёт получать новый
-    владелец. Нельзя передавать активы, отданные компании или сдаваемые."""
+    """Подарить личный актив игроку по нику (целиком); компании и сдаваемые — нельзя."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
     if asset.get("companyId"):
@@ -1958,7 +1780,7 @@ async def transfer_to_player(
     new_owner_id = str(target["_id"])
     if new_owner_id == user_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя передать актив самому себе")
-    # Копим доход у прежнего владельца обнуляется — новый владелец начинает с чистого КД.
+    # Новый владелец начинает с чистого КД.
     await db.user_assets.update_one(
         {"_id": asset["_id"]},
         {"$set": {"userId": new_owner_id, "companyId": None, "rental": None, "last_collected": _now()}},
@@ -1979,14 +1801,8 @@ async def rent_list(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Выставить недвижимость/авто/бизнес в аренду на произвольный срок (в часах).
-    Арендатор появится через случайный диапазон часов. Цена всегда пересчитывается
-    сервером от стоимости актива, его редкости и срока (см. _rent_total) —
-    клиент выбирает только срок, поэтому её нельзя подделать.
-
-    Работает и для личных активов, и для активов компании (владелец компании
-    управляет ими) — в последнем случае выплата поступит в бюджет компании.
-    """
+    """Сдать актив в аренду на N часов; арендатор — через случайный диапазон. Цену
+    пересчитывает сервер (_rent_total), подделать нельзя; выплата компании — в её бюджет."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
     if not _is_rentable(asset):
@@ -1994,7 +1810,6 @@ async def rent_list(
                             "Сдавать можно недвижимость, авто, а из бизнесов — только IT-студию и Медиахолдинг")
     if asset.get("rental"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Объект уже сдаётся или ждёт арендатора")
-    # Итоговая цена всегда пересчитывается сервером из срока — клиентской цене не доверяем.
     price = _rent_total(asset, payload.minHours)
     wait_h = random.randint(RENT_MIN_WAIT_H, RENT_MAX_WAIT_H)
     rental = {
@@ -2031,13 +1846,8 @@ async def rent_cancel(
 
 
 async def _materials_unit_price(db: AsyncIOMotorDatabase, asset: Optional[dict] = None) -> float:
-    """Цена единицы материалов для конкретного бизнеса.
-
-    Пропорциональна часовому доходу бизнеса: единица даёт +MATERIALS_BOOST_PER_UNIT
-    к доходу, поэтому и стоить должна долю от того, что этот процент приносит.
-    Без актива (общий прайс до выбора бизнеса) считаем по самому дешёвому
-    бизнесу каталога — это нижняя граница, которую клиент показывает как «от».
-    """
+    """Цена единицы материалов: пропорциональна часовому доходу бизнеса. Без актива —
+    по самому дешёвому бизнесу (нижняя граница «от» для клиента)."""
     econ = await get_econ(db)
     mult = econ.get("economy_mult", 1.0)
     try:
@@ -2059,9 +1869,7 @@ async def materials_price(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Текущая цена материалов за единицу. Зависит от активного мирового события
-    и от самого бизнеса (цена пропорциональна его доходу) — без assetId вернём
-    нижнюю границу по каталогу."""
+    """Цена единицы материалов (событие + доход бизнеса); без assetId — нижняя граница."""
     asset = None
     if assetId:
         asset = await _load_owned(db, str(current_user["_id"]), assetId)
@@ -2080,9 +1888,7 @@ async def buy_materials(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Закупить материалы для бизнеса — временно (на MATERIALS_DURATION_H)
-    поднимает его доход. Цена за единицу пересчитывается сервером от текущего
-    мирового события — клиентская цена никогда не используется."""
+    """Закупить материалы: временный буст дохода, цену пересчитывает сервер."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
     if asset.get("type") != TYPE_BUSINESS:
@@ -2210,17 +2016,11 @@ if __name__ == "__main__":
     villa = {"type": "realestate", "price": 160000, "rarity": "rare", "level": 1, "tuning_value": 0.0}
     assert 9000 <= _rent_daily_rate(villa) <= 12000, _rent_daily_rate(villa)
 
-    # Суммарная доходность каждого актива каталога — 24–31%/сутки (окупаемость
-    # 3.2–4.2 дня). Единый ориентир для всей экономики: активы, ферма и компании
-    # должны отбиваться за сопоставимое время, иначе один класс обесценивает остальные.
-    # Инфраструктура (admin-re-*/*factory/source/warehouse) проверяется отдельно:
-    # источники/пекарня зарабатывают физическими ресурсами (production.py), склады
-    # денег не приносят, а лестница admin-re-* исторически ниже коридора. Бизнесы
-    # исключены: их пассив намеренно урезан в BUSINESS_INCOME_DIVISOR раз и лежит
-    # ниже полосы — заработок смещён в активные механики (материалы/cityroof/СМИ).
+    # Суммарная доходность актива каталога — 24–31%/сутки (окупаемость 3.2–4.2 дня):
+    # единый коридор для всей экономики. Инфраструктура/бизнесы вне проверки:
+    # физические ресурсы (production.py) и урезанный пассив (BUSINESS_INCOME_DIVISOR).
     for _c in CATALOG:
-        # Недвижимость исключена: её пассивный доход отключён (дома живут на
-        # аренде + майнинге) — assert падал на studio ещё на чистом HEAD.
+        # Недвижимость исключена: пассив отключён, дома живут на аренде + майнинге.
         if _c["slug"].startswith("admin-") or _c["type"] in (TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE, TYPE_BUSINESS, TYPE_REALESTATE):
             continue
         _inst = _c | {"level": 1, "tuning_value": 0.0}
@@ -2248,18 +2048,15 @@ if __name__ == "__main__":
     assert _rent_daily_rate(common_re) < _rent_daily_rate(uncommon_re) < _rent_daily_rate(villa) \
         < _rent_daily_rate(epic_re) < _rent_daily_rate(legendary_re)
 
-    # Настоящий каталог: дешёвая студия НЕ должна почти совпадать по доходности
-    # с элитным замком (старый баг — единый пол в $2000 для всех активов).
+    # Дешёвая студия не должна догонять замок (старый баг: плоский пол $2000).
     studio_rate = _rent_daily_rate(CATALOG_BY_SLUG["studio"] | {"level": 1, "tuning_value": 0.0})
     castle_rate = _rent_daily_rate(CATALOG_BY_SLUG["castle"] | {"level": 1, "tuning_value": 0.0})
     assert studio_rate < 1500, studio_rate
     assert castle_rate > 100000, castle_rate
     assert castle_rate / studio_rate > 100
 
-    # Бизнесы и авто тоже сдаются в аренду — у каждого своя ставка через rarity,
-    # добавленную в каталог (не одинаковый коэффициент для всего имущества).
-    # НО из бизнесов сдаются только IT-студия и Медиахолдинг (у остальных нет
-    # полезной арендатору механики), поэтому у бизнеса важен slug.
+    # Ставка аренды своя через rarity; из бизнесов важён slug — сдаются только
+    # IT-студия и Медиахолдинг.
     studio_biz = CATALOG_BY_SLUG["itstudio_basic"] | {"level": 1, "tuning_value": 0.0}
     media_biz = CATALOG_BY_SLUG["media_holding"] | {"level": 1, "tuning_value": 0.0}
     plain_biz = CATALOG_BY_SLUG["coffee"] | {"level": 1, "tuning_value": 0.0}
@@ -2281,9 +2078,8 @@ if __name__ == "__main__":
     assert _rent_rate_per_hour(non_rentable) == 0.0
     assert not _is_rentable(non_rentable)
 
-    # Купленный на пике рынка актив окупается за то же время, что купленный на
-    # просадке: доход, расход и аренда масштабируются вместе с ценой (_price_mult).
-    # Иначе покупка при ×2.5 растягивала бы окупаемость с 3.3 до 8 суток.
+    # Покупка на пике окупается как на просадке: доход/расход/аренда масштабируются
+    # _price_mult (иначе ×2.5 растягивал бы окупаемость с 3.3 до 8 суток).
     _base = CATALOG_BY_SLUG["itstudio_premium"] | {"level": 1, "tuning_value": 0.0}
     def _payback_pct(mult):
         _inst = _base | {"price_mult": mult}
@@ -2294,17 +2090,12 @@ if __name__ == "__main__":
     # Активы, купленные до появления поля, считаются как ×1.0.
     assert _income_per_hour(_base) == _income_per_hour(_base | {"price_mult": 1.0})
 
-    # Качать актив должно быть не хуже, чем купить ещё один: окупаемость улучшения
-    # не растёт с уровнем и держится в том же коридоре, что покупка нового.
-    # (Старый баг: цена улучшения base*0.4*level при плоском приросте дохода —
-    # L1→L2 окупался за 3.6 суток, L5→L6 за 18.)
+    # Апгрейд не хуже покупки нового: окупаемость улучшения не растёт с уровнем.
     def _daily(asset):
         return (_income_per_hour(asset) - _upkeep_per_hour(asset)) * 24 + _rent_daily_rate(asset)
     for _c in CATALOG:
         if _c["type"] in (TYPE_CAR, TYPE_FACTORY, TYPE_SOURCE, TYPE_WAREHOUSE, TYPE_BUSINESS, TYPE_REALESTATE):
-            continue   # авто — тюнинг; инфраструктура/бизнесы/недвижимость — вне коридора:
-                       # у домов пассив отключён (окупаемость апгрейда считается только
-                       # арендой и с ориентиром не совпадает), бизнесы урезаны ÷DIVISOR
+            continue   # авто — тюнинг; дома/бизнесы/инфраструктура вне коридора
         _lvl1 = _c | {"level": 1, "tuning_value": 0.0}
         _buy_days = _c["price"] / _daily(_lvl1)
         for _lvl in (1, 5, 10):
@@ -2312,6 +2103,24 @@ if __name__ == "__main__":
             _gain = _daily(_c | {"level": _lvl + 1, "tuning_value": 0.0}) - _daily(_inst)
             _days = _upgrade_cost(_inst) / _gain
             assert _days <= _buy_days + 0.5, f"{_c['slug']} ур.{_lvl}: апгрейд {_days:.1f}д против покупки {_buy_days:.1f}д"
+    # Бизнесы (сознательно вне коридора выше): маржа НЕ зависит от уровня —
+    # содержание растёт вместе с доходом (LEVEL_INCOME_STEP), и прибыль на
+    # L11 отстаёт от стоимости (×3.5 против ×4.5): стек уровней отбивается
+    # в UPGRADE_COST_PCT/LEVEL_INCOME_STEP = 1.28 раза ДОЛЬШЕ покупки нового
+    # актива на любом уровне — диверсификация выгоднее моносборства.
+    for _c in CATALOG:
+        if _c["type"] != TYPE_BUSINESS or _c["slug"].startswith("admin-"):
+            continue
+        _l1 = _c | {"level": 1, "tuning_value": 0.0}
+        _net1 = _income_per_hour(_l1) - _upkeep_per_hour(_l1)
+        _margin1 = _net1 / _income_per_hour(_l1)
+        for _lvl in (1, 5, 11):
+            _inst = _c | {"level": _lvl, "tuning_value": 0.0}
+            _inc = _income_per_hour(_inst)
+            assert abs((_inc - _upkeep_per_hour(_inst)) / _inc - _margin1) < 0.01, (_c["slug"], _lvl)
+        _l11 = _c | {"level": 11, "tuning_value": 0.0}
+        _net11 = _income_per_hour(_l11) - _upkeep_per_hour(_l11)
+        assert _net11 / _net1 < _current_value(_l11) / _current_value(_l1), _c["slug"]
     # Цена улучшения следует за ценой покупки — как и доход экземпляра.
     assert _upgrade_cost(_base | {"price_mult": 2.5}) == _upgrade_cost(_base) * 2.5
 
@@ -2365,8 +2174,7 @@ async def admin_grant_asset(
     _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Выдать актив игроку бесплатно: без списания денег, записи в ledger
-    и влияния на рыночный спрос. Лимиты владения действуют."""
+    """Выдать актив игроку бесплатно (без ledger и спроса); лимиты владения действуют."""
     if not ObjectId.is_valid(user_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
     target = await db.users.find_one({"_id": ObjectId(user_id)})

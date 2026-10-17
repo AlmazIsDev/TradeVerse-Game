@@ -1,47 +1,29 @@
-// Каталог из админ-редактора цен (PriceEditorTab) — подмешивается в магазин,
-// чтобы покупатель видел все позиции, цены на которые настраивает админ.
-//
-// Бэкенд (см. backend/shop.py) эти id пока НЕ знает: покупка/продажа
-// отключены до того, как бэкенд будет дописан. Карточки помечаются флагом
-// `fromAdmin: true`, и в UI кнопка «Купить» превращается в «Скоро».
-//
-// В ADMIN_SHOP_CATALOG попадают: gpu, cpu, case, supplies, а также дома
-// (realestate, category='house') — последние помечены `fromAdmin: true`,
-// покупка пока недоступна, но витрина нужна, чтобы игрок видел все доступные
-// дома и их цены прямо в магазине (а не только на вкладке «Рынок»).
-//
-// Хешрейт для GPU извлекается из суффикса имени (Q320→320, D1060→1060, …).
-// Для CPU берётся multiplier как множитель, для case — maxGpus → slots.
+// Зеркало админ-серий (backend/shop.py:_build_admin_catalog) для PriceEditorTab
+// и вкладки «Рынок». id и формулы цен дублируют бэкенд-контракты (shop.py, assets.py).
+// Хешрейт GPU извлекается из суффикса имени (Q320→320, D1060→1060, …);
+// для CPU multiplier — множитель, для case — maxGpus → slots.
 
 import {
   GPU_PRODUCTS, CPU_PRODUCTS, CASE_PRODUCTS,
   SUPPLIES_PRODUCTS,
   REAL_ESTATE_PRODUCTS, BUSINESS_PRODUCTS,
 } from './shopCatalog'
-// Каталог машин/фур/прицепов для редактора цен (PriceEditorTab).
-// Импортируем именно CARS_CATALOG, потому что он уже плоский список.
+// CARS_CATALOG уже плоский список — нормализация не нужна.
 import { CARS_CATALOG } from './carsCatalog'
 
 // ── GPU: 90 моделей, 3 бренда × 4 линейки × 6 тиров ──────────────────────────
 function _gpuHashrate(name) {
-  // Ищем хвост вида "Q320", "T540", "SP380", "IF1000", "G1060" и т.п.
-  // Достаём число после последней буквы (1–4 цифры).
   const m = name.match(/([A-Z]+)(\d{2,4})$/)
   if (!m) return 0
-  // Для линеек типа "IF" (Inferno) буква перед числом = 'F' — берём просто число.
-  // Для "G" в Genesis — то же самое.
   const n = parseInt(m[2], 10)
   return n
 }
 
 function _gpuPower(name) {
-  // Грубая оценка: 120 + hashrate*0.05 (как в backend/shop.py:85).
+  // 120 + hashrate*0.05 (как backend/shop.py:_gpu_power).
   const h = _gpuHashrate(name)
   return Math.round(120 + h * 0.05)
 }
-
-// Цвет карточки для админских GPU — единый заливной (брендонезависимо),
-// реальные тиры покажутся, когда бэкенд начнёт отдавать эти позиции.
 
 export const ADMIN_GPU_CATALOG = GPU_PRODUCTS.map((p) => {
   const hashrate = _gpuHashrate(p.name)
@@ -55,15 +37,12 @@ export const ADMIN_GPU_CATALOG = GPU_PRODUCTS.map((p) => {
     fromAdmin: true,
     color: '#818cf8', // брендонезависимо, общий цвет gpu
     specs: { hashrate, power },
-    // Базовая цена по той же формуле, что в backend/shop.py:PRICE_PER_HASH=6.
-    // Множитель категории и economy_mult применит сервер при реальной покупке.
+    // Базовая цена по backend/shop.py:PRICE_PER_HASH=6; множитель категории и economy_mult — на сервере.
     price: hashrate * 6,
   }
 })
 
 // ── CPU: 90 моделей, 3 бренда × 4 линейки × 6 тиров ──────────────────────────
-// В админ-справочнике CPU_PRODUCTS уже есть maxGpus (слоты под GPU) и multiplier.
-// Считаем «ядра» = maxGpus, чтобы specLine('cpu', …) выводил осмысленное.
 function _cpuPower(multiplier) {
   return Math.round(45 + (multiplier || 1) * 25)
 }
@@ -98,7 +77,7 @@ export const ADMIN_CASE_CATALOG = CASE_PRODUCTS.map(p => ({
   price: Math.round((p.maxGpus || 1) * 500),
 }))
 
-// ── SUPPLIES: расходники (есть в админке, но бэкенд их не отдаёт) ────────────
+// ── SUPPLIES: расходники ─────────────────────────────────────────────────────
 export const ADMIN_SUPPLIES_CATALOG = [
   {
     id: 'admin-supply-cooling-fluid',
@@ -108,7 +87,7 @@ export const ADMIN_SUPPLIES_CATALOG = [
     fromAdmin: true,
     color: '#f97316',
     specs: { kind: 'cooling' },
-    price: 240, // оценка; админ правит в редакторе цен
+    price: 240, // админ правит в редакторе цен
   },
   {
     id: 'admin-supply-gpu-chip',

@@ -1,24 +1,8 @@
-"""Центральный рынок — лоты игроков (p2p торговля).
+"""Центральный рынок: p2p-лоты игроков (коллекция market_lots).
 
-Игра уже имеет витрины (shop.py — железо, assets.py — активы), но игроки не
-могут торговать между собой. Этот роутер добавляет лоты: игрок выставляет
-принадлежащее ему имущество, другой игрок покупает.
-
-Два вида лотов:
-  - kind="asset"    — экземпляр из user_assets (дом/бизнес/авто/завод…).
-                      Экземпляр уникален, qty всегда 1; при покупке право
-                      собственности переносится на покупателя.
-  - kind="hardware" — железо из user_hardware (один документ = одна единица).
-                      Лот продаёт qty одинаковых свободных (farmId=None)
-                      экземпляров одного itemId; при покупке первые qty
-                      свободных документов переходят покупателю.
-
-Деньги всегда идут через ledger (CAT_MARKET), цена задаётся продавцом —
-сервер не считает её (это p2p-цена, а не витринная), но валидирует её
-диапазон и владение товаром. Режим «свободный предмет» фронтенда не
-поддерживается намеренно: продавать можно только то, чем владеешь.
-
-Коллекция: market_lots (индекс в main.py).
+kind="asset" — экземпляр user_assets, qty=1, право собственности переносится;
+kind="hardware" — qty свободных (farmId=None) единиц одного itemId. Цену задаёт
+продавец, сервер валидирует диапазон и владение; деньги — только через ledger.
 """
 from __future__ import annotations
 
@@ -55,12 +39,9 @@ def _oid(s: str) -> ObjectId:
 
 
 async def _rollback_debit(db, user_id: str, total: float) -> None:
-    """Списание при откате сделки. В отличие от adjust_balance не требует
-    достаточного остатка: откат обязан исполниться — иначе при нехватке
-    средств у продавца сделка «напечатает» деньги (adjust_balance просто
-    no-op'ается и возвращает None). Уводит баланс в минус, если продавец
-    успел потратить выручку.
-    """
+    """Откат выручки продавцу: в отличие от adjust_balance не требует остатка —
+    иначе сделка напечатала бы деньги. Уводит баланс в минус, если выручку
+    уже потратили."""
     result = await db.users.find_one_and_update(
         {"_id": ObjectId(user_id)},
         {"$inc": {"balance": -total}},
@@ -112,10 +93,8 @@ class LotBuy(BaseModel):
 
 
 async def _available_hw_qty(db, seller_id: str, item_id: str) -> int:
-    """Сколько свободных (не установленных на ферму) единиц железа у продавца.
-
-    Стойки — общий пул слотов (farmId у них всегда None): задействованные
-    в фермах экземпляры свободными не считаются."""
+    """Свободные единицы железа. Стойки: farmId всегда None, поэтому занятые в
+    фермах исключаем через in_use_rack_ids, а не фильтром по farmId."""
     q: dict = {"userId": seller_id, "itemId": item_id, "farmId": None}
     hw = await db.user_hardware.find_one(
         {"userId": seller_id, "itemId": item_id}, {"category": 1})
@@ -138,8 +117,7 @@ async def _serialize_lots(db, lots: list[dict]) -> list[dict]:
                 "name": u.get("username", "—"),
                 "avatar": u.get("avatar"),
             }
-    # Старые лоты могли сохраниться без name — добираем: железо из каталога
-    # витрины, активы из user_assets (одним запросом).
+    # Лоты без name (старые): добираем одним запросом — железо из каталога, активы из user_assets.
     asset_ids = [
         ObjectId(l["itemId"]) for l in lots
         if l.get("kind") == "asset" and not l.get("name") and ObjectId.is_valid(l.get("itemId", ""))
@@ -291,11 +269,7 @@ async def buy_lot(
     current_user: dict = Depends(require_allowed("centralmarket")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Купить из лота qty штук. Атомарно по лоту; деньги — только через ledger.
-
-    Актив: право собственности переносится целиком. Железо: первые qty свободных
-    единиц переходят покупателю, лот уменьшается (или закрывается).
-    """
+    """Купить qty из лота: атомарная броня количества, перепроверка владения, деньги через ledger."""
     user_id = str(current_user["_id"])
     qty = max(1, int(payload.qty))
 
@@ -332,8 +306,7 @@ async def buy_lot(
             from assets import check_type_limit
             await check_type_limit(db, user_id, src["type"])
 
-    # Продавец мог быть удалён после создания лота — проверяем до брони, чтобы
-    # не оказаться с деньгами покупателя и без получателя выручки.
+    # Продавец мог исчезнуть после создания лота — проверка до движения денег.
     seller_id = lot["sellerId"]
     seller = await db.users.find_one({"_id": ObjectId(seller_id)}, {"balance": 1})
     if not seller:
@@ -341,12 +314,10 @@ async def buy_lot(
                                         {"$set": {"status": "cancelled"}})
         raise HTTPException(status.HTTP_409_CONFLICT, "Продавец больше недоступен")
 
-    # Деньги: у покупателя должно хватить средств, иначе лот возвращается.
     buyer_balance = await adjust_balance(db, user_id, -total)
     if buyer_balance is None:
         if lot_status == "sold":
-            # remaining == 0 → статус sold, параллельно докупить было нельзя:
-            # честно разворачиваем и бронь, и пометку покупателя.
+            # sold: откатываем и бронь, и пометку покупателя ($unset).
             await db.market_lots.update_one(
                 {"_id": lot["_id"], "status": "sold", "buyerId": user_id},
                 {"$set": {"status": "active"}, "$inc": {"qty": qty},
@@ -363,9 +334,8 @@ async def buy_lot(
     seller_balance = await adjust_balance(db, seller_id, total)
 
     if lot["kind"] == "asset":
-        # Повторная проверка передаваемости в момент продажи (при создании лота
-        # актив мог уйти в компанию или в аренду) — иначе покупатель «вырвет»
-        # его у компании/арендатора.
+        # Перепроверка передаваемости: с момента создания лота актив мог уйти в
+        # компанию/аренду — иначе покупатель вырвал бы его оттуда.
         asset = await db.user_assets.find_one_and_update(
             {"_id": _oid(lot["itemId"]), "userId": seller_id,
              "companyId": None, "rental.status": {"$ne": "rented"}},
@@ -381,10 +351,9 @@ async def buy_lot(
                                             {"$set": {"status": "cancelled"}})
             raise HTTPException(status.HTTP_409_CONFLICT, "Актив больше недоступен")
 
-        # Актив уходит покупателю вместе с привязанным состоянием: майнинг-фермы
-        # подвала (привязаны по houseId) и поля (user_fields по assetId). Без
-        # этого продавец продолжал бы получать доход с проданного подвала/поля,
-        # а вместимость подвала дублировалась бы покупателю.
+        # Актив переходит с привязанным состоянием: фермы подвала (houseId) и
+        # поля (user_fields.assetId). Иначе продавец собирал бы доход с проданного,
+        # а вместимость подвала дублировалась покупателю.
         await db.mining_farms.update_many(
             {"houseId": asset["_id"], "userId": seller_id},
             {"$set": {"userId": user_id}},
@@ -421,9 +390,8 @@ async def buy_lot(
             {"$set": {"userId": user_id, "farmId": None, "purchased_at": _now()}},
         )
         if moved.modified_count < qty:
-            # Часть единиц ушла на ферму — откатываем перенос и сделку целиком.
-            # Единицы взаимозаменяемы (один itemId), поэтому возвращаем ровно
-            # столько, сколько реально переехало.
+            # Часть ушла на ферму — откат сделки целиком; единицы взаимозаменяемы,
+            # возвращаем ровно переехавшие (фильтр по userId покупателя).
             if moved.modified_count:
                 await db.user_hardware.update_many(
                     {"_id": {"$in": [h["_id"] for h in free]},

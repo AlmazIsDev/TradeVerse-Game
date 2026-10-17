@@ -11,14 +11,11 @@ import LeaderboardTab from './LeaderboardTab'
 import MarketTab from './MarketTab'
 import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
-// InventoryTab — вкладка «Инвентарь»: обзор владений, имущество, железо.
 import InventoryTab from './InventoryTab'
 import MyCompanyTab from './MyCompanyTab'
-// CarsTab — вкладка «Автосалон» (покупка авто через серверный каталог).
 import CityRoofTab from './CityRoofTab'
 import MiningTab from './MiningTab'
 import CarsTab from './CarsTab'
-// PlayerBusinessesTab — витрина бизнесов игроков с покупкой товаров.
 import PlayerBusinessesTab from './PlayerBusinessesTab'
 import SettingsPage from './SettingsPage'
 import AdminPanel from './AdminPanel'
@@ -46,15 +43,10 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
 
   const isAdmin = user?.role === 'admin'
 
-  // Realtime через WebSocket: обновляет баланс и уведомления без перезагрузки.
-  // Polling в Header остаётся резервным механизмом, если WS недоступен.
-  //
-  // Access-токен ротируется каждые ~30 минут (см. ACCESS_TOKEN_EXPIRE_MINUTES
-  // в backend/auth.py), а сервер валидирует токен только один раз — при
-  // хендшейке (backend/ws.py). Поэтому при любом закрытии сокета мы обязаны
-  // переподключаться со свежим токеном из localStorage, а не переиспользовать
-  // токен, снятый при монтировании компонента — иначе после первой ротации
-  // переподключение с устаревшим токеном будет неизменно отклоняться сервером.
+  // Realtime: баланс/уведомления через WS, polling в Header — резерв.
+  // Access-токен ротируется каждые ~30 мин (backend/auth.py), сервер валидирует
+  // его только при хендшейке (backend/ws.py) — поэтому каждый реконнект обязан
+  // брать СВЕЖИЙ токен из localStorage, а не снятый при монтировании.
   useEffect(() => {
     let socket
     let ping
@@ -77,9 +69,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         let stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
         let token = stored.token
         if (!token) return
-        // Истёкший access-токен сервер отклонит сокет (403). Раньше реконнект
-        // каждые 5с с мёртвым токеном зацикливался и сыпал 403 в логи часами —
-        // поэтому перед подключением обновляем токен, если он истёк/истекает.
+        // Истёкший токен сервер отклонит сокет (403) — обновляем перед
+        // подключением, если истёк/истекает.
         if ((getTokenExpiryMs(token) ?? Infinity) <= Date.now() + 1000) {
           if (!stored.refresh_token) return   // сессия мертва — forceLogout уже сработал
           await refreshAndReschedule()
@@ -98,10 +89,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
           if (data?.type === 'balance' && data.balance != null) {
             handleBalanceChange(data.balance)
           } else if (data && !GLOBAL_BROADCAST_TYPES.has(data.type)) {
-            // Глобальные бродкасты (рынок/лидерборд/тики цен) шлются ВСЕМ игрокам
-            // на каждую сделку/тик — они не меняют баланс текущего игрока, поэтому
-            // не должны вызывать fetchCurrentUser (иначе N-кратный fan-out на всех).
-            // Соответствующие вкладки обновляют свои данные сами через tv:realtime.
+            // Бродкасты не меняют баланс этого игрока — вкладки обновляются сами
+            // через tv:realtime (см. GLOBAL_BROADCAST_TYPES выше).
             scheduleSync()
           }
           // Ретрансляция события другим вкладкам (напр. MiningTab слушает 'tv:realtime').
@@ -113,9 +102,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         socket.onclose = () => {
           clearInterval(ping)
           if (cancelled) return
-          // Переподключаемся с актуальным (возможно, уже обновлённым) токеном.
-          // Экспоненциальный backoff (макс. 30с): не долбим сервер при его
-          // недоступности или отклонении сокета.
+          // Экспоненциальный backoff (макс. 30с) — не долбим сервер при
+          // недоступности/отклонении сокета.
           reconnectTimer = setTimeout(connect, Math.min(30000, 1000 * 2 ** reconnectAttempts++))
         }
       } catch { /* ignore — останется polling */ }

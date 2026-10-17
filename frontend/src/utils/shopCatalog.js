@@ -33,7 +33,6 @@ export const GPU_PRODUCTS = [
   { id: 'gpu-vlt-0', name: 'Voltronix Pulse V100', hashrate: 40000, price: null, company: 'Voltronix', line: 'Pulse' },
   { id: 'gpu-vlt-1', name: 'Voltronix Storm V200', hashrate: 55000, price: null, company: 'Voltronix', line: 'Storm' },
   { id: 'gpu-vlt-2', name: 'Voltronix Quantum V300', hashrate: 80000, price: null, company: 'Voltronix', line: 'Quantum' },
-  // Lux
   { id: 'lux-gpu', name: 'Voltronix Zenith V900', hashrate: 150000, price: null, company: 'Voltronix', line: 'Zenith' },
 ]
 
@@ -62,7 +61,6 @@ export const CPU_PRODUCTS = [
   { id: 22, name: 'ArchiveCore Archive A330', maxGpus: 16, multiplier: 1.35, price: null, company: 'ArchiveCore', line: 'Archive' },
   { id: 23, name: 'ArchiveCore Genesis G410', maxGpus: 24, multiplier: 1.55, price: null, company: 'ArchiveCore', line: 'Genesis' },
   { id: 24, name: 'ArchiveCore Genesis G420', maxGpus: 32, multiplier: 1.75, price: null, company: 'ArchiveCore', line: 'Genesis' },
-  // Lux
   { id: 'lux-cpu', name: 'Quantum Core Q64X', maxGpus: 64, multiplier: 2.10, price: null, company: 'Quantum', line: 'Q64X' },
 ]
 

@@ -1,18 +1,7 @@
-// Единый источник правды для оформления.
-//
-// Две независимые оси, обе сохраняются в localStorage и применяются к
-// <html>, переопределяя только слой токенов в index.css — вся дизайн-система
-// реагирует автоматически:
-//
-//   • База (data-theme):  'light' | 'dark' | 'tradeverse'
-//        полные палитры поверхностей/текста/теней.
-//   • Акцент:             'default' | '<hex>'
-//        переопределяет семейство --color-accent инлайн-переменными поверх
-//        любой базы. 'default' — снять оверрайды (берётся акцент базы).
-//
-// Первичное применение (до отрисовки, чтобы не было вспышки) делает встроенный
-// скрипт в index.html; здесь — рантайм-переключение и подписка (событие
-// 'tv:theme' для canvas-графиков, которые не видят CSS-переменные).
+// Две оси в localStorage, применяются к <html> поверх токенов index.css: база
+// data-theme ('light'|'dark'|'tradeverse') и акцент ('default' = снять оверрайды
+// | hex, переопределяет семейство --color-accent). До первой отрисовки применяет
+// инлайн-скрипт index.html; здесь — рантайм и событие 'tv:theme' для canvas.
 
 export const THEME_KEY = 'tradeverse_theme'
 export const ACCENT_KEY = 'tradeverse_accent'
@@ -26,7 +15,6 @@ export const ACCENT_PRESETS = {
 
 const META_BG = { light: '#f5f5f7', dark: '#000000', tradeverse: '#0f1117' }
 
-// ── helpers ──────────────────────────────────────────────────────────────
 function clamp(n) { return Math.max(0, Math.min(255, Math.round(n))) }
 
 /** '#rgb' | '#rrggbb' → {r,g,b} | null. */
@@ -55,7 +43,6 @@ function luminance({ r, g, b }) {
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
 }
 
-// ── state getters ──────────────────────────────────────────────────────────
 export function getTheme() {
   if (typeof window === 'undefined') return 'light'
   const s = window.localStorage.getItem(THEME_KEY)
@@ -70,7 +57,6 @@ export function getAccent() {
   return hexToRgb(s) ? s : 'default'
 }
 
-// ── apply ──────────────────────────────────────────────────────────────────
 /** Применяет инлайн-акцент (или снимает его при 'default'). Экспортируется,
  *  чтобы boot-скрипт и рантайм шли одним путём. */
 export function applyAccentVars(accent) {
@@ -97,7 +83,6 @@ export function applyAccentVars(accent) {
   root.style.setProperty('--on-accent', luminance(rgb) > 0.55 ? '#1d1d1f' : '#ffffff')
 }
 
-/** Применяет базовую тему (поверхности) + текущий/переданный акцент. */
 export function applyTheme(base, accent = getAccent()) {
   const next = BASES.includes(base) ? base : 'light'
   const root = document.documentElement

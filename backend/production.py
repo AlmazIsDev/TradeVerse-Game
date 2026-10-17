@@ -1,32 +1,8 @@
-"""Производство: источники → фуры → склады/пекарня → склад.
+"""Производство: источники → фуры → склады/пекарня; деньги — только через ledger.
 
-Цепочка поставок:
-  * источник (шахта/лесопилка) добывает ресурс в СВОЁ хранилище
-    (ёмкость = meta.capacity × уровень, уровень качается апгрейдом актива);
-  * поле добывает урожай фермерской механикой (farm.py), фуры возят урожай
-    с поля на склад или в пекарню;
-  * фуры (авто category=truck) назначаются на источник: до 5 на выход; у
-    пекарни два потока — вход (пшеница) и выход (хлеб), до 5 фур в каждом;
-  * склад принимает ресурсы, меню управления показывает все ресурсы и
-    позволяет продать их в деньги;
-  * пекарня (factory, meta.produces='bread'): 2 кг пшеницы → 1 кг хлеба.
-
-Модель данных:
-  user_assets.prod = {
-      workers: int,            # 0..50
-      food: float,             # кг хлеба (еда работников) на источнике
-      storage: {res_id: qty},  # запас ресурса в хранилище источника/пекарни
-      storageLevel: int,       # 1..10
-      destinationId: str|None, # куда возим (склад или пекарня)
-      inputId: str|None,       # откуда пекарне возят пшеницу
-      trucks: {input: [assetId], output: [assetId]},
-      ticked_at: datetime,     # последний производственный тик
-  }
-  user_assets.storage = {res_id: qty}   # склад: запас ресурсов (кг)
-  car.hauling = {until, cargo, toId, fromId}  # активный рейс фуры
-
-Деньги — только через ledger. Цены ресурсов — RESOURCES_BY_ID base_price ×
-economy_mult.
+Фуры до 5 на поток, рейс фиксированный (trip_minutes); пекарня 2:1 пшеница→хлеб.
+Эффективность = workers/штат (×2 потолок, 0 → стоит); еда 0.5 кг/работник/час,
+голодные ×0.6. Ёмкость = meta.capacity × уровень (1..10); поле — склад farm.py.
 """
 from __future__ import annotations
 
@@ -67,7 +43,6 @@ def _aware(dt) -> Optional[datetime]:
 
 
 def _is_bakery(asset: dict) -> bool:
-    """Пекарня — завод с meta.produces='bread' (см. assets._ADMIN_MARKET_FACTORIES)."""
     return asset.get("type") == "factory" and (asset.get("meta") or {}).get("produces") == "bread"
 
 
@@ -104,10 +79,8 @@ def _prod_state(asset: dict) -> dict:
 
 
 def _storage_cap(asset: dict) -> float:
-    """Ёмкость хранилища юнита (кг) = meta.capacity × уровень (1..10).
-
-    У поля capacity не используется: урожай копится в складе поля (farm.py),
-    который качается той же prod.storageLevel (см. farm.py _storage_cap)."""
+    """Ёмкость = meta.capacity × уровень (1..10). У поля не используется: его
+    склад копится в farm.py (тот же prod.storageLevel)."""
     meta = asset.get("meta") or {}
     cap = float(meta.get("capacity") or 0)
     if cap <= 0:
@@ -122,8 +95,7 @@ def _warehouse_cap(asset: dict) -> float:
 
 
 def _workers_factor(workers: int, asset: dict) -> float:
-    """Эффективность штата: 0 работников → производство стоит; далее линейно
-    от штатного состава (meta.employees) до потолка ×2."""
+    """0 работников → производство стоит; далее workers/штат до потолка ×2."""
     if workers <= 0:
         return 0.0
     base = int(asset.get("employees") or asset.get("meta", {}).get("employees") or 1)
@@ -131,7 +103,6 @@ def _workers_factor(workers: int, asset: dict) -> float:
 
 
 def _food_factor(food: float, need: float) -> float:
-    """Еда: полная порция → ×1.0, иначе голодный ×0.6."""
     if need <= 0:
         return _cfg()["fed_factor"]
     return _cfg()["fed_factor"] if food >= need else _cfg()["hungry_factor"]
@@ -219,7 +190,6 @@ def _serialize_truck(asset: dict) -> dict:
 
 
 def _resource_price(res: str, econ: dict) -> float:
-    """Цена продажи 1 ед. ресурса (base_price × economy_mult)."""
     rec = RESOURCES_BY_ID.get(str(res or ""))
     if not rec:
         return 0.0
@@ -227,12 +197,12 @@ def _resource_price(res: str, econ: dict) -> float:
 
 
 def _food_unit_price(econ: dict) -> float:
-    """Цена закупки 1 кг хлеба для работников (base_price × economy_mult)."""
+    """Закупка 1 кг хлеба для работников."""
     return _resource_price("bread", econ)
 
 
 def _storage_upgrade_cost(asset: dict) -> float:
-    """Цена следующего уровня хранилища = base_price × 10% × новый уровень."""
+    """Следующий уровень = price × storage_cost_pct × новый уровень."""
     level = max(1, int((asset.get("prod") or {}).get("storageLevel", 1)))
     pct = float(_cfg()["storage_cost_pct"])
     return round(float(asset.get("price", 0)) * pct * (level + 1), 2)
@@ -242,8 +212,7 @@ def _storage_upgrade_cost(asset: dict) -> float:
 
 
 def _store_add(store: dict, cap: float, res: str, qty: float) -> float:
-    """Зачисляет qty ресурса в store, не превышая cap (суммарно). Возвращает
-    фактически принятое количество. Мутирует store."""
+    """Зачисляет до cap суммарно; мутирует store, возвращает принятое."""
     if cap <= 0 or qty <= 0:
         return 0.0
     used = sum(float(v) for v in store.values())
@@ -255,7 +224,7 @@ def _store_add(store: dict, cap: float, res: str, qty: float) -> float:
 
 
 def _store_take(store: dict, res: str, qty: float) -> float:
-    """Списывает до qty ресурса из store. Возвращает фактически списанное."""
+    """Списывает до qty; возвращает фактическое."""
     have = float(store.get(res, 0.0))
     take = min(qty, have)
     if take > 0:
@@ -305,8 +274,7 @@ async def _tick_arrivals(db, now: datetime) -> None:
             await db.user_assets.update_one({"_id": dest["_id"]}, {"$set": {"storage": store}})
         else:
             await db.user_assets.update_one({"_id": dest["_id"]}, {"$set": {"prod.storage": store}})
-        # Груз, не поместившийся в получатель, остаётся на фуре до следующего
-        # прибытия: hauling сохраняется с until=now (разгрузится следующим тиком).
+        # Непоместившийся груз остаётся на фуре: until=now → разгрузится следующим тиком.
         await db.user_assets.update_one(
             {"_id": truck["_id"]},
             {"$set": {"hauling": ({"until": now, "cargo": left, "toId": dest_id, "fromId": h.get("fromId")}
@@ -315,8 +283,7 @@ async def _tick_arrivals(db, now: datetime) -> None:
 
 
 def _load_cargo(store: dict, cap_kg: float) -> dict:
-    """Погрузка: берёт из store ресурсы под грузоподъёмность cap_kg (кг).
-    Сначала самые большие стаки. Мутирует store, возвращает груз {res: qty}."""
+    """Берёт до cap_kg, крупные стаки вперёд; мутирует store."""
     cargo: dict = {}
     room = float(cap_kg)
     for res, qty in sorted(store.items(), key=lambda kv: -float(kv[1])):
@@ -333,8 +300,7 @@ def _load_cargo(store: dict, cap_kg: float) -> dict:
 
 
 async def _truck_cargo_kg(db, truck: dict) -> float:
-    """Грузоподъёмность фуры с учётом прицепленного прицепа (assets.py /hitch).
-    Прицеп хранится на документе прицепа (hitchedTo -> _id фуры)."""
+    """Грузоподъёмность + прицеп: ссылка hitchedTo лежит на документе прицепа."""
     base = float((truck.get("meta") or {}).get("cargoKg") or 0)
     tr = await db.user_assets.find_one(
         {"hitchedTo": truck["_id"], "userId": truck["userId"], "category": "trailer"},
@@ -440,10 +406,9 @@ async def _tick_departures(db, now: datetime) -> None:
 
 
 def _apply_production(asset: dict, prod: dict, elapsed_h: float) -> float:
-    """Начисляет выпуск за elapsed_h часов прямо в prod["storage"] (мутирует).
-    Возвращает потреблённую еду (кг хлеба). Шахта/лесопилка: meta.outputPerHour
-    × эффективность, ограничено местом. Пекарня: пшеница → хлеб (2:1),
-    ограничена запасом пшеницы и свободным местом."""
+    """Выпуск за elapsed_h в prod["storage"] (мутирует); возвращает съеденное (кг).
+    Пекарня: пшеница → хлеб 2:1 (лимит — запас пшеницы и место); источник:
+    outputPerHour × эффективность (лимит — место)."""
     meta = asset.get("meta") or {}
     storage = prod["storage"]
     cap = _storage_cap(asset)
@@ -470,10 +435,8 @@ def _apply_production(asset: dict, prod: dict, elapsed_h: float) -> float:
 
 
 async def tick(db: AsyncIOMotorDatabase) -> None:
-    """Производственный тик (вызывается Scheduler'ом): выпуск, еда, фуры.
-
-    Еда списывается всегда, когда есть работники (независимо от выпуска:
-    хранилище может быть полно, а люди продолжают есть)."""
+    """Тик планировщика: фуры, выпуск, еда. Еда списывается всегда при работниках —
+    даже когда хранилище полно и выпуска нет."""
     cfg = _cfg()
     now = _now()
     await _tick_arrivals(db, now)
@@ -626,8 +589,7 @@ async def set_config(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Назначить получателя (destinationId: склад/пекарня) или поставщика
-    пшеницы для пекарни (inputId: поле/склад)."""
+    """Назначить получателя (destinationId) или поставщика пшеницы пекарне (inputId)."""
     user_id = str(current_user["_id"])
     unit = await _load_unit(db, user_id, unit_id)
     is_bakery = _is_bakery(unit)
@@ -673,8 +635,7 @@ async def set_trucks(
     current_user: dict = Depends(require_allowed("assets")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Заменить состав назначенных фур потока (до 5). Фура может работать
-    только на одном юните — проверяем, что она не назначена в другой prod."""
+    """Заменить состав фур потока (до 5); фура работает только на одном юните."""
     user_id = str(current_user["_id"])
     unit = await _load_unit(db, user_id, unit_id)
     ids: list[str] = []
@@ -682,7 +643,6 @@ async def set_trucks(
         if ObjectId.is_valid(x):
             ids.append(str(ObjectId(x)))
     ids = list(dict.fromkeys(ids))
-    # Все выбранные должны быть фурами владельца.
     conflict = await db.user_assets.count_documents({
         "_id": {"$in": [ObjectId(x) for x in ids]},
         "userId": user_id, "type": "car", "category": "truck",
@@ -906,9 +866,8 @@ if __name__ == "__main__":
 
 
 # ── Миграция купленной инфраструктуры под новые каталоги ─────────────────────
-# Активы, купленные до переработки (источники ×100, склады ×3), несут старые
-# price/meta — синхронизируем их с каталогом один раз (config-ключ), иначе
-# цена продажи/апгрейда и ёмкости остаются старыми.
+# Разовая (ключ production_rework_v1): подтягивает price/meta старых купленных
+# активов к каталогу — иначе цены апгрейда и ёмкости остаются устаревшими.
 
 
 async def migrate_owned_infra(db) -> None:

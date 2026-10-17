@@ -1,8 +1,6 @@
-// MiningBulkView · массовое управление майнинг-фермами.
-// Два режима: массовые действия (запуск/остановка/ремонт) над выбранными
-// фермами и авто-сборка нескольких ферм указанными комплектующими.
-// Бэкенд: POST /api/mining/bulk/action и /api/mining/bulk/assemble
-// (backend/mining.py). Открывается с экрана выбора дома в MiningTab.
+// MiningBulkView · массовые действия (запуск/остановка/ремонт) и авто-сборка
+// ферм указанными комплектующими. Бэкенд: POST /api/mining/bulk/action и
+// /api/mining/bulk/assemble (backend/mining.py). Открывается из MiningTab.
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -146,7 +144,6 @@ export default function MiningBulkView({ onBack }) {
     }
   }
 
-  // ── Авто-сборка ───────────────────────────────────────────────────────────
   // Выбор комплектующих: {cat: {hwId, qty}}. Для multi берутся ВСЕ свободные
   // экземпляры того же товара (как installMany в MiningTab), но не больше qty.
   const applyAsm = async (choice) => {
@@ -157,11 +154,9 @@ export default function MiningBulkView({ onBack }) {
     for (const { cat, multi } of ASM_CATS) {
       const c = choice[cat]
       if (!c?.itemId) continue
-      // qtyPerChunk: однорольной категории нужна 1 деталь на каждую ферму
-      // чанка; multi — полный qty в каждом чанке безопасен: ферма берёт по
-      // ёмкости, неизрасходованный остаток пула в запросе не списывается.
-      // perFarm: лимит установки НА ферму (мульти — поле «шт. на ферму»);
-      // qty ниже умножается на фермы чанка — это общий пул запроса.
+      // qtyPerChunk: однорольной — 1 деталь на ферму чанка; multi — qty это
+      // «шт. на ферму», умножается на фермы чанка = общий пул запроса
+      // (неизрасходованный остаток пула не списывается).
       items.push({ category: cat, itemId: c.itemId, qty: multi ? (c.qty || 1) : 0,
         perFarm: multi ? (c.qty || 1) : 1, qtyPerChunk: !multi })
     }
@@ -177,8 +172,6 @@ export default function MiningBulkView({ onBack }) {
       for (let i = 0; i < total; i += CH) {
         const chunk = farmList.slice(i, i + CH)
         setProgress({ label: t('mining.bulk.assembling', 'Сборка ферм'), done: i, total })
-        // multi: qty в items = шт. на ферму — на каждый чанк отправляем пул
-        // на все фермы чанка (неизрасходованный остаток не списывается)
         const payload = items.map(it => ({ ...it, qty: it.qtyPerChunk ? chunk.length : it.qty * chunk.length }))
         const res = await bulkAssemble(chunk, payload)
         assembled += res?.assembled || 0
@@ -208,7 +201,6 @@ export default function MiningBulkView({ onBack }) {
     }
   }
 
-  // ── Рендер ───────────────────────────────────────────────────────────────
   const allChecked = selectedIds.length === farms.length && farms.length > 0
   return (
     <div className="mining-tab">
@@ -255,7 +247,6 @@ export default function MiningBulkView({ onBack }) {
             </div>
           </div>
 
-          {/* Выбор ферм по группам домов (в т.ч. «без группы») */}
           {groups.length > 0 && (
             <div className="mbt-section">
               <span className="mbt-title">{t('mining.bulk.groups', 'Группы домов')}</span>
@@ -274,7 +265,6 @@ export default function MiningBulkView({ onBack }) {
         </div>
 
         <div className="mbt-pair">
-          {/* Обслуживание: охлаждающая жидкость + ИИ-управляющий */}
           <div className="mbt-section">
             <span className="mbt-title">{t('mining.bulk.secService', 'Обслуживание и ИИ-управляющий')}</span>
             <div className="mbt-row">
@@ -313,7 +303,6 @@ export default function MiningBulkView({ onBack }) {
             </div>
           </div>
 
-          {/* Автономность ИИ + монета + снятие железа */}
           <div className="mbt-section">
             <span className="mbt-title">{t('mining.bulk.secAuto', 'Автономность ИИ и монета')}</span>
             <div className="mbt-row">
@@ -355,7 +344,6 @@ export default function MiningBulkView({ onBack }) {
         </div>
       </div>
 
-      {/* Шапка списка ферм: выбор «Все» и счётчик выбранных */}
       {farms.length > 0 && (
         <div className="mining-bulk-listhead">
           <label className="mining-bulk-selectall">

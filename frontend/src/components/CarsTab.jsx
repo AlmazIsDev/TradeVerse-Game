@@ -1,10 +1,6 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// CarsTab · вкладка «Автосалон».
-// Три секции: машины (cars), фуры (trucks) и прицепы (trailers).
-// Источник каталога — сервер (/api/assets/market?type=car, backend/assets.py
-// → _CAR_CATALOG): цены динамические (рыночный множитель), покупка реальная
-// через /api/assets/buy. Локальный carsCatalog.js больше не источник данных.
-// ─────────────────────────────────────────────────────────────────────────────
+// CarsTab · вкладка «Автосалон»: машины / фуры / прицепы.
+// Каталог с сервера (/api/assets/market?type=car, backend/assets.py), покупка
+// через /api/assets/buy. Локальный carsCatalog.js — только CAR_SECTIONS.
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -19,10 +15,8 @@ import { fetchAssetMarket, buyAsset, fetchFarmVehicles, buyFarmVehicle } from '.
 import { assetImage } from '../utils/assetImages'
 import { CAR_SECTIONS } from '../utils/carsCatalog'
 
-// Ранг редкости для сортировки.
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 }
 
-// Цвета/градиенты по редкости (как на «Рынке»).
 const RARITY_COLOR = {
   common: '#9ca3af', uncommon: '#22c55e', rare: '#3b82f6',
   epic: '#a855f7', legendary: '#f59e0b',
@@ -35,7 +29,6 @@ const RARITY_GRAD = {
   legendary: 'linear-gradient(135deg,#b45309,#78350f)',
 }
 
-// Эмодзи по типу техники (для карточки и для модалки).
 const TYPE_EMOJI = { car: '🚗', truck: '🚛', trailer: '🛻' }
 
 function CarsTab({ balance = 0, onBalanceChange }) {
@@ -45,7 +38,6 @@ function CarsTab({ balance = 0, onBalanceChange }) {
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('price')   // 'price' | 'rarity'
   const [sortDir, setSortDir] = useState('asc')   // 'asc' | 'desc'
-  // pendingBuy — выбранный для покупки товар; null если модалка закрыта.
   const [pendingBuy, setPendingBuy] = useState(null)
   const [busy, setBusy] = useState(false)
   // Каталог с сервера (динамические цены). Секции truck/trailer живут в
@@ -77,7 +69,6 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     }
   }, [t])
 
-  // Загрузка фермерских машин (компактный список из FARM_VEHICLES бэкенда).
   const loadFarmVehicles = useCallback(async () => {
     try {
       const data = await fetchFarmVehicles()
@@ -103,7 +94,6 @@ function CarsTab({ balance = 0, onBalanceChange }) {
   useEffect(() => { loadCars() }, [loadCars])
   useEffect(() => { loadFarmVehicles() }, [loadFarmVehicles])
 
-  // Дебаунс для поля поиска.
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 300)
     return () => clearTimeout(id)
@@ -114,8 +104,6 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     else { setSortBy(by); setSortDir('asc') }
   }, [sortBy])
 
-  // Витрина: фильтр по секции + поиск + сортировка. Секция 'farm' читает
-  // farmVehicles, 'all' — объединяет.
   const view = useMemo(() => {
     let r
     if (section === 'farm') r = farmVehicles
@@ -143,7 +131,6 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     return arr
   }, [cars, farmVehicles, section, search, sortBy, sortDir])
 
-  // Клик «Купить» — открыть модалку.
   const handleBuy = useCallback((item) => {
     setPendingBuy({
       ...item,
@@ -152,8 +139,6 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     })
   }, [t])
 
-  // Подтверждение покупки: фарм-машины — /api/farm/vehicles/buy, остальное
-  // — /api/assets/buy.
   const handleConfirm = useCallback(async () => {
     const item = pendingBuy
     if (!item?.slug) return
@@ -180,7 +165,6 @@ function CarsTab({ balance = 0, onBalanceChange }) {
     <div className="cars-tab market-tab">
       <h2 className="tab-title">{t('cars.title', 'Автосалон')}</h2>
 
-      {/* Тулбар: пилюли секций, сортировка, поиск. */}
       <div className="market-toolbar">
         <div className="market-cats">
           {CAR_SECTIONS.map(s => {

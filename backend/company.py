@@ -1,11 +1,8 @@
-"""Компании игроков: создание, приглашения сотрудников (с согласия), зарплаты,
-бюджет, прибыль из реальных источников, история.
+"""Компании игроков: создание, сотрудники, зарплаты, бюджет, прибыль, история.
 
-Ключевые принципы (исправление логических ошибок):
-- Сотрудник добавляется ТОЛЬКО после принятия приглашения (consent).
-- Прибыль НЕ берётся из воздуха: доход компании = чистый доход принадлежащих
-  ей активов (бизнесы/недвижимость, переданные владельцем). Зарплаты
-  выплачиваются реальным игрокам-сотрудникам из бюджета компании.
+Сотрудник добавляется ТОЛЬКО после принятия приглашения (consent). Прибыль не
+берётся из воздуха: доход = чистый доход принадлежащих компании активов, зарплаты
+платятся реальным игрокам из бюджета компании.
 """
 from __future__ import annotations
 
@@ -33,15 +30,13 @@ router = APIRouter(prefix="/api/company", tags=["company"])
 FOUNDING_FEE = 10000.0
 MAX_ACCRUAL_HOURS = 24
 ROLES = ["intern", "worker", "manager", "engineer", "director"]
-# Права сотрудника — хранятся и отображаются в редакторе роли. Пока носят
-# информационный характер (делегирование в UI); серверного enforcement нет.
+# Права сотрудника — информационные (делегирование в UI), серверного enforcement нет.
 # ponytail: без enforcement, добавить проверки в эндпоинты когда понадобится
 PERMISSIONS = ["manage_finance", "manage_employees", "manage_assets"]
 
-# Бонус роли к доходу компании. Чем выше должность — тем сильнее сотрудник
-# прокачивает бизнесы. Суммируется по штату и применяется в
-# assets.company_income_per_hour как staff_factor (1 + сумма бонусов).
-# Сверху ограничено MAX_STAFF_FACTOR, чтобы набор intern-ов не давал x100.
+# staff_factor = 1 + сумма бонусов ролей по штату, потолок MAX_STAFF_FACTOR.
+# Применяется и к отображаемому (_serialize), и к начисляемому (collect_profit)
+# доходу — UI не должен обещать того, что не платится.
 ROLE_BONUSES = {
     "intern": 0.02,
     "worker": 0.04,
@@ -50,7 +45,7 @@ ROLE_BONUSES = {
     "director": 0.15,
 }
 DEFAULT_ROLE_BONUS = 0.02
-MAX_STAFF_FACTOR = 1.60  # потолок: +60% к доходу от штата
+MAX_STAFF_FACTOR = 1.60
 
 
 
@@ -72,7 +67,6 @@ class CompanyCreate(BaseModel):
 
 
 class CompanySettings(BaseModel):
-    """Настройки компании (все поля опциональны — обновляем только присланные)."""
     name: Optional[str] = None
     description: Optional[str] = None
     logo: Optional[str] = None
@@ -107,9 +101,8 @@ class CompanySettings(BaseModel):
         if v is None:
             return v
         v = v.strip()
-        # Логотип — эмодзи, короткая ссылка ИЛИ загруженное изображение (data URL,
-        # сжатое клиентом до ~256px, как аватар профиля). Data URL длиннее лимита
-        # ссылки, поэтому для него отдельная, более щедрая граница.
+        # Логотип: эмодзи, ссылка или data URL (клиент сжимает до ~256px) —
+        # у data URL отдельная граница, он длиннее ссылки.
         if v.startswith("data:image/"):
             if len(v) > 700_000:
                 raise ValueError("Слишком большое изображение логотипа")
@@ -159,7 +152,6 @@ class SalaryUpdate(BaseModel):
 
 
 class MemberSettingsUpdate(BaseModel):
-    """Настройки сотрудника: зарплата, кастомное название роли, права."""
     salary: float
     role_title: Optional[str] = None
     permissions: Optional[list[str]] = None
@@ -258,7 +250,7 @@ class CompanyDividend(BaseModel):
 
 
 class CompanyCrypto(BaseModel):
-    """Эмиссия монеты компании (аналог IPO). Цена внутренняя = капитал / эмиссия."""
+    """Эмиссия монеты компании (аналог IPO)."""
     symbol: str
     supply: int
     name: Optional[str] = None
@@ -308,12 +300,7 @@ def _hours_since(company: dict) -> float:
 
 
 async def _staff_factor(db, company_id: str, members: list) -> "tuple[float, list]":
-    """Совокупный бонус штата к доходу компании.
-
-    Возвращает (factor, per_member). factor = 1 + сумма бонусов ролей,
-    ограниченная MAX_STAFF_FACTOR сверху. per_member — список словарей
-    {userId, username, role, bonus} для UI.
-    """
+    """(staff_factor, per_member для UI); см. комментарий к ROLE_BONUSES."""
     total = 0.0
     per_member = []
     user_ids = [m["userId"] for m in members if ObjectId.is_valid(m.get("userId", ""))]
@@ -364,7 +351,6 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
     cid = str(company["_id"])
     members = await _members(db, cid)
     assets = await list_company_assets(db, cid)
-    # Репутационный множитель СМИ владельца — доход бизнесов компании отражает кризис.
     try:
         from media import active_owner_income_factor
         media_factor = await active_owner_income_factor(db, company["ownerId"])
@@ -372,7 +358,7 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
         media_factor = 1.0
     staff_factor, per_member_bonus = await _staff_factor(db, cid, members)
     base_revenue = await company_income_per_hour(db, cid, media_factor)
-    revenue = round(base_revenue * staff_factor, 2)   # применяем бонус ролей
+    revenue = round(base_revenue * staff_factor, 2)
     owner_salary = round(company.get("owner_salary", 0.0), 2)
     payroll = round(sum(m.get("salary", 0) for m in members) + owner_salary, 2)
     hours = _hours_since(company)
@@ -383,7 +369,6 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
     )
     owner_user = await db.users.find_one({"_id": ObjectId(owner_id)}) if ObjectId.is_valid(owner_id) else None
 
-    # Биржевая акция компании (если размещена) — для секции «Акции компании».
     stock_info = None
     symbol = company.get("stockSymbol")
     if symbol:
@@ -400,7 +385,6 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
                 "marketCap": round(price * cfg_total, 2),
             }
 
-    # Монета компании (если выпущена) — для секции «Криптовалюта компании».
     crypto_info = None
     csym = company.get("cryptoSymbol")
     if csym:
@@ -417,9 +401,8 @@ async def _serialize(db, company: dict, viewer_id: str = None) -> dict:
                 "marketCap": round(cprice * supply, 2),
             }
 
-    # Живой username/avatar по userId — не полагаемся на снапшот-поле "username"
-    # в company_members (оно устаревает после смены никнейма в Настройках), а
-    # avatar там и вовсе никогда не хранился.
+    # Живые username/avatar из db.users: снапшот "username" в company_members
+    # устаревает после смены ника, avatar там никогда не хранился.
     member_ids = [ObjectId(m["userId"]) for m in members if ObjectId.is_valid(m["userId"])]
     users_by_id: dict = {}
     if member_ids:
@@ -575,8 +558,6 @@ async def _disband(db: AsyncIOMotorDatabase, company: dict):
 
     await db.user_assets.update_many({"companyId": cid}, {"$set": {"companyId": None}})
 
-    # Делистинг акции и монеты компании: выкупаем позиции держателей по последней
-    # цене из бюджета (если хватает) и снимаем инструменты с бирж.
     await _delist_company_stock(db, company, refund=True)
     await _delist_company_crypto(db, company, refund=True)
 
@@ -589,12 +570,9 @@ async def _disband(db: AsyncIOMotorDatabase, company: dict):
 
 
 async def _delist_company_stock(db: AsyncIOMotorDatabase, company: dict, refund: bool = True) -> bool:
-    """Снять акцию компании с биржи, выкупив позиции держателей из бюджета.
-
-    Владельцу деньги не возвращаем (его founder-доля оплачена бюджетом). При
-    refund=True выкупаем по последней цене, атомарно списывая из бюджета; если
-    средств не хватает на всех — оставшиеся позиции просто обесцениваются.
-    Сбрасывает companies.stockSymbol. Возвращает True, если акция была."""
+    """Делистинг с выкупом держателей из бюджета по последней цене. Владельцу
+    не платим (founder-доля уже оплачена бюджетом); при нехватке бюджета
+    остаток позиций обесценивается. Сбрасывает stockSymbol."""
     symbol = company.get("stockSymbol")
     if not symbol:
         return False
@@ -612,7 +590,7 @@ async def _delist_company_stock(db: AsyncIOMotorDatabase, company: dict, refund:
                 {"$inc": {"budget": -payout}},
             )
             if not paid:
-                break   # бюджет исчерпан — остальные позиции обесцениваются
+                break
             hb = await adjust_balance(db, h["userId"], payout)
             await record_transaction(
                 db, h["userId"], INCOME, payout, CAT_DIVIDEND,
@@ -1038,20 +1016,14 @@ async def collect_profit(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Начислить реальный доход от активов компании в бюджет и выплатить зарплаты.
-
-    Доход берётся ИСКЛЮЧИТЕЛЬНО из активов компании (никакой генерации из воздуха).
-    Зарплаты выплачиваются реальным игрокам-сотрудникам из бюджета.
-    """
+    """Собрать доход активов компании в бюджет и выплатить зарплаты из него."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
     cid = str(company["_id"])
 
-    # Атомарно «присваиваем» интервал начисления: сбрасываем last_tick на now
-    # условным апдейтом по прочитанному значению. Два параллельных запроса
-    # прочитают один last_tick, но апдейт сработает лишь у одного — второй
-    # получит modified_count=0 и выйдет. Иначе оба выплатили бы зарплату всем
-    # сотрудникам (TOCTOU-дублирование выплат).
+    # «Присваиваем» интервал условным апдейтом last_tick по прочитанному значению:
+    # второй параллельный запрос получит modified_count=0 и выйдет — иначе
+    # зарплаты были бы выплачены дважды (TOCTOU).
     seen_tick = company.get("last_tick")
     claim = await db.companies.update_one(
         {"_id": company["_id"], "last_tick": seen_tick},
@@ -1062,7 +1034,6 @@ async def collect_profit(
         return {"collected": 0.0, "payrollPaid": 0.0, "company": await _serialize(db, updated, user_id)}
 
     hours = _hours_since(company)
-    # Репутационный множитель СМИ владельца бьёт по доходной части бизнесов компании.
     try:
         from media import active_owner_income_factor
         media_factor = await active_owner_income_factor(db, user_id)
@@ -1076,7 +1047,6 @@ async def collect_profit(
     revenue_per_h *= staff_factor
     econ = await get_econ(db)
     gross = round(revenue_per_h * hours * econ.get("income_mult", 1.0) * econ.get("economy_mult", 1.0), 2)
-    # Бонус зданий «Крыши города»: +% к доходу компании (напр. «Бизнес-башня», «Городской банк»).
     try:
         from cityroof import player_city_effect
         city_bonus = await player_city_effect(db, user_id, "company_income")
@@ -1087,8 +1057,7 @@ async def collect_profit(
 
     members = await _members(db, cid)
     owner_salary = round(company.get("owner_salary", 0.0), 2)
-    # ФОТ = зарплаты сотрудников + зарплата владельца (владелец платит её себе из
-    # бюджета компании, ровно как сотрудникам). Список выплат единый.
+    # ФОТ = сотрудники + владелец (владелец платит себе из бюджета компании).
     payouts = [(m["userId"], m.get("salary", 0)) for m in members]
     if owner_salary > 0:
         payouts.append((user_id, owner_salary))
@@ -1173,9 +1142,7 @@ async def withdraw_from_budget(
 
 
 async def _company_capital(db, company: dict) -> float:
-    """Капитал компании = бюджет + суммарная стоимость её активов.
-
-    Служит фундаменталом для цены акции («как в жизни»): цена = капитал / выпуск."""
+    """Капитал = бюджет + стоимость активов; фундаментал цены акции/монеты."""
     cid = str(company["_id"])
     assets = await list_company_assets(db, cid)
     return round(company.get("budget", 0.0) + sum(a["value"] for a in assets), 2)
@@ -1183,8 +1150,8 @@ async def _company_capital(db, company: dict) -> float:
 
 # ── Company shares (IPO / дивиденды) ─────────────────────────────────────────
 
-LISTING_FEE = 5000.0        # листинговый сбор (из бюджета компании)
-FOUNDER_SHARE_PCT = 0.2     # доля владельца при размещении (оплачивается бюджетом)
+LISTING_FEE = 5000.0
+FOUNDER_SHARE_PCT = 0.2
 
 
 @router.post("/ipo", status_code=status.HTTP_201_CREATED)
@@ -1193,12 +1160,7 @@ async def company_ipo(
     current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Разместить акцию компании на бирже (IPO).
-
-    Стартовая цена = капитал / выпуск (фундаментал). Листинговый сбор и доля
-    основателя оплачиваются ИЗ БЮДЖЕТА компании — каждая акция обеспечена реальными
-    деньгами (см. economy-integrity: cash-backed shares). Тикер привязан к компании
-    (companyId), поэтому цена в дальнейшем дрейфует к капиталу (stocks.maintain)."""
+    """IPO: цена = капитал/выпуск; листинг и founder-доля оплачиваются из бюджета (cash-backed)."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
     cid = str(company["_id"])
@@ -1220,10 +1182,9 @@ async def company_ipo(
     founder_cost = round(founder_shares * price, 2)
     total_charge = round(LISTING_FEE + founder_cost, 2)
 
-    # Оплата из бюджета — атомарно, с проверкой достаточности (не $set из stale-чтения).
-    # Фильтр `stockSymbol: None` ловит и отсутствие поля, и явный null — иначе компания
-    # с полем stockSymbol=None прошла бы верхний falsy-guard, но $exists:False её отсёк бы,
-    # и IPO молча падало бы с «Недостаточно в бюджете».
+    # Оплата атомарно с проверкой достаточности. Фильтр `stockSymbol: None` ловит
+    # и отсутствие поля, и явный null: $exists:False отсёк бы компанию с null, и IPO
+    # молча падало бы с «Недостаточно в бюджете».
     paid = await db.companies.find_one_and_update(
         {"_id": company["_id"], "budget": {"$gte": total_charge}, "stockSymbol": None},
         {"$inc": {"budget": -total_charge}, "$set": {"stockSymbol": symbol}},
@@ -1281,11 +1242,7 @@ async def company_pay_dividend(
     current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Выплатить дивиденды держателям акции компании ИЗ БЮДЖЕТА компании.
-
-    Платит ВСЕМ держателям, включая владельца (у него founder-доля, и как в
-    реальной жизни платит компания, а не он лично). Списание из бюджета атомарно
-    (проверка достаточности) — дивиденды обеспечены реальными деньгами."""
+    """Дивиденды всем держателям (включая владельца) атомарно из бюджета компании."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
     symbol = company.get("stockSymbol")
@@ -1344,7 +1301,7 @@ async def company_recall_stock(
     return {"ok": True, "company": await _serialize(db, updated, user_id)}
 
 
-CRYPTO_LISTING_FEE = 3000.0     # сбор за эмиссию монеты (из бюджета компании)
+CRYPTO_LISTING_FEE = 3000.0
 
 
 @router.post("/crypto", status_code=status.HTTP_201_CREATED)
@@ -1353,12 +1310,7 @@ async def company_issue_crypto(
     current_user: dict = Depends(require_allowed("company")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Выпустить монету компании на биржу (аналог IPO).
-
-    Цена внутренняя = капитал / эмиссия (фундаментал), далее двигается спросом
-    игроков (crypto.maintain оставляет монеты без coingeckoId на симуляции).
-    Сбор за эмиссию оплачивается из бюджета. Выручка от покупок на бирже идёт
-    в бюджет (см. crypto._credit_company_budget)."""
+    """Эмиссия монеты (аналог IPO): цена = капитал/supply; сбор и выручка биржи — через бюджет."""
     user_id = str(current_user["_id"])
     company = await _require_company(db, user_id)
     cid = str(company["_id"])
@@ -1375,7 +1327,6 @@ async def company_issue_crypto(
                             "Нулевой капитал: пополните бюджет или передайте активы компании")
     price = round(max(0.000001, capital / payload.supply), 6)
 
-    # Сбор за эмиссию — атомарно из бюджета, с одновременной привязкой тикера.
     paid = await db.companies.find_one_and_update(
         {"_id": company["_id"], "budget": {"$gte": CRYPTO_LISTING_FEE}, "cryptoSymbol": None},
         {"$inc": {"budget": -CRYPTO_LISTING_FEE}, "$set": {"cryptoSymbol": symbol}},
@@ -1443,10 +1394,8 @@ async def company_history(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    # История ТОЛЬКО текущей компании игрока. Раньше фильтр был лишь по
-    # category=company, из-за чего после роспуска и пересоздания компании в логах
-    # всплывали операции прошлой (реестр владельца хранит их вечно). Теперь все
-    # company-операции помечены meta.companyId, и историю сужаем по нему.
+    # Сузим по meta.companyId: реестр хранит операции прошлых компаний вечно,
+    # фильтр только по category показал бы их после роспуска/пересоздания.
     company = await _my_company_or_membership(db, str(current_user["_id"]))
     if not company:
         return {"items": [], "total": 0, "skip": skip, "limit": limit}

@@ -13,14 +13,10 @@ import {
   Edit3, Trash2, ShoppingCart, User,
 } from 'lucide-react'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CentralMarketTab · Центральный рынок — p2p торговля между игроками.
-// Бэкенд: backend/market_lots.py. Два вида лотов:
-//   kind:"asset"    — актив из «Моих активов» (дом/бизнес/авто/завод…), qty=1;
-//   kind:"hardware" — железо из инвентаря магазина, qty ≤ свободных штук.
-// Режим «свободный предмет» удалён: продавать можно только то, чем владеешь —
-// сервер иначе отклонит лот.
-// ─────────────────────────────────────────────────────────────────────────────
+// CentralMarketTab · p2p торговля между игроками. Бэкенд: backend/market_lots.py.
+// kind:"asset" — актив из «Моих активов» (дом/бизнес/авто/завод…), qty=1;
+// kind:"hardware" — железо из инвентаря, qty ≤ свободных штук. Продавать можно
+// только то, чем владеешь — сервер иначе отклонит лот.
 
 const KINDS = [
   { id: 'all', icon: '🗂️' },
@@ -31,13 +27,11 @@ const KINDS = [
 function CentralMarketTab() {
   const { t } = useTranslation()
 
-  // ── Состояние лотов и инвентаря ────────────────────────────────────────
   const [lots, setLots] = useState([])
   const [myAssets, setMyAssets] = useState([])      // [{id, name, type}]
   const [myHardware, setMyHardware] = useState([])  // [{itemId, name, count}]
   const [inventoryLoading, setInventoryLoading] = useState(false)
 
-  // ── Текущий пользователь (для определения «свой/чужой» лот) ────────────
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const raw = localStorage.getItem('tradeverse_user')
@@ -45,7 +39,6 @@ function CentralMarketTab() {
     } catch { return null }
   })
 
-  // ── Фильтры/сортировка/поиск ───────────────────────────────────────────
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [kind, setKind] = useState('all')
   const [minPrice, setMinPrice] = useState('')
@@ -65,7 +58,6 @@ function CentralMarketTab() {
     setSort(s => s === 'default' ? 'price_asc' : s === 'price_asc' ? 'price_desc' : 'default')
   }, [])
 
-  // ── Загрузка лотов и инвентаря ────────────────────────────────────────
   const loadLots = useCallback(async () => {
     try {
       const data = await fetchMarketLots()
@@ -91,7 +83,6 @@ function CentralMarketTab() {
 
   useEffect(() => { loadLots(); loadInventory() }, [loadLots, loadInventory])
 
-  // Realtime: обновляем лоты по WS-событиям рынка.
   useEffect(() => {
     const onRt = (e) => {
       if (['market_sold', 'balance', 'notification'].includes(e.detail?.type)) loadLots()
@@ -100,7 +91,6 @@ function CentralMarketTab() {
     return () => window.removeEventListener('tv:realtime', onRt)
   }, [loadLots])
 
-  // ── Создание лота ──────────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false)
   const [createKind, setCreateKind] = useState('asset')   // 'asset' | 'hardware'
   const [createItemId, setCreateItemId] = useState('')
@@ -109,8 +99,7 @@ function CentralMarketTab() {
   const [createError, setCreateError] = useState(null)
   const [createBusy, setCreateBusy] = useState(false)
 
-  // Госцены железа (каталог магазина) — для подсказки в плейсхолдере цены.
-  // Грузятся один раз при первом открытии модалки в режиме «Железо».
+  // Госцены железа (каталог магазина) — подсказка в плейсхолдере цены.
   const [hwPrices, setHwPrices] = useState({})
   useEffect(() => {
     if (!createOpen || createKind !== 'hardware') return
@@ -170,7 +159,6 @@ function CentralMarketTab() {
     }
   }, [createKind, createItemId, createQty, createPrice, t, closeCreate, loadLots, loadInventory])
 
-  // ── Редактирование/удаление лота ───────────────────────────────────────
   const [editLot, setEditLot] = useState(null)
   const [editQty, setEditQty] = useState('1')
   const [editPrice, setEditPrice] = useState('')
@@ -226,9 +214,8 @@ function CentralMarketTab() {
     }
   }, [t, loadLots, deleteBusy])
 
-  // ── Покупка лота ───────────────────────────────────────────────────────
   // Покупаем весь остаток лота сразу (сервер поддерживает и частичную).
-  const [buyLot, setBuyLot] = useState(null)   // лот, ожидающий подтверждения
+  const [buyLot, setBuyLot] = useState(null)
   const [buyBusy, setBuyBusy] = useState(false)
   const confirmBuy = useCallback(async () => {
     if (!buyLot) return
@@ -247,7 +234,6 @@ function CentralMarketTab() {
     }
   }, [buyLot, t, loadLots])
 
-  // ── Фильтрация + сортировка ───────────────────────────────────────────
   const filtered = useMemo(() => {
     const minP = minPrice === '' ? -Infinity : Number(minPrice)
     const maxP = maxPrice === '' ? Infinity : Number(maxPrice)
@@ -308,7 +294,6 @@ function CentralMarketTab() {
         </button>
       </div>
 
-      {/* Верхняя управляющая полоса: [тогглер] [сортировка] [поиск] */}
       <div className="centralmarket-toolbar">
         <div className="centralmarket-toolbar-left">
           <button
@@ -364,7 +349,6 @@ function CentralMarketTab() {
         </div>
       </div>
 
-      {/* Выпадающая панель фильтров */}
       {filtersOpen && (
         <div className="centralmarket-filters">
           <div className="centralmarket-filters-body">
@@ -437,7 +421,6 @@ function CentralMarketTab() {
         </div>
       )}
 
-      {/* Список лотов */}
       <div className="centralmarket-lots">
         <div className="centralmarket-lots-header">
           <span>{t('centralmarket.lotsCount', { count: filtered.length })}</span>
@@ -536,7 +519,6 @@ function CentralMarketTab() {
         )}
       </div>
 
-      {/* Модалка создания лота */}
       {createOpen && (
         <div className="modal-overlay" onClick={() => !createBusy && closeCreate()}>
           <div className="modal-content centralmarket-modal" onClick={e => e.stopPropagation()}>
@@ -553,7 +535,6 @@ function CentralMarketTab() {
             </h3>
             <p className="centralmarket-modal-subtitle">{t('createLot.subtitle')}</p>
 
-            {/* Тип товара: актив или железо */}
             <div className="centralmarket-source-pills">
               <button
                 type="button"
@@ -661,7 +642,6 @@ function CentralMarketTab() {
         </div>
       )}
 
-      {/* Модалка редактирования лота */}
       {editLot && (
         <div className="modal-overlay" onClick={() => !editBusy && closeEdit()}>
           <div className="modal-content centralmarket-modal" onClick={e => e.stopPropagation()}>
@@ -730,7 +710,6 @@ function CentralMarketTab() {
         </div>
       )}
 
-      {/* Подтверждение удаления */}
       <ConfirmDialog
         open={!!confirmDelete}
         title={t('centralmarket.deleteTitle')}
@@ -742,7 +721,6 @@ function CentralMarketTab() {
         onCancel={() => setConfirmDelete(null)}
       />
 
-      {/* Подтверждение покупки */}
       {buyLot && (
         <div className="modal-overlay" onClick={() => !buyBusy && setBuyLot(null)}>
           <div className="modal-content centralmarket-modal" onClick={e => e.stopPropagation()}>

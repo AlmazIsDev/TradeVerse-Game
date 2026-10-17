@@ -1,15 +1,6 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// NEXUS · Магазин оборудования.
-// Доступные категории: gpu, cpu, case, supplies (расходники).
-// Дома и бизнесы живут на отдельной вкладке «Рынок» (MarketTab).
-// Источник каталога: GET /api/shop/catalog — бэкенд отдаёт и базовые
-// позиции (gpu-cc-0-0, psu-500, …), и полные админские серии
-// (admin-gpu-1..90, admin-cpu-1..90, admin-case-1..90, admin-supply-*).
-// Имена и id согласованы с frontend/src/utils/shopCatalog.js.
-// Карточка компактная: иконка, категория, имя, характеристика, цена и кнопка
-// «Купить». Количество/итоговая цена/баланс — в модалке BuyModal.
-// Покупка железа → POST /api/shop/buy.
-// ─────────────────────────────────────────────────────────────────────────────
+// NEXUS · Магазин оборудования. Дома/бизнесы — на вкладке «Рынок» (MarketTab).
+// Каталог: GET /api/shop/catalog (базовые позиции + админские серии), имена
+// и id согласованы с utils/shopCatalog.js. Покупка: POST /api/shop/buy.
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -17,20 +8,15 @@ import {
   buyHardware,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
-// Модалка покупки в едином стиле с рынком: товар → количество → баланс → цена
-// за шт. → итого → кнопка «Купить». Старая BuyModal.jsx больше не используется
-// (если где-то ещё — не трогаем).
 import { hwName } from '../utils/hwName'
 import ShopBuyModal from './ShopBuyModal'
 import { toast } from './Toast'
-// ── Иконки (lucide-react). ───────────────────────────────────────────────
 import {
   Monitor, Cpu, Box, Package, MemoryStick, HardDrive, Snowflake, Zap, CircuitBoard, Server,
   Search, DollarSign, ArrowUpDown, AlertTriangle, ShoppingCart, Network, PlugZap, Fan,
 } from 'lucide-react'
 
-// Фильтр-пилюли: категории магазина (дома убраны — они на «Рынке»).
-// "supplies" — расходники с бэкенда (см. /api/shop/catalog).
+// Фильтр-пилюли: категории магазина. supplies — расходники с бэкенда.
 const CATEGORIES = [
   { id: '', icon: ShoppingCart },            // Все
   { id: 'gpu', icon: Monitor },
@@ -82,9 +68,7 @@ function ShopTab({ balance = 0, onBalanceChange }) {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState('asc')
-  // ShopBuyModal: выбранный товар (открывает модалку покупки) или null.
-  // Продажи в магазине больше нет — упращено: карточка показывает только
-  // кнопку «Купить», которая открывает ShopBuyModal.
+  // Товар для ShopBuyModal (null = модалка закрыта).
   const [buyItem, setBuyItem] = useState(null)
   // busy — пока идёт POST /api/shop/buy (блокирует кнопку и крестик модалки).
   const [buyBusy, setBuyBusy] = useState(false)
@@ -94,17 +78,7 @@ function ShopTab({ balance = 0, onBalanceChange }) {
     return () => clearTimeout(id)
   }, [searchInput])
 
-  // Локальный qty-стейт упразднён — см. handleBuyConfirm ниже.
-
-  // loadInventory упразднён: карточка больше не показывает «В наличии» /
-  // «Продать» — это переехало в MyAssetsTab.
-// ── Загрузка каталога ──────────────────────────────────────────────
-// Железо/расходники: fetchShopCatalog(category) — бэкенд отдаёт и базовые
-// позиции (gpu-cc-0-0, psu-500, …), и полные админские серии
-// (admin-gpu-1..90, admin-cpu-1..90, admin-case-1..90, admin-supply-*).
-// Дома и бизнесы в магазине больше не продаются — они на «Рынке» (MarketTab).
 async function loadShopItems(category) {
-  // Бэкенд отдаёт и базовые, и админские позиции (см. backend/shop.py).
   return await fetchShopCatalog(category || undefined)
 }
 
@@ -122,11 +96,8 @@ async function loadShopItems(category) {
   }, [category])
 
   useEffect(() => { load() }, [load])
-  // loadInventory удалён: карточка больше не показывает инвентарь.
 
-// Покупка: вызывает бэкенд (POST /api/shop/buy для железа/расходников) и
-// обновляет баланс игрока после успешной транзакции. Дома/бизнесы покупаются
-// на вкладке «Рынок» (MarketTab), здесь их нет.
+  // Покупка: POST /api/shop/buy, баланс обновляется на успехе.
   const handleBuyConfirm = async (qty) => {
     const item = buyItem
     if (!item) return
@@ -149,8 +120,6 @@ async function loadShopItems(category) {
     }
   }
 
-  // Категории, которые показываются в магазине. Дома/бизнесы отсеиваются —
-  // они на «Рынке» (MarketTab).
   const SHOP_CATEGORIES = new Set([
     'gpu', 'cpu', 'motherboard', 'ram', 'ssd', 'cooling', 'psu', 'case', 'rack',
     'fan', 'network', 'ups', 'supplies',
@@ -207,10 +176,7 @@ async function loadShopItems(category) {
           {view.map(item => {
             // Цвет по мощности/тиру приходит из каталога (item.color); категорийный — запасной.
             const color = item.color || CAT_COLOR[item.category] || '#0071e3'
-            // busy-флаг не нужен — кнопка открывает ShopBuyModal, покупка асинхронна.
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
-            // Карточка железа: компактная. Бэкенд отдаёт все позиции
-            // (включая admin-gpu/cpu/case/supply), кнопка «Купить» всегда активна.
             const affordable = balance >= item.price
             return (
               <div key={item.id} className="gpu-card gpu-card-compact" style={{ borderColor: `${color}55` }}>
@@ -239,8 +205,6 @@ async function loadShopItems(category) {
         </div>
       )}
 
-      {/* Модалка покупки в едином стиле с рынком:
-          товар → количество → баланс → цена/шт. → итого → «Купить». */}
       <ShopBuyModal
         open={!!buyItem}
         item={buyItem}

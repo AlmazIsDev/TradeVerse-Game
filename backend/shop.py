@@ -41,10 +41,7 @@ from assets import _admin_prices as _assets_admin_prices  # единая реа�
 
 router = APIRouter(prefix="/api/shop", tags=["shop"])
 admin_router = APIRouter(prefix="/api/admin/shop", tags=["shop-admin"])
-# Обратная совместимость со старым URL `/api/admin/shop-prices` (через дефис).
-# Фронтенд исторически слал туда запросы, но бэкенд слушал `/api/admin/shop/prices`
-# (через слэш). Сейчас фронт исправлен, алиас оставлен на случай сторонних вызовов
-# и как защита от регрессий.
+# Legacy hyphenated URL alias.
 alias_admin_router = APIRouter(prefix="/api/admin/shop-prices", tags=["shop-admin-alias"])
 
 SHOP_CONFIG_KEY = "shop_config"
@@ -106,10 +103,7 @@ def _now() -> datetime:
 def _build_base_catalog() -> list[dict]:
     items: list[dict] = []
 
-    # ASIC-майнеры: профессиональное узкоспециализированное железо (высокий hashrate/потребление).
-    # Цена за хеш ниже, чем у GPU (ASIC_PRICE_RATIO): доля фермы в сети насыщается
-    # (mining._farm_share), поэтому огромный хешрейт ASIC даёт непропорционально
-    # меньше дохода — без скидки за хеш такие сборки окупались бы вдвое дольше GPU.
+    # ASIC pricing reflects network-share saturation.
     for i, (name, hashrate, power) in enumerate([
         ("AntCore S1 Pro", 12000, 3000),
         ("AntCore S2 Titan", 26000, 3400),
@@ -122,11 +116,8 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(hashrate * PRICE_PER_HASH * ASIC_PRICE_RATIO, 2),
         })
 
-    # Флагманские GPU нового поколения (Voltronix): поднимают потолок дохода
-    # максимальной фермы (19 шт. в стойке, разгон 1.5×) с ~28k до ~61k $/ч.
-    # Цена за хеш ниже PRICE_PER_HASH (5.25 → 4.7): доля фермы в сети насыщается
-    # (mining._farm_share), поэтому огромный хешрейт окупается дольше —
-    # калибровано под окупаемость топ-сборки ~5 дней, как у остального железа.
+    # Voltronix extends the maximum farm hashrate; discounted per-hash pricing
+    # accounts for network-share saturation.
     for i, (name, hashrate, price_per_hash) in enumerate([
         ("Voltronix Pulse V100", 40000, 5.25),
         ("Voltronix Storm V200", 55000, 5.0),
@@ -139,14 +130,8 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(hashrate * price_per_hash, 2),
         })
 
-    # Премиум-линейка «Lux» — топовые характеристики каждой категории по ЕДИНОЙ
-    # цене за характеристику, как у остального каталога (люкс = верхняя ступень
-    # лестницы, а не «наценка за бренд»): 4× характеристики = 4× цены.
-    # Доли сети насыщаются (mining._farm_share), поэтому прирост дохода от люкса
-    # скромный — имиджевые покупки. Цены = характеристика × K категории (после
-    # глобального ×10): gpu $60/H, cpu $7000×mult/ядро, mb $12000/слот,
-    # ram $900/ГБ, ssd $40/ГБ, cooling $12/кВт, psu $9/Вт, ups $11/VA,
-    # rack $12000/слот.
+    # Lux uses one proportional price-per-spec for each category; no brand markup.
+    # Network-share saturation keeps the performance gain modest.
     _lux = [
         ("gpu", "Voltronix Zenith V900", {"hashrate": 150000, "power": 7620}, 150000 * 60.0),
         ("cpu", "Quantum Core Q64X", {"cores": 64, "power": 557}, round(64 * 7000 * 2.10, 2)),
@@ -173,10 +158,7 @@ def _build_base_catalog() -> list[dict]:
             "specs": {"power": w}, "base_price": round(w * 0.9, 2),
         })
 
-    # Охлаждение: по теплоотводу (+ иммерсионные ванны для ASIC/ферм).
-    # Верхние модели закрывают промышленные сборки: ферма из 19 ASIC тянет
-    # ~101 кВт, и без теплоотвода этого порядка она греется до сотен градусов
-    # (см. mining._compute) — то есть физически несобираема, хотя железо продаётся.
+    # Cooling capacity covers industrial ASIC/farm heat loads.
     coolers = [
         ("Воздушное", 400), ("Башенное", 800), ("Жидкостное", 1600),
         ("Иммерсионное", 4000), ("Иммерсионная ванна Pro", 9000),
@@ -232,8 +214,7 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(slots * 800, 2),
         })
 
-    # Серверные стойки: много GPU в одной ферме (и, соответственно, много БП —
-    # см. mining._psu_max). Дороже корпуса за слот: серверное исполнение.
+    # Racks support larger farms and their proportional PSU load.
     for i, (name, slots) in enumerate([
         ("Серверная стойка 12U", 8),
         ("Серверная стойка 24U", 12),
@@ -258,8 +239,7 @@ def _build_base_catalog() -> list[dict]:
             "base_price": round(cap * 1.5, 2),
         })
 
-    # ИБП. Промышленные модели (от 20 kVA) нужны, чтобы прикрыть многокиловаттные
-    # стойки — иначе защита топовой фермы недостижима в принципе.
+    # Industrial UPS models cover high-power racks.
     for i, w in enumerate((1000, 2000, 3500, 6000, 20000, 50000, 100000, 200000)):
         items.append({
             "id": f"ups-{w}", "category": "ups",
@@ -285,16 +265,9 @@ def _build_base_catalog() -> list[dict]:
 
 
 # ── Админский каталог ────────────────────────────────────────────────────────
-#
-# Контракт имён с frontend/src/utils/shopCatalog.js:
-#   GPU:   "CrystalCore Quartz Q320" / "Pyronix Inferno IF1060" / "Archivex Genesis G1060"
-#   CPU:   "CrystalChip Stone S210" / "PyroCore Inferno I560" / "ArchiveCore Genesis G560"
-#   case:  "TitanFrame Mini M100" / "NovaCase Apex X550" / "IronNest Colossus C550"
+# Names mirror frontend/src/utils/shopCatalog.js.
 
-# (brand_code, brand, line, hashrate)
-# 3 бренда × 7 ступеней хешрейта (ступени, а не каждая модель подряд —
-# иначе каталог превращается в «кучу кучу»). Цена = hashrate × PRICE_PER_HASH,
-# поэтому равный хешрейт равен в цене независимо от бренда.
+# Three brands share seven hashrate steps; equal hashrate means equal price.
 _GPU_STEPS = [180, 400, 900, 2000, 4500, 10000, 25000]
 _GPU_ROWS = []
 for _code, _brand, _lines in [

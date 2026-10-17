@@ -76,7 +76,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
   useEffect(() => { loadAsset() }, [loadAsset])
   useEffect(() => { loadHistory(timeframe) }, [loadHistory, timeframe])
 
-  // Авто-обновление этого актива (цена + история) по выбранному интервалу.
   const refreshAll = useCallback(() => { loadAsset(); loadHistory(timeframe) }, [loadAsset, loadHistory, timeframe])
   useAutoRefresh(refreshAll, intervalMs)
   const changeInterval = (ms) => { setIntervalMs(ms); localStorage.setItem('refreshIntervalMs', String(ms)) }
@@ -180,7 +179,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
     <div className="asset-detail">
       <button className="shop-back-btn" onClick={onBack}><ArrowLeft size={18} /> {t('common.back')}</button>
 
-      {/* Шапка */}
       <div className="mkd-header">
         {asset.image
           ? <img className="mkd-logo-img" src={asset.image} alt={asset.symbol} />
@@ -204,9 +202,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
         </div>
       </div>
 
-      {/* Двухколоночная «биржа»: слева график, справа аналитика */}
       <div className="mkd-layout">
-        {/* ЛЕВО: статы, график, действия */}
         <div className="mkd-col-main">
           <div className="mkd-stats-grid">
             <div className="mkd-stat"><span>{t('asset.change24h')}</span><Change value={changes['24h']} /></div>
@@ -225,7 +221,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
 
           {asset.description && <p className="mkd-description">{asset.description}</p>}
 
-          {/* График */}
           <div className="mkd-chart-card">
             <div className="mkd-chart-toolbar">
               <div className="mkd-intervals">
@@ -257,7 +252,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <p className="mkd-chart-hint">{t('asset.chartHint')}</p>
           </div>
 
-          {/* Действия */}
           <div className="mkd-actions">
             <button className="mkd-buy" onClick={() => { setTrade('buy'); setQty('') }}>{t('common.buy')}</button>
             <button className="mkd-sell" onClick={() => { setTrade('sell'); setQty('') }} disabled={held <= 0}>{t('common.sell')}</button>
@@ -267,9 +261,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
           </div>
         </div>
 
-        {/* ПРАВО: аналитические карточки (заполняем свободное пространство) */}
         <div className="mkd-col-side">
-          {/* Рекомендация */}
           <div className={`mkd-info-card mkd-rec ${a.recommendation}`}>
             <div className="mkd-rec-head">
               <span className="mkd-info-title"><Sparkles size={15} /> {t('asset.recommendation')}</span>
@@ -287,7 +279,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             </div>
           </div>
 
-          {/* Прогноз */}
           <div className="mkd-info-card">
             <span className="mkd-info-title"><Activity size={15} /> {t('asset.forecast')}</span>
             <div className="mkd-metric-row"><span>{t('asset.trend')}</span><b className={a.up ? 'up' : 'down'}>{a.up ? t('asset.trendUp') : t('asset.trendDown')}</b></div>
@@ -297,7 +288,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <div className="mkd-metric-row"><span>{t('asset.riskReward')}</span><b className={a.riskReward >= 0 ? 'up' : 'down'}>{a.riskReward >= 0 ? '+' : ''}{a.riskReward}</b></div>
           </div>
 
-          {/* Изменение цены */}
           <div className="mkd-info-card">
             <span className="mkd-info-title"><TrendingUp size={15} /> {t('asset.priceChange')}</span>
             <div className="mkd-metric-row"><span>{t('asset.change24h')}</span><Change value={a.c24} /></div>
@@ -326,7 +316,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             </div>
           )}
 
-          {/* Моя позиция — реальный P&L по средней цене входа */}
           <div className="mkd-info-card">
             <span className="mkd-info-title"><Wallet size={15} /> {t('asset.myPosition')}</span>
             {held > 0 ? (
@@ -355,7 +344,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             ) : <p className="mkd-info-empty">{t('asset.noPositionHint')}</p>}
           </div>
 
-          {/* Прогноз дивидендов — только акции */}
           {market === 'stock' && (
             <div className="mkd-info-card">
               <span className="mkd-info-title"><Gift size={15} /> {t('asset.dividendForecast')}</span>
@@ -364,7 +352,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             </div>
           )}
 
-          {/* Риск / волатильность / ликвидность / популярность */}
           <div className="mkd-info-card">
             <span className="mkd-info-title"><Gauge size={15} /> {t('asset.risk')}</span>
             <div className="mkd-metric-row">
@@ -393,7 +380,6 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
         <TransactionsPanel category={market === 'crypto' ? 'crypto' : 'trade'} />
       </div>
 
-      {/* Модалка сделки */}
       {trade && (
         <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
           <div className="modal-content trade-modal" onClick={e => e.stopPropagation()}>

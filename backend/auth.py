@@ -1,8 +1,5 @@
-"""Аутентификация и общие зависимости.
-
-Вынесено из main.py, чтобы модули-роутеры (economy, crypto, ...) могли
-переиспользовать зависимости без циклических импортов.
-"""
+"""Аутентификация и общие зависимости; вынесены из main.py, чтобы роутеры
+не тянули циклические импорты."""
 from __future__ import annotations
 
 import hashlib
@@ -29,8 +26,7 @@ _JWT_DEFAULT_SECRET = "tradeverse-dev-secret-change-in-prod"
 JWT_SECRET = os.getenv("JWT_SECRET", _JWT_DEFAULT_SECRET)
 JWT_ALGORITHM = "HS256"
 
-# Access-токен теперь короткоживущий (по умолчанию 30 минут). Долгую сессию
-# держит refresh-токен со скользящим окном (см. REFRESH_TOKEN_EXPIRE_DAYS).
+# Access — короткоживущий; долгую сессию держит refresh со скользящим окном.
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 
@@ -62,14 +58,12 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 def username_pattern(username: str) -> str:
-    """Anchored regex для поиска ника без учёта регистра."""
     return f"^{re.escape(username)}$"
 
 
 async def username_taken(
     db: AsyncIOMotorDatabase, username: str, exclude_id: str | ObjectId | None = None
 ) -> bool:
-    """True, если ник занят (регистронезависимо), кроме пользователя exclude_id."""
     query: dict = {"username": {"$regex": username_pattern(username), "$options": "i"}}
     if exclude_id is not None:
         query["_id"] = {"$ne": ObjectId(exclude_id)}
@@ -77,7 +71,6 @@ async def username_taken(
 
 
 def create_access_token(data: dict) -> str:
-    """Создаёт JWT-токен с полезной нагрузкой и сроком действия."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -85,33 +78,24 @@ def create_access_token(data: dict) -> str:
 
 
 def decode_access_token(token: str) -> dict:
-    """Декодирует и валидирует JWT-токен. Бросает исключение при ошибке."""
     return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
 
 
 # ── Refresh-токены ────────────────────────────────────────────────────────────
-#
-# Refresh-токен — непрозрачная случайная строка (не JWT). В БД хранится только
-# её SHA-256-хеш, сам токен нигде не сохраняется. Срок жизни — скользящее окно:
-# при каждом обновлении токен ротируется, а его 30-дневный срок отсчитывается
-# заново, поэтому активный пользователь фактически никогда не разлогинивается,
-# а неактивный >30 дней — обязан войти заново.
+# Непрозрачная случайная строка (не JWT); в БД только SHA-256-хеш. Скользящее
+# окно: при ротации 30-дневный срок отсчитывается заново — активный пользователь
+# не разлогинивается, неактивный >30 дней входит заново.
 
 
 def _hash_refresh_token(raw_token: str) -> str:
-    """Возвращает SHA-256-хеш refresh-токена (hex) для хранения в БД."""
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
 async def create_refresh_token(
     db: AsyncIOMotorDatabase, user_id: ObjectId, _max_attempts: int = 5
 ) -> str:
-    """Создаёт refresh-токен, сохраняет его хеш и срок в БД, возвращает сырой токен.
-
-    `token_hash` уникально индексирован — на случай коллизии (или любой другой
-    причины конфликта уникальности) повторяем с новым случайным токеном вместо
-    падения запроса с raw 500.
-    """
+    """Возвращает сырой токен (в БД — только хеш). token_hash уникален: при
+    коллизии повторяем с новым токеном, а не падаем с 500."""
     now = datetime.now(timezone.utc)
     for _ in range(_max_attempts):
         raw_token = secrets.token_urlsafe(48)
@@ -131,15 +115,9 @@ async def create_refresh_token(
 async def use_refresh_token(
     db: AsyncIOMotorDatabase, raw_token: str
 ) -> dict | None:
-    """Атомарно находит и удаляет действующий refresh-токен по его хешу.
-
-    find_one_and_delete в одном запросе объединяет проверку и инвалидацию токена,
-    поэтому две параллельные ротации одного и того же токена не могут обе
-    успешно завершиться — выигрывает только одна (защита от гонки при ротации).
-    Заодно хеш вычисляется один раз, а не дважды (поиск + отдельное удаление).
-    Возвращает документ токена или None, если он не найден или истёк. TTL-индекс
-    удаляет просроченные токены не мгновенно, поэтому срок проверяется вручную.
-    """
+    """Атомарно находит и удаляет действующий токен: find_one_and_delete не даёт
+    двум параллельным ротациям одного токена пройти обе. TTL-индекс чистит
+    просроченные не мгновенно — срок проверяем вручную."""
     doc = await db.refresh_tokens.find_one_and_delete(
         {"token_hash": _hash_refresh_token(raw_token)}
     )
@@ -155,7 +133,6 @@ async def use_refresh_token(
 
 
 async def delete_refresh_token(db: AsyncIOMotorDatabase, raw_token: str) -> bool:
-    """Удаляет refresh-токен по его хешу. Возвращает True, если что-то удалено."""
     result = await db.refresh_tokens.delete_one(
         {"token_hash": _hash_refresh_token(raw_token)}
     )

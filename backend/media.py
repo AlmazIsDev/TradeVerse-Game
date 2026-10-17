@@ -1,22 +1,7 @@
-"""СМИ: разоблачения компаний и игроков.
-
-Владелец актива «Медиахолдинг» заказывает разоблачение против компании-конкурента
-ИЛИ конкретного игрока. Взнос списывается сразу и «сгорает». Новость не выходит
-мгновенно — она ГОТОВИТСЯ от PREP_MIN до PREP_MAX (15 мин – 2 ч), после чего
-планировщик (``sweep_pending_exposes``) разыгрывает исход:
-
-- Успех  → доход всех бизнесов ВЛАДЕЛЬЦА-цели падает на hitPct (15–80%, растёт со
-           взносом) на EXPOSE_HOURS_MIN–EXPOSE_HOURS_MAX часов; если у цели есть
-           биржевая акция — её цена единоразово проседает на STOCK_HIT.
-- Провал → доход бизнесов цели, наоборот, временно РАСТЁТ (эффект Стрейзанда):
-           +EXPOSE_BACKFIRE на EXPOSE_HOURS_MIN–EXPOSE_HOURS_MAX часов.
-
-Дебафф/бафф хранится в коллекции ``company_debuffs`` как множитель ``factor`` с
-``expires_at`` (создаётся только при разыгрывании исхода — до этого эффекта нет).
-Активные множители читаются лениво (как materials_boost у активов). Взнос НЕ
-переходит цели — он «сгорает», поэтому механику нельзя использовать как скрытый
-перевод денег.
-"""
+"""СМИ: владелец «Медиахолдинга» заказывает разоблачение на компанию/игрока; взнос
+сгорает сразу (не переходя цели — механика не канал перевода). Через 15 мин–2 ч
+подготовки sweep_pending_exposes разыгрывает исход: успех — доход бизнесов цели
+×(1−hitPct 15–80%) на 12–36 ч, акция −15%; провал — +15% (Стрейзанд). Множитель — в company_debuffs."""
 from __future__ import annotations
 
 import random
@@ -38,9 +23,9 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 MEDIA_SLUG = "media_holding"
 
 # Экономика разоблачения
-EXPOSE_MIN_BUDGET = 5000.0        # минимальный взнос
+EXPOSE_MIN_BUDGET = 5000.0
 EXPOSE_COOLDOWN_H = 24            # КД на пару заказчик→цель
-EXPOSE_HOURS_MIN = 12             # длительность эффекта: случайна в диапазоне
+EXPOSE_HOURS_MIN = 12
 EXPOSE_HOURS_MAX = 36             # 12–36 ч (выбирается при выходе новости)
 EXPOSE_BACKFIRE = 0.15            # провал: +15% доходу цели (эффект Стрейзанда)
 STOCK_HIT = 0.15                  # успех: −15% к цене акции компании-цели
@@ -50,7 +35,6 @@ EXPOSE_HIT_MIN = 0.15
 EXPOSE_HIT_MAX = 0.80
 EXPOSE_HIT_SCALE = 3_000_000.0    # взнос, при котором удар приближается к максимуму
 
-# Подготовка новости: от 15 минут до 2 часов до выхода.
 PREP_MIN_MINUTES = 15
 PREP_MAX_MINUTES = 120
 
@@ -65,13 +49,11 @@ def _now() -> datetime:
 
 
 def _success_chance(budget: float) -> float:
-    """Линейный рост шанса от взноса, ограниченный [CHANCE_BASE, CHANCE_MAX]."""
     extra = (CHANCE_MAX - CHANCE_BASE) * min(1.0, budget / CHANCE_SCALE)
     return round(min(CHANCE_MAX, CHANCE_BASE + extra), 4)
 
 
 def _hit_pct(budget: float) -> float:
-    """Сила удара по доходу (15–80%), линейно растёт со взносом."""
     extra = (EXPOSE_HIT_MAX - EXPOSE_HIT_MIN) * min(1.0, budget / EXPOSE_HIT_SCALE)
     return round(min(EXPOSE_HIT_MAX, EXPOSE_HIT_MIN + extra), 4)
 
@@ -80,11 +62,9 @@ def _hit_pct(budget: float) -> float:
 
 
 async def active_owner_income_factor(db: AsyncIOMotorDatabase, owner_id: str) -> float:
-    """Произведение активных множителей дохода для бизнесов данного владельца.
-
-    1.0 — нет активных эффектов. <1.0 — репутационный кризис (успешное
-    разоблачение), >1.0 — отскок (провал разоблачения). Истёкшие записи
-    игнорируются (ленивая проверка по expires_at)."""
+    """Произведение активных множителей дохода владельца: 1.0 — нет эффектов,
+    <1.0 — кризис (успешное разоблачение), >1.0 — отскок (провал). Истёкшие
+    игнорируются (ленивая проверка expires_at)."""
     factor = 1.0
     now = _now()
     async for d in db.company_debuffs.find({"ownerId": str(owner_id)}):
@@ -304,7 +284,6 @@ async def expose_company(
         "resolve_at": resolve_at,
     })
 
-    # Уведомляем заказчика: новость готовится.
     await push_notification(
         db, uid, "media", "Разоблачение заказано",
         f"Материал о «{target_name}» готовится и выйдет примерно через {prep_minutes} мин.",
@@ -323,7 +302,6 @@ async def expose_company(
 
 
 async def _resolve_expose(db: AsyncIOMotorDatabase, ev: dict):
-    """Разыгрывает исход одного готового разоблачения (успех/провал) и применяет эффект."""
     target_owner_id = ev.get("targetOwnerId")
     target_company_id = ev.get("targetCompanyId")
     target_name = ev.get("targetName", "—")
@@ -372,7 +350,6 @@ async def _resolve_expose(db: AsyncIOMotorDatabase, ev: dict):
             f"доход бизнесов +{int(EXPOSE_BACKFIRE * 100)}% на {effect_hours} ч.",
             data={"targetName": target_name},
         )
-    # Уведомляем заказчика об исходе.
     ordered_by = ev.get("orderedBy")
     if ordered_by:
         if outcome == "success":
@@ -407,7 +384,6 @@ async def sweep_pending_exposes(db: AsyncIOMotorDatabase):
 
 
 async def _hit_company_stock(db: AsyncIOMotorDatabase, company_id: str) -> Optional[dict]:
-    """Единоразово роняет цену акции компании (если размещена) на STOCK_HIT."""
     stock = await db.stocks.find_one({"companyId": company_id})
     if not stock:
         return None
@@ -447,8 +423,8 @@ if __name__ == "__main__":
     assert _hit_pct(0.0) == EXPOSE_HIT_MIN
     assert _hit_pct(EXPOSE_HIT_SCALE) == EXPOSE_HIT_MAX
     assert EXPOSE_HIT_MIN <= _hit_pct(EXPOSE_MIN_BUDGET) < 0.20
-    assert round(1.0 - _hit_pct(EXPOSE_HIT_SCALE), 4) == 0.20   # успех бьёт доход до 20%
-    assert round(1.0 + EXPOSE_BACKFIRE, 4) > 1.0                # провал — рост дохода
+    assert round(1.0 - _hit_pct(EXPOSE_HIT_SCALE), 4) == 0.20
+    assert round(1.0 + EXPOSE_BACKFIRE, 4) > 1.0
     # Диапазон подготовки новости: 15 мин – 2 ч (требование «не мгновенно»).
     assert PREP_MIN_MINUTES == 15 and PREP_MAX_MINUTES == 120
     print("media self-check OK")

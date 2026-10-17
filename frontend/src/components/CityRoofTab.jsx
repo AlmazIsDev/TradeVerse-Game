@@ -14,7 +14,6 @@ import {
   Gift, Zap, ShieldPlus, Clock,
 } from 'lucide-react'
 
-// Форматирует секунды в M:SS для таймера автосбора.
 function formatCountdown(sec) {
   const s = Math.max(0, Math.round(sec))
   const m = Math.floor(s / 60)
@@ -46,7 +45,6 @@ function BonusCountdown({ anchor, readyInSec }) {
 // (cityroof.effects.*), чтобы текст не оставался русским при английской локали.
 const DISCOUNT_EFFECTS = new Set(['shop_discount', 'warcoin_discount', 'mining_energy'])
 
-// Палитра «пегов» для комбинации (индекс символа → цвет)
 const PEG_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1', '#a855f7', '#ec4899', '#f5f5f5']
 
 // Изображения зданий на карте (эмодзи вместо ассетов — работает без сети)
@@ -309,7 +307,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         <h2 className="tab-title">{t('nav.cityroof')}</h2>
       </div>
 
-      {/* Панель WarCoin + статус события */}
       <div className="cityroof-bar">
         <div className="wc-chip">
           <Coins size={16} />
@@ -324,7 +321,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
 
       <p className="cityroof-hint">{t('cityroof.hint', { cost: map?.attackCost ?? 10 })}</p>
 
-      {/* Бонусы зданий во владении — доход зачисляется автоматически (автосбор) */}
       {bonuses && bonuses.bonuses.length > 0 && (
         <div className="cityroof-bonuses">
           <div className="cbonus-head">
@@ -355,7 +351,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       )}
 
-      {/* Карта — реальное изображение города с интерактивными зданиями поверх */}
       <div className="cityroof-map">
         <img className="cityroof-map-img" src="/city.webp" alt="" aria-hidden="true" draggable="false" />
         <div className="cityroof-map-grid">
@@ -385,7 +380,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       </div>
 
-      {/* Модалка бизнеса */}
       {selected && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content cityroof-modal" onClick={e => e.stopPropagation()}>
@@ -401,7 +395,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               {selected.protectionLevel > 0 && <> · <Shield size={12} /> {selected.protectionLevel}</>}
             </p>
 
-            {/* Владелец — защита (WC) + IT-студия */}
             {selected.isMine && (
               <div className="cityroof-protect">
                 <h4><Lock size={14} /> {t('cityroof.protection')}</h4>
@@ -426,7 +419,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               </div>
             )}
 
-            {/* Не владелец — атака (мини-игра) + IT-студия */}
             {!selected.isMine && !session && (
               <button className="cityroof-attack-btn" disabled={busy}
                 onClick={() => setConfirm({
@@ -440,7 +432,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             )}
             {!selected.isMine && selected.ownerId && !session && renderStudioAction('attack')}
 
-            {/* Мини-игра */}
             {session && (
               <div className="cityroof-game">
                 <p className="cityroof-game-hint">{t('cityroof.guessHint', { len: session.length, colors: session.symbolRange })}</p>
@@ -474,7 +465,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       )}
 
-      {/* Покупка WC */}
       {buyModal && (
         <div className="modal-overlay" onClick={() => !busy && setBuyModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>

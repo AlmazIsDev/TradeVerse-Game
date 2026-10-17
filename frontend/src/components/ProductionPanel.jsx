@@ -1,16 +1,7 @@
 // ProductionPanel · управление производством: источник (шахта/лесопилка/поле),
-// пекарня (завод produces='bread') и склад.
-// Рендерится из MyAssetsTab вместо списка активов (как FarmPanel для поля).
-//
-// Данные: GET /api/production/overview — юниты, склады, фуры, поля, цены.
-// Действия:
-//   POST /api/production/{id}/config           — получатель / поставщик пшеницы
-//   POST /api/production/{id}/trucks           — назначить фуры (до 5 на поток)
-//   POST /api/production/{id}/workers          — нанять работников (0..50)
-//   POST /api/production/{id}/food             — заказать хлеб для работников
-//   POST /api/production/{id}/storage-upgrade  — прокачка хранилища (до 10 ур.)
-//   POST /api/production/{id}/sell             — продать ресурс (со склада тоже)
-//   POST /api/production/{id}/haul-now         — отправить свободные фуры сейчас
+// пекарня и склад. Рендерится из MyAssetsTab. Данные: GET /api/production/overview.
+// Действия: POST /api/production/{id}/{config,trucks,workers,food,storage-upgrade,
+// sell,haul-now} — см. вызовы в теле файла.
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -93,14 +84,11 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
     for (const u of (data?.units || [])) if (u.isBakery) destinationOptions.push(u)
   }
 
-  // Поставщики пшеницы для пекарни: поля + склады.
   const inputOptions = []
   if (unit?.isBakery) {
     for (const f of (data?.fields || [])) inputOptions.push({ id: f.id, name: f.name })
     for (const w of (data?.warehouses || [])) inputOptions.push({ id: w.id, name: w.name })
   }
-
-  // Ресурсы, доступные для продажи: у поля — склад поля, иначе prod.storage / storage склада.
 
   if (loading) {
     return <div className="farm-panel"><div className="empty-state"><Loader2 size={24} className="spin" /> {t('common.loading', 'Загрузка…')}</div></div>
@@ -133,7 +121,6 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
 
       {unit && (
         <>
-          {/* ── Хранилище ── */}
           <section className="farm-block">
             <h3><Package size={16} /> {t('prod.storage', 'Хранилище')} · {t('prod.storageLevel', { level: unit.storageLevel })}</h3>
             <div className="farm-storage-list">
@@ -164,7 +151,6 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
             </p>
           </section>
 
-          {/* ── Работники ── */}
           <section className="farm-block">
             <h3><Users size={16} /> {t('prod.workers', 'Работники')}</h3>
             <p className="farm-hint"><Info size={12} /> {t('prod.workersHint')}</p>
@@ -184,7 +170,6 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
             </p>
           </section>
 
-          {/* ── Еда ── */}
           <section className="farm-block">
             <h3><Wheat size={16} /> {t('prod.food', 'Еда (хлеб)')}</h3>
             <p className="farm-hint"><Info size={12} /> {t('prod.foodHint')}</p>
@@ -220,7 +205,6 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
             </section>
           )}
 
-          {/* ── Логистика ── */}
           {!warehouse && (
             <section className="farm-block">
               <h3><Truck size={16} /> {t('prod.trucks', 'Фуры')}</h3>
@@ -258,8 +242,6 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
       )}
     </div>
   )
-
-  // ── Вложенные рендеры ──
 
   function SellRow({ res }) {
     const price = prices[res] || 0
@@ -310,7 +292,6 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
     )
   }
 
-  // ── Секция склада: все ресурсы + продажа ──
   function WarehouseSections() {
     const entries = Object.entries(warehouse.storage || {})
     return (

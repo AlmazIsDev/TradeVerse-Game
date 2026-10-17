@@ -12,7 +12,6 @@ class ApiError extends Error {
   }
 }
 
-/** Получить JWT access-токен из localStorage */
 function getAuthToken() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -24,7 +23,6 @@ function getAuthToken() {
   return null
 }
 
-/** Получить refresh-токен из localStorage */
 function getRefreshToken() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -36,7 +34,6 @@ function getRefreshToken() {
   return null
 }
 
-/** Обновить оба токена в localStorage */
 function saveTokens(accessToken, refreshToken) {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -49,7 +46,6 @@ function saveTokens(accessToken, refreshToken) {
   } catch { /* ignore */ }
 }
 
-/** Очистить localStorage и выбросить событие принудительного логаута */
 function forceLogout() {
   stopTokenRefresh()
   localStorage.removeItem(STORAGE_KEY)
@@ -77,9 +73,6 @@ async function logoutUser() {
 }
 
 // ── Проактивное обновление access-токена ────────────────────────────────────
-// Декодируем `exp` из JWT (base64url payload) и планируем refresh за ~2 мин до
-// истечения. Также обновляем токен при возврате фокуса на вкладку, если он
-// близок к истечению. 401-интерцептор остаётся страховкой.
 
 const REFRESH_LEEWAY_MS = 2 * 60 * 1000 // обновляем за 2 минуты до exp
 
@@ -118,7 +111,6 @@ async function refreshAndReschedule() {
   } catch { /* refreshAccessToken уже вызвал forceLogout */ }
 }
 
-/** Запланировать следующий refresh на основе exp текущего access-токена. */
 function scheduleTokenRefresh() {
   if (refreshTimer) {
     clearTimeout(refreshTimer)
@@ -129,7 +121,6 @@ function scheduleTokenRefresh() {
   const expMs = getTokenExpiryMs(token)
   if (expMs == null) return
 
-  // Обновляем за REFRESH_LEEWAY_MS до истечения, но не реже чем через 1с
   const delay = Math.max(1000, expMs - Date.now() - REFRESH_LEEWAY_MS)
 
   refreshTimer = setTimeout(refreshAndReschedule, delay)
@@ -167,7 +158,7 @@ function stopTokenRefresh() {
   }
 }
 
-// ── Refresh lock: предотвращает параллельные refresh-запросы ──────────────
+// ── Refresh lock ──────────────────────────────────────────────────────────
 let refreshPromise = null
 
 async function refreshAccessToken() {
@@ -226,7 +217,7 @@ async function request(endpoint, options = {}) {
   try {
     const response = await fetch(url, config)
 
-    // ── 401 Interceptor: пробуем refresh, затем повторяем запрос ────────
+    // ── 401 retry ────────────────────────────────────────────────────────
     if (response.status === 401 && getRefreshToken()) {
       // Блокируем параллельные refresh-запросы
       if (!refreshPromise) {

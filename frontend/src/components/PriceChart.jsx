@@ -2,12 +2,9 @@ import { useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 /**
- * Самодостаточный canvas-график (без внешних зависимостей).
- * Поддерживает: линию и свечи, наведение с подсказкой, зум колёсиком,
- * перемещение перетаскиванием, плавную перерисовку под devicePixelRatio.
- *
- * props: candles [{t,o,h,l,c}], line [{t,p}], type 'line'|'candle',
- *        color, height, up, down
+ * Canvas-график цены без зависимостей: линия/свечи, кроссхэйр, зум колёсиком,
+ * панорамирование перетаскиванием, перерисовка под devicePixelRatio.
+ * props: candles [{t,o,h,l,c}], line [{t,p}], type 'line'|'candle', color, height, up, down
  */
 function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3', height = 340, up = '#34c759', down = '#ff3b30' }) {
   const { t: translate } = useTranslation()
@@ -96,7 +93,6 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     const xCandle = (i) => padL + (i + 0.5) * (plotW / count)
     const yAt = (p) => padT + (1 - (p - min) / range) * plotH
 
-    // Сетка + ось цены
     ctx.strokeStyle = C.grid
     ctx.fillStyle = C.axis
     ctx.font = '11px -apple-system, Inter, sans-serif'
@@ -109,7 +105,6 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
       const price = max - (g / gridN) * range
       ctx.fillText('$' + fmtPrice(price), padL + plotW + 6, y + 3)
     }
-    // Ось времени
     ctx.textAlign = 'center'
     const xTick = type === 'candle' ? xCandle : xAt
     const ticks = Math.min(5, count)
@@ -136,7 +131,6 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
         ctx.fillRect(bx, top, cw, Math.max(1, Math.abs(yc - yo)))
       }
     } else {
-      // Заливка-градиент под линией
       const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH)
       grad.addColorStop(0, color + '44')
       grad.addColorStop(1, color + '00')
@@ -148,7 +142,6 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
       ctx.closePath()
       ctx.fillStyle = grad
       ctx.fill()
-      // Линия
       ctx.beginPath()
       ctx.moveTo(xAt(0), yAt(vis[0].p))
       for (let i = 1; i < count; i++) ctx.lineTo(xAt(i), yAt(vis[i].p))
@@ -158,7 +151,6 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
       ctx.stroke()
     }
 
-    // Кроссхэйр + подсказка
     const h = hover.current
     if (h >= 0 && h < count) {
       const d = vis[h]
@@ -193,21 +185,18 @@ function PriceChart({ candles = [], line = [], type = 'line', color = '#0071e3',
     }
   }, [data, len, type, color, height, up, down])
 
-  // Сброс окна при смене данных
   useEffect(() => {
     view.current = { start: 0, count: len }
     hover.current = -1
     draw()
   }, [len, type, draw])
 
-  // Ресайз
   useEffect(() => {
     const ro = new ResizeObserver(() => draw())
     if (wrapRef.current) ro.observe(wrapRef.current)
     return () => ro.disconnect()
   }, [draw])
 
-  // Перерисовка при смене темы — хром графика зависит от data-theme.
   useEffect(() => {
     const onTheme = () => draw()
     window.addEventListener('tv:theme', onTheme)

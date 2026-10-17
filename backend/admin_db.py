@@ -1,12 +1,7 @@
-"""Универсальный редактор БД для админа: просмотр/правка/удаление любых коллекций.
-
-ponytail: без allowlist коллекций — полностью универсальный редактор по
-требованию (см. docs/superpowers/specs/2026-07-23-admin-db-editor-design.md).
-Сырой JSON-редактор — плохая правка может незаметно сломать данные (например
-строка вместо datetime ломает isinstance-проверки вроде _aware() в
-market_data.py). Апгрейд-путь при необходимости — типизированный редактор
-для конкретной "болящей" коллекции.
-"""
+"""Универсальный редактор БД админа: любые коллекции, сырой JSON.
+ponytail: без allowlist — по требованию (docs/superpowers/specs/2026-07-23-admin-db-editor-design.md);
+плохая правка ломает данные незаметно (строка вместо datetime роняет _aware()
+в market_data.py). Апгрейд — типизированный редактор под «болящую» коллекцию."""
 from __future__ import annotations
 
 import json
@@ -24,9 +19,7 @@ router = APIRouter(prefix="/api/admin/db", tags=["admin-db"])
 
 LIST_LIMIT_CAP = 200
 
-# Резолвер ID-ссылок -> человекочитаемое имя. Универсальный редактор не знает
-# схему, поэтому маппинг полей задаём явно по соглашениям об именах.
-# field -> (target_collection, display_field)
+# field -> (target_collection, display_field); задан явно, т.к. редактор не знает схему
 REF_MAP = {
     "userId": ("users", "username"),
     "ownerId": ("users", "username"),
@@ -65,12 +58,8 @@ async def _resolve_refs(db: AsyncIOMotorDatabase, docs: list) -> dict:
 
 
 def _to_json(doc) -> dict:
-    """BSON doc -> JSON-safe dict через Extended JSON (ObjectId -> {"$oid": ...}, datetime -> {"$date": ...}).
-
-    Возвращаем строковую форму Extended JSON (json.loads, не json_util.loads):
-    FastAPI сериализует результат напрямую, а bare ObjectId он сериализовать не умеет.
-    Фронтенд уже читает _id как doc._id?.$oid || doc._id.
-    """
+    """BSON -> JSON-safe dict (Extended JSON, строковая форма json.loads): bare
+    ObjectId FastAPI не сериализует; фронт читает _id как doc._id?.$oid || doc._id."""
     return json.loads(json_util.dumps(doc))
 
 

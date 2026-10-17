@@ -1,9 +1,5 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// ShopBuyModal · модалка покупки товара в магазине (ShopTab).
-// Визуально повторяет MarketBuyModal: сверху товар, ниже баланс/цена/итог,
-// под ними кнопка «Купить». В отличие от рынка, в магазине можно покупать
-// железо/расходники партией — есть степпер количества и строка «Итого».
-// ─────────────────────────────────────────────────────────────────────────────
+// ShopBuyModal · модалка покупки в магазине (ShopTab). Как MarketBuyModal,
+// плюс степпер количества: железо/расходники покупаются партией.
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -12,16 +8,6 @@ import {
 } from 'lucide-react'
 import { formatMoney } from './TransactionsPanel'
 
-/**
- * props:
- *   open: boolean
- *   item: { id, name, price, color?, category? }
- *   balance: number
- *   maxQty: верхняя граница степпера (по умолчанию 1000)
- *   busy:   boolean (пока идёт покупка)
- *   onConfirm(qty): вызывается при нажатии «Купить»
- *   onCancel():     закрытие
- */
 function ShopBuyModal({
   open,
   item,
@@ -34,10 +20,8 @@ function ShopBuyModal({
   const { t } = useTranslation()
   const [qty, setQty] = useState(1)
 
-  // Сбрасываем количество на 1 при каждом открытии/смене товара.
   useEffect(() => { if (open) setQty(1) }, [open, item?.id])
 
-  // Закрываем по Esc.
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') onCancel?.() }
@@ -71,7 +55,6 @@ function ShopBuyModal({
           <X size={18} />
         </button>
 
-        {/* 1) Товар. */}
         <div className="market-buy-modal-item">
           <div
             className="market-buy-modal-icon"
@@ -95,7 +78,6 @@ function ShopBuyModal({
           </div>
         </div>
 
-        {/* Количество (степпер) — нужно для магазина (железо покупается партией). */}
         <div className="market-buy-modal-qty">
           <div className="market-buy-modal-qty-label">
             {t('buyModal.quantity', 'Количество')}
@@ -127,7 +109,6 @@ function ShopBuyModal({
           </div>
         </div>
 
-        {/* 2) Баланс. */}
         <div className="market-buy-modal-row">
           <div className="market-buy-modal-row-label">
             <Wallet size={14} /> {t('buyModal.balance', 'Баланс')}
@@ -135,7 +116,6 @@ function ShopBuyModal({
           <div className="market-buy-modal-row-value">${formatMoney(balance)}</div>
         </div>
 
-        {/* 3) Цена за единицу. */}
         <div className="market-buy-modal-row">
           <div className="market-buy-modal-row-label">
             <Coins size={14} /> {t('buyModal.pricePerUnit', 'Цена за шт.')}
@@ -143,7 +123,6 @@ function ShopBuyModal({
           <div className="market-buy-modal-row-value">${formatMoney(price)}</div>
         </div>
 
-        {/* 4) Итого (итоговая стоимость покупки). */}
         <div className="market-buy-modal-row market-buy-modal-row-price">
           <div className="market-buy-modal-row-label">
             <Receipt size={14} /> {t('buyModal.total', 'Итого')}
@@ -157,7 +136,6 @@ function ShopBuyModal({
           </div>
         )}
 
-        {/* 5) Кнопка «Купить». */}
         <button
           type="button"
           className="market-buy-modal-buy"

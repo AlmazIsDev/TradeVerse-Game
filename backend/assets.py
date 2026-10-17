@@ -540,13 +540,23 @@ DEMAND_SELL = 0.01      # продажа опускает множитель
 RARITY_FLOOR = {"common": 0.0, "uncommon": 0.03, "rare": 0.07, "epic": 0.12, "legendary": 0.20}
 
 
+# Каталог статичен в рамках процесса: 145 последовательных upsert на каждый
+# запрос рынка стоили ~2 с через удалённую Mongo. Один bulk_write + флаг.
+_ASSET_MARKET_ENSURED = False
+
+
 async def _ensure_asset_market(db: AsyncIOMotorDatabase):
-    for c in CATALOG:
-        await db.asset_market.update_one(
-            {"slug": c["slug"]},
-            {"$setOnInsert": {"slug": c["slug"], "mult": 1.0, "updated_at": _now()}},
-            upsert=True,
-        )
+    global _ASSET_MARKET_ENSURED
+    if _ASSET_MARKET_ENSURED:
+        return
+    from pymongo import UpdateOne
+    await db.asset_market.bulk_write([
+        UpdateOne({"slug": c["slug"]},
+                  {"$setOnInsert": {"slug": c["slug"], "mult": 1.0, "updated_at": _now()}},
+                  upsert=True)
+        for c in CATALOG
+    ])
+    _ASSET_MARKET_ENSURED = True
 
 
 async def _drift_asset_market(db: AsyncIOMotorDatabase):

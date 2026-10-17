@@ -118,6 +118,9 @@ async def lifespan(app: FastAPI):
     # коллекцию и блокирующе сортирует результат (секунды на ответ).
     await db.transactions.create_index("timestamp")
     await db.transactions.create_index([("category", 1), ("timestamp", -1)])
+    # covering для aggregate прибыли лидерборда: окно по timestamp +
+    # userId/direction/amount прямо в индексе — без выборки документов.
+    await db.transactions.create_index([("timestamp", 1), ("userId", 1), ("direction", 1), ("amount", 1)])
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
     await db.crypto_assets.create_index("symbol", unique=True)
@@ -591,7 +594,7 @@ _LEADERBOARD_SORT_FIELD = {
 # делаются на готовом списке). Тяжёлый обсчёт по всем игрокам не выполняется
 # на каждый запрос, что ускоряет загрузку любого лидерборда.
 _LB_CACHE: dict = {"ts": None, "entries": None}
-_LB_CACHE_TTL_S = 12
+_LB_CACHE_TTL_S = 75   # чуть больше интервала планировщика (60с): прогрев снизу держит кэш живым
 
 
 async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Optional[dict] = None) -> list[dict]:
@@ -643,18 +646,24 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
     # из реестра операций. Раньше profit = net_worth − STARTING_BALANCE считался
     # «с момента регистрации» и был бессмысленным для давних игроков.
     # ponytail: скользящее окно 7д по ledger'у; для «за день/месяц» — параметризовать окно.
+    # Сначала пользователи, потом прибыль — aggregate сужается по id: вызов
+    # для одного игрока не должен сканировать весь ledger.
+    users = [u async for u in db.users.find(user_query if user_query is not None else {})]
+    uids = [str(u["_id"]) for u in users]
+
     period_net: dict[str, float] = {}
     since = datetime.now(timezone.utc) - timedelta(days=7)
-    async for row in db.transactions.aggregate([
-        {"$match": {"timestamp": {"$gte": since}}},
-        {"$group": {"_id": {"u": "$userId", "d": "$direction"}, "sum": {"$sum": "$amount"}}},
-    ]):
-        uid = row["_id"]["u"]
-        signed = row["sum"] if row["_id"]["d"] == "income" else -row["sum"]
-        period_net[uid] = period_net.get(uid, 0.0) + signed
+    if uids:
+        async for row in db.transactions.aggregate([
+            {"$match": {"timestamp": {"$gte": since}, "userId": {"$in": uids}}},
+            {"$group": {"_id": {"u": "$userId", "d": "$direction"}, "sum": {"$sum": "$amount"}}},
+        ]):
+            uid = row["_id"]["u"]
+            signed = row["sum"] if row["_id"]["d"] == "income" else -row["sum"]
+            period_net[uid] = period_net.get(uid, 0.0) + signed
 
     entries = []
-    async for u in db.users.find(user_query if user_query is not None else {"hidden_from_leaderboard": {"$ne": True}}):
+    for u in users:
         uid = str(u["_id"])
         cash = float(u.get("balance", STARTING_BALANCE))
         stocks_value = round(stock_val.get(uid, 0.0), 2)
@@ -678,8 +687,49 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             # profitAllTime сохранён для профиля/ачивок как «рост с регистрации».
             "profit": round(period_net.get(uid, 0.0), 2),
             "profitAllTime": round(net_worth - STARTING_BALANCE, 2),
+            "hidden": bool(u.get("hidden_from_leaderboard", False)),
         })
     return entries
+
+
+async def _leaderboard_entries(db: AsyncIOMotorDatabase) -> list[dict]:
+    """Обсчёт лидерборда через общий кэш: тяжёлый aggregate по ledger'у
+    не должен считываться на каждый запрос (и на каждую страницу админки)."""
+    now_ts = datetime.now(timezone.utc)
+    cached, cached_ts = _LB_CACHE["entries"], _LB_CACHE["ts"]
+    if cached is not None and isinstance(cached_ts, datetime) and (now_ts - cached_ts).total_seconds() < _LB_CACHE_TTL_S:
+        return cached
+    entries = await _compute_leaderboard_entries(db)
+    _LB_CACHE["entries"] = entries
+    _LB_CACHE["ts"] = now_ts
+    return entries
+
+
+async def refresh_leaderboard_cache(db: AsyncIOMotorDatabase) -> None:
+    """Прогрев кэша из планировщика — тогда GET /api/leaderboard всегда тёплый."""
+    entries = await _compute_leaderboard_entries(db)
+    _LB_CACHE["entries"] = entries
+    _LB_CACHE["ts"] = datetime.now(timezone.utc)
+
+
+async def _entry_for_user(db: AsyncIOMotorDatabase, oid) -> Optional[dict]:
+    """Карточка игрока из тёплого кэша (прогрев планировщиком каждые 60 с).
+
+    Одиночный _compute_leaderboard_entries всё равно сканирует holdings/assets
+    целиком (~1–1.6 с) — профиль/статистика не должны платить это за каждый
+    просмотр. Для нового игрока вне кэша — fallback на прямой обсчёт.
+    """
+    # Только peek в кэш — промах не должен пересобирать весь лидерборд
+    # (6–9 с): для одного игрока считаем локально (1–1.6 с).
+    uid = str(oid)
+    cached, cached_ts = _LB_CACHE["entries"], _LB_CACHE["ts"]
+    if (cached is not None and isinstance(cached_ts, datetime)
+            and (datetime.now(timezone.utc) - cached_ts).total_seconds() < _LB_CACHE_TTL_S):
+        for e in cached:
+            if e["userId"] == uid:
+                return e
+    entries = await _compute_leaderboard_entries(db, {"_id": oid})
+    return entries[0] if entries else None
 
 
 @app.get("/api/leaderboard")
@@ -696,15 +746,9 @@ async def get_leaderboard(
     Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
     """
     sort_field = _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
-
-    now_ts = datetime.now(timezone.utc)
-    cached, cached_ts = _LB_CACHE["entries"], _LB_CACHE["ts"]
-    if cached is not None and isinstance(cached_ts, datetime) and (now_ts - cached_ts).total_seconds() < _LB_CACHE_TTL_S:
-        entries = cached
-    else:
-        entries = await _compute_leaderboard_entries(db)
-        _LB_CACHE["entries"] = entries
-        _LB_CACHE["ts"] = now_ts
+    # Скрытые игроки живут в том же кэше (админке нужны все), но в публичный
+    # срез не попадают.
+    entries = [e for e in await _leaderboard_entries(db) if not e.get("hidden")]
 
     ranked = sorted(entries, key=lambda e: e.get(sort_field, 0.0), reverse=True)[:limit]
     # Копируем и проставляем ранг, не мутируя кэш.
@@ -761,8 +805,7 @@ async def get_my_stats(
     Работает и для скрытых из таблицы лидеров — фильтр по своему _id, а не по
     флагу видимости. Ачивки выводятся из уже посчитанных цифр, без новых механик.
     """
-    entries = await _compute_leaderboard_entries(db, {"_id": current_user["_id"]})
-    stats = entries[0] if entries else {
+    stats = await _entry_for_user(db, current_user["_id"]) or {
         "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
         "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
     }
@@ -793,8 +836,7 @@ async def get_public_profile(
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
-    entries = await _compute_leaderboard_entries(db, {"_id": user["_id"]})
-    stats = entries[0] if entries else {
+    stats = await _entry_for_user(db, user["_id"]) or {
         "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
         "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
     }
@@ -844,7 +886,7 @@ async def admin_get_users(
     мгновенно без перезапроса. Аватары не отдаём — base64 на каждого
     пользователя раздувает ответ до мегабайт, в списке они не нужны.
     """
-    by_uid = {e["userId"]: e for e in await _compute_leaderboard_entries(db, {})}
+    by_uid = {e["userId"]: e for e in await _leaderboard_entries(db)}
     out = []
     async for u in db.users.find({}, {"username": 1, "role": 1, "balance": 1, "created_at": 1,
                                       "card_number": 1, "hidden_from_leaderboard": 1, "leaderboard_lock": 1,
@@ -1223,9 +1265,20 @@ async def admin_get_user_property(
 
     assets = [assets_module._serialize(a) async for a in db.user_assets.find({"userId": user_id})]
 
+    # Без N+1: _serialize_with_stats на каждую ферму тянул рынок монет, econ
+    # и бонусы города (2544 фермы × 4 запроса = 193 с на кита). Считаем
+    # один раз и сериализуем локально — как в get_farms.
+    market = await mining_module._coin_market(db)
+    econ_cfg = await mining_module.get_econ(db)
+    ec, em = econ_cfg.get("energy_cost", 0.12), econ_cfg.get("economy_mult", 1.0)
+    city = await mining_module._city_bonus(db, user_id)
     farms = []
     async for f in db.mining_farms.find({"userId": user_id}):
-        farms.append(await mining_module._serialize_with_stats(db, f, user_id))
+        missing = mining_module._missing_required(f)
+        stats = {} if missing else mining_module._compute(f, market, ec, em, city)
+        item = mining_module._serialize(f, stats, mining_module._capacity(f))
+        item["missing"] = missing
+        farms.append(item)
 
     company_doc = await db.companies.find_one({"ownerId": user_id})
     company = await company_module._serialize(db, company_doc, user_id) if company_doc else None

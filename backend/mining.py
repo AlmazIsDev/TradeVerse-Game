@@ -2434,9 +2434,58 @@ async def admin_list_inventory(
     _admin=Depends(require_admin("users_property")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Полный инвентарь железа игрока: каждая единица и где установлена."""
-    items = [_serialize_hw(h) async for h in
-             db.user_hardware.find({"userId": user_id}).sort("purchased_at", -1)]
+    """Инвентарь железа игрока для админки — группами (товар + состояние),
+    как у игрока: 33k поштучных документов убивали и запрос (7+ с), и рендер.
+    id группы — реальный _id свежайшей единицы, поэтому uninstall/delete
+    работают как раньше (над одной единицей группы)."""
+    farm_names = {str(f["_id"]): f.get("name") async for f in
+                  db.mining_farms.find({"userId": user_id}, {"name": 1})}
+    items = []
+    for installed in (True, False):
+        match = {"userId": user_id,
+                 "farmId": {"$ne": None} if installed else None}
+        group: dict = {
+            "_id": {"itemId": "$itemId", "category": "$category",
+                    "name": "$name", "specs": "$specs", "condition": "$condition"},
+            "qty": {"$sum": 1},
+            "sampleId": {"$first": "$_id"},
+            "avg_price": {"$avg": "$purchase_price"},
+            "latest": {"$max": "$purchased_at"},
+        }
+        if installed:
+            group["sampleFarm"] = {"$first": "$farmId"}
+            group["farms"] = {"$addToSet": "$farmId"}
+        async for g in db.user_hardware.aggregate([
+            {"$match": match},
+            {"$sort": {"purchased_at": -1}},
+            {"$group": group},
+            {"$sort": {"_id.name": 1, "_id.itemId": 1}},
+        ]):
+            gid = g["_id"]
+            item = {
+                "id": str(g["sampleId"]),
+                "itemId": gid.get("itemId"),
+                "name": gid.get("name"),
+                "category": gid.get("category"),
+                "specs": gid.get("specs", {}),
+                "condition": round(float(gid.get("condition") or 0), 1),
+                "purchasePrice": round(float(g.get("avg_price") or 0), 2),
+                "purchasedAt": g["latest"].isoformat() if isinstance(g.get("latest"), datetime) else None,
+                "qty": g["qty"],
+                "group": True,
+            }
+            if installed:
+                sfid = g.get("sampleFarm")
+                fids = [f for f in (g.get("farms") or []) if f]
+                item["farmId"] = str(sfid) if sfid else None
+                item["farmName"] = farm_names.get(str(sfid)) if sfid else None
+                item["installedGroup"] = True
+                item["farmsCount"] = len(fids)
+                item["farmSample"] = [farm_names.get(str(f)) for f in fids[:3] if farm_names.get(str(f))]
+            else:
+                item["farmId"] = None
+                item["farmName"] = None
+            items.append(item)
     return {"items": items}
 
 

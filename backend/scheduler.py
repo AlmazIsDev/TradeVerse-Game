@@ -89,9 +89,24 @@ async def _tick():
         await push_to_admins(db, {"type": "economy_stats", "stats": stats})
     except Exception as exc:
         logger.warning("economy stats push failed: %s", exc, exc_info=True)
-    # 7) Лидерборд: лёгкий сигнал всем — сам расчёт капитала игроков тяжёлый
-    #    (обход users/holdings/assets/companies), поэтому шлём не данные,
-    #    а триггер; фронт дёргает уже закэшированный GET /api/leaderboard.
+    # 7) Лидерборд: тяжёлый расчёт капитала (aggregate по ledger'у на 1M+
+    #    записей) делаем здесь, чтобы GET /api/leaderboard всегда читал
+    #    тёплый кэш и ни один игрок не ждал 5–12 с.
+    try:
+        from main import refresh_leaderboard_cache
+        await refresh_leaderboard_cache(db)
+    except Exception as exc:
+        logger.warning("leaderboard cache refresh failed: %s", exc)
+    # 7b) Дрейф цен рынка активов: тяжёлый проход по user_assets/users/ledger
+    #     (раз в 60 с) греем здесь, чтобы GET /api/assets/market не платил
+    #     за тик внутри своего запроса — в пути запроса остаётся только
+    #     дешёвый early-return по таймстемпу тика.
+    try:
+        from assets import _ensure_asset_market, _drift_asset_market
+        await _ensure_asset_market(db)
+        await _drift_asset_market(db)
+    except Exception as exc:
+        logger.warning("asset market drift failed: %s", exc)
     try:
         await broadcast({"type": "leaderboard_update"})
     except Exception as exc:

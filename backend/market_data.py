@@ -168,32 +168,42 @@ class MarketDataService:
 
     @staticmethod
     async def _get_history_uncached(db, market: str, symbol: str, interval: str) -> dict:
-        """Свечи OHLC + линия по интервалу."""
+        """Свечи OHLC + линия по интервалу.
+
+        Бакетинг — агрегацией на стороне Mongo ($group по номеру бакета),
+        а не выгрузкой всех точек в Python: 7d × снимок/45с ≈ 10k документов
+        через удалённую Mongo стоили холодному графику 2+ с.
+        """
         symbol = symbol.upper()
         lookback, bucket = INTERVALS.get(interval, INTERVALS["7d"])
         query: dict = {"market": market, "symbol": symbol}
         if lookback:
             query["ts"] = {"$gte": _now() - lookback}
-        rows = [r async for r in db.price_history.find(query).sort("ts", 1)]
-        if not rows:
-            return {"candles": [], "line": [], "interval": interval}
 
         if bucket is None:  # адаптивный размер для "all"
-            span = (_aware(rows[-1]["ts"]) - _aware(rows[0]["ts"])).total_seconds()
+            first = await db.price_history.find_one(query, {"ts": 1}, sort=[("ts", 1)])
+            last = await db.price_history.find_one(query, {"ts": 1}, sort=[("ts", -1)])
+            if not first or not last:
+                return {"candles": [], "line": [], "interval": interval}
+            span = (_aware(last["ts"]) - _aware(first["ts"])).total_seconds()
             bucket = max(3600, int(span / 300)) if span > 0 else 3600
 
-        buckets: dict[int, dict] = {}
-        for r in rows:
-            key = int(_aware(r["ts"]).timestamp() // bucket)
-            p = r["price"]
-            b = buckets.get(key)
-            if not b:
-                buckets[key] = {"t": key * bucket, "o": p, "h": p, "l": p, "c": p}
-            else:
-                b["h"] = max(b["h"], p)
-                b["l"] = min(b["l"], p)
-                b["c"] = p
-        candles = [buckets[k] for k in sorted(buckets)]
+        bucket_ms = int(bucket) * 1000
+        rows = await db.price_history.aggregate([
+            {"$match": query},
+            {"$sort": {"ts": 1}},
+            {"$group": {
+                # $floor, не $toInt: при бакете 60с индекс ~2.9e10 переполняет int32.
+                "_id": {"$floor": {"$divide": [{"$toLong": "$ts"}, bucket_ms]}},
+                "o": {"$first": "$price"},
+                "h": {"$max": "$price"},
+                "l": {"$min": "$price"},
+                "c": {"$last": "$price"},
+            }},
+            {"$sort": {"_id": 1}},
+        ]).to_list(None)
+        candles = [{"t": int(r["_id"]) * bucket, "o": r["o"], "h": r["h"],
+                    "l": r["l"], "c": r["c"]} for r in rows]
         line = [{"t": c["t"], "p": c["c"]} for c in candles]
         return {"candles": candles, "line": line, "interval": interval}
 

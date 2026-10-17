@@ -5,6 +5,7 @@
 buy/sell-записи обобщённой моделью (direction + category), сохраняя обратную
 совместимость со старыми полями (type/symbol/price).
 """
+import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -189,21 +190,60 @@ async def query_transactions(
     }
     sort_field, sort_dir = sort_map.get(sort, ("timestamp", -1))
 
-    total = await db.transactions.count_documents(query)
+    # Эффективная пагинация без полного count_documents по миллиону записей:
+    # Запрашиваем limit + 1 документ. Если вернулось больше limit — значит есть
+    # следующая страница (hasMore = True).
+    # Для совместимости с UI: total возвращает оценку (skip + len(items) + (1 if has_more else 0)),
+    # а hasMore и totalExact=False позволяют фронтенду красиво отобразить «Страница X».
+    page_limit = max(1, min(limit, 100))
     cursor = (
         db.transactions.find(query)
         .sort(sort_field, sort_dir)
         .skip(max(0, skip))
-        .limit(max(1, min(limit, 100)))
+        .limit(page_limit + 1)
     )
-    items = [_normalize(doc) async for doc in cursor]
-    return {"items": items, "total": total, "skip": skip, "limit": limit}
+    raw_items = [_normalize(doc) async for doc in cursor]
+    has_more = len(raw_items) > page_limit
+    items = raw_items[:page_limit]
+    # Если на первой странице и записей меньше лимита — total точный
+    if skip == 0 and not has_more:
+        total = len(items)
+        total_exact = True
+    else:
+        total = skip + len(items) + (1 if has_more else 0)
+        total_exact = False
+
+    return {
+        "items": items,
+        "total": total,
+        "totalExact": total_exact,
+        "hasMore": has_more,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+# TTL-кэш: у кита неделя — сотни тысяч транзакций, агрегация ~20 с;
+# вкладка аналитики перезапрашивает её чаще, чем данные реально меняются.
+_WCACHE_TTL_S = 30.0
+_wcache: dict[tuple, tuple[float, dict]] = {}
 
 
 async def weekly_analytics(db: AsyncIOMotorDatabase, user_id: str, period: str = "week") -> dict:
     """Аналитика за период: доход, расход, изменение капитала, число операций
     и посуточный ряд для графика. period: today|yesterday|week|month|all.
     """
+    key = (user_id, period)
+    hit = _wcache.get(key)
+    mono = time.monotonic()
+    if hit is not None and mono - hit[0] < _WCACHE_TTL_S:
+        return dict(hit[1])   # копия: вызывающий кладёт balance поверх
+    data = await _weekly_analytics_uncached(db, user_id, period)
+    _wcache[key] = (mono, data)
+    return dict(data)
+
+
+async def _weekly_analytics_uncached(db: AsyncIOMotorDatabase, user_id: str, period: str) -> dict:
     now = now_utc()
     today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
 

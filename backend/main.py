@@ -111,6 +111,7 @@ async def lifespan(app: FastAPI):
     await db.app_config.create_index("key", unique=True)
     await db.transactions.create_index("userId")
     await db.transactions.create_index([("userId", 1), ("timestamp", -1)])
+    await db.transactions.create_index([("userId", 1), ("category", 1), ("timestamp", -1)])
     # timestamp — выборки «за 24ч» (аналитика экономики, profit за 7д);
     # (category, timestamp) — фильтр по категориям в админ-таблице транзакций
     # с сортировкой по времени: без него матч по category сканирует всю

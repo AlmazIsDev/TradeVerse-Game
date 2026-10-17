@@ -298,6 +298,7 @@
     "sortAmountDesc": "Сумма: убыв.",
     "sortAmountAsc": "Сумма: возр.",
     "showing": "Показано {{from}}–{{to}} из {{total}}",
+    "page": "Страница {{page}}",
     "prev": "Назад",
     "next": "Вперёд",
     "empty": "Операций не найдено",

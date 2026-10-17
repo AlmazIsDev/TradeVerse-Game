@@ -298,6 +298,7 @@
     "sortAmountDesc": "Amount: high-low",
     "sortAmountAsc": "Amount: low-high",
     "showing": "Showing {{from}}–{{to}} of {{total}}",
+    "page": "Page {{page}}",
     "prev": "Prev",
     "next": "Next",
     "empty": "No operations found",

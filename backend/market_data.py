@@ -217,13 +217,22 @@ class MarketDataService:
         """
         symbol = symbol.upper()
         base_q = {"market": market, "symbol": symbol}
-        extrema = await db.price_history.aggregate([
-            {"$match": base_q},
-            {"$group": {"_id": None, "ath": {"$max": "$price"}, "atl": {"$min": "$price"}}},
-        ]).to_list(1)
-        if not extrema:
-            return {"ath": None, "atl": None, "changes": {}}
         latest = await db.price_history.find_one(base_q, {"price": 1}, sort=[("ts", -1)])
+        if not latest:
+            return {"ath": None, "atl": None, "changes": {}}
+        # ATH/ATL — из документа актива (их ведёт scheduler), НЕ агрегатом по
+        # всей истории: 100–300k точек на символ × слабый сервер = 4–11 с на
+        # каждый холодный /api/market/asset.
+        asset_coll = db.crypto_assets if market == MARKET_CRYPTO else db.stocks
+        asset = await asset_coll.find_one({"symbol": symbol}, {"ath": 1, "atl": 1})
+        ath, atl = (asset or {}).get("ath"), (asset or {}).get("atl")
+        if ath is None or atl is None:
+            extrema = await db.price_history.aggregate([
+                {"$match": base_q},
+                {"$group": {"_id": None, "ath": {"$max": "$price"}, "atl": {"$min": "$price"}}},
+            ]).to_list(1)
+            if extrema:
+                ath, atl = extrema[0]["ath"], extrema[0]["atl"]
 
         async def change(window: timedelta) -> Optional[float]:
             # Первая цена в окне — та же семантика, что и у полной выгрузки.
@@ -235,7 +244,8 @@ class MarketDataService:
             return round((latest["price"] - base["price"]) / base["price"] * 100, 2)
 
         return {
-            "ath": round(extrema[0]["ath"], 6), "atl": round(extrema[0]["atl"], 6),
+            "ath": round(float(ath), 6) if ath is not None else None,
+            "atl": round(float(atl), 6) if atl is not None else None,
             "changes": {
                 "24h": await change(timedelta(hours=24)),
                 "7d": await change(timedelta(days=7)),

@@ -283,6 +283,13 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
             "price": display,
             "updated_at": now,
         })
+        # ATH/ATL ведём по display — именно он пишется в price_history ниже.
+        # Иначе доковый ath отстаёт от реального максимума истории на величину
+        # спроса (TVX: 136.5 в доке против 150.5 в истории). Для coingecko-монет
+        # не трогаем: там ath — настоящая историческая вершина из API.
+        if coin.get("source") != "coingecko":
+            set_fields["ath"] = round(max(float(coin.get("ath") or display), display), 6)
+            set_fields["atl"] = round(min(float(coin.get("atl") or display), display), 6)
         await db.crypto_assets.update_one({"_id": coin["_id"]}, {"$set": set_fields})
         await MarketDataService.record_snapshot(db, "crypto", symbol, display)
         # Собираем обновления для WebSocket

@@ -127,6 +127,8 @@ function TransactionsPanel({ refreshKey = 0, category, companyId }) {
   const totalPages = Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE))
   const fromItem = data.total === 0 ? 0 : page * PAGE_SIZE + 1
   const toItem = Math.min((page + 1) * PAGE_SIZE, data.total || 0)
+  const isExact = data.totalExact !== false
+  const canGoNext = data.hasMore !== undefined ? data.hasMore : page < totalPages - 1
 
   const directionFilters = useMemo(() => ([
     { id: '', label: t('tx.all') },
@@ -218,7 +220,7 @@ function TransactionsPanel({ refreshKey = 0, category, companyId }) {
         </div>
       )}
 
-      {!loading && !error && data.total > PAGE_SIZE && (
+      {!loading && !error && (data.total > PAGE_SIZE || page > 0 || data.hasMore) && (
         <div className="tx-pagination">
           <button
             className="tx-page-btn"
@@ -228,12 +230,15 @@ function TransactionsPanel({ refreshKey = 0, category, companyId }) {
             <ChevronLeft size={16} /> {t('tx.prev')}
           </button>
           <span className="tx-page-info">
-            {t('tx.showing', { from: fromItem, to: toItem, total: data.total })}
+            {isExact
+              ? t('tx.showing', { from: fromItem, to: toItem, total: data.total })
+              : `${t('tx.page', { page: page + 1 })} (${fromItem}–${toItem})`
+            }
           </span>
           <button
             className="tx-page-btn"
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={!canGoNext}
+            onClick={() => setPage(p => p + 1)}
           >
             {t('tx.next')} <ChevronRight size={16} />
           </button>

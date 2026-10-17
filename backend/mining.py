@@ -706,7 +706,10 @@ async def _best_farm_profile(db, user_id: str) -> Optional[dict]:
     """Профиль лучшей ПОЛНОСТЬЮ СОБРАННОЙ фермы игрока (не обязательно
     запущенной — чтобы можно было посмотреть рейтинг монет ДО старта добычи)."""
     best = None
-    async for farm in db.mining_farms.find({"userId": user_id}):
+    # Проекция: профиль и проверка сборки читают только components — полные
+    # документы тысяч ферм через удалённую Mongo гонят мегабайты на каждый
+    # /api/mining/market.
+    async for farm in db.mining_farms.find({"userId": user_id}, {"components": 1}):
         if _missing_required(farm):
             continue
         profile = _farm_hw_profile(farm)
@@ -851,8 +854,13 @@ async def get_mining_houses(
     from bson import ObjectId
     user_id = str(current_user["_id"])
     # Индекс существующих ферм по (houseId, slotIndex) для быстрого заполнения.
+    # Проекция: у топ-игрока тысячи ферм по ~1.7KB — полный документ через
+    # удалённую Mongo гонит мегабайты ради четырёх полей.
     farms_by_slot: dict[tuple[str, int], dict] = {}
-    async for f in db.mining_farms.find({"userId": user_id}):
+    async for f in db.mining_farms.find(
+        {"userId": user_id},
+        {"houseId": 1, "slotIndex": 1, "name": 1, "status": 1},
+    ):
         hid = f.get("houseId")
         si = f.get("slotIndex")
         if hid is None or si is None:

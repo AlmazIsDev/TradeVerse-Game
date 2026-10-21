@@ -627,12 +627,20 @@ def _quote_stock(stock: dict, action: str, quantity: int) -> dict:
     total_shares = cfg["total_shares"]
     price = float(stock["price"])
     delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
-    fill_price = round(price + delta, 2) if action == "buy" else round(max(0.01, price - delta), 2)
+    # Исполнение — серединой прохода (половина собственного impact'а), рынок
+    # сдвигается на полный delta: та же схема, что crypto._project_fill.
+    if action == "buy":
+        fill_price = round(price + delta / 2, 2)
+        next_price = round(price + delta, 2)
+    else:
+        fill_price = round(max(0.01, price - delta / 2), 2)
+        next_price = round(max(0.01, price - delta), 2)
     cost = round(fill_price * quantity, 2)
     fee = round(cost * TRADE_FEE_RATE, 2)
     return {
         "price": price,
         "fillPrice": fill_price,
+        "nextPrice": next_price,
         "cost": cost,
         "fee": fee,
         "total": round(cost + fee, 2) if action == "buy" else round(cost - fee, 2),
@@ -722,9 +730,9 @@ async def trade_stock(
             f"Ордер превышает максимальный размер ({MAX_ORDER_SHARES} акций)",
         )
 
-    # Сделка исполняется по цене, уже сдвинутой собственным impact'ом: покупатель
-    # платит price+delta, продавец получает price-delta. Иначе — безрисковый
-    # арбитраж buy→sell на своём же движении цены (печать денег циклом).
+    # Исполнение — серединой собственного impact'а (price±delta/2), рынок
+    # сдвигается на полный delta (nextPrice). Иначе — безрисковый арбитраж
+    # buy→sell на своём же движении цены (печать денег циклом).
     q = _quote_stock(stock, action, quantity)
     fill_price = q["fillPrice"]
     cost = q["cost"]
@@ -736,7 +744,7 @@ async def trade_stock(
         if new_balance is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
 
-        new_price = fill_price
+        new_price = q["nextPrice"]
         updated_stock = await db.stocks.find_one_and_update(
             {"symbol": symbol, "free_shares": {"$gte": quantity}},
             {
@@ -799,7 +807,7 @@ async def trade_stock(
 
         proceeds = round(cost - fee, 2)
         new_balance = await adjust_balance(db, user_id, proceeds)
-        new_price = fill_price
+        new_price = q["nextPrice"]
         await db.stocks.update_one(
             {"symbol": symbol},
             {

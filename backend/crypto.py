@@ -310,17 +310,19 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
 def _project_fill(coin: dict, side: str, total_usd: float) -> tuple[float, float]:
     """Считает (fill_price, new_demand) БЕЗ записи в БД.
 
-    Используется, чтобы сделка исполнялась по цене, уже включающей собственный
-    price-impact (покупатель — по повышенной, продавец — по пониженной), но при
-    этом сдвиг цены фиксировался в БД только после успешного расчёта по балансу.
+    Исполнение — серединой прохода по глубине (между текущей ценой и ценой после
+    собственного impact'а): ордер платит половину вызванного им сдвига, а не
+    конечную цену. Сдвиг в БД (_apply_trade_impact) остаётся полным — иначе
+    round-trip buy→sell на своём же движении печатал бы деньги.
     """
     market_price = float(coin.get("market_price") or coin.get("price") or 1)
     vol = float(coin.get("volume24h") or 0) or (market_price * float(coin.get("supply", 0) or 1) * 0.04) or 1.0
     frac = min(IMPACT_CAP, IMPACT_K * (float(total_usd) / max(vol, 1.0)))
-    demand = float(coin.get("demand", 1.0))
-    demand *= (1 + frac) if side == "buy" else (1 - frac)
+    prev_demand = float(coin.get("demand", 1.0))
+    demand = prev_demand * ((1 + frac) if side == "buy" else (1 - frac))
     demand = max(DEMAND_MIN, min(DEMAND_MAX, demand))
-    return round(market_price * demand, 6), demand
+    prev_price = float(coin.get("price") or market_price * prev_demand)
+    return round((prev_price + market_price * demand) / 2, 6), demand
 
 
 async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float) -> Optional[float]:
@@ -330,10 +332,9 @@ async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, 
     относительно суточного объёма. Реальная (market_price) цена не трогается —
     она остаётся базой; двигается только множитель спроса.
 
-    Возвращает новую отображаемую цену (после сдвига), чтобы сделка исполнялась
-    ПО ней: покупатель платит уже повышенную цену, продавец получает уже
-    пониженную. Иначе появлялся бы безрисковый арбитраж (buy по старой цене →
-    цена растёт → sell по новой), печатающий деньги циклом.
+    Сдвиг в БД полный; сама сделка исполняется серединой прохода (_project_fill) —
+    компромисс между ценой из списка и защитой от арбитража (buy по старой цене →
+    цена растёт → sell по новой), печатающего деньги циклом.
     """
     coin = await db.crypto_assets.find_one({"symbol": symbol})
     if not coin:
@@ -648,9 +649,9 @@ async def trade_crypto(
         if hq > 0 and abs(hq - qty) <= DUST_QTY:
             qty = hq
 
-    # Размер сделки для расчёта impact считаем по текущей цене, но исполняем по
-    # цене, уже сдвинутой этим impact'ом (иначе появляется безрисковый арбитраж
-    # buy→sell на собственном движении цены). См. _project_fill / _apply_trade_impact.
+    # Размер сделки для расчёта impact считаем по текущей цене; исполнение —
+    # серединой до/после impact'а, сдвиг в БД полный (иначе — безрисковый
+    # арбитраж buy→sell на собственном движении цены). См. _project_fill.
     ref_price = float(coin.get("price") or 0)
     fill_price, _ = _project_fill(coin, payload.action, qty * ref_price)
     price = fill_price

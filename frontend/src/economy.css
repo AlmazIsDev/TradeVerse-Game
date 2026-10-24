@@ -550,6 +550,17 @@
    кнопку на всю строку и уводил стрелку вправо. */
 .leaderboard-title-row .asset-interact-btn { width: auto; flex-shrink: 0; }
 .leaderboard-title-row .asset-interact-btn svg:last-child { margin-left: 0; }
+.source-panel-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm); }
+.source-panel-actions .asset-interact-btn { width: auto; }
+.source-panel-title { display: flex; align-items: flex-start; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); }
+.source-panel-title .icon { color: #ffb340; flex-shrink: 0; margin-top: 3px; }
+.source-panel-title .tab-title { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.source-debug-btn { border-style: dashed; opacity: 0.8; }
+.source-kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); }
+.source-kpi { padding: var(--spacing-md); border: 1px solid rgba(0, 113, 227, 0.28); border-radius: var(--radius-md); background: linear-gradient(145deg, rgba(0, 113, 227, 0.16), var(--color-bg-secondary)); }
+.source-kpi span { display: block; color: var(--color-text-secondary); font-size: 12px; margin-bottom: 5px; }
+.source-kpi strong { color: var(--color-text-primary); font-size: 20px; line-height: 1; }
+.source-kpi small { color: var(--color-text-secondary); font-size: 12px; margin-left: 2px; }
 .leaderboard-sorts { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); margin-bottom: var(--spacing-lg); }
 .leaderboard-table { display: flex; flex-direction: column; gap: var(--spacing-xs); }
 .leaderboard-row {
@@ -618,6 +629,7 @@
 .lb-profit.down { color: var(--color-danger); }
 
 @media (max-width: 640px) {
+  .source-kpi-grid { grid-template-columns: 1fr; }
   .leaderboard-row { grid-template-columns: 44px 1fr auto; gap: var(--spacing-sm); padding: var(--spacing-sm) var(--spacing-md); }
   .leaderboard-row .lb-networth { display: none; }
 }
@@ -651,6 +663,28 @@
 }
 .asset-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .asset-card.owned { border-top-color: var(--color-success); }
+.source-card { background: var(--color-bg-secondary); }
+.source-card:hover { border-color: var(--hairline); }
+.source-card .asset-card-head { padding-bottom: var(--spacing-xs); border-bottom: 1px solid var(--hairline); }
+.source-card .asset-stats { gap: var(--spacing-sm); }
+.source-banner { height: 156px; justify-content: flex-start; padding: var(--spacing-md); box-sizing: border-box; }
+.source-banner-mine { background: linear-gradient(135deg, #172554, #6d28d9) !important; }
+.source-banner-sawmill { background: linear-gradient(135deg, #451a03, #b45309) !important; }
+.source-banner-field { background: linear-gradient(135deg, #14532d, #a16207) !important; }
+.source-banner-label { position: absolute; left: 14px; bottom: 12px; z-index: 1; color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
+.source-live-dot { display: inline-flex; align-items: center; gap: 5px; color: var(--color-success); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.source-live-dot span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(52, 199, 89, .14); }
+.source-live-dot.is-stopped { color: var(--color-text-secondary); }
+.source-live-dot.is-stopped span { box-shadow: 0 0 0 4px rgba(142, 142, 147, .14); }
+.source-card-highlight { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm); padding: var(--spacing-sm); border-radius: var(--radius-md); background: rgba(0, 0, 0, .16); }
+.source-card-highlight span { display: block; color: var(--color-text-secondary); font-size: 11px; margin-bottom: 3px; }
+.source-card-highlight strong { color: var(--color-text-primary); font-size: 18px; }
+.source-card-highlight strong:first-letter { color: var(--color-success); }
+.source-card-highlight small { color: var(--color-text-secondary); font-size: 11px; margin-left: 2px; }
+.source-card-actions { display: flex; flex-direction: column; gap: 5px; }
+.source-primary-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 12px; border: 1px solid rgba(255, 179, 64, .48); border-radius: var(--radius-md); background: rgba(255, 255, 255, .06); color: var(--color-text-primary); font-weight: 700; cursor: pointer; transition: transform .15s ease, border-color .15s ease, background .15s ease; }
+.source-primary-action:hover { transform: translateY(-1px); border-color: rgba(255, 255, 255, .32); background: rgba(255, 255, 255, .1); }
+.source-action-hint { color: var(--color-text-secondary); font-size: 11px; text-align: center; }
 .asset-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-sm); flex-wrap: wrap; }
 .asset-name { font-weight: 700; font-size: 15px; color: var(--color-text-primary); }
 .asset-rarity { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-secondary); }
@@ -1470,6 +1504,18 @@ select.company-name-input option {
 }
 .bank-hero-cardnum:hover { background: rgba(0, 0, 0, 0.32); }
 .bank-hero-cardnum svg { opacity: 0.75; flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .bank-hero-cardnum {
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px;
+    letter-spacing: 1.5px;
+  }
+}
 .bank-hero-copyicon { margin-left: 2px; }
 .bank-hero-action {
   display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px;
@@ -2533,14 +2579,31 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
   margin-left: auto; border: 1px solid var(--hairline); background: transparent;
   color: var(--color-text-secondary); border-radius: 10px; padding: 8px; cursor: pointer; transition: all .18s ease;
 }
-.company-settings-btn:hover { color: var(--color-text-primary); border-color: rgba(0, 113, 227, 0.5); transform: rotate(30deg); }
+.company-settings-btn:hover { color: var(--color-text-primary); border-color: rgba(0, 113, 227, 0.5); }
 .company-role-badge {
   margin-left: auto; font-size: 12px; font-weight: 600; color: var(--color-accent-hover);
   background: rgba(0, 113, 227, 0.12); border-radius: 999px; padding: 5px 12px; white-space: nowrap;
 }
 .company-description { color: var(--color-text-secondary); font-size: 13.5px; margin: -4px 0 12px; }
-.company-settings-modal { max-width: 460px; text-align: left; }
+.company-settings-modal {
+  width: min(460px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 32px));
+  overflow-y: auto; padding: 22px; text-align: left;
+}
+.company-settings-modal h3 { margin: 0 0 18px; }
+.company-settings-modal .settings-label { margin-top: 12px; }
+.company-settings-modal .company-logo-upload {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+}
+.company-settings-modal .company-logo-preview {
+  width: 112px; height: 112px; object-fit: contain; display: block; flex-basis: 100%;
+  margin: 2px auto 8px; border-radius: 12px; background: var(--color-bg-secondary);
+}
+.company-settings-modal .settings-toggles { margin: 14px 0; gap: 8px; }
+.company-settings-modal .modal-buttons { margin-top: 16px; }
 .settings-label { display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin: 14px 0 6px; }
+.company-candidate-info {
+  flex-basis: 100%; color: var(--color-text-secondary); font-size: 12px; margin-top: -2px;
+}
 .company-desc-input {
   width: 100%; padding: 10px 12px; resize: vertical;
   background: var(--color-bg-secondary); border: 1px solid var(--hairline-strong);
@@ -2814,11 +2877,27 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 
 /* ===================== МОБИЛЬНАЯ КОМПАКТНОСТЬ (≤640px) ===================== */
 @media (max-width: 640px) {
-  /* Сводные карточки (компания, имущество): overflow-guards обнуляли min-width,
-     4 карточки сжимались в столбики и числа рендерились по символу в строке. */
+  /* На узком экране значения не конкурируют за ширину соседней карточки. */
   .asset-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .asset-summary-card { min-width: 0; }
   .asset-summary-card b { font-size: 16px; }
+  .inventory-tab .asset-summary,
+  .company-tab .asset-summary,
+  .mining-tab .asset-summary,
+  .mining-tab .mining-stats,
+  .mining-tab .mining-stat-cards { grid-template-columns: 1fr; }
+  .inventory-tab .asset-summary-card,
+  .company-tab .asset-summary-card,
+  .mining-tab .asset-summary-card,
+  .mining-tab .msc { min-width: 0; }
+  .inventory-tab .asset-summary-card b,
+  .company-tab .asset-summary-card b,
+  .mining-tab .asset-summary-card b,
+  .mining-tab .msc b { overflow-wrap: normal; word-break: normal; }
+  .settings-page .settings-save-btn { padding: 10px 14px; font-size: 14px; }
+  .settings-page .settings-stats-grid { grid-template-columns: 1fr; }
+
+  .asset-summary-card:last-child { grid-column: auto; }
 
   /* Транзакции: описание и таймстамп одной строкой до края контейнера,
      суммы переносятся вниз карточки. */

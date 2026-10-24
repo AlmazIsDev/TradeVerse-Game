@@ -189,22 +189,19 @@ function FarmPanel({ assetId, assetName, onBack, onOpenProduction, balance, onBa
 
   return (
     <div className="farm-panel">
-      {/* Шапка: назад + название + сводка по ресурсам */}
-      <div className="leaderboard-title-row">
-        <button className="asset-interact-btn" onClick={onBack} title={t('common.back')}
-          style={{ padding: '6px 10px' }}>
+      <div className="source-panel-actions">
+        <button className="asset-interact-btn" onClick={onBack} title={t('common.back')}>
           <ChevronLeft size={16} /> {t('common.back')}
         </button>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-          <Sprout size={22} className="icon" />
-          <h2 className="tab-title" style={{ margin: 0, flex: 1 }}>{t('farm.manage', 'Управление полем')}: {assetName}</h2>
-          {onOpenProduction && (
-            <button className="asset-interact-btn" onClick={onOpenProduction} title={t('prod.manage', 'Управление производством')}
-              style={{ padding: '6px 10px' }}>
-              <Truck size={16} /> {t('prod.manage', 'Управление производством')}
-            </button>
-          )}
-        </span>
+        {onOpenProduction && (
+          <button className="asset-interact-btn" onClick={onOpenProduction} title={t('prod.manage', 'Управление производством')}>
+            <Truck size={16} /> {t('prod.manage', 'Управление производством')}
+          </button>
+        )}
+      </div>
+      <div className="source-panel-title">
+        <Sprout size={22} className="icon" />
+        <h2 className="tab-title">{t('farm.manage', 'Управление полем')}: {assetName}</h2>
       </div>
 
       {loading ? (

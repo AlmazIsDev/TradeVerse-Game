@@ -428,6 +428,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     const busy = busyId === a.id
     const isCar = a.type === 'car'
     const isRealEstate = a.type === 'realestate'
+    const isSource = a.type === 'source'
     const actions = []
 
     if (!isCar && a.profitPerHour > 0) {
@@ -437,13 +438,13 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => askAct(a.id, collectAsset, 'myassets.collected', { title: t('myassets.collect'), message: t('confirm.collect', { amount: formatMoney(a.accrued) }) }),
       })
     }
-    if (!isCar) {
+    if (!isCar && !isSource) {
       actions.push({
         key: 'upgrade', className: 'upgrade', disabled: busy,
         icon: <ArrowUpCircle size={15} />, label: `${t('upgrade.title')} ($${formatMoney(a.upgradeCost)})`,
         onClick: () => setUpgradeModal(a),
       })
-    } else if (a.category === 'trailer') {
+    } else if (isCar && a.category === 'trailer') {
       // Прицепы не тюнингуются — вместо этого механика сцепки с фурой.
       if (a.hitchedTo) {
         actions.push({
@@ -456,7 +457,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
           onClick: () => { setHitchModal(a); setHitchTruckId('') },
         })
       }
-    } else {
+    } else if (isCar) {
       actions.push({
         key: 'tune', className: 'upgrade', disabled: busy,
         icon: <Wrench size={15} />, label: t('tune.title'),
@@ -584,7 +585,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         assetId={fieldModal.id}
         assetName={nameOf(fieldModal)}
         onBack={() => setFieldModal(null)}
-        onOpenProduction={() => setProductionModal(fieldModal)}
+        onOpenProduction={() => { setFieldModal(null); setProductionModal(fieldModal) }}
         balance={balance}
         onBalanceChange={onBalanceChange}
   />
@@ -653,7 +654,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
             const busy = busyId === a.id
             const isCar = a.type === 'car'
             return (
-              <div key={a.id} className={`asset-card owned ${isCar ? 'car-card' : ''} ${menuOpenId === a.id ? 'menu-open' : ''}`}>
+              <div key={a.id} className={`asset-card owned ${a.type === 'source' ? 'source-card' : ''} ${isCar ? 'car-card' : ''} ${menuOpenId === a.id ? 'menu-open' : ''}`}>
                 <div className="asset-banner" style={{ background: RARITY_GRAD[a.rarity] || 'linear-gradient(135deg,#334155,#1e293b)' }}>
                   {imgFor(a)
                     ? <img className="asset-banner-img" src={imgFor(a)} alt="" loading="lazy" />
@@ -662,7 +663,14 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                 </div>
                 <div className="asset-card-head">
                   <span className="asset-name">{nameOf(a)}</span>
+                  {a.type === 'source' && <span className="source-live-dot is-running"><span /> Производит ресурсы</span>}
                 </div>
+                {a.type === 'source' && (
+                  <div className="source-card-highlight">
+                    <div><span>Доход</span><strong>${formatMoney(a.profitPerHour || 0)}<small>/ч</small></strong></div>
+                    <div><span>Уровень</span><strong>{a.level}</strong></div>
+                  </div>
+                )}
                 <div className="asset-stats">
                   <div className="asset-stat"><span>{t('myassets.value')}</span><b>${formatMoney(a.value)}</b></div>
                   {!isCar && a.profitPerHour !== 0 && (
@@ -705,7 +713,18 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   </div>
                 )}
                 {a.slug?.startsWith('itstudio_') ? null : renderStudio(a)}
-
+                {a.type === 'source' && (
+                  <div className="source-card-actions">
+                    <button className="source-primary-action" onClick={() => {
+                      setMenuOpenId(null)
+                      if (a.category === 'field') setFieldModal(a)
+                      else setProductionModal(a)
+                    }}>
+                      {a.category === 'field' ? <Sprout size={15} /> : <Pickaxe size={15} />}
+                      {a.category === 'field' ? t('field.manage', 'Управление полем') : t('prod.manage', 'Управление производством')}
+                    </button>
+                  </div>
+                )}
                 <div className="asset-interact" ref={menuOpenId === a.id ? menuRef : null}>
                   <button className="asset-interact-btn" disabled={busy}
                     onClick={() => setMenuOpenId(id => id === a.id ? null : a.id)}>

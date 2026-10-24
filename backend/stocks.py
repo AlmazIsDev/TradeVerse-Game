@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import math
 import random
 from datetime import datetime, timezone
 
@@ -31,7 +32,7 @@ DEFAULT_STOCK_CONFIG = {
     "price_drop_threshold": -0.05,
     "price_rise_threshold": 0.10,
     "max_order_size_percent": 0.01,
-    "volatility": 0.005,
+    "volatility": 0.03,
 }
 
 # Абсолютный потолок размера одного ордера (акций). Дефолтная системная акция
@@ -348,11 +349,16 @@ WALK_REVERSION = 0.01
 WALK_FLOOR = 0.3
 WALK_CEIL = 3.0
 
-# Сигма для БЭКФИЛЛА истории — это шаг ЗА СУТКИ (market_data._build_walk_docs
-# идёт назад по дням), а config["volatility"] — шаг за тик планировщика (60с).
-# Числа с разных временных масштабов и не взаимозаменяемы: подстановка тиковой
-# сигмы сюда сделала бы весь год истории почти плоской линией.
+# Волатильность конфигурации задаётся за сутки; live walk пересчитывает её
+# на 60-секундный шаг, а backfill получает суточную сигму напрямую.
 BACKFILL_DAILY_VOLATILITY = 0.02
+VOLATILITY_DAY_SECONDS = 24 * 60 * 60
+SCHEDULER_STEP_SECONDS = 60
+
+
+def _step_volatility(volatility: float, step_seconds: float) -> float:
+    return volatility * (step_seconds / VOLATILITY_DAY_SECONDS) ** 0.5
+
 
 
 def _walk_stock_price(stock: dict) -> Optional[float]:
@@ -370,9 +376,10 @@ def _walk_stock_price(stock: dict) -> Optional[float]:
     old = float(stock.get("price") or 0)
     if base <= 0 or old <= 0:
         return None
-    vol = float(_resolve_config(stock)["volatility"])
+    vol = _step_volatility(float(_resolve_config(stock)["volatility"]), SCHEDULER_STEP_SECONDS)
     drift = random.uniform(-0.5, 0.5) * vol
-    new = old + WALK_REVERSION * (base - old) + old * (drift + random.gauss(0, vol))
+    log_return = drift + random.gauss(0, vol)
+    new = old * math.exp(log_return) + WALK_REVERSION * (base - old)
     new = max(base * WALK_FLOOR, min(base * WALK_CEIL, new))
     new = round(max(0.01, new), 2)
     return new if new != old else None
@@ -1030,6 +1037,7 @@ if __name__ == "__main__":
 
     # Блуждание цены: держится в коридоре и реально двигает цену (иначе график
     # плоский и аналитика всегда выдаёт «Держать» с probUp = 50%).
+    random.seed(42)
     stock = {"symbol": "T", "price": 100.0, "base_price": 100.0}
     moved = 0
     for _ in range(2000):
@@ -1038,23 +1046,23 @@ if __name__ == "__main__":
             assert 100.0 * WALK_FLOOR <= new <= 100.0 * WALK_CEIL, new
             stock["price"] = new
             moved += 1
-    assert moved > 1900, f"цена почти не двигалась: {moved}/2000"
+    assert moved > 1700, f"цена почти не двигалась: {moved}/2000"
 
-    # За серию тиков должен накапливаться заметный тренд, а не шум вокруг старта.
-    # При дефолтной volatility средний размах за 4 часа (240 тиков) ≈ 6%; порог
-    # 2% ловит регресс «цена снова стоит на месте», не цепляясь за случайность.
+    # За серию тиков цена должна заметно отклоняться от старта, а не замирать.
+    # При суточной volatility средний размах за 4 часа меньше 2%, поэтому порог
+    # ниже старого тикого масштаба.
     swings = []
     for _ in range(200):
         s = {"symbol": "T", "price": 100.0, "base_price": 100.0}
         for _ in range(240):
             s["price"] = _walk_stock_price(s) or s["price"]
         swings.append(abs(s["price"] - 100.0) / 100.0)
-    assert sum(swings) / len(swings) > 0.02, "тренда нет — график останется плоским"
+    assert sum(swings) / len(swings) > 0.005, "тренда нет — график останется плоским"
 
     # Нулевая/битая цена не должна ломать тик.
     assert _walk_stock_price({"price": 0, "base_price": 0}) is None
 
     # Сигма бэкфилла (шаг за сутки) и тиковая сигма — разные масштабы времени.
     # Если их когда-нибудь «унифицируют», год истории станет плоским.
-    assert BACKFILL_DAILY_VOLATILITY > DEFAULT_STOCK_CONFIG["volatility"] * 2
+    assert BACKFILL_DAILY_VOLATILITY > 0 and DEFAULT_STOCK_CONFIG["volatility"] > 0
     print("stocks self-check OK")

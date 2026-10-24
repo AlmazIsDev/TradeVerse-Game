@@ -71,25 +71,36 @@ def _aware(dt: datetime) -> datetime:
 
 
 def _build_walk_docs(market: str, symbol: str, current_price: float, volatility: float = 0.03) -> list[dict]:
-    """Случайное блуждание назад: год по дням + 72ч по 30 мин (для 1h/24h).
-    Чистая функция — БД не трогает; используют бэкфилл и regenerate."""
+    """Случайное блуждание назад: год по дням + 72ч по 30 мин."""
     symbol = symbol.upper()
     now = _now()
-    docs: list[dict] = []
+    floor = current_price * 0.15
+    ceil = current_price * 6
 
-    def walk_back(points: int, step: timedelta, price: float, vol: float):
+    def clamp(price: float) -> float:
+        return round(max(floor, min(ceil, price)), 6)
+
+    def walk_back(points: int, step: timedelta, price: float, vol: float,
+                  start: datetime = now):
         seq = []
         p = price
         for i in range(points):
-            seq.append((now - step * i, round(max(current_price * 0.15, min(current_price * 6, p)), 6)))
+            seq.append((start - step * i, clamp(p)))
             p = p / (1 + random.gauss(0, vol))
         return seq
 
-    for ts, p in walk_back(365, timedelta(days=1), current_price, volatility):
-        docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
-    for ts, p in walk_back(144, timedelta(minutes=30), current_price, volatility * 0.4):
-        docs.append({"market": market, "symbol": symbol, "price": p, "ts": ts})
-    return docs
+    intraday_vol = volatility * (timedelta(minutes=30).total_seconds() /
+                                 timedelta(days=1).total_seconds()) ** 0.5
+    intraday = walk_back(144, timedelta(minutes=30), current_price, intraday_vol)
+    daily_start = intraday[-1][0] - timedelta(minutes=30)
+    daily = walk_back(365, timedelta(days=1), intraday[-1][1], volatility, daily_start)
+
+    docs = [
+        {"market": market, "symbol": symbol, "price": p, "ts": ts}
+        for ts, p in daily + intraday
+    ]
+    seen: set[datetime] = set()
+    return [doc for doc in docs if not (doc["ts"] in seen or seen.add(doc["ts"]))]
 
 
 class MarketDataService:

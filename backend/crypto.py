@@ -136,6 +136,7 @@ async def ensure_coins_seeded(db: AsyncIOMotorDatabase):
 
 
 WALK_REVERSION = 0.1      # доля разрыва с базовой ценой, закрываемая за тик
+VOLATILITY_DAY_SECONDS = 24 * 60 * 60
 
 
 def _walk_price(coin: dict) -> dict:
@@ -148,13 +149,13 @@ def _walk_price(coin: dict) -> dict:
     DUSK (0.14) это ~0.3 → цена держится в пределах ~0.5x–2x от базы.
     """
     base = coin.get("base_price", coin["price"])
-    vol = coin.get("volatility", 0.05)
+    vol = float(coin.get("volatility", 0.05))
     old = coin["price"]
-    # ponytail: добавляем случайный дрейф вместо чисто нулевого среднего —
-    # gauss(0, vol) симметричен и цена в среднем стоит на месте. Небольшой bias
-    # (доля vol) задаёт направление на этот тик, поэтому появляются тренды.
-    drift = random.uniform(-0.5, 0.5) * vol
-    new = old + WALK_REVERSION * (base - old) + old * (drift + random.gauss(0, vol))
+    step_vol = vol * (PRICE_REFRESH_SECONDS / VOLATILITY_DAY_SECONDS) ** 0.5
+    # ponytail: сохраняем небольшой случайный drift, но масштабируем шум по длине тика.
+    drift = random.uniform(-0.5, 0.5) * step_vol
+    log_return = drift + random.gauss(0, step_vol)
+    new = old * math.exp(log_return) + WALK_REVERSION * (base - old)
     new = max(base * 0.5, min(base * 2, new))
     change = ((new - old) / old * 100) if old else 0.0
     coin["price"] = round(new, 6)

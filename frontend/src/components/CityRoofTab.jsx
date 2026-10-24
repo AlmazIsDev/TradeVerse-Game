@@ -61,6 +61,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
   const [map, setMap] = useState(null)
   const [allRooms, setAllRooms] = useState(null)
+  const [showHelp, setShowHelp] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)      // business
   const [profileId, setProfileId] = useState(null)
@@ -99,6 +100,10 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   useEffect(() => { load() }, [load])
 
   const loadAllRooms = async () => {
+    if (allRooms) {
+      setAllRooms(null)
+      return
+    }
     try {
       setAllRooms((await fetchCityMap({ allRooms: true })).rooms || [])
     } catch (err) {
@@ -326,10 +331,27 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         <div className={`cityroof-status ${map?.isActive ? 'active' : ''}`}>
           {t('cityroof.season')} {map?.season} · {map?.isActive ? t('cityroof.eventActive') : t('cityroof.eventClosed')}
         </div>
-        <button className="cityroof-rooms-btn" onClick={loadAllRooms}>
-          {t('cityroof.allRooms', 'Все комнаты')}
-        </button>
+        <div className="cityroof-actions">
+          <button className="cityroof-rooms-btn" onClick={loadAllRooms}>
+            {allRooms ? t('cityroof.closeRooms', 'Скрыть комнаты') : t('cityroof.allRooms', 'Все комнаты')}
+          </button>
+          <button className="cityroof-help-btn" onClick={() => setShowHelp(v => !v)} aria-expanded={showHelp}>
+            ? {t('cityroof.help', 'Как играть')}
+          </button>
+        </div>
       </div>
+
+      {showHelp && (
+        <section className="cityroof-help-card">
+          <h3>{t('cityroof.helpTitle', 'Крыша города')}</h3>
+          <p>{t('cityroof.helpText', 'Выберите чужой бизнес, оплатите атаку и угадайте комбинацию. Владелец получает доход за удержание.')}</p>
+          <p>{t('cityroof.helpLeague', 'Лига и комната фиксируются на сезон. В чужих комнатах можно только смотреть состав и статус игроков.')}</p>
+          <div className="cityroof-legend">
+            <span className="cityroom-player active">{t('cityroof.activePlayer', 'Активный игрок')}</span>
+            <span className="cityroom-player former">{t('cityroof.formerPlayer', 'Участвовал, но ничего не держит')}</span>
+          </div>
+        </section>
+      )}
 
       {allRooms && (
         <div className="cityroof-room-list">
@@ -342,11 +364,10 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               <div className="cityroom-meta">
                 {room.roomMembers}/{room.roomCapacity} · {t('cityroof.incomeMultiplier')}: {room.incomeMultiplier}x
               </div>
-              <div className="cityroom-businesses">
-                {room.businesses.map(b => (
-                  <span key={b.id}>
-                    {buildingName(t, b.slug, b.name)}
-                    <b>{b.ownerName || t('cityroof.free')}</b>
+              <div className="cityroom-members">
+                {(room.members || []).map(member => (
+                  <span key={member.id} className={`cityroom-player ${member.active ? 'active' : 'former'}`}>
+                    {member.name}
                   </span>
                 ))}
               </div>
@@ -421,6 +442,12 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
           <div className="modal-content cityroof-modal" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={closeModal}><X size={18} /></button>
             <h3>{buildingName(t, selected.slug, selected.name)}</h3>
+            <div className="cityroof-business-bonuses">
+              <div><strong>{t('cityroof.captureBonus')}</strong><span>+{formatMoney(selected.reward)} $</span></div>
+              <div><strong>{t('cityroof.holdBonus')}</strong><span>+{formatMoney(selected.dailyIncome || 0)} $/{t('cityroof.day')}</span></div>
+              {selected.effect && <div><strong>{t(`cityroof.effects.${selected.effect}`, selected.effect)}</strong><span>+{Math.round((selected.effectMultiplier || 0) * 100)}%</span></div>}
+              {selected.ownerId && <div><strong>{t('cityroof.ownerLabel')}</strong><span>{selected.ownerName || t('cityroof.yours')}</span></div>}
+            </div>
             <p className="modal-price">
               <Coins size={14} /> {t('cityroof.reward')}: {selected.reward} ·
               {' '}{selected.ownerName

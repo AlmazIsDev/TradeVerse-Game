@@ -106,18 +106,44 @@ CITYROOF_LEAGUES = (
     ("platinum", 1_000_000_000),
     ("diamond", 5_000_000_000),
 )
-LEAGUE_INCOME_MULTIPLIERS = {
-    "novice": 1.0, "bronze": 1.25, "silver": 1.6,
-    "gold": 2.1, "platinum": 2.8, "diamond": 3.8,
+LEAGUE_MULTIPLIERS = {
+    "novice": 1, "bronze": 25, "silver": 250,
+    "gold": 1_000, "platinum": 5_000, "diamond": 20_000,
 }
-LEAGUE_WARCOIN_PRICES = {
-    "novice": 35.0, "bronze": 45.0, "silver": 60.0,
-    "gold": 80.0, "platinum": 105.0, "diamond": 140.0,
-}
-LEAGUE_ATTACK_COSTS = {
-    "novice": 5, "bronze": 8, "silver": 12,
-    "gold": 16, "platinum": 22, "diamond": 30,
-}
+LEAGUE_INCOME_MULTIPLIERS = LEAGUE_MULTIPLIERS
+LEAGUE_WARCOIN_PRICES = {name: WARCOIN_PRICE_DEFAULT * multiplier for name, multiplier in LEAGUE_MULTIPLIERS.items()}
+LEAGUE_ATTACK_COSTS = {name: 10 * multiplier for name, multiplier in LEAGUE_MULTIPLIERS.items()}
+WARCOIN_MIGRATION_KEY = "cityroof_warcoin_migration_v2"
+
+
+def _migrate_warcoin_amount(amount: int, league: str) -> int:
+    return max(0, int(int(amount or 0) / LEAGUE_MULTIPLIERS[league]))
+
+
+def _business_bonus_view(slug: str, league: str) -> dict:
+    bonus = BUSINESS_BONUS.get(slug, {})
+    multiplier = LEAGUE_MULTIPLIERS.get(league, 1)
+    return {
+        "daily": round(bonus.get("daily", 0) * multiplier, 2),
+        "effect": bonus.get("effect"), "mult": bonus.get("mult", 0),
+        "leagueMultiplier": multiplier,
+    }
+
+
+async def _migrate_warcoin_balances(db):
+    if await find_config_by_key(db, WARCOIN_MIGRATION_KEY):
+        return
+    async for user in db.users.find({"warcoin": {"$gt": 0}}, {"warcoin": 1, "balance": 1}):
+        league = _league_for_net_worth(await compute_net_worth(db, str(user["_id"])))
+        await db.users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"warcoin": _migrate_warcoin_amount(user.get("warcoin", 0), league)}},
+        )
+    import json
+    await upsert_config(db, WARCOIN_MIGRATION_KEY, json.dumps({"done": True, "version": 2}))
+
+
+# Цены и награды масштабируются одинаково: долларовая стоимость PvP не меняется по лигам.
 DEFAULT_WARCOIN_CONFIG = {
     "price": WARCOIN_PRICE_DEFAULT,
     "leagues": [
@@ -311,6 +337,15 @@ async def _player_room(db, user_id: str, season: int) -> dict:
     return room
 
 
+async def _room_members_view(db, room: dict, season: int) -> list[dict]:
+    owners = {b.get("ownerId") async for b in db.cityroof_businesses.find({"season": season, "room_code": room["room_code"], "ownerId": {"$ne": None}}, {"ownerId": 1})}
+    members = []
+    for user_id in room.get("member_ids", []):
+        user = await db.users.find_one({"_id": ObjectId(user_id)}, {"username": 1})
+        members.append({"id": user_id, "name": (user or {}).get("username", "Игрок"), "active": user_id in owners})
+    return members
+
+
 async def _ensure_room_businesses(db, season: int, league: str, room_code: str):
     if await db.cityroof_businesses.count_documents({"season": season, "room_code": room_code}):
         return
@@ -372,6 +407,7 @@ async def ensure_seeded(db: AsyncIOMotorDatabase):
     await db.cityroof_rooms.create_index(
         [("season", 1), ("league", 1), ("room_code", 1)], unique=True,
     )
+    await _migrate_warcoin_balances(db)
 
 
 async def _ensure_season(db: AsyncIOMotorDatabase):
@@ -450,15 +486,24 @@ def _shield_view(b: dict) -> Optional[dict]:
     return {"value": shield.get("value", 0.0), "expiresAt": expires.isoformat()}
 
 
+def _scaled_protection_costs(league: str) -> dict:
+    multiplier = LEAGUE_MULTIPLIERS.get(league, 1)
+    return {level: cost * multiplier for level, cost in PROTECTION_COSTS.items()}
+
+
 def _serialize_business(b: dict, user_id: str) -> dict:
     shield = _shield_view(b)
+    multiplier = LEAGUE_MULTIPLIERS.get(b.get("league", "novice"), 1)
     return {
         "id": str(b["_id"]),
         "slug": b.get("slug"),
         "name": b.get("name"),
         "x": b.get("x"),
         "y": b.get("y"),
-        "reward": b.get("reward"),
+        "reward": (b.get("reward") or 0) * multiplier,
+        "dailyIncome": round(BUSINESS_BONUS.get(b.get("slug"), {}).get("daily", 0) * multiplier, 2),
+        "effect": BUSINESS_BONUS.get(b.get("slug"), {}).get("effect"),
+        "effectMultiplier": BUSINESS_BONUS.get(b.get("slug"), {}).get("mult", 0),
         "ownerId": b.get("ownerId"),
         "ownerName": b.get("ownerName"),
         "ownerColor": b.get("ownerColor"),
@@ -602,6 +647,7 @@ async def get_map(
             rooms.append({
                 "league": room_doc["league"], "roomCode": room_doc["room_code"],
                 "roomMembers": len(room_doc.get("member_ids", [])), "roomCapacity": ROOM_CAPACITY,
+                "members": await _room_members_view(db, room_doc, season),
                 "businesses": room_businesses,
                 "incomeMultiplier": _league_income_multiplier(config, room_doc["league"]),
             })
@@ -615,10 +661,11 @@ async def get_map(
         "roomCode": room["room_code"],
         "roomMembers": len(room.get("member_ids", [])),
         "roomCapacity": ROOM_CAPACITY,
+        "members": await _room_members_view(db, room, season),
         "incomeMultiplier": _league_income_multiplier(config, league),
         "attackCost": int(league_cfg.get("attackCost", ATTACK_COST_WC)),
         "maxAttempts": MAX_ATTEMPTS,
-        "protectionCosts": league_cfg.get("protectionCosts", PROTECTION_COSTS),
+        "protectionCosts": league_cfg.get("protectionCosts", _scaled_protection_costs(league)),
         "itstudio": {
             "costBase": ITSTUDIO_CONFIG["cost_base"],
             "costPerProtection": ITSTUDIO_CONFIG["cost_per_protection"],
@@ -1247,7 +1294,7 @@ async def protect_business(
     if business.get("ownerId") != user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Вы не владелец бизнеса")
 
-    cost = PROTECTION_COSTS.get(payload.level, payload.level * 1000)
+    cost = _scaled_protection_costs(room["league"]).get(payload.level, payload.level * 1000)
     if not await _spend_wc(db, user_id, cost):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно WarCoin")
 

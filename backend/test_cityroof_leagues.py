@@ -50,3 +50,20 @@ def test_leagues_have_distinct_market_parameters():
     leagues = DEFAULT_WARCOIN_CONFIG["leagues"]
     assert len({item["warcoinPrice"] for item in leagues}) == 6
     assert len({item["attackCost"] for item in leagues}) == 6
+
+
+def test_league_multiplier_preserves_dollar_value():
+    from cityroof import LEAGUE_MULTIPLIERS, LEAGUE_WARCOIN_PRICES, _migrate_warcoin_amount
+
+    assert LEAGUE_MULTIPLIERS["bronze"] == 25
+    assert LEAGUE_MULTIPLIERS["diamond"] == 20_000
+    assert LEAGUE_WARCOIN_PRICES["diamond"] == 1_000_000
+    assert _migrate_warcoin_amount(20_000, "diamond") == 1
+
+
+def test_business_bonus_view_scales_daily_income():
+    from cityroof import _business_bonus_view
+
+    view = _business_bonus_view("market", "diamond")
+    assert view["daily"] == 55_000 * 20_000
+    assert view["leagueMultiplier"] == 20_000

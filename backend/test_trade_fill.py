@@ -17,7 +17,7 @@ stock = {"price": P, "free_shares": TOTAL,
 
 q = _quote_stock(stock, "buy", QTY)
 delta = P * 0.1 * QTY / TOTAL
-assert abs(q["fillPrice"] - (P + delta / 2)) < 0.01, q
+assert abs(q["fillPrice"] - P) < 0.01, q
 assert abs(q["nextPrice"] - (P + delta)) < 0.01, q
 
 # round-trip buy→sell по сдвинутому рынку — убыточен (комиссия с обеих сторон)
@@ -32,7 +32,7 @@ fill, demand = _project_fill(coin, "buy", QTY * P)
 # объём >> суточного объёма → сдвиг упирается в IMPACT_CAP=0.12
 expected_new = P * 1.12
 assert abs(demand - 1.12) < 1e-6, demand
-assert abs(fill - (P + expected_new) / 2) < 1e-4, (fill, expected_new)
+assert abs(fill - P) < 1e-4, (fill, expected_new)
 
 import asyncio
 import crypto

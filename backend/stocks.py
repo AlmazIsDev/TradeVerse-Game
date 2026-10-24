@@ -627,14 +627,8 @@ def _quote_stock(stock: dict, action: str, quantity: int) -> dict:
     total_shares = cfg["total_shares"]
     price = float(stock["price"])
     delta = price * cfg["volatility_k"] * (quantity / total_shares) if total_shares else 0.0
-    # Исполнение — серединой прохода (половина собственного impact'а), рынок
-    # сдвигается на полный delta: та же схема, что crypto._project_fill.
-    if action == "buy":
-        fill_price = round(price + delta / 2, 2)
-        next_price = round(price + delta, 2)
-    else:
-        fill_price = round(max(0.01, price - delta / 2), 2)
-        next_price = round(max(0.01, price - delta), 2)
+    fill_price = round(price, 2)
+    next_price = round(price + delta, 2) if action == "buy" else round(max(0.01, price - delta), 2)
     cost = round(fill_price * quantity, 2)
     fee = round(cost * TRADE_FEE_RATE, 2)
     return {
@@ -730,9 +724,8 @@ async def trade_stock(
             f"Ордер превышает максимальный размер ({MAX_ORDER_SHARES} акций)",
         )
 
-    # Исполнение — серединой собственного impact'а (price±delta/2), рынок
-    # сдвигается на полный delta (nextPrice). Иначе — безрисковый арбитраж
-    # buy→sell на своём же движении цены (печать денег циклом).
+    # Сумма сделки фиксируется по текущей цене; рынок после успешной оплаты
+    # сдвигается на полный impact (nextPrice).
     q = _quote_stock(stock, action, quantity)
     fill_price = q["fillPrice"]
     cost = q["cost"]

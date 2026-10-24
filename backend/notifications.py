@@ -20,6 +20,32 @@ from database import get_db
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
+_AUTO_TITLES = {
+    "Появился арендатор", "Аренда компании завершена", "Аренда завершена",
+    "Зарплата начислена", "Ферма перезапущена", "Ферма отключена",
+    "Майнинг-ферма разобрана", "Взлом удался", "Взлом системы защиты",
+    "Взлом не удался", "Защита установлена", "Защита не применена",
+    "Установка защиты провалена", "Репутационный кризис",
+    "Провальное разоблачение", "Разоблачение вышло", "Разоблачение провалилось",
+}
+
+
+def _category(ntype: str, title: str) -> str:
+    if title in _AUTO_TITLES or ntype in {"rental", "salary"}:
+        return "automatic"
+    if ntype == "broadcast":
+        return "announcement"
+    if ntype in {"company", "company_invite", "company_application"}:
+        return "company"
+    if ntype in {"market", "crypto_transfer"}:
+        return "market"
+    if ntype in {"mining"}:
+        return "mining"
+    if ntype in {"media", "itstudio", "itstudio_attack", "cityroof"}:
+        return "event"
+    return "system"
+
+
 async def push_notification(
     db: AsyncIOMotorDatabase,
     user_id: str,
@@ -32,6 +58,7 @@ async def push_notification(
     doc = {
         "userId": str(user_id),
         "type": ntype,
+        "category": _category(ntype, title),
         "title": title,
         "body": body,
         "data": data or {},
@@ -53,6 +80,7 @@ def _serialize(n: dict) -> dict:
     return {
         "id": str(n["_id"]),
         "type": n.get("type"),
+        "category": n.get("category") or _category(n.get("type", ""), n.get("title", "")),
         "title": n.get("title"),
         "body": n.get("body"),
         "data": n.get("data", {}),

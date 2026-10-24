@@ -548,7 +548,7 @@ async def create_company(
 @router.patch("")
 async def update_company(
     payload: CompanySettings,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company_edit")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Изменить настройки компании (только владелец)."""
@@ -662,7 +662,7 @@ async def _delist_company_crypto(db: AsyncIOMotorDatabase, company: dict, refund
 
 @router.delete("")
 async def disband_company(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company_edit")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Распустить компанию (только владелец). Необратимо."""
@@ -851,7 +851,7 @@ async def my_jobs(
 async def update_salary(
     member_user_id: str,
     payload: MemberSettingsUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company_members")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Изменить настройки сотрудника: зарплата, название роли, права (владелец)."""
@@ -874,7 +874,7 @@ async def update_salary(
 @router.patch("/owner-salary")
 async def update_owner_salary(
     payload: OwnerSalaryUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company_members")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Установить/изменить зарплату владельца (платится из бюджета при сборе прибыли)."""
@@ -890,7 +890,7 @@ async def update_owner_salary(
 @router.delete("/members/{member_user_id}")
 async def fire_member(
     member_user_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company_members")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Уволить сотрудника (владелец)."""
@@ -911,7 +911,7 @@ async def fire_member(
 
 @router.post("/leave")
 async def leave_company(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("company_leave")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Уйти из компании самостоятельно (сотрудник; владелец должен распустить компанию)."""

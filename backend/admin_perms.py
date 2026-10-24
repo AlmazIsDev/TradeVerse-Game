@@ -137,6 +137,9 @@ PLAYER_FUNCTIONS: list[tuple[str, str]] = [
     ("mining", "banFunc.mining"),
     ("farm", "banFunc.farm"),
     ("company", "banFunc.company"),
+    ("company_edit", "banFunc.company_edit"),
+    ("company_members", "banFunc.company_members"),
+    ("company_leave", "banFunc.company_leave"),
     ("cityroof", "banFunc.cityroof"),
     ("media", "banFunc.media"),
 ]
@@ -163,7 +166,9 @@ def ban_active(ban: dict | None) -> bool:
 
 
 def user_ban_active(user: dict, func: str) -> bool:
-    return ban_active((user.get("bans") or {}).get(func))
+    bans = user.get("bans") or {}
+    parent = func.split("_", 1)[0] if "_" in func else None
+    return any(ban_active(bans.get(key)) for key in ("account", func, parent) if key)
 
 
 def require_allowed(func: str):

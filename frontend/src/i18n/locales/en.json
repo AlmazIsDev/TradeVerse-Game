@@ -1309,6 +1309,7 @@
   "header": {
     "notifications": "Notifications",
     "logout": "Logout",
+    "returnToAdmin": "Return to admin panel",
     "search": "Search",
     "markAllRead": "Mark all read",
     "user": "User",
@@ -1712,7 +1713,11 @@
     },
     "bansTitle": "Bans & restrictions",
     "banAccount": "Entire account",
-    "banReason": "Reason (for checked)",
+    "ipGroups": "Repeated IPs",
+    "ipGroupsEmpty": "No repeated IPs found",
+    "loginAs": "Log in as user",
+    "banReason": "Reason",
+
     "banUntil": "Until date",
     "banSave": "Save bans",
     "banSaved": "Bans updated",
@@ -1808,6 +1813,11 @@
     "tabAll": "All",
     "tabAuto": "Auto",
     "tabAnnounce": "Announcements",
+    "tabCompany": "Company",
+    "tabMarket": "Market",
+    "tabMining": "Mining",
+    "tabEvent": "Events",
+    "searchPlaceholder": "Search notifications…",
     "worldEventStarted": "World event: {{name}}",
     "worldEventEnded": "Ended: {{name}}"
   },
@@ -2087,6 +2097,9 @@
     "mining": "Mining",
     "farm": "Farm",
     "company": "Companies",
+    "company_edit": "Edit company",
+    "company_members": "Manage employees",
+    "company_leave": "Leave company",
     "cityroof": "CityRoof",
     "media": "Media ads"
   },

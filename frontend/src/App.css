@@ -2187,9 +2187,54 @@ body {
   font-family: var(--font-primary);
 }
 
-/* Вкладки разделов уведомлений: Все / Авто / Объявления */
+/* Вкладки разделов уведомлений */
+.notification-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 12px 0;
+  padding: 7px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+}
+
+.notification-search:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.notification-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  box-shadow: none !important;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.notification-search input:focus-visible {
+  outline: none;
+  box-shadow: none !important;
+}
+
+.notification-search button {
+  display: flex;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
 .notification-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 8px 12px 0;
 }
@@ -2233,23 +2278,40 @@ body {
   text-align: center;
 }
 
-/* Объявления администрации — визуально выделены */
-.notification-item.announce {
+/* Категории заметны даже без чтения текста */
+.notification-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notification-category-icon {
+  flex-shrink: 0;
+}
+
+.notification-automatic {
+  border-left: 3px solid var(--color-accent);
+}
+
+.notification-automatic .notification-category-icon {
+  color: var(--color-accent);
+}
+
+.notification-announcement {
   background: rgba(255, 149, 0, 0.08);
   border-left: 3px solid var(--color-warning);
 }
 
-.notification-item.announce .notification-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.notification-announcement .notification-category-icon,
+.notification-announcement .notification-title {
   color: var(--color-warning);
 }
 
-.notification-item.announce .notification-announce-icon {
-  flex-shrink: 0;
-  color: var(--color-warning);
-}
+.notification-company .notification-category-icon { color: var(--color-accent); }
+.notification-market .notification-category-icon { color: var(--color-success); }
+.notification-mining .notification-category-icon { color: var(--color-danger); }
+.notification-event .notification-category-icon { color: var(--color-warning); }
+.notification-system .notification-category-icon { color: var(--color-text-secondary); }
 
 .mark-all-btn:hover {
   color: var(--color-accent-hover);
@@ -2612,6 +2674,7 @@ body {
 /* ── User Edit Form ─────────────────────────────────────────────────────── */
 
 .admin-user-edit-form {
+  min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;

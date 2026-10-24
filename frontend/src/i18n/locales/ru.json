@@ -1309,6 +1309,7 @@
   "header": {
     "notifications": "Уведомления",
     "logout": "Выйти",
+    "returnToAdmin": "Вернуться в админку",
     "search": "Поиск",
     "markAllRead": "Прочитать все",
     "user": "Пользователь",
@@ -1712,7 +1713,11 @@
     },
     "bansTitle": "Баны и отстранения",
     "banAccount": "Весь аккаунт",
-    "banReason": "Причина (для отмеченных)",
+    "ipGroups": "Повторяющиеся IP",
+    "ipGroupsEmpty": "Совпадающих IP не найдено",
+    "loginAs": "Войти как пользователь",
+    "banReason": "Причина",
+
     "banUntil": "До какой даты",
     "banSave": "Сохранить баны",
     "banSaved": "Баны обновлены",
@@ -1808,6 +1813,11 @@
     "tabAll": "Все",
     "tabAuto": "Авто",
     "tabAnnounce": "Объявления",
+    "tabCompany": "Компания",
+    "tabMarket": "Рынок",
+    "tabMining": "Майнинг",
+    "tabEvent": "События",
+    "searchPlaceholder": "Поиск уведомлений…",
     "worldEventStarted": "Мировое событие: {{name}}",
     "worldEventEnded": "Завершено: {{name}}"
   },
@@ -2090,6 +2100,9 @@
     "mining": "Майнинг",
     "farm": "Ферма",
     "company": "Компании",
+    "company_edit": "Изменение компании",
+    "company_members": "Управление сотрудниками",
+    "company_leave": "Выход из компании",
     "cityroof": "Крыши города",
     "media": "Объявления (СМИ)"
   },

@@ -1396,7 +1396,20 @@ select.company-name-input option {
     max-height: calc(100dvh - 16px);
   }
   .user-property-modal .admin-user-meta { flex-wrap: wrap; gap: var(--spacing-sm); }
+  .user-property-modal .admin-user-edit-fields { grid-template-columns: 1fr; }
+  .user-property-modal .admin-user-edit-form { min-width: 0; }
 }
+
+.admin-ip-groups {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+.admin-ip-groups > div { display: flex; gap: 10px; flex-wrap: wrap; }
+.admin-ip-groups span { color: var(--color-text-secondary); }
 
 /* ===================== ASSET DETAIL PAGE + CHART ===================== */
 .stock-card.clickable, .crypto-coin.clickable { cursor: pointer; }

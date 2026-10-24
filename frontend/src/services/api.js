@@ -397,6 +397,14 @@ export async function adminUpdateUser(userId, data) {
   })
 }
 
+export async function adminLoginAs(userId) {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/login-as`, { method: 'POST' })
+}
+
+export async function adminGetIpGroups(limit = 50) {
+  return request(`/api/admin/users/ip-groups?limit=${limit}`)
+}
+
 /** Реестр админ-функций с уровнями (только админ 4 уровня). */
 export async function fetchAdminPermissions() {
   return request('/api/admin/permissions')

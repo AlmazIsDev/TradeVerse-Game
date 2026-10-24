@@ -6,7 +6,7 @@ import {
   adminListTransactions, adminTxFilterOptions,
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
   fetchAdminPermissions, updateAdminPermissions, adminUpdateUserBans,
-  adminSetUserPassword, adminLogoutUser, adminListLots, adminCancelLot, adminBroadcast,
+  adminSetUserPassword, adminLogoutUser, adminLoginAs, adminGetIpGroups, adminListLots, adminCancelLot, adminBroadcast,
   fetchSyntheticConfig, saveSyntheticConfig, triggerSynthetic, fetchSyntheticOrders,
 } from '../services/api'
 import TxFilters, { TX_FIELDS } from './TxFilters'
@@ -18,7 +18,7 @@ import PriceHistoryEditor from './PriceHistoryEditor'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
-  Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, Gavel, Megaphone,
+  Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, LogIn, Gavel, Megaphone,
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 import { toast } from './Toast'
@@ -95,7 +95,7 @@ const USER_MONEY_CHIPS = [
 ]
 // Игровые функции, отключаемые игроку (зеркало PLAYER_FUNCTIONS бэкенда).
 const PLAYER_BAN_FUNCS = ['transfer', 'crypto', 'stocks', 'shop', 'assets',
-  'centralmarket', 'mining', 'farm', 'company', 'cityroof', 'media']
+  'centralmarket', 'mining', 'farm', 'company', 'company_edit', 'company_members', 'company_leave', 'cityroof', 'media']
 const ADMIN_LEVELS = [1, 2, 3, 4]
 // Поля конфига ботов по рынкам (зеркало DEFAULT_SYNTHETIC бэкенда).
 const SYNTH_FIELDS = {
@@ -176,6 +176,9 @@ function AdminPanel({ user, onClose }) {
     leaderboard_lock: false,
   })
   const [editErrors, setEditErrors] = useState({})
+  const [originalEditForm, setOriginalEditForm] = useState(null)
+  const [originalBanDraft, setOriginalBanDraft] = useState(null)
+  const [ipGroups, setIpGroups] = useState(null)
   const [newPassword, setNewPassword] = useState('')
   const [pwdBusy, setPwdBusy] = useState(false)
   const [propertyUser, setPropertyUser] = useState(null)
@@ -457,7 +460,7 @@ function AdminPanel({ user, onClose }) {
 
   const handleStartEditUser = (u) => {
     setEditingUser(u.id)
-    setEditForm({
+    const form = {
       username: u.username || '',
       balance: u.balance != null ? String(u.balance) : '',
       role: u.role || 'user',
@@ -465,10 +468,14 @@ function AdminPanel({ user, onClose }) {
       card_number: u.card_number || '',
       hidden_from_leaderboard: !!u.hidden_from_leaderboard,
       leaderboard_lock: !!u.leaderboard_lock,
-    })
-    setBanDraft(Object.fromEntries(
+    }
+    setEditForm(form)
+    setOriginalEditForm(form)
+    const draftBans = Object.fromEntries(
       Object.entries(u.bans || {}).map(([k, v]) => [k, { on: true, reason: v.reason || '', until: (v.until || '').slice(0, 10) }]),
-    ))
+    )
+    setBanDraft(draftBans)
+    setOriginalBanDraft(draftBans)
     setEditErrors({})
   }
 
@@ -550,29 +557,55 @@ function AdminPanel({ user, onClose }) {
   }
 
   const handleSaveUser = async () => {
-    if (!validateEditForm()) return
-
-    const payload = {
-      username: editForm.username.trim(),
-      balance: parseFloat(editForm.balance),
-      role: editForm.role,
-      admin_level: editForm.role === 'admin' ? Number(editForm.admin_level) : undefined,
-      hidden_from_leaderboard: editForm.hidden_from_leaderboard,
-      leaderboard_lock: editForm.leaderboard_lock,
+    if (!validateEditForm() || !originalEditForm) return
+    const payload = {}
+    const normalized = { ...editForm, username: editForm.username.trim(), balance: parseFloat(editForm.balance), card_number: editForm.card_number.trim() }
+    for (const key of Object.keys(normalized)) {
+      if (normalized[key] !== originalEditForm[key]) payload[key] = normalized[key]
     }
-
-    if (editForm.card_number.trim()) {
-      payload.card_number = editForm.card_number.trim()
+    if (normalized.role !== 'admin') delete payload.admin_level
+    const bans = {}
+    for (const f of ['account', ...PLAYER_BAN_FUNCS]) {
+      const d = banDraft[f]
+      if (d?.on) bans[f] = { reason: d.reason?.trim() || null, until: d.until ? `${d.until}T23:59:59` : null }
     }
-
+    const initialBans = {}
+    for (const f of ['account', ...PLAYER_BAN_FUNCS]) {
+      const d = originalBanDraft?.[f]
+      if (d?.on) initialBans[f] = { reason: d.reason?.trim() || null, until: d.until ? `${d.until}T23:59:59` : null }
+    }
     try {
-      await adminUpdateUser(editingUser, payload)
+      const requests = []
+      if (Object.keys(payload).length) requests.push(adminUpdateUser(editingUser, payload))
+      if (JSON.stringify(bans) !== JSON.stringify(initialBans)) requests.push(adminUpdateUserBans(editingUser, bans))
+      if (newPassword.length >= 6 && can('users_password')) requests.push(adminSetUserPassword(editingUser, newPassword))
+      await Promise.all(requests)
+      setNewPassword('')
       setEditingUser(null)
       toast(t('admin.userUpdated'))
       loadData()
     } catch (err) {
       toast(t('admin.error') + ': ' + err.message, 'error')
     }
+  }
+
+  const handleLoginAs = async (userId) => {
+    try {
+      const returnToken = localStorage.getItem('token') || ''
+      const returnRefresh = localStorage.getItem('refresh_token') || ''
+      const pair = await adminLoginAs(userId)
+      localStorage.setItem('admin_return_token', returnToken)
+      localStorage.setItem('admin_return_refresh_token', returnRefresh)
+      localStorage.setItem('token', pair.token)
+      localStorage.setItem('refresh_token', pair.refresh_token)
+      const target = await request('/api/user/me')
+      localStorage.setItem('tradeverse_user', JSON.stringify(target))
+      window.location.reload()
+    } catch (err) { toast(t('admin.error') + ': ' + err.message, 'error') }
+  }
+
+  const handleLoadIpGroups = async () => {
+    try { setIpGroups(await adminGetIpGroups()) } catch (err) { toast(t('admin.error') + ': ' + err.message, 'error') }
   }
 
   const handleDeleteUser = async (userId, username) => {
@@ -1457,7 +1490,11 @@ function AdminPanel({ user, onClose }) {
                 <div className="tx-search"><Search size={15} className="tx-search-icon" />
                   <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder={t('admin.searchUsers')} /></div>
                 <span className="admin-count">{t('admin.totalUsers')}: {users.length}</span>
+                {can('users_view') && <button className="admin-btn" onClick={handleLoadIpGroups}><Search size={14} /> {t('admin.ipGroups')}</button>}
               </div>
+              {ipGroups && <div className="admin-ip-groups">
+                {ipGroups.length ? ipGroups.map(group => <div key={group.ip}><strong>{group.ip}</strong><span>{group.users.join(', ')}</span></div>) : <span className="user-date">{t('admin.ipGroupsEmpty')}</span>}
+              </div>}
               {[...users]
                 .filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase()))
                 .sort((a, b) => {
@@ -1512,6 +1549,11 @@ function AdminPanel({ user, onClose }) {
                     {can('users_property') && (
                       <button className="admin-btn" onClick={() => setPropertyUser(u)} title={t('admin.property.title')}>
                         <Briefcase size={14} />
+                      </button>
+                    )}
+                    {can('users_edit') && u.role !== 'admin' && (
+                      <button className="admin-btn" onClick={() => handleLoginAs(u.id)} title={t('admin.loginAs')}>
+                        <LogIn size={14} />
                       </button>
                     )}
                     {can('users_edit') && (
@@ -1607,26 +1649,18 @@ function AdminPanel({ user, onClose }) {
                             onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, on: e.target.checked } })} />
                           <span>{t(f === 'account' ? 'admin.banAccount' : `banFunc.${f}`)}</span>
                           {d.on && (
-                            <input type="date" className="admin-input admin-ban-until" value={d.until || ''}
-                              title={t('admin.banUntil')}
-                              onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, until: e.target.value } })} />
+                            <>
+                              <input type="date" className="admin-input admin-ban-until" value={d.until || ''}
+                                title={t('admin.banUntil')}
+                                onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, until: e.target.value } })} />
+                              <input type="text" className="admin-input admin-ban-reason" placeholder={t('admin.banReason')}
+                                value={d.reason || ''}
+                                onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, reason: e.target.value } })} />
+                            </>
                           )}
                         </label>
                       )
                     })}
-                    <input type="text" className="admin-input" placeholder={t('admin.banReason')}
-                      value={banDraft.account?.reason || banDraft.crypto?.reason || ''}
-                      onChange={e => {
-                        const v = e.target.value
-                        const next = { ...banDraft }
-                        for (const f of ['account', ...PLAYER_BAN_FUNCS]) {
-                          if (next[f]?.on) next[f] = { ...next[f], reason: v }
-                        }
-                        setBanDraft(next)
-                      }} />
-                    <button className="admin-btn" disabled={bansSaving} onClick={handleSaveBans}>
-                      <ShieldAlert size={14} /> {t('admin.banSave')}
-                    </button>
                   </div>
                   <div className="admin-field-group">
                     <label>{t('admin.fieldIps')}</label>
@@ -1641,15 +1675,9 @@ function AdminPanel({ user, onClose }) {
                   {can('users_password') && (
                     <div className="admin-field-group">
                       <label>{t('admin.resetPassword')}</label>
-                      <div className="form-row">
-                        <input type="text" className="admin-input" value={newPassword}
-                          placeholder={t('admin.resetPasswordPh')} maxLength={72}
-                          onChange={e => setNewPassword(e.target.value)} />
-                        <button className="admin-btn" disabled={newPassword.length < 6 || pwdBusy}
-                          title={t('admin.resetPassword')} onClick={handleResetPassword}>
-                          <KeyRound size={14} />
-                        </button>
-                      </div>
+                      <input type="text" className="admin-input" value={newPassword}
+                        placeholder={t('admin.resetPasswordPh')} maxLength={72}
+                        onChange={e => setNewPassword(e.target.value)} />
                     </div>
                   )}
                   {can('users_logout') && (

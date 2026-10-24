@@ -42,6 +42,7 @@ from admin_perms import (
     admin_level_of,
     ban_active,
     PLAYER_FUNCTIONS,
+    PLAYER_FUNCTION_IDS,
     ADMIN_FUNCTIONS,
     FIXED_ADMIN_FUNCTIONS,
 )
@@ -927,6 +928,26 @@ async def admin_get_users(
     return out
 
 
+@app.get("/api/admin/users/ip-groups")
+async def admin_get_ip_groups(
+    limit: int = Query(50, ge=1, le=100),
+    _admin=Depends(require_admin("users_view")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Группы аккаунтов, входивших с одного IP."""
+    pipeline = [
+        {"$project": {"username": 1, "login_ips": {"$ifNull": ["$login_ips", {}]}}},
+        {"$project": {"username": 1, "ips": {"$objectToArray": "$login_ips"}}},
+        {"$unwind": "$ips"},
+        {"$group": {"_id": "$ips.k", "users": {"$addToSet": "$username"}}},
+        {"$project": {"_id": 0, "ip": "$_id", "users": 1, "userCount": {"$size": "$users"}}},
+        {"$match": {"userCount": {"$gte": 2}}},
+        {"$sort": {"userCount": -1, "ip": 1}},
+        {"$limit": limit},
+    ]
+    return await db.users.aggregate(pipeline, maxTimeMS=5000).to_list(length=limit)
+
+
 @app.patch("/api/admin/users/{user_id}")
 async def admin_update_user(
     user_id: str,
@@ -1150,6 +1171,10 @@ async def admin_set_user_bans(
     if not isinstance(bans_in, dict):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ожидается {bans: {...}}")
     now = datetime.now(timezone.utc)
+    allowed = PLAYER_FUNCTION_IDS | {"account"}
+    unknown = set(bans_in) - allowed
+    if unknown:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Неизвестные ограничения: {', '.join(sorted(unknown))}")
     clean = {}
     for func, b in bans_in.items():
         if not b:
@@ -1157,6 +1182,8 @@ async def admin_set_user_bans(
         reason = str(b.get("reason") or "").strip() or None
         until = b.get("until") or None
         clean[func] = {"reason": reason, "until": until, "by": _admin.get("username"), "at": now.isoformat()}
+    if "account" in clean:
+        clean = {"account": clean["account"]}
     await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"bans": clean}})
     try:
         from ws import push_to_user, push_to_admins
@@ -1183,6 +1210,7 @@ async def admin_broadcast(
         {
             "userId": str(u["_id"]),
             "type": "broadcast",
+            "category": "announcement",
             "title": title,
             "body": message,
             "data": {"by": _admin.get("username")},
@@ -1197,7 +1225,7 @@ async def admin_broadcast(
     try:
         from ws import broadcast
         await broadcast({"type": "notification", "notification": {
-            "type": "broadcast", "title": title, "body": message,
+            "type": "broadcast", "category": "announcement", "title": title, "body": message,
         }})
     except Exception:
         pass
@@ -1244,6 +1272,25 @@ async def admin_logout_user(
     logger.info("Admin '%s' logged out user %s (%d sessions)",
                 _admin.get("username", "unknown"), user_id, result.deleted_count)
     return {"message": f"Сессий завершено: {result.deleted_count}"}
+
+
+@app.post("/api/admin/users/{user_id}/login-as")
+async def admin_login_as(
+    user_id: str,
+    _admin=Depends(require_admin("users_edit")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Выдать администратору временную пару токенов выбранного игрока."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+    if target.get("role") == "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Вход в аккаунты администраторов запрещён")
+    token, refresh_token = await issue_token_pair(db, target)
+    logger.warning("Admin '%s' entered as user %s", _admin.get("username", "unknown"), user_id)
+    return {"token": token, "refresh_token": refresh_token, "username": target.get("username", "")}
 
 
 @app.get("/api/admin/users/{user_id}/property")

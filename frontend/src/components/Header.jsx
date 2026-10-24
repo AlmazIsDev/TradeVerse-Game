@@ -7,7 +7,10 @@ import {
 } from '../services/api'
 import ProfileCard from './ProfileCard'
 import { formatCompact } from './TransactionsPanel'
-import { Bell, LogOut, X, Check, Wallet, Megaphone } from 'lucide-react'
+import {
+  Bell, LogOut, X, Check, Wallet, Megaphone, Zap, Users, Store,
+  Cpu, Trophy, Settings2, Search, Undo2,
+} from 'lucide-react'
 
 function formatMoney(n) {
   return Number(n || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -25,9 +28,20 @@ function getStoredUser() {
 
 function Header({ user, balance, onLogout, onOpenSettings }) {
   const { t } = useTranslation()
+  const returnFromImpersonation = () => {
+    const token = localStorage.getItem('admin_return_token')
+    const refresh = localStorage.getItem('admin_return_refresh_token')
+    if (!token || !refresh) return
+    localStorage.setItem('token', token)
+    localStorage.setItem('refresh_token', refresh)
+    localStorage.removeItem('admin_return_token')
+    localStorage.removeItem('admin_return_refresh_token')
+    window.location.reload()
+  }
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState([])
-  const [notifTab, setNotifTab] = useState('all') // all | auto | announce
+  const [notifTab, setNotifTab] = useState('all')
+  const [notifSearch, setNotifSearch] = useState('')
   const notifRef = useRef(null)
   const dropdownRef = useRef(null)
 
@@ -43,16 +57,26 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'TV'
   const unreadCount = notifications.filter(n => !n.read).length
 
-  // Категории уведомлений: «Объявления» (broadcast от админов) отдельно,
-  // «Авто» — автоматические (зарплата, аренда, майнинг и т.п.), приглашения/
-  // заявки с кнопками видны только во «Все», чтобы не терялись.
-  const isAnnounce = useCallback((n) => n.type === 'broadcast', [])
   const isActionable = useCallback(
     (n) =>
       (n.type === 'company_invite' && n.data?.inviteId) ||
       (n.type === 'company_application' && n.data?.applicationId),
     [],
   )
+  const categoryOf = useCallback((n) => {
+    if (n.category) return n.category
+    if (n.type === 'broadcast') return 'announcement'
+    if (n.type === 'rental' || n.type === 'salary') return 'automatic'
+    if (n.type === 'company' || n.type === 'company_invite' || n.type === 'company_application') return 'company'
+    if (n.type === 'market' || n.type === 'crypto_transfer') return 'market'
+    if (n.type === 'mining') return 'mining'
+    if (n.type === 'media' || n.type === 'itstudio' || n.type === 'itstudio_attack' || n.type === 'cityroof') return 'event'
+    return 'system'
+  }, [])
+  const categoryIcon = {
+    automatic: Zap, announcement: Megaphone, company: Users,
+    market: Store, mining: Cpu, event: Trophy, system: Settings2,
+  }
 
   // Панель не должна вылезать за экран: после открытия (и на resize) измеряем
   // её и при нехватке места сужаем и/или сдвигаем обратно в вьюпорт.
@@ -81,12 +105,18 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     return () => window.removeEventListener('resize', clampDropdown)
   }, [showNotifications, clampDropdown])
 
+  const tabCategory = { all: null, auto: 'automatic', announce: 'announcement', company: 'company', market: 'market', mining: 'mining', event: 'event' }
+  const query = notifSearch.trim().toLocaleLowerCase()
   const visibleNotifications = notifications.filter((n) => {
-    if (notifTab === 'announce') return isAnnounce(n)
-    if (notifTab === 'auto') return !isAnnounce(n) && !isActionable(n)
-    return true
+    const matchesTab = !tabCategory[notifTab] || categoryOf(n) === tabCategory[notifTab]
+    const haystack = `${n.title || ''} ${n.body || ''}`.toLocaleLowerCase()
+    return matchesTab && (!query || haystack.includes(query))
   })
-  const tabUnread = (match) => notifications.filter((n) => !n.read && match(n)).length
+  const tabUnread = (category) => notifications.filter((n) => !n.read && (!category || categoryOf(n) === category)).length
+  const tabs = [
+    ['all', 'tabAll'], ['auto', 'tabAuto'], ['announce', 'tabAnnounce'],
+    ['company', 'tabCompany'], ['market', 'tabMarket'], ['mining', 'tabMining'], ['event', 'tabEvent'],
+  ]
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -264,21 +294,30 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                   <X size={16} />
                 </button>
               </div>
+              <div className="notification-search">
+                <Search size={15} />
+                <input
+                  value={notifSearch}
+                  onChange={(e) => setNotifSearch(e.target.value)}
+                  placeholder={t('notifications.searchPlaceholder')}
+                  aria-label={t('notifications.searchPlaceholder')}
+                />
+                {notifSearch && <button type="button" onClick={() => setNotifSearch('')}><X size={14} /></button>}
+              </div>
               <div className="notification-tabs">
-                {[
-                  ['all', 'tabAll', () => true],
-                  ['auto', 'tabAuto', (n) => !isAnnounce(n) && !isActionable(n)],
-                  ['announce', 'tabAnnounce', isAnnounce],
-                ].map(([id, key, match]) => {
-                  const unread = tabUnread(match)
+                {tabs.map(([id, key]) => {
+                  const unread = tabUnread(tabCategory[id])
+                  const Icon = categoryIcon[tabCategory[id]]
                   return (
                     <button
                       key={id}
                       type="button"
                       className={`notification-tab ${notifTab === id ? 'active' : ''}`}
                       onClick={() => setNotifTab(id)}
+                      title={t(`notifications.${key}`)}
                     >
-                      {t(`notifications.${key}`)}
+                      {Icon && <Icon size={13} />}
+                      <span>{t(`notifications.${key}`)}</span>
                       {unread > 0 && <span className="notification-tab-badge">{unread}</span>}
                     </button>
                   )
@@ -290,17 +329,18 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                 )}
                 {visibleNotifications.map(n => {
                   const actionable = isActionable(n)
-                  const announce = isAnnounce(n)
+                  const category = categoryOf(n)
+                  const Icon = categoryIcon[category] || Settings2
                   return (
                     <div
                       key={n.id}
-                      className={`notification-item ${n.read ? 'read' : 'unread'} ${announce ? 'announce' : ''}`}
+                      className={`notification-item ${n.read ? 'read' : 'unread'} notification-${category}`}
                       onClick={() => !actionable && markAsRead(n.id)}
                     >
                       {!n.read && <div className="notification-dot" />}
                       <div className="notification-content">
                         <span className="notification-title">
-                          {announce && <Megaphone size={14} className="notification-announce-icon" />}
+                          <Icon size={14} className="notification-category-icon" />
                           {n.title}
                         </span>
                         {n.body && <span className="notification-text">{n.body}</span>}
@@ -341,6 +381,11 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
             <div className="header-avatar">{initials}</div>
           )}
         </button>
+        {localStorage.getItem('admin_return_token') && (
+          <button className="header-icon-btn" title={t('header.returnToAdmin')} onClick={returnFromImpersonation}>
+            <Undo2 size={20} />
+          </button>
+        )}
         <button className="header-icon-btn" title={t('header.logout')} onClick={onLogout}>
           <LogOut size={20} />
         </button>

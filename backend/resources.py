@@ -63,7 +63,7 @@ RESOURCES: list[dict] = [
         "name": "Хлеб",
         "description": "Выпекается в пекарне из пшеницы. Корм для работников источников — повышает их эффективность.",
         "category": CAT_AGRICULTURE,
-        "base_price": 30.0,
+        "base_price": 60.0,
         "unit": "кг",
     },
 

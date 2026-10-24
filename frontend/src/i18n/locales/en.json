@@ -625,6 +625,7 @@
     "invite": "Invite",
     "invited": "Invitation sent",
     "invitePlayer": "Player nickname",
+    "candidateCapital": "Candidate total capital: {{value}} · higher roles are disabled; invitations require $300k",
     "accept": "Accept",
     "decline": "Decline",
     "assets": "Company assets",
@@ -2079,6 +2080,15 @@
     "cityroof": "CityRoof",
     "media": "Media ads"
   },
+  "sourceUi": {
+    "source": "Source",
+    "running": "Running",
+    "stopped": "Stopped",
+    "income": "Income",
+    "level": "Level",
+    "active": "Production active",
+    "needWorkers": "Workers needed"
+  },
   "prod": {
     "manage": "Production management",
     "storage": "Storage",
@@ -2086,6 +2096,7 @@
     "storageUpgrade": "Upgrade storage",
     "storageMax": "Max level",
     "workers": "Workers",
+    "workersSaved": "Workers updated: {{count}}",
     "workersHint": "Efficiency = workers/catalog crew (max ×2). No workers — no production.",
     "food": "Food (bread)",
     "foodBuy": "Order bread",

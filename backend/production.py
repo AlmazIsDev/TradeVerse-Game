@@ -94,6 +94,17 @@ def _warehouse_cap(asset: dict) -> float:
     return float(meta.get("storageCap") or 0)
 
 
+def _arrival_destination_projection() -> dict:
+    return {
+        "type": 1,
+        "category": 1,
+        "prod.storage": 1,
+        "storage": 1,
+        "meta.capacity": 1,
+        "meta.storageCap": 1,
+    }
+
+
 def _workers_factor(workers: int, asset: dict) -> float:
     """0 работников → производство стоит; далее workers/штат до потолка ×2."""
     if workers <= 0:
@@ -251,7 +262,7 @@ async def _tick_arrivals(db, now: datetime) -> None:
         if dest_id and ObjectId.is_valid(dest_id):
             dest = await db.user_assets.find_one(
                 {"_id": ObjectId(dest_id), "userId": truck["userId"]},
-                {"prod.storage": 1, "storage": 1, "meta.capacity": 1, "meta.storageCap": 1},
+                _arrival_destination_projection(),
             )
         if not dest:
             # Получатель продан/передан — груз остаётся на фуре (сгорит при

@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, Package, Users, Wheat, Truck, Coins, Info, Loader2, AlertTriangle, Send } from 'lucide-react'
+import { ChevronLeft, Package, Users, Wheat, Truck, Coins, Info, Loader2, AlertTriangle, Send, RefreshCw } from 'lucide-react'
 import {
   fetchProductionOverview, setProductionConfig, setProductionTrucks,
   setProductionWorkers, buyProductionFood, upgradeProductionStorage,
@@ -23,6 +23,21 @@ const RES_EMOJI = {
 
 const TYPE_LABEL = {
   mine: '⛏️', sawmill: '🪵', field: '🌾', bakery: '🍞', warehouse: '🏬',
+}
+
+function ProductionSellRow({ unitId, res, price, value, busy, onChange, onSell, t }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      <input type="number" min="0" step="0.1" style={{ width: 84 }}
+        value={value}
+        placeholder={formatMoney(price)}
+        title={`${t('prod.sell', 'Продать')} — ${formatMoney(price)} $/${t('units.kg', 'кг')}`}
+        onChange={onChange} />
+      <button className="farm-btn" disabled={busy} onClick={onSell}>
+        {t('prod.sell', 'Продать')}
+      </button>
+    </span>
+  )
 }
 
 function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
@@ -77,6 +92,14 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
     }
   }
 
+  const saveWorkers = () => {
+    const count = Math.max(0, Math.min(unit.maxWorkers, Math.floor(Number(workersInput) || 0)))
+    return runAction(
+      () => setProductionWorkers(unit.id, count),
+      t('prod.workersSaved', { count, defaultValue: `Работники обновлены: ${count}/${unit.maxWorkers}` }),
+    )
+  }
+
   // Список получателей для источника: склады (+ пекарня — только для пшеницы).
   const destinationOptions = []
   for (const w of (data?.warehouses || [])) destinationOptions.push(w)
@@ -107,15 +130,28 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
   const name = unit?.name || warehouse.name
   return (
     <div className="farm-panel">
-      <div className="leaderboard-title-row">
-        <button className="asset-interact-btn" onClick={onBack} style={{ padding: '6px 10px' }}>
+      <div className="source-panel-actions">
+        <button className="asset-interact-btn" onClick={onBack}>
           <ChevronLeft size={16} /> {t('common.back', 'Назад')}
         </button>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-          <Package size={22} className="icon" />
-          <h2 className="tab-title" style={{ margin: 0, flex: 1 }}>{t('prod.manage', 'Управление производством')}: {name}</h2>
-        </span>
+        {import.meta.env.DEV && (
+          <button className="asset-interact-btn source-debug-btn" onClick={() => load()} disabled={busy}>
+            <RefreshCw size={14} /> Обновить данные
+          </button>
+        )}
       </div>
+      <div className="source-panel-title">
+        <Package size={22} className="icon" />
+        <h2 className="tab-title">{t('prod.manage', 'Управление производством')}: {name}</h2>
+      </div>
+
+      {unit && (
+        <div className="source-kpi-grid">
+          <div className="source-kpi"><span>Производство</span><strong>{unit.outputPerHour || 0}<small>/ч</small></strong></div>
+          <div className="source-kpi"><span>Работники</span><strong>{unit.workers}/{unit.maxWorkers}</strong></div>
+          <div className="source-kpi"><span>Заполненность</span><strong>{Math.round((Object.values(unit.storage || {}).reduce((sum, qty) => sum + Number(qty || 0), 0) / Math.max(1, unit.storageCap || 1)) * 100)}<small>%</small></strong></div>
+        </div>
+      )}
 
       {warehouse && <WarehouseSections />}
 
@@ -135,7 +171,15 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
                   </span>
                   <span className="farm-storage-qty">{qty} / {unit.storageCap}</span>
                   <span className="farm-storage-actions">
-                    <SellRow res={res} />
+                    <ProductionSellRow unitId={unitId} res={res} price={prices[res] || 0}
+                      value={sellQty[`${unitId}:${res}`] ?? ''} busy={busy} t={t}
+                      onChange={e => setSellQty(s => ({ ...s, [`${unitId}:${res}`]: e.target.value }))}
+                      onSell={() => {
+                        const qty = Number(sellQty[`${unitId}:${res}`]) || 0
+                        if (qty <= 0) return
+                        runAction(() => sellProductionResource(unitId, res, qty), t('prod.sell', 'Продано'))
+                        setSellQty(s => ({ ...s, [`${unitId}:${res}`]: '' }))
+                      }} />
                   </span>
                 </div>
               ))}
@@ -160,13 +204,13 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
                 placeholder={String(unit.workers)}
                 onChange={e => setWorkersInput(e.target.value)} />
               <button className="farm-btn" disabled={busy}
-                onClick={() => runAction(() => setProductionWorkers(unit.id, Math.max(0, Math.min(unit.maxWorkers, Math.floor(Number(workersInput) || 0)))), t('prod.workers'))}>
+                onClick={saveWorkers}>
                 {t('common.save', 'Сохранить')}
               </button>
             </div>
             <p className="farm-price">
               {t('prod.efficiency')}: <b>{efficiencyPct(unit)}%</b>
-              {unit.employees > 0 && <> · {t('market.employees', 'Сотрудники')}: {unit.employees}</>}
+              {unit.employees > 0 && <> · Штат: {unit.employees} · Нанято: {unit.workers}/{unit.maxWorkers}</>}
             </p>
           </section>
 
@@ -242,28 +286,6 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
       )}
     </div>
   )
-
-  function SellRow({ res }) {
-    const price = prices[res] || 0
-    return (
-      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-        <input type="number" min="0" step="0.1" style={{ width: 84 }}
-          value={sellQty[`${unitId}:${res}`] ?? ''}
-          placeholder={formatMoney(price)}
-          title={`${t('prod.sell', 'Продать')} — ${formatMoney(price)} $/${t('units.kg', 'кг')}`}
-          onChange={e => setSellQty(s => ({ ...s, [`${unitId}:${res}`]: e.target.value }))} />
-        <button className="farm-btn" disabled={busy}
-          onClick={() => {
-            const qty = Number(sellQty[`${unitId}:${res}`]) || 0
-            if (qty <= 0) return
-            runAction(() => sellProductionResource(unitId, res, qty), t('prod.sell', 'Продано'))
-            setSellQty(s => ({ ...s, [`${unitId}:${res}`]: '' }))
-          }}>
-          {t('prod.sell', 'Продать')}
-        </button>
-      </span>
-    )
-  }
 
   function TruckRow({ truck, slot }) {
     const assigned = (unit.trucks?.[slot] || []).includes(truck.id)

@@ -110,9 +110,12 @@ LEAGUE_MULTIPLIERS = {
     "novice": 1, "bronze": 25, "silver": 250,
     "gold": 1_000, "platinum": 5_000, "diamond": 20_000,
 }
-LEAGUE_INCOME_MULTIPLIERS = LEAGUE_MULTIPLIERS
+LEAGUE_INCOME_MULTIPLIERS = {
+    "novice": 1, "bronze": 5, "silver": 20,
+    "gold": 100, "platinum": 300, "diamond": 1_000,
+}
 LEAGUE_WARCOIN_PRICES = {name: WARCOIN_PRICE_DEFAULT * multiplier for name, multiplier in LEAGUE_MULTIPLIERS.items()}
-LEAGUE_ATTACK_COSTS = {name: 10 * multiplier for name, multiplier in LEAGUE_MULTIPLIERS.items()}
+LEAGUE_ATTACK_COSTS = {name: 10 for name in LEAGUE_MULTIPLIERS}
 WARCOIN_MIGRATION_KEY = "cityroof_warcoin_migration_v2"
 
 
@@ -122,7 +125,7 @@ def _migrate_warcoin_amount(amount: int, league: str) -> int:
 
 def _business_bonus_view(slug: str, league: str) -> dict:
     bonus = BUSINESS_BONUS.get(slug, {})
-    multiplier = LEAGUE_MULTIPLIERS.get(league, 1)
+    multiplier = LEAGUE_INCOME_MULTIPLIERS.get(league, 1)
     return {
         "daily": round(bonus.get("daily", 0) * multiplier, 2),
         "effect": bonus.get("effect"), "mult": bonus.get("mult", 0),
@@ -487,13 +490,12 @@ def _shield_view(b: dict) -> Optional[dict]:
 
 
 def _scaled_protection_costs(league: str) -> dict:
-    multiplier = LEAGUE_MULTIPLIERS.get(league, 1)
-    return {level: cost * multiplier for level, cost in PROTECTION_COSTS.items()}
+    return dict(PROTECTION_COSTS)
 
 
 def _serialize_business(b: dict, user_id: str) -> dict:
     shield = _shield_view(b)
-    multiplier = LEAGUE_MULTIPLIERS.get(b.get("league", "novice"), 1)
+    multiplier = LEAGUE_INCOME_MULTIPLIERS.get(b.get("league", "novice"), 1)
     return {
         "id": str(b["_id"]),
         "slug": b.get("slug"),

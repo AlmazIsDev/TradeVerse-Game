@@ -4,7 +4,7 @@ import {
   fetchCityMap, buyWarcoin, attackBusiness, guessCombination, protectBusiness,
   fetchCityBonuses, fetchItStudioJobs, fetchMyStudios, orderStudioJob,
 } from '../services/api'
-import { formatMoney } from './TransactionsPanel'
+import { formatMoney, formatCompact } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
 import PlayerProfileModal from './PlayerProfileModal'
@@ -325,7 +325,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         <div className="wc-chip">
           <Coins size={16} />
           <span className="wc-balance">{map?.warcoin?.balance ?? 0} WC</span>
-          <span className="wc-league">{t(`cityroof.leagues.${wc.league}`, wc.league)} · {formatMoney(wc.price)} $</span>
+          <span className="wc-league">{t(`cityroof.leagues.${wc.league}`, wc.league)} · {formatCompact(wc.price)} $</span>
           <button className="wc-buy" onClick={() => setBuyModal(true)}><PlusCircle size={14} /> {t('cityroof.buyWc')}</button>
         </div>
         <div className={`cityroof-status ${map?.isActive ? 'active' : ''}`}>
@@ -443,8 +443,8 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             <button className="crypto-modal-close" onClick={closeModal}><X size={18} /></button>
             <h3>{buildingName(t, selected.slug, selected.name)}</h3>
             <div className="cityroof-business-bonuses">
-              <div><strong>{t('cityroof.captureBonus')}</strong><span>+{formatMoney(selected.reward)} $</span></div>
-              <div><strong>{t('cityroof.holdBonus')}</strong><span>+{formatMoney(selected.dailyIncome || 0)} $/{t('cityroof.day')}</span></div>
+              <div><strong>{t('cityroof.captureBonus')}</strong><span>+{formatCompact(selected.reward)} $</span></div>
+              <div><strong>{t('cityroof.holdBonus')}</strong><span>+{formatCompact(selected.dailyIncome || 0)} $/{t('cityroof.day')}</span></div>
               {selected.effect && <div><strong>{t(`cityroof.effects.${selected.effect}`, selected.effect)}</strong><span>+{Math.round((selected.effectMultiplier || 0) * 100)}%</span></div>}
               {selected.ownerId && <div><strong>{t('cityroof.ownerLabel')}</strong><span>{selected.ownerName || t('cityroof.yours')}</span></div>}
             </div>
@@ -533,7 +533,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="crypto-modal-close" onClick={() => setBuyModal(false)}><X size={18} /></button>
             <h3>{t('cityroof.buyWc')}</h3>
-            <p className="modal-price">{formatMoney(wc.price)} $ / WC · {t('bank.currentBalance')}: ${formatMoney(balance)}</p>
+            <p className="modal-price">{formatCompact(wc.price)} $ / WC · {t('bank.currentBalance')}: ${formatCompact(balance)}</p>
             <div className="modal-quantity">
               <label>{t('common.quantity')}:</label>
               <input type="number" min="1" step="1" value={buyAmount} autoFocus

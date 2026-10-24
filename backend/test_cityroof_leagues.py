@@ -65,5 +65,6 @@ def test_business_bonus_view_scales_daily_income():
     from cityroof import _business_bonus_view
 
     view = _business_bonus_view("market", "diamond")
-    assert view["daily"] == 55_000 * 1_000
-    assert view["leagueMultiplier"] == 1_000
+    assert view["daily"] == 55_000 * 6_100
+    assert view["leagueMultiplier"] == 6_100
+    assert _business_bonus_view("refinery", "diamond")["daily"] >= 700_000_000

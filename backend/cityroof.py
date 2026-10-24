@@ -111,8 +111,8 @@ LEAGUE_MULTIPLIERS = {
     "gold": 1_000, "platinum": 5_000, "diamond": 20_000,
 }
 LEAGUE_INCOME_MULTIPLIERS = {
-    "novice": 1, "bronze": 5, "silver": 20,
-    "gold": 100, "platinum": 300, "diamond": 1_000,
+    "novice": 1, "bronze": 10, "silver": 50,
+    "gold": 250, "platinum": 1_000, "diamond": 6_100,
 }
 LEAGUE_WARCOIN_PRICES = {name: WARCOIN_PRICE_DEFAULT * multiplier for name, multiplier in LEAGUE_MULTIPLIERS.items()}
 LEAGUE_ATTACK_COSTS = {name: 10 for name in LEAGUE_MULTIPLIERS}

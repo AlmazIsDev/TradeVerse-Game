@@ -1703,7 +1703,7 @@ async def repair_farm(farm_id: str, current_user: dict = Depends(require_allowed
 
 
 @router.post("/farms/{farm_id}/manager")
-async def manage_manager(farm_id: str, payload: ManagerBody, current_user: dict = Depends(require_allowed("mining")), db: AsyncIOMotorDatabase = Depends(get_db)):
+async def manage_manager(farm_id: str, payload: ManagerBody, current_user: dict = Depends(require_allowed("mining_ai")), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Нанять/повысить/уволить ИИ-управляющего."""
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)

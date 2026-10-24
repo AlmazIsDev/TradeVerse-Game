@@ -37,6 +37,17 @@ function Tooltip({ text }) {
   )
 }
 
+function BanDetails({ ban = {}, onChange, t }) {
+  return (
+    <span className="admin-ban-details">
+      <input type="date" className="admin-input admin-ban-until" value={ban.until || ''}
+        title={t('admin.banUntil')} onChange={e => onChange({ until: e.target.value })} />
+      <input type="text" className="admin-input admin-ban-reason" placeholder={t('admin.banReason')}
+        value={ban.reason || ''} onChange={e => onChange({ reason: e.target.value })} />
+    </span>
+  )
+}
+
 const CARD_NUMBER_RE = /^\d{4}-\d{4}-\d{4}-\d{5}$/
 
 const fmtTs = (ts) => {
@@ -94,8 +105,28 @@ const USER_MONEY_CHIPS = [
   { key: 'company', col: 'company' },
 ]
 // Игровые функции, отключаемые игроку (зеркало PLAYER_FUNCTIONS бэкенда).
-const PLAYER_BAN_FUNCS = ['transfer', 'crypto', 'stocks', 'shop', 'assets',
-  'centralmarket', 'mining', 'farm', 'company', 'company_edit', 'company_members', 'company_leave', 'cityroof', 'media']
+const PLAYER_BAN_FUNCS = [
+  'transfer', 'crypto', 'crypto_account', 'crypto_trade', 'crypto_transfer',
+  'stocks', 'stocks_trade', 'shop', 'shop_buy', 'shop_sell',
+  'assets', 'assets_buy', 'assets_upgrade', 'assets_sell', 'assets_rent',
+  'centralmarket', 'centralmarket_create', 'centralmarket_buy',
+  'mining', 'mining_create', 'mining_hardware', 'mining_operation', 'mining_maintenance', 'mining_ai',
+  'farm_sources', 'farm_sources_cells', 'farm_sources_plant', 'farm_sources_harvest', 'farm_sources_fuel', 'farm_sources_sell', 'farm_sources_vehicle',
+  'company', 'company_edit', 'company_members', 'company_leave',
+  'cityroof', 'cityroof_purchase', 'cityroof_attack', 'cityroof_capture', 'cityroof_protect',
+]
+const BAN_GROUPS = [
+  { id: 'transfer', actions: [] },
+  { id: 'crypto', actions: ['crypto_account', 'crypto_trade', 'crypto_transfer'] },
+  { id: 'stocks', actions: ['stocks_trade'] },
+  { id: 'shop', actions: ['shop_buy', 'shop_sell'] },
+  { id: 'assets', actions: ['assets_buy', 'assets_upgrade', 'assets_sell', 'assets_rent'] },
+  { id: 'centralmarket', actions: ['centralmarket_create', 'centralmarket_buy'] },
+  { id: 'mining', actions: ['mining_create', 'mining_hardware', 'mining_operation', 'mining_maintenance', 'mining_ai'] },
+  { id: 'farm_sources', actions: ['farm_sources_cells', 'farm_sources_plant', 'farm_sources_harvest', 'farm_sources_fuel', 'farm_sources_sell', 'farm_sources_vehicle'] },
+  { id: 'company', actions: ['company_edit', 'company_members', 'company_leave'] },
+  { id: 'cityroof', actions: ['cityroof_purchase', 'cityroof_attack', 'cityroof_capture', 'cityroof_protect'] },
+]
 const ADMIN_LEVELS = [1, 2, 3, 4]
 // Поля конфига ботов по рынкам (зеркало DEFAULT_SYNTHETIC бэкенда).
 const SYNTH_FIELDS = {
@@ -189,6 +220,7 @@ function AdminPanel({ user, onClose }) {
   const [perms, setPerms] = useState(null)
   const [permsSaving, setPermsSaving] = useState(false)
   const [banDraft, setBanDraft] = useState({}) // {func: {on, reason, until}}
+  const [expandedBans, setExpandedBans] = useState({})
   const [bansSaving, setBansSaving] = useState(false)
 
   const [dbCollections, setDbCollections] = useState([])
@@ -596,10 +628,9 @@ function AdminPanel({ user, onClose }) {
       const pair = await adminLoginAs(userId)
       localStorage.setItem('admin_return_token', returnToken)
       localStorage.setItem('admin_return_refresh_token', returnRefresh)
-      localStorage.setItem('token', pair.token)
-      localStorage.setItem('refresh_token', pair.refresh_token)
+      localStorage.setItem('admin_return_user', localStorage.getItem('tradeverse_user') || '')
       const target = await request('/api/user/me')
-      localStorage.setItem('tradeverse_user', JSON.stringify(target))
+      localStorage.setItem('tradeverse_user', JSON.stringify({ ...target, token: pair.token, refresh_token: pair.refresh_token }))
       window.location.reload()
     } catch (err) { toast(t('admin.error') + ': ' + err.message, 'error') }
   }
@@ -607,6 +638,12 @@ function AdminPanel({ user, onClose }) {
   const handleLoadIpGroups = async () => {
     try { setIpGroups(await adminGetIpGroups()) } catch (err) { toast(t('admin.error') + ': ' + err.message, 'error') }
   }
+
+  const toggleBanKeys = (keys, on) => setBanDraft(prev => {
+    const next = { ...prev }
+    keys.forEach(key => { next[key] = { ...(next[key] || {}), on } })
+    return next
+  })
 
   const handleDeleteUser = async (userId, username) => {
     if (!confirm(t('admin.deleteUserConfirm', { username }))) return
@@ -1641,26 +1678,42 @@ function AdminPanel({ user, onClose }) {
                   </div>
                   <div className="admin-field-group admin-bans-block">
                     <label>{t('admin.bansTitle')}</label>
-                    {['account', ...PLAYER_BAN_FUNCS].map(f => {
-                      const d = banDraft[f] || {}
-                      return (
-                        <label key={f} className="admin-ban-row">
-                          <input type="checkbox" checked={!!d.on}
-                            onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, on: e.target.checked } })} />
-                          <span>{t(f === 'account' ? 'admin.banAccount' : `banFunc.${f}`)}</span>
-                          {d.on && (
-                            <>
-                              <input type="date" className="admin-input admin-ban-until" value={d.until || ''}
-                                title={t('admin.banUntil')}
-                                onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, until: e.target.value } })} />
-                              <input type="text" className="admin-input admin-ban-reason" placeholder={t('admin.banReason')}
-                                value={d.reason || ''}
-                                onChange={e => setBanDraft({ ...banDraft, [f]: { ...d, reason: e.target.value } })} />
-                            </>
-                          )}
-                        </label>
-                      )
-                    })}
+                    <div className="admin-ban-tree">
+                      <div className="admin-ban-group admin-ban-account">
+                        <button type="button" className="admin-ban-toggle" onClick={() => setExpandedBans(prev => ({ ...prev, account: !prev.account }))}>
+                          {expandedBans.account ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        <input type="checkbox" checked={!!banDraft.account?.on}
+                          onChange={e => toggleBanKeys(['account', ...PLAYER_BAN_FUNCS], e.target.checked)} />
+                        <span>{t('admin.banAccount')}</span>
+                        {banDraft.account?.on && <BanDetails ban={banDraft.account} onChange={patch => setBanDraft({ ...banDraft, account: { ...banDraft.account, ...patch } })} t={t} />}
+                      </div>
+                      {expandedBans.account && <div className="admin-ban-children">
+                        {BAN_GROUPS.map(group => {
+                          const keys = [group.id, ...group.actions]
+                          const groupOn = keys.every(key => banDraft[key]?.on)
+                          const hasChildren = group.actions.length > 0
+                          return <div key={group.id} className="admin-ban-group">
+                            {hasChildren ? <button type="button" className="admin-ban-toggle" onClick={() => setExpandedBans(prev => ({ ...prev, [group.id]: !prev[group.id] }))}>
+                              {expandedBans[group.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button> : <span className="admin-ban-toggle-spacer" />}
+                            <input type="checkbox" checked={groupOn} onChange={e => toggleBanKeys(keys, e.target.checked)} />
+                            <span>{t(`banFunc.${group.id}`)}</span>
+                            {groupOn && <BanDetails ban={banDraft[group.id]} onChange={patch => setBanDraft({ ...banDraft, [group.id]: { ...(banDraft[group.id] || {}), on: true, ...patch } })} t={t} />}
+                            {hasChildren && expandedBans[group.id] && !groupOn && <div className="admin-ban-children">
+                              {group.actions.map(f => {
+                                const d = banDraft[f] || {}
+                                return <label key={f} className="admin-ban-row">
+                                  <input type="checkbox" checked={!!d.on} onChange={e => toggleBanKeys([f], e.target.checked)} />
+                                  <span>{t(`banFunc.${f}`)}</span>
+                                  {d.on && <BanDetails ban={d} onChange={patch => setBanDraft({ ...banDraft, [f]: { ...d, ...patch } })} t={t} />}
+                                </label>
+                              })}
+                            </div>}
+                          </div>
+                        })}
+                      </div>}
+                    </div>
                   </div>
                   <div className="admin-field-group">
                     <label>{t('admin.fieldIps')}</label>

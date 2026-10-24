@@ -171,7 +171,7 @@ async def list_lots(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_lot(
     payload: LotCreate,
-    current_user: dict = Depends(require_allowed("centralmarket")),
+    current_user: dict = Depends(require_allowed("centralmarket_create")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Выставить лот. Владение и количество проверяются на сервере."""
@@ -215,7 +215,7 @@ async def create_lot(
 async def update_lot(
     lot_id: str,
     payload: LotUpdate,
-    current_user: dict = Depends(require_allowed("centralmarket")),
+    current_user: dict = Depends(require_allowed("centralmarket_create")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Изменить свой лот (количество/цена). Количество перепроверяется по инвентарю."""
@@ -266,7 +266,7 @@ async def cancel_lot(
 async def buy_lot(
     lot_id: str,
     payload: LotBuy,
-    current_user: dict = Depends(require_allowed("centralmarket")),
+    current_user: dict = Depends(require_allowed("centralmarket_buy")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить qty из лота: атомарная броня количества, перепроверка владения, деньги через ledger."""

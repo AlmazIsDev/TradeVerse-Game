@@ -805,7 +805,7 @@ async def my_studios(
 @router.post("/itstudio/materials/buy")
 async def buy_studio_materials(
     payload: ItStudioMaterialsBuy,
-    current_user: dict = Depends(require_allowed("cityroof")),
+    current_user: dict = Depends(require_allowed("cityroof_purchase")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Закупить материалы тира студии — тип материала и цена всегда
@@ -834,7 +834,7 @@ async def buy_studio_materials(
 @router.post("/itstudio/order")
 async def order_itstudio(
     payload: ItStudioOrder,
-    current_user: dict = Depends(require_allowed("cityroof")),
+    current_user: dict = Depends(require_allowed("cityroof_attack")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Заказать атаку или защиту силами собственной IT-студии. Через 1–3ч
@@ -1108,7 +1108,7 @@ async def sweep_business_income(db: AsyncIOMotorDatabase):
 @router.post("/warcoin/buy")
 async def buy_warcoin(
     payload: BuyWarcoin,
-    current_user: dict = Depends(require_allowed("cityroof")),
+    current_user: dict = Depends(require_allowed("cityroof_purchase")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить WarCoin за $ по цене лиги."""
@@ -1135,7 +1135,7 @@ async def buy_warcoin(
 @router.post("/attack/{business_id}")
 async def attack_business(
     business_id: str,
-    current_user: dict = Depends(require_allowed("cityroof")),
+    current_user: dict = Depends(require_allowed("cityroof_attack")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Оплатить попытку захвата (10 WC) и начать мини-игру."""
@@ -1186,7 +1186,7 @@ async def attack_business(
 @router.post("/guess")
 async def submit_guess(
     payload: GuessBody,
-    current_user: dict = Depends(require_allowed("cityroof")),
+    current_user: dict = Depends(require_allowed("cityroof_capture")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Проверить комбинацию. Возвращает подсказку (exact/present) и статус."""
@@ -1278,7 +1278,7 @@ async def submit_guess(
 async def protect_business(
     business_id: str,
     payload: ProtectBody,
-    current_user: dict = Depends(require_allowed("cityroof")),
+    current_user: dict = Depends(require_allowed("cityroof_protect")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить защиту бизнеса (уровни 1–5). Сбрасывает прогресс атакующих."""

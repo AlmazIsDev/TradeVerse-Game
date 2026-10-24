@@ -692,7 +692,7 @@ async def quote_stock(
 @router.post("/trade")
 async def trade_stock(
     trade: StockTradeRequest,
-    current_user: dict = Depends(require_allowed("stocks")),
+    current_user: dict = Depends(require_allowed("stocks_trade")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка/продажа акций с атомарным изменением баланса и цены."""

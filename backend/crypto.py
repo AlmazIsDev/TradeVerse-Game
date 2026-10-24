@@ -395,7 +395,7 @@ async def _credit_company_budget(db: AsyncIOMotorDatabase, coin: dict, amount: f
 
 @router.post("/account/open", status_code=status.HTTP_201_CREATED)
 async def open_crypto_account(
-    current_user: dict = Depends(require_allowed("crypto")),
+    current_user: dict = Depends(require_allowed("crypto_account")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Открывает криптосчёт игроку. Идемпотентно возвращает уже открытый счёт."""
@@ -626,7 +626,7 @@ async def quote_crypto(
 @router.post("/trade")
 async def trade_crypto(
     payload: CryptoTrade,
-    current_user: dict = Depends(require_allowed("crypto")),
+    current_user: dict = Depends(require_allowed("crypto_trade")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка/продажа криптовалюты. Требует открытого криптосчёта."""
@@ -914,7 +914,7 @@ async def run_bots(
 @router.post("/transfer")
 async def transfer_crypto(
     payload: CryptoTransfer,
-    current_user: dict = Depends(require_allowed("crypto")),
+    current_user: dict = Depends(require_allowed("crypto_transfer")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Перевод криптовалюты другому игроку по адресу кошелька или нику.

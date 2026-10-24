@@ -130,17 +130,45 @@ async def level_for(db, func: str) -> int:
 PLAYER_FUNCTIONS: list[tuple[str, str]] = [
     ("transfer", "banFunc.transfer"),
     ("crypto", "banFunc.crypto"),
+    ("crypto_account", "banFunc.crypto_account"),
+    ("crypto_trade", "banFunc.crypto_trade"),
+    ("crypto_transfer", "banFunc.crypto_transfer"),
     ("stocks", "banFunc.stocks"),
+    ("stocks_trade", "banFunc.stocks_trade"),
     ("shop", "banFunc.shop"),
+    ("shop_buy", "banFunc.shop_buy"),
+    ("shop_sell", "banFunc.shop_sell"),
     ("assets", "banFunc.assets"),
+    ("assets_buy", "banFunc.assets_buy"),
+    ("assets_upgrade", "banFunc.assets_upgrade"),
+    ("assets_sell", "banFunc.assets_sell"),
+    ("assets_rent", "banFunc.assets_rent"),
     ("centralmarket", "banFunc.centralmarket"),
+    ("centralmarket_create", "banFunc.centralmarket_create"),
+    ("centralmarket_buy", "banFunc.centralmarket_buy"),
     ("mining", "banFunc.mining"),
-    ("farm", "banFunc.farm"),
+    ("mining_create", "banFunc.mining_create"),
+    ("mining_hardware", "banFunc.mining_hardware"),
+    ("mining_operation", "banFunc.mining_operation"),
+    ("mining_maintenance", "banFunc.mining_maintenance"),
+    ("mining_ai", "banFunc.mining_ai"),
+    ("farm_sources", "banFunc.farm_sources"),
+    ("farm_sources_cells", "banFunc.farm_sources_cells"),
+    ("farm_sources_plant", "banFunc.farm_sources_plant"),
+    ("farm_sources_harvest", "banFunc.farm_sources_harvest"),
+    ("farm_sources_fuel", "banFunc.farm_sources_fuel"),
+    ("farm_sources_sell", "banFunc.farm_sources_sell"),
+    ("farm_sources_vehicle", "banFunc.farm_sources_vehicle"),
+    ("farm", "banFunc.farm_sources"),
     ("company", "banFunc.company"),
     ("company_edit", "banFunc.company_edit"),
     ("company_members", "banFunc.company_members"),
     ("company_leave", "banFunc.company_leave"),
     ("cityroof", "banFunc.cityroof"),
+    ("cityroof_purchase", "banFunc.cityroof_purchase"),
+    ("cityroof_attack", "banFunc.cityroof_attack"),
+    ("cityroof_capture", "banFunc.cityroof_capture"),
+    ("cityroof_protect", "banFunc.cityroof_protect"),
     ("media", "banFunc.media"),
 ]
 PLAYER_FUNCTION_IDS = {fid for fid, _ in PLAYER_FUNCTIONS}
@@ -167,8 +195,12 @@ def ban_active(ban: dict | None) -> bool:
 
 def user_ban_active(user: dict, func: str) -> bool:
     bans = user.get("bans") or {}
-    parent = func.split("_", 1)[0] if "_" in func else None
-    return any(ban_active(bans.get(key)) for key in ("account", func, parent) if key)
+    parents = sorted(
+        (key for key in PLAYER_FUNCTION_IDS if func.startswith(f"{key}_")),
+        key=len,
+        reverse=True,
+    )
+    return any(ban_active(bans.get(key)) for key in ("account", func, *parents) if key)
 
 
 def require_allowed(func: str):

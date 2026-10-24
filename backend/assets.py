@@ -1228,7 +1228,7 @@ def _fallback_catalog(slug: str) -> Optional[dict]:
 @router.post("/buy", status_code=status.HTTP_201_CREATED)
 async def buy_asset(
     payload: BuyRequest,
-    current_user: dict = Depends(require_allowed("assets")),
+    current_user: dict = Depends(require_allowed("assets_buy")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка актива с рынка: списывает баланс, создаёт экземпляр во владении."""
@@ -1496,7 +1496,7 @@ async def upgrade_preview(
 async def upgrade_asset(
     asset_id: str,
     payload: UpgradeBody = UpgradeBody(),
-    current_user: dict = Depends(require_allowed("assets")),
+    current_user: dict = Depends(require_allowed("assets_upgrade")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Улучшить актив: повышает стоимость и доход."""
@@ -1705,7 +1705,7 @@ async def buy_mining_upgrade(
 @router.post("/{asset_id}/sell")
 async def sell_asset(
     asset_id: str,
-    current_user: dict = Depends(require_allowed("assets")),
+    current_user: dict = Depends(require_allowed("assets_sell")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Продать актив обратно (70% текущей стоимости) + невыбранный доход."""
@@ -1798,7 +1798,7 @@ async def transfer_to_player(
 async def rent_list(
     asset_id: str,
     payload: RentListing,
-    current_user: dict = Depends(require_allowed("assets")),
+    current_user: dict = Depends(require_allowed("assets_rent")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Сдать актив в аренду на N часов; арендатор — через случайный диапазон. Цену
@@ -1828,7 +1828,7 @@ async def rent_list(
 @router.post("/{asset_id}/rent/cancel")
 async def rent_cancel(
     asset_id: str,
-    current_user: dict = Depends(require_allowed("assets")),
+    current_user: dict = Depends(require_allowed("assets_rent")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Снять объявление об аренде (пока арендатор не заселился)."""

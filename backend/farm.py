@@ -300,7 +300,7 @@ def _serialize_field(f: dict, cfg: dict, storage_cap: int | None = None) -> dict
 @router.post("/cells/buy")
 async def buy_cells(
     payload: BuyCellsRequest,
-    current_user: dict = Depends(require_allowed("farm")),
+    current_user: dict = Depends(require_allowed("farm_sources_cells")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить блок клеток на конкретном поле. Цена растёт экспоненциально."""
@@ -351,7 +351,7 @@ async def buy_cells(
 @router.post("/plant")
 async def plant(
     payload: PlantRequest,
-    current_user: dict = Depends(require_allowed("farm")),
+    current_user: dict = Depends(require_allowed("farm_sources_plant")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Посадить культуру на клетках. Требует свободный трактор и топливо."""
@@ -428,7 +428,7 @@ async def plant(
 @router.post("/harvest")
 async def harvest(
     payload: HarvestRequest,
-    current_user: dict = Depends(require_allowed("farm")),
+    current_user: dict = Depends(require_allowed("farm_sources_harvest")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Собрать готовый урожай с клеток. Требует свободного комбайна и топлива."""
@@ -540,7 +540,7 @@ async def harvest(
 @router.post("/fuel/buy")
 async def buy_fuel(
     payload: BuyFuelRequest,
-    current_user: dict = Depends(require_allowed("farm")),
+    current_user: dict = Depends(require_allowed("farm_sources_fuel")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить топливо за деньги. Литры округляются вверх до ближайшего бандла."""
@@ -575,7 +575,7 @@ async def buy_fuel(
 @router.post("/sell-storage")
 async def sell_storage(
     payload: SellStorageRequest,
-    current_user: dict = Depends(require_allowed("farm")),
+    current_user: dict = Depends(require_allowed("farm_sources_sell")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Продать культуру со склада поля; списание атомарное, выплата после него."""
@@ -730,7 +730,7 @@ async def get_vehicles(
 @router.post("/vehicles/buy", status_code=status.HTTP_201_CREATED)
 async def buy_vehicle(
     payload: BuyVehicleRequest,
-    current_user: dict = Depends(require_allowed("farm")),
+    current_user: dict = Depends(require_allowed("farm_sources_vehicle")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Купить машину. Каждый экземпляр становится записью в user_hardware с itemId=slug."""

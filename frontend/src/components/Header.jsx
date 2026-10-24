@@ -31,11 +31,12 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const returnFromImpersonation = () => {
     const token = localStorage.getItem('admin_return_token')
     const refresh = localStorage.getItem('admin_return_refresh_token')
-    if (!token || !refresh) return
-    localStorage.setItem('token', token)
-    localStorage.setItem('refresh_token', refresh)
+    const adminUser = localStorage.getItem('admin_return_user')
+    if (!token || !refresh || !adminUser) return
+    localStorage.setItem('tradeverse_user', adminUser)
     localStorage.removeItem('admin_return_token')
     localStorage.removeItem('admin_return_refresh_token')
+    localStorage.removeItem('admin_return_user')
     window.location.reload()
   }
   const [showNotifications, setShowNotifications] = useState(false)

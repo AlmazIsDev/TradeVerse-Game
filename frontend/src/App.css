@@ -2700,6 +2700,13 @@ body {
   gap: var(--spacing-md);
 }
 
+.admin-ban-tree { display: grid; gap: 4px; }
+.admin-ban-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.admin-ban-toggle { display: inline-flex; border: 0; padding: 2px; background: transparent; color: var(--color-text-secondary); cursor: pointer; }
+.admin-ban-children { display: grid; flex-basis: 100%; width: calc(100% - 26px); max-width: calc(100% - 26px); gap: 4px; margin: 2px 0 4px 26px; padding-left: 10px; box-sizing: border-box; border-left: 1px solid var(--hairline); }
+.admin-ban-children > span { color: var(--color-text-secondary); font-size: 12px; }
+.admin-ban-children .admin-ban-row { margin-left: 0; }
+
 .admin-field-group {
   display: flex;
   flex-direction: column;
@@ -2760,8 +2767,9 @@ body {
 .admin-content.has-panel { display: flex; flex-direction: row; gap: var(--spacing-md); align-items: flex-start; }
 .admin-content.has-panel .admin-list { flex: 1 1 auto; min-width: 220px; }
 .user-edit-panel {
-  flex: 0 0 320px; align-self: stretch;
+  flex: 0 1 520px; align-self: flex-start;
   display: flex; flex-direction: column; gap: var(--spacing-md);
+  min-width: 420px;
   padding: var(--spacing-md); background: var(--color-bg-secondary);
   border: 1px solid var(--hairline); border-left: 2px solid var(--color-accent);
   border-radius: var(--radius-md);
@@ -2773,7 +2781,7 @@ body {
   padding-bottom: var(--spacing-sm); border-bottom: 1px solid var(--hairline);
 }
 .user-edit-panel-header strong { font-size: 14px; color: var(--color-text-primary); }
-.user-edit-panel-body { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.user-edit-panel-body { display: flex; flex-direction: column; gap: var(--spacing-md); min-width: 0; }
 .user-edit-panel-actions {
   display: flex; gap: var(--spacing-sm);
   padding-top: var(--spacing-sm); border-top: 1px solid var(--hairline);
@@ -2781,7 +2789,7 @@ body {
 .admin-user-item.editing { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
 @media (max-width: 720px) {
   .admin-content.has-panel { flex-direction: column; }
-  .user-edit-panel { flex-basis: auto; width: 100%; }
+  .user-edit-panel { flex-basis: auto; width: 100%; min-width: 0; }
 }
 
 .user-date,

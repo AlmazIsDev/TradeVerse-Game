@@ -764,7 +764,7 @@ class BuyHardware(BaseModel):
 @router.post("/buy", status_code=status.HTTP_201_CREATED)
 async def buy_hardware(
     payload: BuyHardware,
-    current_user: dict = Depends(require_allowed("shop")),
+    current_user: dict = Depends(require_allowed("shop_buy")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Покупка железа/расходников. Цена всегда пересчитывается сервером:
@@ -828,7 +828,7 @@ def _resale_refund(purchase_prices: list[float]) -> float:
 @router.post("/sell")
 async def sell_hardware(
     payload: SellHardware,
-    current_user: dict = Depends(require_allowed("shop")),
+    current_user: dict = Depends(require_allowed("shop_sell")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Продажа лишнего железа обратно магазину с уценкой (RESALE_RATIO)."""

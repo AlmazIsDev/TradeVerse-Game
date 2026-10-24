@@ -2885,8 +2885,20 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 /* Баны/отстранения в панели редактирования юзера. */
 .admin-bans-block { gap: 6px; }
 .admin-bans-block > label:first-child { font-weight: 600; color: var(--color-text-secondary); font-size: 13px; }
-.admin-ban-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-primary); }
-.admin-ban-row input[type="date"] { width: auto; padding: 4px 8px; font-size: 12px; }
+.admin-ban-group { width: 100%; max-width: 100%; box-sizing: border-box; }
+.admin-ban-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; max-width: 100%; box-sizing: border-box; font-size: 13px; color: var(--color-text-primary); min-width: 0; }
+.admin-ban-row > span { min-width: 0; }
+.admin-ban-details { display: grid; grid-template-columns: minmax(0, 155px) minmax(0, 1fr); gap: 8px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+.admin-ban-row > .admin-ban-details { grid-column: 1 / -1; }
+.admin-ban-group > .admin-ban-details { flex: 0 0 100%; margin-left: 26px; width: calc(100% - 26px); max-width: calc(100% - 26px); }
+.admin-ban-details input, .admin-ban-row input[type="date"], .admin-ban-row .admin-ban-reason { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; padding: 4px 8px; font-size: 12px; }
+.admin-ban-category { display: flex; align-items: center; gap: 8px; }
+.admin-ban-toggle-spacer { width: 18px; flex: 0 0 18px; }
+@media (max-width: 720px) {
+  .admin-ban-row { grid-template-columns: auto minmax(0, 1fr); }
+  .admin-ban-row input[type="date"], .admin-ban-row .admin-ban-reason { grid-column: 2; }
+  .admin-ban-details { grid-template-columns: 1fr; flex-basis: 100%; }
+}
 @media (max-width: 720px) {
   .admin-user-capital { min-width: 0; }
 }

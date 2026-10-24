@@ -1163,8 +1163,8 @@ export async function orderExpose({ targetType, targetId, budget }) {
 
 // ── City Roof (minigame + WarCoin) ─────────────────────────────────────────────
 
-export async function fetchCityMap() {
-  return request('/api/cityroof/map')
+export async function fetchCityMap({ allRooms = false } = {}) {
+  return request(`/api/cityroof/map${allRooms ? '?allRooms=true' : ''}`)
 }
 
 export async function fetchWarcoin() {

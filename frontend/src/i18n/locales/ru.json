@@ -747,6 +747,16 @@
     "incomeReady": "Начислено",
     "capturedWithIncome": "Бизнес захвачен! +{{amount}} $",
     "seasonClosed": "Сезон принудительно закрыт администратором. Карта обновлена.",
+    "allRooms": "Все комнаты",
+    "incomeMultiplier": "Множитель дохода",
+    "leagues": {
+      "novice": "Новички",
+      "bronze": "Бронза",
+      "silver": "Серебро",
+      "gold": "Золото",
+      "platinum": "Платина",
+      "diamond": "Алмаз"
+    },
     "effects": {
       "rental_income": "Доход от аренды",
       "asset_income": "Доход бизнеса и недвижимости",
@@ -756,13 +766,6 @@
       "shop_discount": "Скидка на оборудование",
       "warcoin_discount": "Скидка на WarCoin",
       "daily_cash": "Ежедневный доход"
-    },
-    "leagues": {
-      "bronze": "Бронза",
-      "silver": "Серебро",
-      "gold": "Золото",
-      "platinum": "Платина",
-      "diamond": "Алмаз"
     }
   },
   "mining": {

@@ -1062,6 +1062,10 @@ export async function fireMember(memberUserId) {
   return request(`/api/company/members/${encodeURIComponent(memberUserId)}`, { method: 'DELETE' })
 }
 
+export async function fetchCompanyCandidate(username) {
+  return request(`/api/company/candidate/${encodeURIComponent(username)}`)
+}
+
 export async function inviteEmployee({ username, role, salary }) {
   return request('/api/company/invite', { method: 'POST', body: JSON.stringify({ username, role, salary }) })
 }

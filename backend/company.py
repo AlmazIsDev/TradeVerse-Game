@@ -21,6 +21,7 @@ from ledger import (
     adjust_balance, record_transaction, query_transactions,
 )
 from assets import company_income_per_hour, list_company_assets
+from networth import compute_net_worth
 from notifications import push_notification
 from econ import get_econ
 from market_data import MarketDataService
@@ -44,8 +45,24 @@ ROLE_BONUSES = {
     "engineer": 0.10,
     "director": 0.15,
 }
+MIN_INVITE_CAPITAL = 300_000.0
+ROLE_MIN_CAPITAL = {
+    "intern": 0.0,
+    "worker": 0.0,
+    "manager": 300_000.0,
+    "engineer": 1_000_000.0,
+    "director": 3_000_000.0,
+}
 DEFAULT_ROLE_BONUS = 0.02
 MAX_STAFF_FACTOR = 1.60
+
+
+def capital_is_available(capital: float) -> bool:
+    return capital >= MIN_INVITE_CAPITAL
+
+
+def role_is_available(role: str, capital: float) -> bool:
+    return capital >= ROLE_MIN_CAPITAL.get(role, ROLE_MIN_CAPITAL["worker"])
 
 
 
@@ -290,6 +307,10 @@ async def _members(db, company_id) -> list[dict]:
     return [m async for m in db.company_members.find({"companyId": str(company_id)})]
 
 
+async def _capital(db, user_id: str) -> float:
+    return await compute_net_worth(db, user_id)
+
+
 def _hours_since(company: dict) -> float:
     last = company.get("last_tick")
     if not isinstance(last, datetime):
@@ -491,9 +512,11 @@ async def get_my_company(
     if not company:
         return {"company": None, "foundingFee": FOUNDING_FEE, "roles": ROLES,
             "permissions": PERMISSIONS, "roleBonuses": ROLE_BONUSES,
+            "roleMinCapital": ROLE_MIN_CAPITAL,
             "maxStaffFactor": MAX_STAFF_FACTOR}
     return {"company": await _serialize(db, company, user_id), "roles": ROLES,
             "permissions": PERMISSIONS, "roleBonuses": ROLE_BONUSES,
+            "roleMinCapital": ROLE_MIN_CAPITAL,
             "maxStaffFactor": MAX_STAFF_FACTOR}
 
 
@@ -652,6 +675,23 @@ async def disband_company(
 # ── Invitations (consent-based hiring) ───────────────────────────────────────
 
 
+@router.get("/candidate/{username}")
+async def candidate_info(
+    username: str,
+    current_user: dict = Depends(require_allowed("company")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    await _require_company(db, str(current_user["_id"]))
+    target = await db.users.find_one({"username": username.strip()}, {"_id": 1})
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Игрок не найден")
+    capital = await _capital(db, str(target["_id"]))
+    return {
+        "capital": capital,
+        "roles": {role: role_is_available(role, capital) for role in ROLES},
+    }
+
+
 @router.post("/invite", status_code=status.HTTP_201_CREATED)
 async def invite_employee(
     payload: InviteCreate,
@@ -669,6 +709,18 @@ async def invite_employee(
     tid = str(target["_id"])
     if tid == user_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя пригласить самого себя")
+    capital = await _capital(db, tid)
+    if not capital_is_available(capital):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Для приглашения нужен общий капитал минимум ${MIN_INVITE_CAPITAL:,.0f}",
+        )
+    if not role_is_available(payload.role, capital):
+        minimum = ROLE_MIN_CAPITAL[payload.role]
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Для роли «{payload.role}» нужен общий капитал минимум ${minimum:,.0f}",
+        )
     if await db.company_members.find_one({"userId": tid}):
         raise HTTPException(status.HTTP_409_CONFLICT, "Игрок уже работает в компании")
     if await db.company_invites.find_one({"companyId": cid, "toUserId": tid, "status": "pending"}):
@@ -729,10 +781,23 @@ async def accept_invite(
     inv = await _load_invite(db, invite_id, uid)
     if await db.company_members.find_one({"userId": uid}):
         raise HTTPException(status.HTTP_409_CONFLICT, "Вы уже работаете в компании")
+    capital = await _capital(db, uid)
+    if not capital_is_available(capital):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Для принятия приглашения нужен общий капитал минимум ${MIN_INVITE_CAPITAL:,.0f}",
+        )
+    role = inv.get("role", "worker")
+    if not role_is_available(role, capital):
+        minimum = ROLE_MIN_CAPITAL[role]
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Для роли «{role}» нужен общий капитал минимум ${minimum:,.0f}",
+        )
     await db.company_members.insert_one({
         "companyId": inv["companyId"], "userId": uid,
         "username": current_user.get("username"),
-        "role": inv.get("role", "worker"), "salary": inv.get("salary", 0.0),
+        "role": role, "salary": inv.get("salary", 0.0),
         "joined_at": _now(),
     })
     await db.company_invites.update_one({"_id": inv["_id"]}, {"$set": {"status": "accepted"}})
@@ -975,6 +1040,12 @@ async def accept_application(
     company = await _require_company(db, owner_id)
     app = await _load_application(db, app_id, owner_id)
     applicant_id = app["applicantId"]
+    capital = await _capital(db, applicant_id)
+    if not capital_is_available(capital):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Для принятия в компанию нужен общий капитал минимум ${MIN_INVITE_CAPITAL:,.0f}",
+        )
     if await db.company_members.find_one({"userId": applicant_id}):
         await db.company_applications.update_one({"_id": app["_id"]}, {"$set": {"status": "declined"}})
         raise HTTPException(status.HTTP_409_CONFLICT, "Игрок уже в другой компании")

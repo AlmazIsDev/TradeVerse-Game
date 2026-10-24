@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchCompany, createCompany, inviteEmployee, updateMemberSalary,
+  fetchCompany, fetchCompanyCandidate, createCompany, inviteEmployee, updateMemberSalary,
   fireMember, collectCompanyProfit, companyDeposit, companyWithdraw,
   fetchCompanies, applyToCompany, updateCompanySettings, disbandCompany, leaveCompany,
   updateOwnerSalary, companyIpo, companyDividend,
@@ -56,6 +56,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const [roles, setRoles] = useState([])
   const [permOptions, setPermOptions] = useState([])
   const [roleBonuses, setRoleBonuses] = useState({})
+  const [roleMinCapital, setRoleMinCapital] = useState({})
+  const [candidate, setCandidate] = useState(null)
   const [maxStaffFactor, setMaxStaffFactor] = useState(1.6)
   const [foundingFee, setFoundingFee] = useState(10000)
   const [loading, setLoading] = useState(true)
@@ -88,6 +90,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       setRoles(res.roles || [])
       setPermOptions(res.permissions || [])
       setRoleBonuses(res.roleBonuses || {})
+      setRoleMinCapital(res.roleMinCapital || {})
       if (res.maxStaffFactor != null) setMaxStaffFactor(res.maxStaffFactor)
       if (res.foundingFee != null) setFoundingFee(res.foundingFee)
     } catch {
@@ -136,6 +139,22 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
   const loadCompanies = useCallback(async () => {
     try { setCompanies(await fetchCompanies(companySearch || undefined)) } catch { /* ignore */ }
   }, [companySearch])
+
+  useEffect(() => {
+    const username = invite.username.trim()
+    if (!data || !username) {
+      setCandidate(null)
+      return undefined
+    }
+    const id = setTimeout(async () => {
+      try {
+        setCandidate(await fetchCompanyCandidate(username))
+      } catch {
+        setCandidate(null)
+      }
+    }, 350)
+    return () => clearTimeout(id)
+  }, [data, invite.username])
 
   useEffect(() => {
     if (data) return
@@ -576,12 +595,21 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
             <select value={invite.role} onChange={e => setInvite({ ...invite, role: e.target.value })}>
               {roles.map(r => {
                 const pct = roleBonuses[r] != null ? (roleBonuses[r] * 100).toFixed(0) : '?'
-                return <option key={r} value={r}>{t(`company.roles.${r}`, r)} (+{pct}%)</option>
+                const available = !candidate || candidate.roles?.[r] !== false
+                const minimum = roleMinCapital[r] || 0
+                return <option key={r} value={r} disabled={!available}>
+                  {t(`company.roles.${r}`, r)} (+{pct}%){minimum > 0 ? ` · ${formatCompact(minimum)}` : ''}
+                </option>
               })}
             </select>
             <input type="number" min="1" placeholder={t('company.salary')} value={invite.salary}
               onChange={e => setInvite({ ...invite, salary: e.target.value })} />
-            <button className="asset-act upgrade" disabled={busy || !invite.username.trim() || !(Number(invite.salary) > 0)}
+            {candidate && (
+              <div className="company-candidate-info">
+                {t('company.candidateCapital', { value: formatCompact(candidate.capital) })}
+              </div>
+            )}
+            <button className="asset-act upgrade" disabled={busy || !invite.username.trim() || !(Number(invite.salary) > 0) || candidate?.roles?.[invite.role] === false}
               onClick={() => run(
                 () => inviteEmployee({ username: invite.username.trim(), role: invite.role, salary: Number(invite.salary) }),
                 'company.invited',

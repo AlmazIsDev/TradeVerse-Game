@@ -1027,6 +1027,27 @@ select.company-name-input option {
 }
 .cityroof-status.active { background: rgba(52, 199, 89, 0.12); color: var(--color-success); }
 .cityroof-hint { font-size: 13px; color: var(--color-text-secondary); margin-bottom: var(--spacing-lg); }
+.cityroof-rooms-btn {
+  padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--hairline);
+  background: var(--fill-soft); color: var(--color-text-primary); font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.cityroof-rooms-btn:hover { background: var(--fill-medium, var(--fill-soft)); }
+.cityroof-room-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-md); margin-bottom: var(--spacing-lg);
+}
+.cityroom-card {
+  padding: var(--spacing-md); border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary); border: 1px solid var(--hairline);
+}
+.cityroom-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cityroom-code { font-weight: 700; font-size: 14px; color: var(--color-text-primary); }
+.cityroom-league { font-size: 12px; color: var(--color-text-secondary); }
+.cityroom-meta { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px; }
+.cityroom-businesses { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.cityroom-businesses span { display: flex; justify-content: space-between; gap: 8px; color: var(--color-text-primary); }
+.cityroom-businesses span b { font-weight: 600; color: var(--color-text-secondary); }
 
 /* Карта «Крыши города» — фото города 4×3 с интерактивными плитками поверх. */
 .cityroof-map {

@@ -326,7 +326,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         <div className={`cityroof-status ${map?.isActive ? 'active' : ''}`}>
           {t('cityroof.season')} {map?.season} · {map?.isActive ? t('cityroof.eventActive') : t('cityroof.eventClosed')}
         </div>
-        <button className="stock-btn" onClick={loadAllRooms}>
+        <button className="cityroof-rooms-btn" onClick={loadAllRooms}>
           {t('cityroof.allRooms', 'Все комнаты')}
         </button>
       </div>
@@ -334,12 +334,20 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       {allRooms && (
         <div className="cityroof-room-list">
           {allRooms.map(room => (
-            <section className="asset-card" key={room.roomCode}>
-              <h3>{t(`cityroof.leagues.${room.league}`, room.league)} · {room.roomCode}</h3>
-              <p>{room.roomMembers}/{room.roomCapacity} · {room.incomeMultiplier}x</p>
-              <div className="cityroof-room-businesses">
+            <section className="cityroom-card" key={room.roomCode}>
+              <div className="cityroom-head">
+                <span className="cityroom-code">{room.roomCode}</span>
+                <span className="cityroom-league">{t(`cityroof.leagues.${room.league}`, room.league)}</span>
+              </div>
+              <div className="cityroom-meta">
+                {room.roomMembers}/{room.roomCapacity} · {t('cityroof.incomeMultiplier')}: {room.incomeMultiplier}x
+              </div>
+              <div className="cityroom-businesses">
                 {room.businesses.map(b => (
-                  <span key={b.id}>{buildingName(t, b.slug, b.name)}: {b.ownerName || t('cityroof.free')}</span>
+                  <span key={b.id}>
+                    {buildingName(t, b.slug, b.name)}
+                    <b>{b.ownerName || t('cityroof.free')}</b>
+                  </span>
                 ))}
               </div>
             </section>

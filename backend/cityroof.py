@@ -7,6 +7,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, field_validator
+from pymongo.errors import DuplicateKeyError
 
 from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_config_by_key, upsert_config
@@ -164,7 +165,10 @@ async def ensure_player_room(db, user_id: str, season: int, net_worth: float) ->
         return room
     count = await db.cityroof_rooms.count_documents({"season": season, "league": league})
     room = {"season": season, "league": league, "room_code": _room_code(league, count + 1), "member_ids": [user_id]}
-    await db.cityroof_rooms.insert_one(room)
+    try:
+        await db.cityroof_rooms.insert_one(room)
+    except DuplicateKeyError:
+        return await ensure_player_room(db, user_id, season, net_worth)
     return room
 
 
@@ -185,9 +189,11 @@ async def _warcoin_config(db) -> dict:
     if cfg:
         import json
         try:
-            return json.loads(cfg["value"])
+            stored = json.loads(cfg["value"])
         except Exception:
-            pass
+            stored = None
+        if stored and all("minNetWorth" in item for item in stored.get("leagues", [])):
+            return stored
     return DEFAULT_WARCOIN_CONFIG
 
 
@@ -363,6 +369,9 @@ async def ensure_seeded(db: AsyncIOMotorDatabase):
         await upsert_config(db, WARCOIN_CONFIG_KEY, json.dumps(DEFAULT_WARCOIN_CONFIG))
     if await db.cityroof_state.count_documents({"key": "current"}) == 0:
         await db.cityroof_state.insert_one({"key": "current", "week": _current_week(), "season": 1})
+    await db.cityroof_rooms.create_index(
+        [("season", 1), ("league", 1), ("room_code", 1)], unique=True,
+    )
 
 
 async def _ensure_season(db: AsyncIOMotorDatabase):

@@ -711,6 +711,16 @@
     "eventActive": "event active",
     "eventClosed": "event closed",
     "seasonClosed": "The season was force-closed by an admin. The map has been reset.",
+    "allRooms": "All rooms",
+    "incomeMultiplier": "Income multiplier",
+    "leagues": {
+      "novice": "Novices",
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "platinum": "Platinum",
+      "diamond": "Diamond"
+    },
     "hint": "Conquer rivals' businesses! An attempt costs {{cost}} WC — crack the secret combination.",
     "yours": "Yours",
     "free": "Free",
@@ -755,13 +765,6 @@
       "shop_discount": "Equipment discount",
       "warcoin_discount": "WarCoin discount",
       "daily_cash": "Daily income"
-    },
-    "leagues": {
-      "bronze": "Bronze",
-      "silver": "Silver",
-      "gold": "Gold",
-      "platinum": "Platinum",
-      "diamond": "Diamond"
     }
   },
   "mining": {

@@ -60,6 +60,7 @@ const buildingName = (t, slug, fallback) => t(`cityroof.buildings.${slug}`, fall
 function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const { t } = useTranslation()
   const [map, setMap] = useState(null)
+  const [allRooms, setAllRooms] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)      // business
   const [profileId, setProfileId] = useState(null)
@@ -96,6 +97,14 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const loadAllRooms = async () => {
+    try {
+      setAllRooms((await fetchCityMap({ allRooms: true })).rooms || [])
+    } catch (err) {
+      toast(err.message, 'error')
+    }
+  }
 
   // Доход зачисляется автоматически на сервере (Scheduler). Периодически
   // подтягиваем актуальное состояние КД по каждому зданию. Посекундный отсчёт
@@ -317,7 +326,26 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         <div className={`cityroof-status ${map?.isActive ? 'active' : ''}`}>
           {t('cityroof.season')} {map?.season} · {map?.isActive ? t('cityroof.eventActive') : t('cityroof.eventClosed')}
         </div>
+        <button className="stock-btn" onClick={loadAllRooms}>
+          {t('cityroof.allRooms', 'Все комнаты')}
+        </button>
       </div>
+
+      {allRooms && (
+        <div className="cityroof-room-list">
+          {allRooms.map(room => (
+            <section className="asset-card" key={room.roomCode}>
+              <h3>{t(`cityroof.leagues.${room.league}`, room.league)} · {room.roomCode}</h3>
+              <p>{room.roomMembers}/{room.roomCapacity} · {room.incomeMultiplier}x</p>
+              <div className="cityroof-room-businesses">
+                {room.businesses.map(b => (
+                  <span key={b.id}>{buildingName(t, b.slug, b.name)}: {b.ownerName || t('cityroof.free')}</span>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       <p className="cityroof-hint">{t('cityroof.hint', { cost: map?.attackCost ?? 10 })}</p>
 

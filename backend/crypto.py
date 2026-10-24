@@ -325,7 +325,10 @@ def _project_fill(coin: dict, side: str, total_usd: float) -> tuple[float, float
     return round((prev_price + market_price * demand) / 2, 6), demand
 
 
-async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float) -> Optional[float]:
+async def _apply_trade_impact(
+    db: AsyncIOMotorDatabase, symbol: str, side: str, total_usd: float,
+    *, record_history: bool = True,
+) -> Optional[float]:
     """Сдвигает спрос (а значит и цену) монеты от сделки игрока.
 
     Покупка поднимает цену, продажа опускает — тем сильнее, чем крупнее сделка
@@ -351,7 +354,8 @@ async def _apply_trade_impact(db: AsyncIOMotorDatabase, symbol: str, side: str, 
         {"_id": coin["_id"]},
         {"$set": {"demand": round(demand, 4), "price": display}},
     )
-    await MarketDataService.record_snapshot(db, "crypto", symbol, display, force=True)
+    if record_history:
+        await MarketDataService.record_snapshot(db, "crypto", symbol, display, force=True)
     _MARKET_CACHE["ts"] = None
     # WebSocket-оповещение о резком изменении цены от сделки
     if old_price != display:
@@ -855,7 +859,9 @@ async def _bot_coin_trade(
         if res is None:
             return False   # свободной эмиссии нет
 
-    new_price = await _apply_trade_impact(db, symbol, action, qty * price)
+    new_price = await _apply_trade_impact(
+        db, symbol, action, qty * price, record_history=False,
+    )
     if new_price is None:
         if action == "buy":
             # откат резерва: сделка не состоялась

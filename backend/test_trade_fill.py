@@ -34,4 +34,37 @@ expected_new = P * 1.12
 assert abs(demand - 1.12) < 1e-6, demand
 assert abs(fill - (P + expected_new) / 2) < 1e-4, (fill, expected_new)
 
+import asyncio
+import crypto
+
+
+class _Assets:
+    async def find_one(self, query):
+        return {"_id": "coin", "symbol": "TVX", "price": 100.0,
+                "market_price": 100.0, "demand": 1.0, "volume24h": 1_000_000.0}
+
+    async def update_one(self, query, update):
+        return None
+
+
+class _Db:
+    crypto_assets = _Assets()
+
+
+async def _bot_trade_does_not_write_history():
+    calls = []
+    original = crypto.MarketDataService.record_snapshot
+    crypto.MarketDataService.record_snapshot = staticmethod(
+        lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    try:
+        await crypto._apply_trade_impact(
+            _Db(), "TVX", "buy", 1000.0, record_history=False,
+        )
+    finally:
+        crypto.MarketDataService.record_snapshot = original
+    assert not calls
+
+
+asyncio.run(_bot_trade_does_not_write_history())
 print("OK")

@@ -138,7 +138,7 @@ async def lifespan(app: FastAPI):
     await db.company_applications.create_index("ownerId")
     await db.company_applications.create_index("applicantId")
     await db.notifications.create_index([("userId", 1), ("created_at", -1)])
-    await db.price_history.create_index([("market", 1), ("symbol", 1), ("ts", 1)])
+    await db.price_history.create_index([("market", 1), ("symbol", 1), ("ts", 1), ("price", 1)])
     await db.user_favorites.create_index([("userId", 1), ("market", 1), ("symbol", 1)])
     await db.market_meta.create_index("market", unique=True)
     await db.market_events.create_index("active")

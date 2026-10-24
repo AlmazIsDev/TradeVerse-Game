@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 import logging
@@ -95,11 +96,14 @@ class MarketDataService:
     """Единая точка работы с историей цен."""
 
     # In-process TTL-кэш чтения: фронт опрашивает /api/market/* многократно за
-    # минуту, а агрегаты по миллионам точек price_history при ~100 мс RTT до
-    # Mongo стоили секунду на запрос; цены меняются раз в тик (60с).
-    # ponytail: dict без инвалидации — данные устаревают максимум на TTL.
-    READ_CACHE_TTL_S = 30.0
+    # минуту, а агрегаты по сотням тысяч точек price_history на слабой Mongo
+    # занимают секунды; цены меняются раз в тик (60с).
+    # ponytail: in-process cache без инвалидации — данные устаревают максимум на TTL.
+    READ_CACHE_TTL_S = 180.0
     _read_cache: dict[tuple, tuple[float, Any]] = {}
+    _read_flights: dict[tuple, asyncio.Task] = {}
+    _crypto_retry_after = 0.0
+    CRYPTO_RATE_LIMIT_COOLDOWN_S = 300.0
 
     @classmethod
     async def _cached(cls, key: tuple, producer) -> Any:
@@ -107,9 +111,22 @@ class MarketDataService:
         hit = cls._read_cache.get(key)
         if hit is not None and now - hit[0] < cls.READ_CACHE_TTL_S:
             return hit[1]
-        value = await producer()
-        cls._read_cache[key] = (now, value)
-        return value
+        task = cls._read_flights.get(key)
+        if task is None:
+            task = asyncio.create_task(producer())
+            cls._read_flights[key] = task
+        try:
+            value = await asyncio.shield(task)
+            cls._read_cache[key] = (time.monotonic(), value)
+            return value
+        finally:
+            if task.done() and (task.cancelled() or task.exception() is not None):
+                cls._read_cache.pop(key, None)
+            if task.done() and cls._read_flights.get(key) is task:
+                cls._read_flights.pop(key, None)
+            elif task.done():
+                cls._read_flights.pop(key, None)
+
 
     @staticmethod
     async def record_snapshot(db, market: str, symbol: str, price: float, *, force: bool = False):
@@ -267,6 +284,8 @@ class MarketDataService:
     async def refresh_crypto(db) -> str:
         """Обновление крипты из CoinGecko (не чаще REFRESH_INTERVAL_S). 'live' при
         успехе, 'sim' при недоступности API (fallback — сохранённые цены)."""
+        if time.monotonic() < MarketDataService._crypto_retry_after:
+            return await MarketDataService._mode(db, "crypto")
         if await MarketDataService._throttled(db, "crypto"):
             return await MarketDataService._mode(db, "crypto")
         try:
@@ -299,6 +318,10 @@ class MarketDataService:
             logger.info("CoinGecko: обновлено %d монет", len(markets))
             return "live"
         except Exception as exc:
+            if getattr(getattr(exc, "response", None), "status_code", None) == 429:
+                MarketDataService._crypto_retry_after = (
+                    time.monotonic() + MarketDataService.CRYPTO_RATE_LIMIT_COOLDOWN_S
+                )
             logger.warning("CoinGecko недоступен (%s) — используются сохранённые данные", exc)
             await MarketDataService._set_meta(db, "crypto", "sim")
             return "sim"

@@ -49,25 +49,6 @@ function Tooltip({ text }) {
   )
 }
 
-const AUDIT_ACTION_KEYS = {
-  'user.update': 'admin.auditActions.userUpdate',
-  'user.bans.update': 'admin.auditActions.bansUpdate',
-  'user.password.reset': 'admin.auditActions.passwordReset',
-  'user.logout': 'admin.auditActions.logout',
-  'user.login_as': 'admin.auditActions.loginAs',
-  'user.delete': 'admin.auditActions.delete',
-}
-
-function AuditChanges({ changes, t }) {
-  return <div className="admin-audit-changes">
-    {Object.entries(changes || {}).map(([field, value]) => {
-      const from = value?.from
-      const to = value?.to
-      return <span key={field}><b>{field}</b>: {JSON.stringify(from)} → {JSON.stringify(to)}</span>
-    })}
-  </div>
-}
-
 function TriStateCheckbox({ checked, indeterminate, onChange }) {
   const ref = useRef(null)
   useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate }, [indeterminate])
@@ -827,10 +808,7 @@ function AdminPanel({ user, onClose }) {
   }
 
   const handleStockVolatilityChange = (period, value) => {
-    if (value === '') {
-      setConfigForm({ ...configForm, volatility: '' })
-      return
-    }
+    if (value === '') { setConfigForm({ ...configForm, volatility: '' }); return }
     const values = convertVolatility(parseFloat(value), period)
     setConfigForm({ ...configForm, volatility: String(values.hour / 100) })
   }
@@ -920,24 +898,6 @@ function AdminPanel({ user, onClose }) {
       color: coin.color || '',
       description: coin.description || '',
     })
-  }
-
-  const handleVolatilityChange = (period, value) => {
-    if (value === '') {
-      setCoinForm({ ...coinForm, volatility: '' })
-      return
-    }
-    const values = convertVolatility(parseFloat(value), period)
-    setCoinForm({ ...coinForm, volatility: String(values.hour / 100) })
-  }
-
-  const handleNewVolatilityChange = (period, value) => {
-    if (value === '') {
-      setNewCoin({ ...newCoin, volatility: '' })
-      return
-    }
-    const values = convertVolatility(parseFloat(value), period)
-    setNewCoin({ ...newCoin, volatility: String(values.hour / 100) })
   }
 
   const handleSaveCoin = async () => {
@@ -1298,19 +1258,6 @@ function AdminPanel({ user, onClose }) {
                     onChange={e => setNewCoin({ ...newCoin, price: e.target.value })} className="admin-input" />
                   <input placeholder={t('admin.crypto.supplyPlaceholder')} type="number" value={newCoin.supply}
                     onChange={e => setNewCoin({ ...newCoin, supply: e.target.value })} className="admin-input" />
-                  <div className="volatility-grid">
-                    {VOLATILITY_FIELDS.map(([period, label]) => {
-                      const values = convertVolatility(parseFloat(newCoin.volatility || '0.05') * 100, 'hour')
-                      return (
-                        <label key={period} className="volatility-field">
-                          <span>{t(label)}</span>
-                          <input type="number" min="0" step="0.01" value={values[period].toFixed(2)}
-                            onChange={e => handleNewVolatilityChange(period, e.target.value)} className="admin-input" />
-                          <small>%</small>
-                        </label>
-                      )
-                    })}
-                  </div>
                   <button className="admin-btn admin-btn-primary" onClick={handleAddCoin}>
                     <Plus size={16} /> {t('admin.addButton')}
                   </button>
@@ -1477,27 +1424,10 @@ function AdminPanel({ user, onClose }) {
                   <input type="number" step="1" value={coinForm.marketCap}
                     onChange={e => setCoinForm({ ...coinForm, marketCap: e.target.value })} />
                 </div>
-                <div className="config-field config-field-wide">
-                  <label>{t('admin.crypto.volatility')} ({t('admin.crypto.volatilityBase')})</label>
-                  <div className="volatility-grid">
-                    {VOLATILITY_FIELDS.map(([period, label]) => {
-                      const values = coinForm.volatility === ''
-                        ? {}
-                        : convertVolatility(parseFloat(coinForm.volatility) * 100, 'hour')
-                      return (
-                        <label key={period} className="volatility-field">
-                          <span>{t(label)}</span>
-                          <input
-                            type="number" min="0" step="0.01"
-                            value={formatVolatility(values[period])}
-                            onChange={e => handleVolatilityChange(period, e.target.value)}
-                          />
-                          <small>%</small>
-                        </label>
-                      )
-                    })}
-                  </div>
-                  <small className="field-hint">{t('admin.crypto.volatilityHelp')}</small>
+                <div className="config-field">
+                  <label>{t('admin.crypto.volatility')}</label>
+                  <input type="number" step="0.01" min="0.001" max="1" value={coinForm.volatility}
+                    onChange={e => setCoinForm({ ...coinForm, volatility: e.target.value })} />
                 </div>
                 <div className="config-field">
                   <label>{t('admin.crypto.color')}</label>
@@ -1553,18 +1483,8 @@ function AdminPanel({ user, onClose }) {
                   <label>{t('admin.crypto.volatility')} ({t('admin.crypto.volatilityBase')})</label>
                   <div className="volatility-grid">
                     {VOLATILITY_FIELDS.map(([period, label]) => {
-                      const values = configForm.volatility === ''
-                        ? {}
-                        : convertVolatility(parseFloat(configForm.volatility) * 100, 'hour')
-                      return (
-                        <label key={period} className="volatility-field">
-                          <span>{t(label)}</span>
-                          <input type="number" min="0" step="0.01"
-                            value={formatVolatility(values[period])}
-                            onChange={e => handleStockVolatilityChange(period, e.target.value)} />
-                          <small>%</small>
-                        </label>
-                      )
+                      const values = configForm.volatility === '' ? {} : convertVolatility(parseFloat(configForm.volatility) * 100, 'hour')
+                      return <label key={period} className="volatility-field"><span>{t(label)}</span><input type="number" min="0" step="0.01" value={formatVolatility(values[period])} onChange={e => handleStockVolatilityChange(period, e.target.value)} /><small>%</small></label>
                     })}
                   </div>
                   <small className="field-hint">{t('admin.crypto.volatilityHelp')}</small>
@@ -1650,14 +1570,7 @@ function AdminPanel({ user, onClose }) {
                 {can('users_view') && <button className="admin-btn" onClick={handleLoadIpGroups}><Search size={14} /> {t('admin.ipGroups')}</button>}
               </div>
               {ipGroups && <div className="admin-ip-groups">
-                {ipGroups.length ? <table className="admin-ip-table">
-                  <thead><tr><th>IP</th><th>{t('admin.ipAccounts')}</th><th>{t('admin.ipCount')}</th></tr></thead>
-                  <tbody>{ipGroups.map(group => <tr key={group.ip}>
-                    <td><code>{group.ip}</code></td>
-                    <td>{group.users.map(user => user.username).join(', ')}</td>
-                    <td>{group.users.length}</td>
-                  </tr>)}</tbody>
-                </table> : <span className="user-date">{t('admin.ipGroupsEmpty')}</span>}
+                {ipGroups.length ? ipGroups.map(group => <div key={group.ip}><strong>{group.ip}</strong><span>{group.users.map(user => user.username).join(', ')}</span></div>) : <span className="user-date">{t('admin.ipGroupsEmpty')}</span>}
               </div>}
               {[...users]
                 .filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase()))
@@ -1893,10 +1806,10 @@ function AdminPanel({ user, onClose }) {
             {auditLogs.map((log, index) => (
               <div className="admin-audit-row" key={`${log.createdAt}-${index}`}>
                 <span className="user-date">{fmtTs(log.createdAt)}</span>
-                <strong>{t(AUDIT_ACTION_KEYS[log.action] || log.action)}</strong>
-                <span>{t('admin.auditBy')}: {log.actorUsername}</span>
-                {log.targetUsername && <span>{t('admin.auditTarget')}: {log.targetUsername}</span>}
-                <AuditChanges changes={log.changes} t={t} />
+                <strong>{log.action}</strong>
+                <span>{log.actorUsername}</span>
+                {log.targetUsername && <span>→ {log.targetUsername}</span>}
+                {Object.keys(log.changes || {}).length > 0 && <code>{JSON.stringify(log.changes)}</code>}
               </div>
             ))}
           </div>

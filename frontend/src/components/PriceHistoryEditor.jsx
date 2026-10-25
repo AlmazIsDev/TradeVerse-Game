@@ -8,6 +8,14 @@ import {
   adminDeletePricePoint, adminRegeneratePriceHistory,
 } from '../services/api'
 import { toast } from './Toast'
+import { convertVolatility } from '../utils/volatility'
+
+const VOLATILITY_FIELDS = [
+  ['hour', 'admin.crypto.volatilityHour'],
+  ['day', 'admin.crypto.volatilityDay'],
+  ['week', 'admin.crypto.volatilityWeek'],
+  ['month', 'admin.crypto.volatilityMonth'],
+]
 
 const PAGE_SIZE = 50
 
@@ -29,6 +37,7 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
   const [newPrice, setNewPrice] = useState('')
   const [regenPrice, setRegenPrice] = useState('')
   const [regenVolatility, setRegenVolatility] = useState('')
+  const [regenVolatilityPeriod, setRegenVolatilityPeriod] = useState('day')
   const [regenerating, setRegenerating] = useState(false)
   const [search, setSearch] = useState('')       // дебаунсенное значение, уходит на сервер
   const [searchInput, setSearchInput] = useState('')
@@ -100,10 +109,14 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
 
   const handleRegenerate = async () => {
     const price = regenPrice === '' ? data.asset?.price : parseFloat(regenPrice)
-    const volatility = regenVolatility === '' ? data.asset?.volatility : parseFloat(regenVolatility)
+    const volatility = regenVolatility === ''
+      ? data.asset?.volatility
+      : convertVolatility(parseFloat(regenVolatility), regenVolatilityPeriod).hour / 100
     if (!(price > 0)) return toast(t('admin.priceHistory.badPrice'), 'error')
     if (!(volatility > 0 && volatility <= 1)) return toast(t('admin.priceHistory.badVolatility'), 'error')
-    if (!confirm(t('admin.priceHistory.regenerateConfirm', { count: data.total, price, volatility }))) return
+    if (!confirm(t('admin.priceHistory.regenerateConfirm', {
+      count: data.total, price, volatility: `${(volatility * 100).toFixed(2)}% / час`,
+    }))) return
     setRegenerating(true)
     try {
       const res = await adminRegeneratePriceHistory({ market, symbol, price, volatility })
@@ -137,11 +150,29 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
             placeholder={`${t('admin.priceHistory.priceOverride')}: ${data.asset?.price ?? '—'}`}
             value={regenPrice} onChange={e => setRegenPrice(e.target.value)}
           />
-          <input
-            type="number" step="0.01" className="admin-input"
-            placeholder={`${t('admin.priceHistory.volatilityOverride')}: ${data.asset?.volatility ?? '—'}`}
-            value={regenVolatility} onChange={e => setRegenVolatility(e.target.value)}
-          />
+          <div className="volatility-grid price-history-volatility">
+            {VOLATILITY_FIELDS.map(([period, label]) => {
+              const base = regenVolatility === ''
+                ? (data.asset?.volatility || 0) * 100
+                : convertVolatility(parseFloat(regenVolatility), regenVolatilityPeriod).hour
+              const values = convertVolatility(base, 'hour')
+              return (
+                <label key={period} className="volatility-field">
+                  <span>{t(label)}</span>
+                  <input
+                    type="number" min="0" step="0.01" className="admin-input"
+                    placeholder={t('admin.priceHistory.volatilityOverride')}
+                    value={values[period].toFixed(2)}
+                    onChange={e => {
+                      setRegenVolatility(e.target.value)
+                      setRegenVolatilityPeriod(period)
+                    }}
+                  />
+                  <small>%</small>
+                </label>
+              )
+            })}
+          </div>
           <button className="admin-btn admin-btn-danger" onClick={handleRegenerate} disabled={regenerating}>
             <RefreshCw size={14} className={regenerating ? 'spin' : ''} />
             {regenerating ? t('admin.priceHistory.regenerating') : t('admin.priceHistory.regenerate')}

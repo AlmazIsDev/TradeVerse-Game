@@ -349,15 +349,15 @@ WALK_REVERSION = 0.01
 WALK_FLOOR = 0.3
 WALK_CEIL = 3.0
 
-# Волатильность конфигурации задаётся за сутки; live walk пересчитывает её
-# на 60-секундный шаг, а backfill получает суточную сигму напрямую.
-BACKFILL_DAILY_VOLATILITY = 0.02
-VOLATILITY_DAY_SECONDS = 24 * 60 * 60
+# Волатильность конфигурации задаётся за час; live walk пересчитывает её
+# на 60-секундный шаг, а backfill получает часовую сигму.
+BACKFILL_HOURLY_VOLATILITY = 0.02
+VOLATILITY_HOUR_SECONDS = 60 * 60
 SCHEDULER_STEP_SECONDS = 60
 
 
 def _step_volatility(volatility: float, step_seconds: float) -> float:
-    return volatility * (step_seconds / VOLATILITY_DAY_SECONDS) ** 0.5
+    return volatility * (step_seconds / VOLATILITY_HOUR_SECONDS) ** 0.5
 
 
 
@@ -445,7 +445,7 @@ async def _revalue_company_stocks(db: AsyncIOMotorDatabase):
         # OU-процесс вокруг fair: дрейф к фундаменталу + шум. Без шумового
         # члена цена сходилась к fair за ~7 тиков и замирала плоской линией —
         # боты акции компаний не торгуют (guard по issuer), игроки — редко.
-        noise = price * cfg["volatility"] * random.gauss(0, 1)
+        noise = price * _step_volatility(float(cfg["volatility"]), SCHEDULER_STEP_SECONDS) * random.gauss(0, 1)
         new_price = round(price + (fair - price) * CATALOG_ANCHOR_PULL + noise, 2)
         new_price = max(0.01, new_price)
         if new_price == price:
@@ -488,7 +488,7 @@ async def maintain_stock_market(db: AsyncIOMotorDatabase):
     updates = []
     for s in await find_all_stocks(db):
         await MarketDataService.ensure_backfill(
-            db, "stock", s["symbol"], s.get("price", 1) or 1, BACKFILL_DAILY_VOLATILITY)
+            db, "stock", s["symbol"], s.get("price", 1) or 1, BACKFILL_HOURLY_VOLATILITY)
         await MarketDataService.record_snapshot(db, "stock", s["symbol"], s.get("price", 0))
         old_price = before.get(s["symbol"], 0.0)
         new_price = float(s.get("price", 0))
@@ -1049,8 +1049,8 @@ if __name__ == "__main__":
     assert moved > 1700, f"цена почти не двигалась: {moved}/2000"
 
     # За серию тиков цена должна заметно отклоняться от старта, а не замирать.
-    # При суточной volatility средний размах за 4 часа меньше 2%, поэтому порог
-    # ниже старого тикого масштаба.
+    # При часовой volatility средний размах за 4 часа заметнее, поэтому порог
+    # проверяет, что график не замирает.
     swings = []
     for _ in range(200):
         s = {"symbol": "T", "price": 100.0, "base_price": 100.0}
@@ -1064,5 +1064,5 @@ if __name__ == "__main__":
 
     # Сигма бэкфилла (шаг за сутки) и тиковая сигма — разные масштабы времени.
     # Если их когда-нибудь «унифицируют», год истории станет плоским.
-    assert BACKFILL_DAILY_VOLATILITY > 0 and DEFAULT_STOCK_CONFIG["volatility"] > 0
+    assert BACKFILL_HOURLY_VOLATILITY > 0 and DEFAULT_STOCK_CONFIG["volatility"] > 0
     print("stocks self-check OK")

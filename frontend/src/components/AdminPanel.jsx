@@ -22,18 +22,6 @@ import {
 } from 'lucide-react'
 import PriceEditorTab from './PriceEditorTab'
 import { toast } from './Toast'
-import { convertVolatility } from '../utils/volatility'
-
-const VOLATILITY_FIELDS = [
-  ['hour', 'admin.crypto.volatilityHour'],
-  ['day', 'admin.crypto.volatilityDay'],
-  ['week', 'admin.crypto.volatilityWeek'],
-  ['month', 'admin.crypto.volatilityMonth'],
-]
-
-function formatVolatility(value) {
-  return Number.isFinite(value) ? value.toFixed(2) : ''
-}
 
 function Tooltip({ text }) {
   const [show, setShow] = useState(false)
@@ -808,7 +796,10 @@ function AdminPanel({ user, onClose }) {
   }
 
   const handleStockVolatilityChange = (period, value) => {
-    if (value === '') { setConfigForm({ ...configForm, volatility: '' }); return }
+    if (value === '') {
+      setConfigForm({ ...configForm, volatility: '' })
+      return
+    }
     const values = convertVolatility(parseFloat(value), period)
     setConfigForm({ ...configForm, volatility: String(values.hour / 100) })
   }
@@ -1483,8 +1474,18 @@ function AdminPanel({ user, onClose }) {
                   <label>{t('admin.crypto.volatility')} ({t('admin.crypto.volatilityBase')})</label>
                   <div className="volatility-grid">
                     {VOLATILITY_FIELDS.map(([period, label]) => {
-                      const values = configForm.volatility === '' ? {} : convertVolatility(parseFloat(configForm.volatility) * 100, 'hour')
-                      return <label key={period} className="volatility-field"><span>{t(label)}</span><input type="number" min="0" step="0.01" value={formatVolatility(values[period])} onChange={e => handleStockVolatilityChange(period, e.target.value)} /><small>%</small></label>
+                      const values = configForm.volatility === ''
+                        ? {}
+                        : convertVolatility(parseFloat(configForm.volatility) * 100, 'hour')
+                      return (
+                        <label key={period} className="volatility-field">
+                          <span>{t(label)}</span>
+                          <input type="number" min="0" step="0.01"
+                            value={formatVolatility(values[period])}
+                            onChange={e => handleStockVolatilityChange(period, e.target.value)} />
+                          <small>%</small>
+                        </label>
+                      )
                     })}
                   </div>
                   <small className="field-hint">{t('admin.crypto.volatilityHelp')}</small>

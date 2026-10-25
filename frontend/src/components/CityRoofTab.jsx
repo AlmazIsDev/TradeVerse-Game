@@ -12,6 +12,7 @@ import { toast } from './Toast'
 import {
   Castle, Coins, Shield, Swords, X, Crown, Lock, PlusCircle,
   Gift, Zap, ShieldPlus, Clock,
+  DollarSign,
 } from 'lucide-react'
 
 function formatCountdown(sec) {
@@ -424,7 +425,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             >
               <span className="city-tile-info">
                 <span className="city-tile-name">{buildingName(t, b.slug, b.name)}</span>
-                <span className="city-tile-reward"><Coins size={11} /> {b.reward}</span>
+                <span className="city-tile-reward"><DollarSign size={11} /> {b.reward}</span>
                 <span className="city-tile-owner">
                   {b.isMine ? t('cityroof.yours') : (b.ownerName || t('cityroof.free'))}
                 </span>

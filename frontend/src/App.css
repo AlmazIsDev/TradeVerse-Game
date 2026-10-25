@@ -2769,7 +2769,7 @@ body {
 .user-edit-panel {
   flex: 0 1 520px; align-self: flex-start;
   display: flex; flex-direction: column; gap: var(--spacing-md);
-  min-width: 420px; position: sticky; top: var(--spacing-md); max-height: calc(100vh - 2 * var(--spacing-md)); overflow-y: auto; box-sizing: border-box;
+  min-width: 420px;
   padding: var(--spacing-md); background: var(--color-bg-secondary);
   border: 1px solid var(--hairline); border-left: 2px solid var(--color-accent);
   border-radius: var(--radius-md);
@@ -2981,43 +2981,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.config-field-wide {
-  grid-column: 1 / -1;
-}
-
-.volatility-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.volatility-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px;
-  align-items: center;
-  min-width: 0;
-}
-
-.volatility-field span {
-  grid-column: 1 / -1;
-  font-size: 11px;
-  color: var(--color-text-secondary);
-}
-
-.volatility-field .admin-input {
-  min-width: 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.volatility-field small,
-.field-hint {
-  color: var(--color-text-secondary);
-  font-size: 11px;
 }
 
 .config-field label {
@@ -4583,28 +4546,11 @@ textarea:focus {
 }
 
 .price-history-regenerate {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  display: flex;
+  gap: 8px;
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border-color, #333);
-}
-
-.price-history-regenerate > .admin-input {
-  min-width: 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.price-history-regenerate > .admin-btn {
-  justify-self: end;
-}
-
-.price-history-volatility {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
 }
 
 .price-history-table {

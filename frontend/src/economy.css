@@ -1408,8 +1408,12 @@ select.company-name-input option {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
 }
-.admin-ip-groups > div { display: flex; gap: 10px; flex-wrap: wrap; }
-.admin-ip-groups span { color: var(--color-text-secondary); }
+.admin-ip-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.admin-ip-table th, .admin-ip-table td { padding: 8px 10px; border-bottom: 1px solid var(--hairline); text-align: left; vertical-align: top; }
+.admin-ip-table th { color: var(--color-text-secondary); font-weight: 600; }
+.admin-ip-table td code { color: var(--color-accent); }
+.admin-audit-changes { display: grid; gap: 2px; color: var(--color-text-secondary); font-size: 12px; }
+.admin-audit-changes b { color: var(--color-text-primary); font-weight: 600; }
 
 /* ===================== ASSET DETAIL PAGE + CHART ===================== */
 .stock-card.clickable, .crypto-coin.clickable { cursor: pointer; }

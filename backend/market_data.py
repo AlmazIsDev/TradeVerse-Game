@@ -89,12 +89,11 @@ def _build_walk_docs(market: str, symbol: str, current_price: float, volatility:
             p = p / (1 + random.gauss(0, vol))
         return seq
 
-    hourly = timedelta(hours=1).total_seconds()
-    intraday_vol = volatility * (timedelta(minutes=30).total_seconds() / hourly) ** 0.5
+    intraday_vol = volatility * (timedelta(minutes=30).total_seconds() /
+                                 timedelta(days=1).total_seconds()) ** 0.5
     intraday = walk_back(144, timedelta(minutes=30), current_price, intraday_vol)
     daily_start = intraday[-1][0] - timedelta(minutes=30)
-    daily_vol = volatility * (timedelta(days=1).total_seconds() / hourly) ** 0.5
-    daily = walk_back(365, timedelta(days=1), intraday[-1][1], daily_vol, daily_start)
+    daily = walk_back(365, timedelta(days=1), intraday[-1][1], volatility, daily_start)
 
     docs = [
         {"market": market, "symbol": symbol, "price": p, "ts": ts}

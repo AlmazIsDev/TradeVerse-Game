@@ -136,7 +136,7 @@ async def ensure_coins_seeded(db: AsyncIOMotorDatabase):
 
 
 WALK_REVERSION = 0.1      # доля разрыва с базовой ценой, закрываемая за тик
-VOLATILITY_DAY_SECONDS = 24 * 60 * 60
+VOLATILITY_HOUR_SECONDS = 60 * 60
 
 
 def _walk_price(coin: dict) -> dict:
@@ -146,12 +146,12 @@ def _walk_price(coin: dict) -> dict:
     [0.3x, 3x] лишь отражает цену от краёв, и она диффундирует, заполняя
     весь 10x диапазон — капитализация качается в разы. Стационарное СКО
     процесса ≈ vol / sqrt(2 * WALK_REVERSION), для самого волатильного
-    DUSK (0.14) это ~0.3 → цена держится в пределах ~0.5x–2x от базы.
+    DUSK (0.14/ч) это ~0.3 → цена держится в пределах ~0.5x–2x от базы.
     """
     base = coin.get("base_price", coin["price"])
     vol = float(coin.get("volatility", 0.05))
     old = coin["price"]
-    step_vol = vol * (PRICE_REFRESH_SECONDS / VOLATILITY_DAY_SECONDS) ** 0.5
+    step_vol = vol * (PRICE_REFRESH_SECONDS / VOLATILITY_HOUR_SECONDS) ** 0.5
     # ponytail: сохраняем небольшой случайный drift, но масштабируем шум по длине тика.
     drift = random.uniform(-0.5, 0.5) * step_vol
     log_return = drift + random.gauss(0, step_vol)

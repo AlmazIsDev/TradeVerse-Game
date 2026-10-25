@@ -405,6 +405,10 @@ export async function adminGetIpGroups(limit = 50) {
   return request(`/api/admin/users/ip-groups?limit=${limit}`)
 }
 
+export async function adminGetAuditLog(limit = 100) {
+  return request(`/api/admin/audit-log?limit=${limit}`)
+}
+
 /** Реестр админ-функций с уровнями (только админ 4 уровня). */
 export async function fetchAdminPermissions() {
   return request('/api/admin/permissions')

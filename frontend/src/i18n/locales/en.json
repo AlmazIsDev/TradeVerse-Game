@@ -1711,6 +1711,8 @@
       "sortTs": "By date",
       "sortPrice": "By price"
     },
+    "auditLog": "Action log",
+    "auditEmpty": "No actions yet",
     "bansTitle": "Bans & restrictions",
     "banAccount": "Entire account",
     "ipGroups": "Repeated IPs",

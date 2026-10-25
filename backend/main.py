@@ -24,6 +24,7 @@ logger = logging.getLogger("tradeverse")
 
 from init_db import init as init_db
 from networth import WARCOIN_USD
+from admin_audit import changed_fields, record_admin_action
 
 from auth import (
     get_current_user,
@@ -110,6 +111,9 @@ async def lifespan(app: FastAPI):
     await db.users.create_index("username", unique=True)
     await db.stocks.create_index("symbol", unique=True)
     await db.app_config.create_index("key", unique=True)
+    await db.admin_action_logs.create_index([("createdAt", -1)])
+    await db.admin_action_logs.create_index([("actorId", 1), ("createdAt", -1)])
+    await db.admin_action_logs.create_index([("targetId", 1), ("createdAt", -1)])
     await db.transactions.create_index("userId")
     await db.transactions.create_index([("userId", 1), ("timestamp", -1)])
     await db.transactions.create_index([("userId", 1), ("category", 1), ("timestamp", -1)])
@@ -936,16 +940,29 @@ async def admin_get_ip_groups(
 ):
     """Группы аккаунтов, входивших с одного IP."""
     pipeline = [
-        {"$project": {"username": 1, "login_ips": {"$ifNull": ["$login_ips", {}]}}},
-        {"$project": {"username": 1, "ips": {"$objectToArray": "$login_ips"}}},
+        {"$project": {"username": 1, "created_at": 1, "login_ips": {"$ifNull": ["$login_ips", {}]}}},
+        {"$project": {"username": 1, "created_at": 1, "ips": {"$objectToArray": "$login_ips"}}},
         {"$unwind": "$ips"},
-        {"$group": {"_id": "$ips.k", "users": {"$addToSet": "$username"}}},
-        {"$project": {"_id": 0, "ip": "$_id", "users": 1, "userCount": {"$size": "$users"}}},
+        {"$group": {"_id": "$ips.k", "users": {"$addToSet": {"username": "$username", "createdAt": "$created_at"}}}},
+        {"$project": {"_id": 0, "ip": "$_id", "users": {"$sortArray": {"input": "$users", "sortBy": {"createdAt": -1, "username": 1}}}, "userCount": {"$size": "$users"}}},
         {"$match": {"userCount": {"$gte": 2}}},
         {"$sort": {"userCount": -1, "ip": 1}},
         {"$limit": limit},
     ]
     return await db.users.aggregate(pipeline, maxTimeMS=5000).to_list(length=limit)
+
+
+@app.get("/api/admin/audit-log")
+async def admin_get_audit_log(
+    limit: int = Query(100, ge=1, le=200),
+    _admin=Depends(require_admin("users_view")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    logs = await db.admin_action_logs.find({}, {"_id": 0}).sort("createdAt", -1).limit(limit).to_list(length=limit)
+    for log in logs:
+        if isinstance(log.get("createdAt"), datetime):
+            log["createdAt"] = log["createdAt"].isoformat()
+    return logs
 
 
 @app.patch("/api/admin/users/{user_id}")
@@ -1007,6 +1024,10 @@ async def admin_update_user(
         {"_id": ObjectId(user_id)},
         {"$set": update_fields},
     )
+    await record_admin_action(
+        db, "user.update", _admin, target_id=user_id,
+        target_username=existing.get("username"), changes=changed_fields(existing, update_fields),
+    )
 
     # Возвращаем обновлённого пользователя
     updated_user = await db.users.find_one({"_id": ObjectId(user_id)})
@@ -1045,6 +1066,8 @@ async def admin_delete_user(
             detail="Пользователь не найден",
         )
 
+    await record_admin_action(db, "user.delete", _admin, target_id=user_id,
+                              target_username=existing.get("username"))
     logger.info("Admin '%s' deleting user %s (%s)",
                 _admin.get("username", "unknown"), user_id, existing.get("username", "unknown"))
 
@@ -1185,6 +1208,10 @@ async def admin_set_user_bans(
     if "account" in clean:
         clean = {"account": clean["account"]}
     await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"bans": clean}})
+    await record_admin_action(
+        db, "user.bans.update", _admin, target_id=user_id,
+        target_username=target.get("username"), changes={"bans": {"to": clean}},
+    )
     try:
         from ws import push_to_user, push_to_admins
         await push_to_user(user_id, {"type": "banned", "bans": {k: 1 for k in clean}})
@@ -1252,6 +1279,7 @@ async def admin_set_user_password(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
     logger.info("Admin '%s' reset password of user %s",
                 _admin.get("username", "unknown"), user_id)
+    await record_admin_action(db, "user.password.reset", _admin, target_id=user_id)
     return {"message": "Пароль обновлён"}
 
 
@@ -1269,6 +1297,8 @@ async def admin_logout_user(
     if not ObjectId.is_valid(user_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID пользователя")
     result = await db.refresh_tokens.delete_many({"user_id": ObjectId(user_id)})
+    await record_admin_action(db, "user.logout", _admin, target_id=user_id,
+                              changes={"sessions": result.deleted_count})
     logger.info("Admin '%s' logged out user %s (%d sessions)",
                 _admin.get("username", "unknown"), user_id, result.deleted_count)
     return {"message": f"Сессий завершено: {result.deleted_count}"}
@@ -1289,6 +1319,8 @@ async def admin_login_as(
     if target.get("role") == "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Вход в аккаунты администраторов запрещён")
     token, refresh_token = await issue_token_pair(db, target)
+    await record_admin_action(db, "user.login_as", _admin, target_id=user_id,
+                              target_username=target.get("username"))
     logger.warning("Admin '%s' entered as user %s", _admin.get("username", "unknown"), user_id)
     return {"token": token, "refresh_token": refresh_token, "username": target.get("username", "")}
 

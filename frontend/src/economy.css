@@ -2884,6 +2884,9 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 
 /* Баны/отстранения в панели редактирования юзера. */
 .admin-bans-block { gap: 6px; }
+.admin-audit-log { display: grid; gap: 8px; }
+.admin-audit-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-md); }
+.admin-audit-row code { max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-secondary); }
 .admin-bans-block > label:first-child { font-weight: 600; color: var(--color-text-secondary); font-size: 13px; }
 .admin-ban-group { width: 100%; max-width: 100%; box-sizing: border-box; }
 .admin-ban-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; max-width: 100%; box-sizing: border-box; font-size: 13px; color: var(--color-text-primary); min-width: 0; }

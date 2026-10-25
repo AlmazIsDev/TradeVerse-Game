@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig,
@@ -6,7 +6,7 @@ import {
   adminListTransactions, adminTxFilterOptions,
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
   fetchAdminPermissions, updateAdminPermissions, adminUpdateUserBans,
-  adminSetUserPassword, adminLogoutUser, adminLoginAs, adminGetIpGroups, adminListLots, adminCancelLot, adminBroadcast,
+  adminSetUserPassword, adminLogoutUser, adminLoginAs, adminGetIpGroups, adminGetAuditLog, adminListLots, adminCancelLot, adminBroadcast,
   fetchSyntheticConfig, saveSyntheticConfig, triggerSynthetic, fetchSyntheticOrders,
 } from '../services/api'
 import TxFilters, { TX_FIELDS } from './TxFilters'
@@ -35,6 +35,12 @@ function Tooltip({ text }) {
       {show && <span className="tooltip-text">{text}</span>}
     </span>
   )
+}
+
+function TriStateCheckbox({ checked, indeterminate, onChange }) {
+  const ref = useRef(null)
+  useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate }, [indeterminate])
+  return <input ref={ref} type="checkbox" checked={checked} onChange={onChange} />
 }
 
 function BanDetails({ ban = {}, onChange, t }) {
@@ -210,6 +216,7 @@ function AdminPanel({ user, onClose }) {
   const [originalEditForm, setOriginalEditForm] = useState(null)
   const [originalBanDraft, setOriginalBanDraft] = useState(null)
   const [ipGroups, setIpGroups] = useState(null)
+  const [auditLogs, setAuditLogs] = useState([])
   const [newPassword, setNewPassword] = useState('')
   const [pwdBusy, setPwdBusy] = useState(false)
   const [propertyUser, setPropertyUser] = useState(null)
@@ -251,6 +258,7 @@ function AdminPanel({ user, onClose }) {
 
   useEffect(() => {
     loadData()
+    if (activeSection === 'audit') adminGetAuditLog().then(setAuditLogs).catch(() => setAuditLogs([]))
   }, [activeSection])
 
   useEffect(() => {
@@ -979,6 +987,7 @@ function AdminPanel({ user, onClose }) {
     { id: 'prices', perm: 'catalog_prices', label: t('admin.prices.title'), icon: DollarSign },
     { id: 'synthetic', perm: 'synthetic', label: t('admin.synthetic.title'), icon: Bot },
     { id: 'users', perm: 'users_view', label: t('admin.users'), icon: Users },
+    { id: 'audit', perm: 'users_view', label: t('admin.auditLog'), icon: Activity },
     { id: 'lots', perm: 'central_market', label: t('admin.lots.title'), icon: Gavel },
     { id: 'transactions', perm: 'transactions_view', label: t('admin.transactions'), icon: ArrowLeftRight },
     { id: 'broadcast', perm: 'broadcast', label: t('admin.broadcast.title'), icon: Megaphone },
@@ -1530,7 +1539,7 @@ function AdminPanel({ user, onClose }) {
                 {can('users_view') && <button className="admin-btn" onClick={handleLoadIpGroups}><Search size={14} /> {t('admin.ipGroups')}</button>}
               </div>
               {ipGroups && <div className="admin-ip-groups">
-                {ipGroups.length ? ipGroups.map(group => <div key={group.ip}><strong>{group.ip}</strong><span>{group.users.join(', ')}</span></div>) : <span className="user-date">{t('admin.ipGroupsEmpty')}</span>}
+                {ipGroups.length ? ipGroups.map(group => <div key={group.ip}><strong>{group.ip}</strong><span>{group.users.map(user => user.username).join(', ')}</span></div>) : <span className="user-date">{t('admin.ipGroupsEmpty')}</span>}
               </div>}
               {[...users]
                 .filter(u => !userSearch || (u.username || '').toLowerCase().includes(userSearch.toLowerCase()))
@@ -1683,7 +1692,8 @@ function AdminPanel({ user, onClose }) {
                         <button type="button" className="admin-ban-toggle" onClick={() => setExpandedBans(prev => ({ ...prev, account: !prev.account }))}>
                           {expandedBans.account ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </button>
-                        <input type="checkbox" checked={!!banDraft.account?.on}
+                        <TriStateCheckbox checked={!!banDraft.account?.on}
+                          indeterminate={!banDraft.account?.on && PLAYER_BAN_FUNCS.some(key => banDraft[key]?.on)}
                           onChange={e => toggleBanKeys(['account', ...PLAYER_BAN_FUNCS], e.target.checked)} />
                         <span>{t('admin.banAccount')}</span>
                         {banDraft.account?.on && <BanDetails ban={banDraft.account} onChange={patch => setBanDraft({ ...banDraft, account: { ...banDraft.account, ...patch } })} t={t} />}
@@ -1697,7 +1707,9 @@ function AdminPanel({ user, onClose }) {
                             {hasChildren ? <button type="button" className="admin-ban-toggle" onClick={() => setExpandedBans(prev => ({ ...prev, [group.id]: !prev[group.id] }))}>
                               {expandedBans[group.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </button> : <span className="admin-ban-toggle-spacer" />}
-                            <input type="checkbox" checked={groupOn} onChange={e => toggleBanKeys(keys, e.target.checked)} />
+                            <TriStateCheckbox checked={groupOn}
+                              indeterminate={!groupOn && keys.some(key => banDraft[key]?.on)}
+                              onChange={e => toggleBanKeys(keys, e.target.checked)} />
                             <span>{t(`banFunc.${group.id}`)}</span>
                             {groupOn && <BanDetails ban={banDraft[group.id]} onChange={patch => setBanDraft({ ...banDraft, [group.id]: { ...(banDraft[group.id] || {}), on: true, ...patch } })} t={t} />}
                             {hasChildren && expandedBans[group.id] && !groupOn && <div className="admin-ban-children">
@@ -1755,6 +1767,21 @@ function AdminPanel({ user, onClose }) {
               )
             })()}
           </>
+        )}
+
+        {!loading && activeSection === 'audit' && (
+          <div className="admin-audit-log">
+            {auditLogs.length === 0 && <p className="empty-state">{t('admin.auditEmpty')}</p>}
+            {auditLogs.map((log, index) => (
+              <div className="admin-audit-row" key={`${log.createdAt}-${index}`}>
+                <span className="user-date">{fmtTs(log.createdAt)}</span>
+                <strong>{log.action}</strong>
+                <span>{log.actorUsername}</span>
+                {log.targetUsername && <span>→ {log.targetUsername}</span>}
+                {Object.keys(log.changes || {}).length > 0 && <code>{JSON.stringify(log.changes)}</code>}
+              </div>
+            ))}
+          </div>
         )}
 
         {!loading && activeSection === 'lots' && (

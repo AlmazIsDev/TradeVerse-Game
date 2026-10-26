@@ -185,7 +185,7 @@ function AdminPanel({ user, onClose }) {
       <div className="admin-panel">
         <div className="admin-header">
           <h2>{t('admin.title')}</h2>
-          <button className="admin-close-btn" onClick={onClose}>
+          <button className="admin-close-btn" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}>
             <X size={20} />
           </button>
         </div>
@@ -1062,7 +1062,7 @@ function AdminPanel({ user, onClose }) {
     <div className="admin-panel admin-panel-modern">
       <div className="admin-header">
         <h2><ShieldAlert size={20} /> {t('admin.title')}</h2>
-        <button className="admin-close-btn" onClick={onClose}>
+        <button className="admin-close-btn" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}>
           <X size={20} />
         </button>
       </div>
@@ -1149,10 +1149,10 @@ function AdminPanel({ user, onClose }) {
                         onChange={e => setEditingStock({ ...editingStock, price: e.target.value })}
                         className="admin-input"
                       />
-                      <button className="admin-btn admin-btn-primary" onClick={() => handleUpdateStock(editingStock)}>
+                      <button className="admin-btn admin-btn-primary" title={t('common.save')} aria-label={t('common.save')} onClick={() => handleUpdateStock(editingStock)}>
                         <Save size={14} />
                       </button>
-                      <button className="admin-btn" onClick={() => setEditingStock(null)}>
+                      <button className="admin-btn" title={t('common.cancel')} aria-label={t('common.cancel')} onClick={() => setEditingStock(null)}>
                         <X size={14} />
                       </button>
                     </div>
@@ -1164,7 +1164,7 @@ function AdminPanel({ user, onClose }) {
                         <span className={`stock-price ${stock.changePercent > 0 ? 'up' : stock.changePercent < 0 ? 'down' : ''}`}>${stock.price?.toFixed(2)}</span>
                       </div>
                       <div className="stock-actions">
-                        <button className="admin-btn" onClick={() => setEditingStock({ ...stock })}>
+                        <button className="admin-btn" title={t('common.edit', 'Редактировать')} aria-label={t('common.edit', 'Редактировать')} onClick={() => setEditingStock({ ...stock })}>
                           <Edit3 size={14} />
                         </button>
                         <button className="admin-btn" onClick={() => setChartAsset({ market: 'stock', symbol: stock.symbol })} title={t('admin.priceHistory.title')}>
@@ -1173,7 +1173,7 @@ function AdminPanel({ user, onClose }) {
                         <button className="admin-btn" onClick={() => handleEditStockConfig({ ...stock })} title={t('admin.stockConfig') || 'Настроить конфиг'}>
                           <Sliders size={14} />
                         </button>
-                        <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteStock(stock.symbol)}>
+                        <button className="admin-btn admin-btn-danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDeleteStock(stock.symbol)}>
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -1335,10 +1335,10 @@ function AdminPanel({ user, onClose }) {
                     <button className="admin-btn" onClick={() => setChartAsset({ market: 'crypto', symbol: coin.symbol })} title={t('admin.priceHistory.title')}>
                       <RefreshCw size={14} />
                     </button>
-                    <button className="admin-btn" onClick={() => handleStartEditCoin(coin)}>
+                    <button className="admin-btn" title={t('common.edit', 'Редактировать')} aria-label={t('common.edit', 'Редактировать')} onClick={() => handleStartEditCoin(coin)}>
                       <Edit3 size={14} />
                     </button>
-                    <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteCoin(coin.symbol)}>
+                    <button className="admin-btn admin-btn-danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDeleteCoin(coin.symbol)}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -1741,7 +1741,7 @@ function AdminPanel({ user, onClose }) {
                 <aside className="user-edit-panel">
                   <div className="user-edit-panel-header">
                     <strong>{t('admin.editUser')}: {u?.username}</strong>
-                    <button className="admin-btn" onClick={handleCancelEditUser}><X size={16} /></button>
+                    <button className="admin-btn" title={t('common.cancel')} aria-label={t('common.cancel')} onClick={handleCancelEditUser}><X size={16} /></button>
                   </div>
                   <div className="user-edit-panel-body">
                     <div className="admin-field-group">
@@ -2068,7 +2068,7 @@ function AdminPanel({ user, onClose }) {
                       <span className="tx-time">{fmtTs(tx.timestamp)}</span>
                       <span className="tx-act">
                         {tx.source === 'user' && can('transactions_delete')
-                          ? <button className="admin-btn admin-btn-danger" onClick={() => handleDeleteTransaction(tx.id)}><Trash2 size={14} /></button>
+                          ? <button className="admin-btn admin-btn-danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDeleteTransaction(tx.id)}><Trash2 size={14} /></button>
                           : <span className="tx-dash">—</span>}
                       </span>
                     </div>

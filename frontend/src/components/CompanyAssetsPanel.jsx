@@ -290,7 +290,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, balance = 0, onBalan
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content company-assets-modal" onClick={e => e.stopPropagation()}>
-        <button className="crypto-modal-close" onClick={onClose}><X size={18} /></button>
+        <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
         <h3><Briefcase size={18} /> {t('company.assets')}</h3>
 
         <div className="market-cats" style={{ margin: 'var(--spacing-md) 0' }}>
@@ -373,7 +373,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, balance = 0, onBalan
         {rentModal && (
           <div className="modal-overlay" onClick={() => setRentModal(null)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
+              <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setRentModal(null)}><X size={18} /></button>
               <h3>{t('rent.title')}: {t(`assetNames.${rentModal.slug}`, rentModal.name)}</h3>
               <p className="modal-price">{t('company.rentDesc')}</p>
               <div className="rent-duration-grid">
@@ -400,7 +400,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, balance = 0, onBalan
         {materialsModal && (
           <div className="modal-overlay" onClick={() => setMaterialsModal(null)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <button className="crypto-modal-close" onClick={() => setMaterialsModal(null)}><X size={18} /></button>
+              <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setMaterialsModal(null)}><X size={18} /></button>
               <h3><Package size={17} /> {t('materials.title')}: {t(`assetNames.${materialsModal.slug}`, materialsModal.name)}</h3>
               <p className="modal-price">{t('materials.desc', { boost: Math.round((materialsInfo?.boostPerUnit || 0) * 100), cap: Math.round((materialsInfo?.boostCap || 0) * 100), hours: materialsInfo?.durationHours || 0 })}</p>
               <p className="modal-price">{t('materials.unitPrice')}: <strong>${formatMoney(materialsInfo?.unitPrice)}</strong></p>
@@ -418,7 +418,7 @@ function CompanyAssetsPanel({ assets = [], isOwner = false, balance = 0, onBalan
         {suppliesModal && (
           <div className="modal-overlay" onClick={() => setSuppliesModal(null)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <button className="crypto-modal-close" onClick={() => setSuppliesModal(null)}><X size={18} /></button>
+              <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setSuppliesModal(null)}><X size={18} /></button>
               <h3><Package size={17} /> {t('itstudio.buySupplies')}: {t(`assetNames.${suppliesModal.asset.slug}`, suppliesModal.asset.name)}</h3>
 
               <div className="supplies-section">

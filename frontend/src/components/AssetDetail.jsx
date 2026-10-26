@@ -383,7 +383,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
       {trade && (
         <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
           <div className="modal-content trade-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setTrade(null)}><X size={18} /></button>
 
             <div className="tm-head">
               <div className={`tm-side ${trade}`}>{trade === 'buy' ? t('common.buy') : t('common.sell')}</div>

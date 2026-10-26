@@ -363,7 +363,7 @@ function CentralMarketTab() {
                     type="button"
                     className={`tx-pill ${kind === c.id ? 'active' : ''}`}
                     onClick={() => setKind(c.id)}
-                    title={c.id}
+                    title={c.id === 'all' ? t('common.all') : kindLabel(c.id)}
                   >
                     <span style={{ marginRight: 4 }}>{c.icon}</span>
                     {c.id === 'all' ? t('common.all') : kindLabel(c.id)}
@@ -495,6 +495,8 @@ function CentralMarketTab() {
                       <button
                         type="button"
                         className="centralmarket-lot-btn centralmarket-lot-btn--danger"
+                        title={t('common.delete')}
+                        aria-label={t('common.delete')}
                         onClick={() => setConfirmDelete(lot)}
                       >
                         <Trash2 size={13} />

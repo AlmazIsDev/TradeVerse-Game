@@ -382,7 +382,7 @@ export default function MiningBulkView({ onBack }) {
       {asmOpen && (
         <div className="modal-overlay" onClick={() => !busy && setAsmOpen(false)}>
           <div className="modal-content asm-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setAsmOpen(false)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setAsmOpen(false)}><X size={18} /></button>
             <h3><Hammer size={17} /> {t('mining.bulk.assemble', 'Авто-сборка')}</h3>
             <p className="modal-price">{t('mining.bulk.asmDesc', 'Выберите по одному товару на категорию — он ставится на каждую выбранную несобранную ферму. Чего не хватит или куда не влезет — категория пропустится, установленное останется (причина — в уведомлении). Порядок: корпус/стойка → мат. плата → процессор → ОЗУ → SSD → охлаждение → ИБП → сеть → БП → видеокарты → вентиляторы.')}</p>
             <div className="asm-grid">
@@ -426,7 +426,7 @@ export default function MiningBulkView({ onBack }) {
                           onChange={e => setAsmChoice(c => ({ ...c, [cat]: { ...c[cat], qty: Math.max(1, Math.min(2000, parseInt(e.target.value, 10) || 1)) } }))} />
                       )}
                       {chosen && (
-                        <button className="mslot-rm" onClick={() => setAsmChoice(c => { const n = { ...c }; delete n[cat]; return n })}><X size={12} /></button>
+                        <button className="mslot-rm" title={t('common.remove', 'Удалить')} aria-label={t('common.remove', 'Удалить')} onClick={() => setAsmChoice(c => { const n = { ...c }; delete n[cat]; return n })}><X size={12} /></button>
                       )}
                     </div>
                     {hint && <small className={`asm-hint${short ? ' short' : ''}`}>{hint}</small>}

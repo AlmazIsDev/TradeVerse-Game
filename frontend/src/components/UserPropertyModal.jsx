@@ -286,7 +286,7 @@ function UserPropertyModal({ username, userId, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content user-property-modal" onClick={e => e.stopPropagation()}>
-        <button className="crypto-modal-close" onClick={onClose}><X size={18} /></button>
+        <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
         <h3><Briefcase size={18} /> {t('admin.property.title')}: {username}</h3>
 
         <div className="market-cats" style={{ margin: 'var(--spacing-md) 0' }}>
@@ -610,7 +610,7 @@ function UserPropertyModal({ username, userId, onClose }) {
         {transferring && (
           <div className="modal-overlay" onClick={() => setTransferring(null)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <button className="crypto-modal-close" onClick={() => setTransferring(null)}><X size={18} /></button>
+              <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setTransferring(null)}><X size={18} /></button>
               <h3>{t('admin.property.transferTitle')}: {transferring.name}</h3>
               <div className="admin-field-group">
                 <label>{t('admin.property.transferToUsername')}</label>

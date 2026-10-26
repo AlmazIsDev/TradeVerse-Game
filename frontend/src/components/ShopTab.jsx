@@ -154,7 +154,7 @@ async function loadShopItems(category) {
             <Search size={16} className="tx-search-icon" />
             <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder={t('market.searchPlaceholder')} />
           </div>
-          <button className="gpu-sort-btn active" onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}>
+          <button className="gpu-sort-btn active" title={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending', 'по возрастанию') : t('common.descending', 'по убыванию') })} aria-label={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending', 'по возрастанию') : t('common.descending', 'по убыванию') })} onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}>
             <ArrowUpDown size={14} /> {t('common.price')} {sortOrder === 'asc' ? '↑' : '↓'}
           </button>
         </div>

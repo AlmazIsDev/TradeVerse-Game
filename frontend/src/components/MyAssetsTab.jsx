@@ -756,7 +756,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {rentModal && (
         <div className="modal-overlay" onClick={() => setRentModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setRentModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setRentModal(null)}><X size={18} /></button>
             <h3>{t('rent.title')}: {nameOf(rentModal)}</h3>
             <p className="modal-price">{t('rent.desc')}</p>
             <div className="rent-duration-grid">
@@ -783,7 +783,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {renameModal && (
         <div className="modal-overlay" onClick={() => setRenameModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setRenameModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setRenameModal(null)}><X size={18} /></button>
             <h3><Pencil size={17} /> {t('rename.title')}</h3>
             <p className="modal-price">{nameOf(renameModal)}</p>
             <div className="modal-quantity modal-quantity--col"><label>{t('rename.newName')}:</label>
@@ -802,7 +802,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {hitchModal && (
         <div className="modal-overlay" onClick={() => setHitchModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setHitchModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setHitchModal(null)}><X size={18} /></button>
             <h3><Package size={17} /> {t('trailer.hitch')}: {nameOf(hitchModal)}</h3>
             <p className="modal-price">{t('trailer.hitchDesc')}</p>
             <div className="modal-quantity"><label>{t('trailer.chooseTruck')}:</label>
@@ -823,7 +823,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {giftModal && (
         <div className="modal-overlay" onClick={() => setGiftModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setGiftModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setGiftModal(null)}><X size={18} /></button>
             <h3><Send size={17} /> {t('gift.toPlayer')}: {nameOf(giftModal)}</h3>
             <p className="modal-price">{t('gift.desc')}</p>
             <div className="modal-quantity"><label>{t('gift.playerLabel')}:</label>
@@ -842,7 +842,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {materialsModal && (
         <div className="modal-overlay" onClick={() => setMaterialsModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setMaterialsModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setMaterialsModal(null)}><X size={18} /></button>
             <h3><Package size={17} /> {t('materials.title')}: {nameOf(materialsModal)}</h3>
             <p className="modal-price">{t('materials.desc', { boost: Math.round((materialsInfo?.boostPerUnit || 0) * 100), cap: Math.round((materialsInfo?.boostCap || 0) * 100), hours: materialsInfo?.durationHours || 0 })}</p>
             <p className="modal-price">{t('materials.unitPrice')}: <strong>${formatMoney(materialsInfo?.unitPrice)}</strong></p>
@@ -861,7 +861,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {suppliesModal && (
         <div className="modal-overlay" onClick={() => setSuppliesModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setSuppliesModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setSuppliesModal(null)}><X size={18} /></button>
             <h3><Package size={17} /> {t('itstudio.buySupplies')}: {nameOf(suppliesModal.asset)}</h3>
 
             {/* Материалы для буста дохода бизнеса (см. assets.buy_materials). */}
@@ -917,7 +917,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {tuneModal && (
         <div className="modal-overlay" onClick={() => busyId !== tuneModal.id && setTuneModal(null)}>
           <div className="modal-content tune-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setTuneModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setTuneModal(null)}><X size={18} /></button>
             <h3><Wrench size={18} /> {t('tune.title')}: {nameOf(tuneModal)}</h3>
             <div className="tune-summary">
               <div><span>{t('market.prestige')}</span><b>{tuneModal.meta?.prestige ?? 0}</b></div>

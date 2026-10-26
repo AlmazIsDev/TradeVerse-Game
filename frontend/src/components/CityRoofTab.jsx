@@ -441,7 +441,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       {selected && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content cityroof-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={closeModal}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={closeModal}><X size={18} /></button>
             <h3>{buildingName(t, selected.slug, selected.name)}</h3>
             <div className="cityroof-business-bonuses">
               <div><strong>{t('cityroof.captureBonus')}</strong><span>+{formatCompact(selected.reward)} $</span></div>
@@ -467,6 +467,8 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                     <button
                       key={lvl}
                       className={`protect-lvl ${selected.protectionLevel === lvl ? 'active' : ''}`}
+                      title={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
+                      aria-label={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
                       disabled={busy}
                       onClick={() => setConfirm({
                         title: t('cityroof.protection'),
@@ -502,7 +504,9 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <div className="peg-row">
                   {guess.map((s, i) => (
                     <button key={i} className="peg" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }}
-                      onClick={() => cyclePeg(i)} disabled={busy} aria-label={`peg-${i}`} />
+                      onClick={() => cyclePeg(i)} disabled={busy}
+                      title={t('cityroof.pegHelp', { position: i + 1 })}
+                      aria-label={t('cityroof.pegHelp', { position: i + 1 })} />
                   ))}
                 </div>
                 <button className="cityroof-attack-btn" onClick={submitGuess} disabled={busy}>
@@ -532,7 +536,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       {buyModal && (
         <div className="modal-overlay" onClick={() => !busy && setBuyModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setBuyModal(false)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setBuyModal(false)}><X size={18} /></button>
             <h3>{t('cityroof.buyWc')}</h3>
             <p className="modal-price">{formatCompact(wc.price)} $ / WC · {t('bank.currentBalance')}: ${formatCompact(balance)}</p>
             <div className="modal-quantity">

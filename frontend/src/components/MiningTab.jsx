@@ -231,7 +231,7 @@ function NewFarmModal({ open, slotIndex, houseName, busy, onConfirm, onCancel })
   return (
     <div className="modal-overlay tv-confirm-overlay" onClick={() => !busy && onCancel?.()}>
       <div className="modal-content tv-confirm new-farm-modal" onClick={e => e.stopPropagation()}>
-        <button className="crypto-modal-close" onClick={() => onCancel?.()} disabled={busy} aria-label="close">
+        <button className="crypto-modal-close" title={t('common.close')} onClick={() => onCancel?.()} disabled={busy} aria-label={t('common.close')}>
           <X size={18} />
         </button>
         <div className="tv-confirm-icon">
@@ -791,7 +791,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                     <div key={g.key} className="mslot-item">
                       <span>{g.label}{g.items.length > 1 && <b className="mslot-item-qty"> ×{g.items.length}</b>}</span>
                       <button className="mslot-rm" disabled={busy}
-                        title={g.items.length > 1 ? t('mining.removeOne') : ''}
+                        title={t('mining.removeOne')} aria-label={t('mining.removeOne')}
                         onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
                     </div>
                   ))}

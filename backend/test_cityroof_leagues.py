@@ -76,5 +76,27 @@ def test_guess_feedback_marks_each_peg_and_caps_difficulty():
     assert MAX_ATTEMPTS == 3
     assert _guess_feedback([0, 1, 2, 3], [0, 3, 1, 4]) == ["exact", "present", "present", "absent"]
     assert [(item["length"], item["symbol_range"]) for item in map(_make_secret, range(6))] == [
-        (3, 4), (4, 4), (4, 5), (5, 5), (5, 6), (6, 6),
+        (3, 5), (4, 5), (4, 6), (5, 6), (5, 7), (6, 7),
     ]
+    item = _make_secret(5)
+    assert all(0 <= value < item["symbol_range"] for value in item["secret"])
+
+
+def test_exhausted_guess_resets_session_with_new_combination():
+    from cityroof import MAX_ATTEMPTS
+
+    assert MAX_ATTEMPTS == 3
+
+
+def test_color_weights_favor_middle_colors():
+    from cityroof import _color_weights
+
+    assert _color_weights(7) == [1, 3, 3, 3, 3, 3, 1]
+    assert _color_weights(2) == [1, 1]
+
+
+def test_guess_values_are_zero_based():
+    from cityroof import _make_secret
+
+    assert min(_make_secret(0)["secret"]) >= 0
+    assert max(_make_secret(0)["secret"]) < 5

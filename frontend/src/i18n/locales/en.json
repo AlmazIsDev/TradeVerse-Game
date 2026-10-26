@@ -736,6 +736,8 @@
     "captureBonus": "Capture reward",
     "captureBonusHelp": "A one-time payout after successfully capturing a business.",
     "closeRooms": "Hide rooms",
+    "loadingRooms": "Loading…",
+    "backToMyRoom": "Back to my room",
     "help": "How to play",
     "helpTitle": "How to play City Roof",
     "helpText": "Choose a rival business, pay for an attack, and guess the combination. Owners earn income while holding a business.",

@@ -70,6 +70,20 @@ def test_business_bonus_view_scales_daily_income():
     assert _business_bonus_view("refinery", "diamond")["daily"] >= 700_000_000
 
 
+def test_cityroof_capital_includes_only_cityroof_warcoin():
+    from cityroof import _cityroof_capital
+
+    assert _cityroof_capital(1_000_000, 40, 50_000) == 3_000_000
+
+
+def test_league_transition_uses_125_percent_up_and_75_percent_down():
+    from cityroof import _league_transition
+
+    assert _league_transition("bronze", 31_250_000) == "silver"
+    assert _league_transition("silver", 18_749_999) == "bronze"
+    assert _league_transition("silver", 20_000_000) == "silver"
+
+
 def test_guess_feedback_marks_each_peg_and_caps_difficulty():
     from cityroof import MAX_ATTEMPTS, _guess_feedback, _make_secret
 

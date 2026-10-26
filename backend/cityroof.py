@@ -167,12 +167,33 @@ def _league_for_net_worth(net_worth: float) -> str:
     return league
 
 
+def _cityroof_capital(net_worth_without_cityroof_wc: float, warcoin: int, warcoin_price: float) -> float:
+    return round(float(net_worth_without_cityroof_wc or 0) + int(warcoin or 0) * float(warcoin_price), 2)
+
+
+def _league_transition(league: str, capital: float) -> str:
+    index = next(i for i, (name, _) in enumerate(CITYROOF_LEAGUES) if name == league)
+    if index < len(CITYROOF_LEAGUES) - 1 and capital >= CITYROOF_LEAGUES[index + 1][1] * 1.25:
+        return CITYROOF_LEAGUES[index + 1][0]
+    if index > 0 and capital < CITYROOF_LEAGUES[index][1] * 0.75:
+        return CITYROOF_LEAGUES[index - 1][0]
+    return league
+
+
+async def _cityroof_player_capital(db, user_id: str, league: str) -> float:
+    user = await db.users.find_one({"_id": ObjectId(user_id)}, {"warcoin": 1}) or {}
+    total = await compute_net_worth(db, user_id)
+    global_wc_value = int(user.get("warcoin", 0) or 0) * WARCOIN_PRICE_DEFAULT
+    price = LEAGUE_WARCOIN_PRICES[league]
+    return _cityroof_capital(total - global_wc_value, user.get("warcoin", 0), price)
+
+
 def _room_code(league: str, room_number: int) -> str:
     return f"{league[:3].upper()}-{room_number:02d}"
 
 
-async def ensure_player_room(db, user_id: str, season: int, net_worth: float) -> dict:
-    league = _league_for_net_worth(net_worth)
+async def ensure_player_room(db, user_id: str, season: int, net_worth: float, league_override: str | None = None) -> dict:
+    league = league_override or _league_for_net_worth(net_worth)
     existing = await db.cityroof_rooms.find_one({"season": season, "member_ids": user_id})
     if existing:
         return existing
@@ -333,9 +354,32 @@ def _current_week() -> str:
 
 
 async def _player_room(db, user_id: str, season: int) -> dict:
-    user = await db.users.find_one({"_id": ObjectId(user_id)}, {"balance": 1, "warcoin": 1}) or {}
-    net_worth = await compute_net_worth(db, user_id)
-    room = await ensure_player_room(db, user_id, season, net_worth)
+    user = await db.users.find_one({"_id": ObjectId(user_id)}, {"warcoin": 1}) or {}
+    existing = await db.cityroof_rooms.find_one({"season": season, "member_ids": user_id})
+    if existing:
+        capital = await _cityroof_player_capital(db, user_id, existing["league"])
+        target = _league_transition(existing["league"], capital)
+        if target != existing["league"]:
+            old_price = LEAGUE_WARCOIN_PRICES[existing["league"]]
+            new_price = LEAGUE_WARCOIN_PRICES[target]
+            new_wc = max(0, int(int(user.get("warcoin", 0) or 0) * old_price / new_price))
+            await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"warcoin": new_wc}})
+            await db.cityroof_rooms.update_one({"_id": existing["_id"]}, {"$pull": {"member_ids": user_id}})
+            await db.cityroof_businesses.update_many(
+                {"season": season, "room_code": existing["room_code"], "ownerId": user_id},
+                {"$set": {"ownerId": None, "ownerName": None, "ownerColor": None, "protection_level": 0, "last_captured": None, "last_collected": None}},
+            )
+            await db.cityroof_sessions.delete_many({"attackerId": user_id, "season": season})
+            await push_notification(
+                db, user_id, "cityroof", "Лига изменена",
+                f"Вы перешли в лигу {target}. Бизнесы освобождены, баланс WarCoin пересчитан.",
+                {"league": target, "roomCode": None},
+            )
+            room = await ensure_player_room(db, user_id, season, capital, target)
+        else:
+            room = existing
+    else:
+        room = await ensure_player_room(db, user_id, season, await compute_net_worth(db, user_id))
     await _ensure_room_businesses(db, season, room["league"], room["room_code"])
     return room
 
@@ -416,14 +460,33 @@ def _guess_feedback(secret: list[int], guess: list[int]) -> list[str]:
     return feedback
 
 
+async def _dedupe_player_rooms(db):
+    seen = set()
+    async for room in db.cityroof_rooms.find({}).sort("_id", 1):
+        keep = []
+        removed = []
+        for user_id in room.get("member_ids", []):
+            if (room.get("season"), user_id) in seen:
+                removed.append(user_id)
+            else:
+                seen.add((room.get("season"), user_id))
+                keep.append(user_id)
+        if removed:
+            await db.cityroof_rooms.update_one({"_id": room["_id"]}, {"$set": {"member_ids": keep}})
+
+
 async def ensure_seeded(db: AsyncIOMotorDatabase):
     if not await find_config_by_key(db, WARCOIN_CONFIG_KEY):
         import json
         await upsert_config(db, WARCOIN_CONFIG_KEY, json.dumps(DEFAULT_WARCOIN_CONFIG))
     if await db.cityroof_state.count_documents({"key": "current"}) == 0:
         await db.cityroof_state.insert_one({"key": "current", "week": _current_week(), "season": 1})
+    await _dedupe_player_rooms(db)
     await db.cityroof_rooms.create_index(
         [("season", 1), ("league", 1), ("room_code", 1)], unique=True,
+    )
+    await db.cityroof_rooms.create_index(
+        [("season", 1), ("member_ids", 1)], unique=True,
     )
     await _migrate_warcoin_balances(db)
 
@@ -640,6 +703,7 @@ def _serialize_itstudio_job(j: dict) -> dict:
 @router.get("/map")
 async def get_map(
     allRooms: bool = Query(False),
+    roomCode: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
@@ -651,10 +715,17 @@ async def get_map(
     season = state.get("season", 1) if state else 1
     room = await _player_room(db, user_id, season)
     config = await _warcoin_config(db)
-    league = room["league"]
+    view_room = room
+    read_only = False
+    if roomCode and roomCode != room["room_code"]:
+        view_room = await db.cityroof_rooms.find_one({"season": season, "room_code": roomCode})
+        if not view_room:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Комната не найдена")
+        read_only = True
+    league = view_room["league"]
     league_cfg = await _league_config(config, league)
     price = float(league_cfg.get("warcoinPrice", config.get("price", WARCOIN_PRICE_DEFAULT)))
-    businesses = [_serialize_business(b, user_id) async for b in db.cityroof_businesses.find({"season": season, "room_code": room["room_code"]})]
+    businesses = [_serialize_business(b, user_id) async for b in db.cityroof_businesses.find({"season": season, "room_code": view_room["room_code"]})]
     businesses.sort(key=lambda b: (b["y"], b["x"]))
     rooms = []
     if allRooms:
@@ -675,11 +746,12 @@ async def get_map(
         "season": season,
         "week": state.get("week") if state else _current_week(),
         "league": league,
-        "roomCode": room["room_code"],
-        "roomMembers": len(room.get("member_ids", [])),
+        "roomCode": view_room["room_code"],
+        "roomMembers": len(view_room.get("member_ids", [])),
         "roomCapacity": ROOM_CAPACITY,
-        "members": await _room_members_view(db, room, season),
+        "members": await _room_members_view(db, view_room, season),
         "incomeMultiplier": _league_income_multiplier(config, league),
+        "readOnly": read_only,
         "attackCost": int(league_cfg.get("attackCost", ATTACK_COST_WC)),
         "maxAttempts": MAX_ATTEMPTS,
         "protectionCosts": league_cfg.get("protectionCosts", _scaled_protection_costs(league)),
@@ -709,8 +781,11 @@ async def get_warcoin(
 ):
     """Баланс и цена WarCoin по лиге игрока."""
     user_id = str(current_user["_id"])
+    state = await db.cityroof_state.find_one({"key": "current"})
+    room = await _player_room(db, user_id, state.get("season", 1))
     config = await _warcoin_config(db)
-    league, price = _league_and_price(config, await compute_net_worth(db, user_id))
+    league = room["league"]
+    price = float((await _league_config(config, league)).get("warcoinPrice", config.get("price", WARCOIN_PRICE_DEFAULT)))
     return {
         "balance": await _get_wc(db, user_id),
         "price": price,

@@ -64,6 +64,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [map, setMap] = useState(null)
   const [allRooms, setAllRooms] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [roomsLoading, setRoomsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)      // business
   const [profileId, setProfileId] = useState(null)
@@ -106,10 +107,40 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       setAllRooms(null)
       return
     }
+    setRoomsLoading(true)
     try {
       setAllRooms((await fetchCityMap({ allRooms: true })).rooms || [])
     } catch (err) {
       toast(err.message, 'error')
+    } finally {
+      setRoomsLoading(false)
+    }
+  }
+
+  const openRoom = async (roomCode) => {
+    setRoomsLoading(true)
+    try {
+      setMap(await fetchCityMap({ roomCode }))
+      setSelected(null)
+      setSession(null)
+      setAllRooms(null)
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setRoomsLoading(false)
+    }
+  }
+
+  const closeRoom = async () => {
+    setRoomsLoading(true)
+    try {
+      setMap(await fetchCityMap())
+      setSelected(null)
+      setSession(null)
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setRoomsLoading(false)
     }
   }
 
@@ -334,8 +365,8 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
           {t('cityroof.season')} {map?.season} · {map?.isActive ? t('cityroof.eventActive') : t('cityroof.eventClosed')}
         </div>
         <div className="cityroof-actions">
-          <button className="cityroof-rooms-btn" onClick={loadAllRooms}>
-            {allRooms ? t('cityroof.closeRooms', 'Скрыть комнаты') : t('cityroof.allRooms', 'Все комнаты')}
+          <button className="cityroof-rooms-btn" onClick={loadAllRooms} disabled={roomsLoading}>
+            {roomsLoading ? t('cityroof.loadingRooms', 'Загрузка…') : allRooms ? t('cityroof.closeRooms', 'Скрыть комнаты') : t('cityroof.allRooms', 'Все комнаты')}
           </button>
           <button className="cityroof-help-btn" onClick={() => setShowHelp(v => !v)} aria-expanded={showHelp}>
             ? {t('cityroof.help', 'Как играть')}
@@ -358,7 +389,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       {allRooms && (
         <div className="cityroof-room-list">
           {allRooms.map(room => (
-            <section className="cityroom-card" key={room.roomCode}>
+            <section className="cityroom-card" key={room.roomCode} onClick={() => openRoom(room.roomCode)} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && openRoom(room.roomCode)}>
               <div className="cityroom-head">
                 <span className="cityroom-code">{room.roomCode}</span>
                 <span className="cityroom-league">{t(`cityroof.leagues.${room.league}`, room.league)}</span>
@@ -376,6 +407,12 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             </section>
           ))}
         </div>
+      )}
+
+      {map?.readOnly && (
+        <button className="cityroof-back-btn" onClick={closeRoom} disabled={roomsLoading}>
+          ← {t('cityroof.backToMyRoom', 'Назад к моей комнате')}
+        </button>
       )}
 
       <p className="cityroof-hint">{t('cityroof.hint', { cost: map?.attackCost ?? 10 })}</p>
@@ -460,7 +497,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               {selected.protectionLevel > 0 && <> · <Shield size={12} /> {selected.protectionLevel}</>}
             </p>
 
-            {selected.isMine && (
+            {!map?.readOnly && selected.isMine && (
               <div className="cityroof-protect">
                 <h4><Lock size={14} /> {t('cityroof.protection')}</h4>
                 <div className="protect-levels">
@@ -486,7 +523,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               </div>
             )}
 
-            {!selected.isMine && !session && (
+            {!map?.readOnly && !selected.isMine && !session && (
               <button className="cityroof-attack-btn" disabled={busy}
                 onClick={() => setConfirm({
                   danger: true,
@@ -497,7 +534,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <Swords size={16} /> {busy ? t('bank.processing') : t('cityroof.attack', { cost: map?.attackCost ?? 10 })}
               </button>
             )}
-            {!selected.isMine && selected.ownerId && !session && renderStudioAction('attack')}
+            {!map?.readOnly && !selected.isMine && selected.ownerId && !session && renderStudioAction('attack')}
 
             {session && (
               <div className="cityroof-game">

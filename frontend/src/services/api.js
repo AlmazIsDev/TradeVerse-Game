@@ -1175,8 +1175,12 @@ export async function orderExpose({ targetType, targetId, budget }) {
 
 // ── City Roof (minigame + WarCoin) ─────────────────────────────────────────────
 
-export async function fetchCityMap({ allRooms = false } = {}) {
-  return request(`/api/cityroof/map${allRooms ? '?allRooms=true' : ''}`)
+export async function fetchCityMap({ allRooms = false, roomCode = null } = {}) {
+  const params = new URLSearchParams()
+  if (allRooms) params.set('allRooms', 'true')
+  if (roomCode) params.set('roomCode', roomCode)
+  const query = params.toString()
+  return request(`/api/cityroof/map${query ? `?${query}` : ''}`)
 }
 
 export async function fetchWarcoin() {

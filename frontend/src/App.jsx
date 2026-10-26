@@ -5,6 +5,7 @@ import './landing.css'
 import AuthPage from './components/AuthPage'
 import Dashboard from './components/Dashboard'
 import Landing from './components/Landing'
+import CityRoofPuzzleLab from './components/CityRoofPuzzleLab'
 import { logoutUser, startTokenRefresh, stopTokenRefresh } from './services/api'
 
 const STORAGE_KEY = 'tradeverse_user'
@@ -77,6 +78,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/puzzle-lab" element={<CityRoofPuzzleLab />} />
         <Route
           path="/"
           element={

@@ -68,7 +68,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [profileId, setProfileId] = useState(null)
   const [session, setSession] = useState(null)        // { sessionId, length, symbolRange, ... }
   const [guess, setGuess] = useState([])
-  const [attempts, setAttempts] = useState([])        // [{ guess, exact, present }]
+  const [attempts, setAttempts] = useState([])        // [{ guess, feedback, exact, present }]
   const [busy, setBusy] = useState(false)
   const [buyModal, setBuyModal] = useState(false)
   const [buyAmount, setBuyAmount] = useState('10')
@@ -213,16 +213,16 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         toast(res.capturedIncome > 0
           ? t('cityroof.capturedWithIncome', { amount: res.capturedIncome.toLocaleString('ru-RU') })
           : t('cityroof.captured'))
-        setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
+        setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
         setSession(null)
         await load()
         setTimeout(() => setSelected(null), 1200)
       } else if (res.exhausted) {
-        setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
+        setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
         toast(t('cityroof.exhausted'), 'error')
         setSession(null)
       } else {
-        setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
+        setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
         toast(t('cityroof.tryAgain', { attempts: res.attempts, max: res.maxAttempts }), 'info')
       }
     } catch (err) {
@@ -502,7 +502,9 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <div className="peg-row">
                   {guess.map((s, i) => (
                     <button key={i} className="peg" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }}
-                      onClick={() => cyclePeg(i)} disabled={busy} aria-label={`peg-${i}`} />
+                      onClick={() => cyclePeg(i)} disabled={busy} aria-label={`peg-${i + 1}`}>
+                      {s + 1}
+                    </button>
                   ))}
                 </div>
                 <button className="cityroof-attack-btn" onClick={submitGuess} disabled={busy}>
@@ -514,7 +516,11 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                     {attempts.map((a, idx) => (
                       <div key={idx} className="attempt-row">
                         <div className="attempt-pegs">
-                          {a.guess.map((s, i) => <span key={i} className="peg-mini" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }} />)}
+                          {a.guess.map((s, i) => (
+                            <span key={i} className={`peg-mini ${a.feedback?.[i] || ''}`} title={`${s + 1}: ${a.feedback?.[i] || 'absent'}`}>
+                              {s + 1}
+                            </span>
+                          ))}
                         </div>
                         <span className="attempt-fb">
                           <b className="exact">{a.exact}</b> {t('cityroof.exact')} · <b className="present">{a.present}</b> {t('cityroof.present')}

@@ -68,3 +68,13 @@ def test_business_bonus_view_scales_daily_income():
     assert view["daily"] == 55_000 * 6_100
     assert view["leagueMultiplier"] == 6_100
     assert _business_bonus_view("refinery", "diamond")["daily"] >= 700_000_000
+
+
+def test_guess_feedback_marks_each_peg_and_caps_difficulty():
+    from cityroof import MAX_ATTEMPTS, _guess_feedback, _make_secret
+
+    assert MAX_ATTEMPTS == 3
+    assert _guess_feedback([0, 1, 2, 3], [0, 3, 1, 4]) == ["exact", "present", "present", "absent"]
+    assert [(item["length"], item["symbol_range"]) for item in map(_make_secret, range(6))] == [
+        (3, 4), (4, 4), (4, 5), (5, 5), (5, 6), (6, 6),
+    ]

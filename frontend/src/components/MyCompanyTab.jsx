@@ -669,10 +669,12 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                       })}>
                       <Settings size={14} />
                     </button>
-                    <button className="asset-act sell" disabled={busy}
-                      onClick={() => run(() => fireMember(m.userId), 'company.fired')}>
-                      <Trash2 size={14} />
-                    </button>
+                    <Tooltip text={t('company.fireMember', 'Уволить сотрудника')}>
+                      <button className="asset-act sell" title={t('company.fireMember', 'Уволить сотрудника')} aria-label={t('company.fireMember', 'Уволить сотрудника')} disabled={busy}
+                        onClick={() => run(() => fireMember(m.userId), 'company.fired')}>
+                        <Trash2 size={14} />
+                      </button>
+                    </Tooltip>
                   </div>
                 )}
               </div>

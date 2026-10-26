@@ -274,7 +274,9 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
             <span className="crypto-card-label"><Wallet size={14} /> {t('crypto.wallet')}</span>
             <div className="crypto-wallet-row">
               <code className="crypto-wallet-addr">{account.wallet}</code>
-              <button className="crypto-copy-btn" onClick={handleCopy} title={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')} aria-label={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>
+              <Tooltip text={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')}>
+                <button className="crypto-copy-btn" onClick={handleCopy} title={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')} aria-label={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>
+              </Tooltip>
             </div>
             <div className="crypto-wallet-stats">
               <div><span>{t('crypto.cashBalance')}</span><b>{formatMoney(balance)} $</b></div>

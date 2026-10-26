@@ -783,16 +783,20 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                   <div className="mslot-head">
                     <span className="mslot-name">{t(`mining.comp.${cat}`, cat)}{req && <em> *</em>}</span>
                     {multi && installed.length > 0 && (
-                      <span className="mslot-count">{capLeft != null ? `${installed.length}/${installed.length + capLeft}` : installed.length}</span>
+                      <Tooltip text={t('mining.slotCountHelp', 'Установлено компонентов / доступно слотов')}>
+                        <span className="mslot-count">{capLeft != null ? `${installed.length}/${installed.length + capLeft}` : installed.length}</span>
+                      </Tooltip>
                     )}
                   </div>
                   <span className="mslot-desc">{t(`mining.desc.${cat}`, '')}</span>
                   {groups.map(g => (
                     <div key={g.key} className="mslot-item">
                       <span>{g.label}{g.items.length > 1 && <b className="mslot-item-qty"> ×{g.items.length}</b>}</span>
-                      <button className="mslot-rm" disabled={busy}
-                        title={t('mining.removeOne')} aria-label={t('mining.removeOne')}
-                        onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
+                      <Tooltip text={t('mining.removeOne')}>
+                        <button className="mslot-rm" disabled={busy}
+                          title={t('mining.removeOne')} aria-label={t('mining.removeOne')}
+                          onClick={() => run(() => uninstallComponent(farm.id, g.items[g.items.length - 1].hwId))}><X size={12} /></button>
+                      </Tooltip>
                     </div>
                   ))}
                   {blockedByAlt ? (

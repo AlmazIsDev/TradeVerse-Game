@@ -492,15 +492,17 @@ function CentralMarketTab() {
                       >
                         <Edit3 size={13} /> {t('centralmarket.edit')}
                       </button>
-                      <button
-                        type="button"
-                        className="centralmarket-lot-btn centralmarket-lot-btn--danger"
-                        title={t('common.delete')}
-                        aria-label={t('common.delete')}
-                        onClick={() => setConfirmDelete(lot)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <Tooltip text={t('common.delete')}>
+                        <button
+                          type="button"
+                          className="centralmarket-lot-btn centralmarket-lot-btn--danger"
+                          title={t('common.delete')}
+                          aria-label={t('common.delete')}
+                          onClick={() => setConfirmDelete(lot)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </Tooltip>
                     </div>
                   ) : (
                     <div className="centralmarket-lot-actions">

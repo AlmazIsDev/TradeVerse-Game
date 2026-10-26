@@ -464,21 +464,23 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <h4><Lock size={14} /> {t('cityroof.protection')}</h4>
                 <div className="protect-levels">
                   {[1, 2, 3, 4, 5].map(lvl => (
-                    <button
-                      key={lvl}
-                      className={`protect-lvl ${selected.protectionLevel === lvl ? 'active' : ''}`}
-                      title={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
-                      aria-label={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
-                      disabled={busy}
-                      onClick={() => setConfirm({
-                        title: t('cityroof.protection'),
-                        message: t('confirm.protect', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') }),
-                        onConfirm: () => doProtect(lvl),
-                      })}
-                    >
-                      <Shield size={13} /> {lvl}
-                      <small>{(map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU')} WC</small>
-                    </button>
+                    <Tooltip text={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}>
+                      <button
+                        key={lvl}
+                        className={`protect-lvl ${selected.protectionLevel === lvl ? 'active' : ''}`}
+                        title={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
+                        aria-label={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
+                        disabled={busy}
+                        onClick={() => setConfirm({
+                          title: t('cityroof.protection'),
+                          message: t('confirm.protect', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') }),
+                          onConfirm: () => doProtect(lvl),
+                        })}
+                      >
+                        <Shield size={13} /> {lvl}
+                        <small>{(map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU')} WC</small>
+                      </button>
+                    </Tooltip>
                   ))}
                 </div>
                 {renderStudioAction('defense')}
@@ -503,10 +505,12 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <p className="cityroof-game-hint">{t('cityroof.guessHint', { len: session.length, colors: session.symbolRange })}</p>
                 <div className="peg-row">
                   {guess.map((s, i) => (
-                    <button key={i} className="peg" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }}
-                      onClick={() => cyclePeg(i)} disabled={busy}
-                      title={t('cityroof.pegHelp', { position: i + 1 })}
-                      aria-label={t('cityroof.pegHelp', { position: i + 1 })} />
+                    <Tooltip key={i} text={t('cityroof.pegHelp', { position: i + 1 })}>
+                      <button className="peg" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }}
+                        onClick={() => cyclePeg(i)} disabled={busy}
+                        title={t('cityroof.pegHelp', { position: i + 1 })}
+                        aria-label={t('cityroof.pegHelp', { position: i + 1 })} />
+                    </Tooltip>
                   ))}
                 </div>
                 <button className="cityroof-attack-btn" onClick={submitGuess} disabled={busy}>

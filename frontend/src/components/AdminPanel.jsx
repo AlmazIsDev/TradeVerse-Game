@@ -1164,18 +1164,22 @@ function AdminPanel({ user, onClose }) {
                         <span className={`stock-price ${stock.changePercent > 0 ? 'up' : stock.changePercent < 0 ? 'down' : ''}`}>${stock.price?.toFixed(2)}</span>
                       </div>
                       <div className="stock-actions">
+                        <Tooltip text={t('common.edit', 'Редактировать')}>
                         <button className="admin-btn" title={t('common.edit', 'Редактировать')} aria-label={t('common.edit', 'Редактировать')} onClick={() => setEditingStock({ ...stock })}>
                           <Edit3 size={14} />
                         </button>
+                      </Tooltip>
                         <button className="admin-btn" onClick={() => setChartAsset({ market: 'stock', symbol: stock.symbol })} title={t('admin.priceHistory.title')}>
                           <RefreshCw size={14} />
                         </button>
                         <button className="admin-btn" onClick={() => handleEditStockConfig({ ...stock })} title={t('admin.stockConfig') || 'Настроить конфиг'}>
                           <Sliders size={14} />
                         </button>
-                        <button className="admin-btn admin-btn-danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDeleteStock(stock.symbol)}>
-                          <Trash2 size={14} />
-                        </button>
+                        <Tooltip text={t('common.delete')}>
+                          <button className="admin-btn admin-btn-danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDeleteStock(stock.symbol)}>
+                            <Trash2 size={14} />
+                          </button>
+                        </Tooltip>
                       </div>
                     </>
                   )}
@@ -1335,12 +1339,16 @@ function AdminPanel({ user, onClose }) {
                     <button className="admin-btn" onClick={() => setChartAsset({ market: 'crypto', symbol: coin.symbol })} title={t('admin.priceHistory.title')}>
                       <RefreshCw size={14} />
                     </button>
-                    <button className="admin-btn" title={t('common.edit', 'Редактировать')} aria-label={t('common.edit', 'Редактировать')} onClick={() => handleStartEditCoin(coin)}>
-                      <Edit3 size={14} />
-                    </button>
-                    <button className="admin-btn admin-btn-danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDeleteCoin(coin.symbol)}>
-                      <Trash2 size={14} />
-                    </button>
+                    <Tooltip text={t('common.edit', 'Редактировать')}>
+                      <button className="admin-btn" title={t('common.edit', 'Редактировать')} aria-label={t('common.edit', 'Редактировать')} onClick={() => handleStartEditCoin(coin)}>
+                        <Edit3 size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip text={t('common.delete')}>
+                      <button className="admin-btn admin-btn-danger" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => handleDeleteCoin(coin.symbol)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               ))}

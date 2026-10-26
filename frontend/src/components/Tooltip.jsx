@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { HelpCircle } from 'lucide-react'
 
-function Tooltip({ text }) {
+function Tooltip({ text, children }) {
   const [show, setShow] = useState(false)
   return (
     <span
@@ -13,7 +13,7 @@ function Tooltip({ text }) {
       tabIndex={0}
       aria-label={text}
     >
-      <HelpCircle size={14} className="tooltip-icon" aria-hidden="true" />
+      {children || <HelpCircle size={14} className="tooltip-icon" aria-hidden="true" />}
       {show && <span className="tooltip-text" role="tooltip">{text}</span>}
     </span>
   )

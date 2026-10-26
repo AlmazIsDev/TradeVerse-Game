@@ -21,6 +21,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 logger = logging.getLogger("tradeverse")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from init_db import init as init_db
 from networth import WARCOIN_USD

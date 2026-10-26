@@ -327,7 +327,7 @@ class MarketDataService:
                 await db.price_history.delete_many({"market": "crypto", "symbol": {"$in": stale}})
                 logger.info("CoinGecko: удалено %d устаревших монет", len(stale))
             await MarketDataService._set_meta(db, "crypto", "live")
-            logger.info("CoinGecko: обновлено %d монет", len(markets))
+            logger.debug("CoinGecko: обновлено %d монет", len(markets))
             return "live"
         except Exception as exc:
             if getattr(getattr(exc, "response", None), "status_code", None) == 429:

@@ -530,6 +530,7 @@ class RegenerateBody(BaseModel):
     market: str
     symbol: str
     price: Optional[float] = None
+    volatilityHour: Optional[float] = None
     volatility: Optional[float] = None
 
 
@@ -573,13 +574,14 @@ async def admin_list_price_history(
     total = await db.price_history.count_documents(query)
     # Дефолты для пересоздания — чтобы админ видел, из каких значений оно пойдёт.
     coll = db.stocks if market == MARKET_STOCK else db.crypto_assets
-    asset = await coll.find_one({"symbol": symbol}, {"price": 1, "volatility": 1})
+    asset = await coll.find_one({"symbol": symbol}, {"price": 1, "volatilityHour": 1, "volatility": 1})
     return {
         "items": [_format_point(r) for r in rows],
         "total": total,
         "asset": {
             "price": float(asset.get("price", 0)) if asset else None,
-            "volatility": float(asset.get("volatility", 0.03)) if asset else None,
+            "volatilityHour": float(asset.get("volatilityHour", asset.get("volatility", 0.03))) if asset else None,
+            "volatility": float(asset.get("volatilityHour", asset.get("volatility", 0.03))) if asset else None,
         },
     }
 
@@ -648,9 +650,14 @@ async def admin_regenerate_price_history(
     if not asset:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Актив не найден")
     price = payload.price if payload.price is not None else float(asset.get("price", 0))
-    volatility = payload.volatility if payload.volatility is not None else float(asset.get("volatility", 0.03))
+    volatility = payload.volatilityHour
+    if volatility is None:
+        volatility = payload.volatility
+    if volatility is None:
+        volatility = float(asset.get("volatilityHour", asset.get("volatility", 0.03)))
     points = await MarketDataService.regenerate(db, payload.market, symbol, price, volatility)
-    return {"regenerated": True, "points": points, "price": price, "volatility": volatility}
+    return {"regenerated": True, "points": points, "price": price,
+            "volatilityHour": volatility, "volatility": volatility}
 
 
 if __name__ == "__main__":

@@ -119,7 +119,7 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
     }))) return
     setRegenerating(true)
     try {
-      const res = await adminRegeneratePriceHistory({ market, symbol, price, volatility })
+      const res = await adminRegeneratePriceHistory({ market, symbol, price, volatilityHour: volatility })
       toast(t('admin.priceHistory.regenerated', { count: res.points }))
       setRegenPrice('')
       setRegenVolatility('')

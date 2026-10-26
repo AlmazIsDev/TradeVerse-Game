@@ -125,6 +125,7 @@ async def ensure_coins_seeded(db: AsyncIOMotorDatabase):
         for c in DEFAULT_COINS:
             await db.crypto_assets.insert_one({
                 **c,
+                "volatilityHour": c.get("volatility", 0.05),
                 "base_price": c["price"],
                 "change24h": 0.0,
                 "ath": c["price"],
@@ -149,7 +150,7 @@ def _walk_price(coin: dict) -> dict:
     DUSK (0.14/ч) это ~0.3 → цена держится в пределах ~0.5x–2x от базы.
     """
     base = coin.get("base_price", coin["price"])
-    vol = float(coin.get("volatility", 0.05))
+    vol = float(coin.get("volatilityHour", coin.get("volatility", 0.05)))
     old = coin["price"]
     step_vol = vol * (PRICE_REFRESH_SECONDS / VOLATILITY_HOUR_SECONDS) ** 0.5
     # ponytail: сохраняем небольшой случайный drift, но масштабируем шум по длине тика.
@@ -246,7 +247,7 @@ async def maintain_crypto_market(db: AsyncIOMotorDatabase):
     async for coin in db.crypto_assets.find({}):
         symbol = coin["symbol"]
         market_price = float(coin.get("market_price") or coin.get("price") or coin.get("base_price") or 1)
-        await MarketDataService.ensure_backfill(db, "crypto", symbol, market_price, coin.get("volatility", 0.05))
+        await MarketDataService.ensure_backfill(db, "crypto", symbol, market_price, coin.get("volatilityHour", coin.get("volatility", 0.05)))
         set_fields: dict = {}
 
         if coin.get("source") == "coingecko":
@@ -1041,6 +1042,7 @@ class CryptoAdminUpdate(BaseModel):
     name: Optional[str] = None
     price: Optional[float] = None
     marketCap: Optional[float] = None
+    volatilityHour: Optional[float] = None
     volatility: Optional[float] = None
     color: Optional[str] = None
     description: Optional[str] = None
@@ -1050,6 +1052,7 @@ class CryptoAdminCreate(BaseModel):
     symbol: str
     name: str
     price: float
+    volatilityHour: Optional[float] = None
     volatility: float = 0.05
     color: str = "#6366f1"
     supply: Optional[float] = None
@@ -1071,6 +1074,10 @@ async def admin_update_coin(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Монета не найдена")
 
     fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+    hourly_volatility = fields.pop("volatilityHour", fields.get("volatility"))
+    if hourly_volatility is not None:
+        fields["volatilityHour"] = hourly_volatility
+        fields["volatility"] = hourly_volatility
     new_price = fields.get("price")
     new_market_cap = fields.pop("marketCap", None)
     if new_market_cap is not None:
@@ -1098,16 +1105,18 @@ async def admin_create_coin(
     if await db.crypto_assets.find_one({"symbol": symbol}):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Монета '{symbol}' уже существует")
     supply = payload.supply if payload.supply is not None else 0
+    hourly_volatility = payload.volatilityHour if payload.volatilityHour is not None else payload.volatility
     doc = {
         "symbol": symbol, "name": payload.name, "price": payload.price,
-        "base_price": payload.price, "volatility": payload.volatility,
+        "base_price": payload.price, "volatilityHour": hourly_volatility,
+        "volatility": hourly_volatility,
         "color": payload.color, "supply": supply, "description": payload.description,
         "change24h": 0.0, "ath": payload.price, "atl": payload.price,
         "volume24h": round(payload.price * supply * 0.04, 2),
         "updated_at": now_utc(),
     }
     await db.crypto_assets.insert_one(doc)
-    await MarketDataService.ensure_backfill(db, "crypto", symbol, payload.price, payload.volatility)
+    await MarketDataService.ensure_backfill(db, "crypto", symbol, payload.price, hourly_volatility)
     _MARKET_CACHE["ts"] = None
     created = await db.crypto_assets.find_one({"symbol": symbol})
     return _format_coin(created)

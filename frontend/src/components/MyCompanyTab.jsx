@@ -12,6 +12,7 @@ import CompanyAssetsPanel from './CompanyAssetsPanel'
 import PlayerProfileModal from './PlayerProfileModal'
 import ConfirmDialog from './ConfirmDialog'
 import { toast } from './Toast'
+import Tooltip from './Tooltip'
 import {
   Store, Users, TrendingUp, Wallet, HandCoins, ArrowDownToLine,
   ArrowUpFromLine, UserPlus, Trash2, Check, X, AlertTriangle, Building2, Package,
@@ -433,10 +434,10 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       {data.staffBonusPct != null && (
         <div className="company-staff-card">
           <div className="csc-head">
-            <span className="csc-title"><Users size={15} /> {t('company.staffBonusTitle')}</span>
+            <span className="csc-title"><Users size={15} /> {t('company.staffBonusTitle')}<Tooltip text={t('company.staffFactorHelp')} /></span>
             <span className="csc-pct">+{formatMoney(data.staffBonusPct || 0)}%</span>
           </div>
-          <div className="csc-bar" title={t('company.staffFactor', { factor: (data.staffFactor || 1).toFixed(2) })}>
+          <div className="csc-bar">
             <div
               className="csc-bar-fill"
               style={{ width: `${Math.min(100, ((data.staffFactor || 1) - 1) * 100 / Math.max(0.01, (maxStaffFactor - 1) * 100) * 100)}%` }}

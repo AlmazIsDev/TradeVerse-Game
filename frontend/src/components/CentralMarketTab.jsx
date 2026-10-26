@@ -6,6 +6,7 @@ import {
 } from '../services/api'
 import { toast } from './Toast'
 import { formatMoney } from './TransactionsPanel'
+import Tooltip from './Tooltip'
 import ConfirmDialog from './ConfirmDialog'
 import {
   Plus, Search, X, Filter, ArrowUpDown, ArrowUp, ArrowDown,
@@ -605,7 +606,7 @@ function CentralMarketTab() {
 
             <div className="centralmarket-field-row">
               <label className="centralmarket-field">
-                <span><Hash size={13} /> {t('createLot.qty')}</span>
+                <span><Hash size={13} /> {t('createLot.qty')}<Tooltip text={t('createLot.qtyHelp')} /></span>
                 <input
                   type="number" min="1" step="1"
                   value={createKind === 'asset' ? '1' : createQty}
@@ -615,7 +616,7 @@ function CentralMarketTab() {
                 />
               </label>
               <label className="centralmarket-field">
-                <span><DollarSign size={13} /> {t('createLot.pricePerItem')}</span>
+                <span><DollarSign size={13} /> {t('createLot.pricePerItem')}<Tooltip text={t('createLot.pricePerItemHelp')} /></span>
                 <input
                   type="number" min="0" step="0.01"
                   value={createPrice}
@@ -666,7 +667,7 @@ function CentralMarketTab() {
 
             <div className="centralmarket-field-row">
               <label className="centralmarket-field">
-                <span><Hash size={13} /> {t('createLot.qty')}</span>
+                <span><Hash size={13} /> {t('createLot.qty')}<Tooltip text={t('createLot.qtyHelp')} /></span>
                 <input
                   type="number" min="1" step="1"
                   value={editLot.kind === 'asset' ? '1' : editQty}
@@ -676,7 +677,7 @@ function CentralMarketTab() {
                 />
               </label>
               <label className="centralmarket-field">
-                <span><DollarSign size={13} /> {t('createLot.pricePerItem')}</span>
+                <span><DollarSign size={13} /> {t('createLot.pricePerItem')}<Tooltip text={t('createLot.pricePerItemHelp')} /></span>
                 <input
                   type="number" min="0" step="0.01"
                   value={editPrice}

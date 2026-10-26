@@ -7,6 +7,7 @@ import {
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
+import Tooltip from './Tooltip'
 import PlayerProfileModal from './PlayerProfileModal'
 import { toast } from './Toast'
 import {
@@ -68,7 +69,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [profileId, setProfileId] = useState(null)
   const [session, setSession] = useState(null)        // { sessionId, length, symbolRange, ... }
   const [guess, setGuess] = useState([])
-  const [attempts, setAttempts] = useState([])        // [{ guess, exact, present }]
+  const [attempts, setAttempts] = useState([])        // [{ guess, feedback, exact, present }]
   const [busy, setBusy] = useState(false)
   const [buyModal, setBuyModal] = useState(false)
   const [buyAmount, setBuyAmount] = useState('10')
@@ -213,16 +214,16 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         toast(res.capturedIncome > 0
           ? t('cityroof.capturedWithIncome', { amount: res.capturedIncome.toLocaleString('ru-RU') })
           : t('cityroof.captured'))
-        setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
+        setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
         setSession(null)
         await load()
         setTimeout(() => setSelected(null), 1200)
       } else if (res.exhausted) {
-        setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
+        setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
         toast(t('cityroof.exhausted'), 'error')
         setSession(null)
       } else {
-        setAttempts(a => [...a, { guess: [...guess], exact: res.exact, present: res.present }])
+        setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
         toast(t('cityroof.tryAgain', { attempts: res.attempts, max: res.maxAttempts }), 'info')
       }
     } catch (err) {
@@ -363,7 +364,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <span className="cityroom-league">{t(`cityroof.leagues.${room.league}`, room.league)}</span>
               </div>
               <div className="cityroom-meta">
-                {room.roomMembers}/{room.roomCapacity} · {t('cityroof.incomeMultiplier')}: {room.incomeMultiplier}x
+                {room.roomMembers}/{room.roomCapacity} · {t('cityroof.incomeMultiplier')}<Tooltip text={t('cityroof.incomeMultiplierHelp')} />: {room.incomeMultiplier}x
               </div>
               <div className="cityroom-members">
                 {(room.members || []).map(member => (
@@ -441,11 +442,11 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       {selected && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content cityroof-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={closeModal}><X size={18} /></button>
+            <button className="crypto-modal-close" onClick={closeModal}><X size={18} /></button>
             <h3>{buildingName(t, selected.slug, selected.name)}</h3>
             <div className="cityroof-business-bonuses">
-              <div><strong>{t('cityroof.captureBonus')}</strong><span>+{formatCompact(selected.reward)} $</span></div>
-              <div><strong>{t('cityroof.holdBonus')}</strong><span>+{formatCompact(selected.dailyIncome || 0)} $/{t('cityroof.day')}</span></div>
+              <div><strong>{t('cityroof.captureBonus')}<Tooltip text={t('cityroof.captureBonusHelp')} /></strong><span>+{formatCompact(selected.reward)} $</span></div>
+              <div><strong>{t('cityroof.holdBonus')}<Tooltip text={t('cityroof.holdBonusHelp')} /></strong><span>+{formatCompact(selected.dailyIncome || 0)} $/{t('cityroof.day')}</span></div>
               {selected.effect && <div><strong>{t(`cityroof.effects.${selected.effect}`, selected.effect)}</strong><span>+{Math.round((selected.effectMultiplier || 0) * 100)}%</span></div>}
               {selected.ownerId && <div><strong>{t('cityroof.ownerLabel')}</strong><span>{selected.ownerName || t('cityroof.yours')}</span></div>}
             </div>
@@ -468,8 +469,6 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                       <button
                         key={lvl}
                         className={`protect-lvl ${selected.protectionLevel === lvl ? 'active' : ''}`}
-                        title={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
-                        aria-label={t('cityroof.protectionLevelHelp', { level: lvl, cost: (map?.protectionCosts?.[lvl] ?? lvl * 1000).toLocaleString('ru-RU') })}
                         disabled={busy}
                         onClick={() => setConfirm({
                           title: t('cityroof.protection'),
@@ -507,9 +506,9 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                   {guess.map((s, i) => (
                     <Tooltip key={i} text={t('cityroof.pegHelp', { position: i + 1 })}>
                       <button className="peg" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }}
-                        onClick={() => cyclePeg(i)} disabled={busy}
-                        title={t('cityroof.pegHelp', { position: i + 1 })}
-                        aria-label={t('cityroof.pegHelp', { position: i + 1 })} />
+                        onClick={() => cyclePeg(i)} disabled={busy} aria-label={t('cityroof.pegHelp', { position: i + 1 })}>
+                        {s + 1}
+                      </button>
                     </Tooltip>
                   ))}
                 </div>
@@ -522,7 +521,11 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                     {attempts.map((a, idx) => (
                       <div key={idx} className="attempt-row">
                         <div className="attempt-pegs">
-                          {a.guess.map((s, i) => <span key={i} className="peg-mini" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }} />)}
+                          {a.guess.map((s, i) => (
+                            <span key={i} className={`peg-mini ${a.feedback?.[i] || ''}`} title={`${s + 1}: ${a.feedback?.[i] || 'absent'}`}>
+                              {s + 1}
+                            </span>
+                          ))}
                         </div>
                         <span className="attempt-fb">
                           <b className="exact">{a.exact}</b> {t('cityroof.exact')} · <b className="present">{a.present}</b> {t('cityroof.present')}
@@ -540,7 +543,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
       {buyModal && (
         <div className="modal-overlay" onClick={() => !busy && setBuyModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setBuyModal(false)}><X size={18} /></button>
+            <button className="crypto-modal-close" onClick={() => setBuyModal(false)}><X size={18} /></button>
             <h3>{t('cityroof.buyWc')}</h3>
             <p className="modal-price">{formatCompact(wc.price)} $ / WC · {t('bank.currentBalance')}: ${formatCompact(balance)}</p>
             <div className="modal-quantity">

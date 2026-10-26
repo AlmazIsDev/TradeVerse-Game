@@ -11,6 +11,7 @@ import { formatMoney, formatCompact } from './TransactionsPanel'
 import { hwName } from '../utils/hwName'
 import ConfirmDialog from './ConfirmDialog'
 import MiningBulkView from './MiningBulkView'
+import Tooltip from './Tooltip'
 import {
   Play, Square, Trash2, Wrench, Zap, Thermometer, Gauge, Activity,
   Plus, X, AlertTriangle, Check, Bot, TrendingUp, HardDrive, Server, Cpu,
@@ -39,13 +40,13 @@ function partSpec(cat, s = {}, t) {
 }
 
 // Ползунок разгона.
-function OverclockSlider({ value, disabled, label, onCommit }) {
+function OverclockSlider({ value, disabled, label, help, onCommit }) {
   const [local, setLocal] = useState(value)
   useEffect(() => { setLocal(value) }, [value])
   const commit = () => { if (local !== value) onCommit(local) }
   return (
     <label className="mpc-field">
-      <span>{label}: {local}x</span>
+      <span>{label}: {local}x<>{help && <Tooltip text={help} />}</></span>
       <input
         type="range" min="0.8" max="1.5" step="0.05" value={local} disabled={disabled}
         onChange={e => setLocal(Number(e.target.value))}
@@ -646,9 +647,9 @@ function MiningTab({ balance = 0, onBalanceChange }) {
         {assembled ? (
           <>
           <div className="mining-stat-cards">
-            <div className="msc"><Activity size={16} /><span>{t('mining.hashrate')}</span><b>{formatCompact(s.hashrate)} H/s</b></div>
-            <div className="msc"><Zap size={16} /><span>{t('mining.power')}</span><b>{formatCompact(s.power)} W</b></div>
-            <div className="msc"><Thermometer size={16} /><span>{t('mining.temp')}</span><b className={tempClass(s.temperature)}>{s.temperature ?? '—'}°C</b></div>
+            <div className="msc"><Activity size={16} /><span>{t('mining.hashrate')}<Tooltip text={t('mining.hashrateHelp')} /></span><b>{formatCompact(s.hashrate)} H/s</b></div>
+            <div className="msc"><Zap size={16} /><span>{t('mining.power')}<Tooltip text={t('mining.powerHelp')} /></span><b>{formatCompact(s.power)} W</b></div>
+            <div className="msc"><Thermometer size={16} /><span>{t('mining.temp')}<Tooltip text={t('mining.tempHelp')} /></span><b className={tempClass(s.temperature)}>{s.temperature ?? '—'}°C</b></div>
             <div className="msc"><Gauge size={16} /><span>{t('mining.condition')}</span><b>{farm.condition}%</b></div>
             <div className="msc"><TrendingUp size={16} /><span>{t('mining.incomeHr')}</span><b className="up">${formatMoney(s.revenuePerHour)}</b></div>
             <div className="msc"><Zap size={16} /><span>{t('mining.elecHr')}</span><b className="down">${formatMoney(s.electricityPerHour)}</b></div>
@@ -688,7 +689,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
         {/* Настройки добычи */}
         <div className="mining-panel-controls">
           <label className="mpc-field">
-            <span>{t('mining.selectCoin')}</span>
+            <span>{t('mining.selectCoin')}<Tooltip text={t('mining.selectCoinHelp')} /></span>
             <select value={farm.coin || ''} onChange={e => run(() => setFarmCoin(farm.id, e.target.value))}>
               <option value="">{t('mining.selectCoin')}</option>
               {market.coins.map(c => <option key={c.symbol} value={c.symbol}>{c.symbol} · ${formatMoney(c.price)}</option>)}
@@ -699,6 +700,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
             value={farm.overclock}
             disabled={busy}
             label={t('mining.overclock')}
+            help={t('mining.overclockHelp')}
             onCommit={(v) => run(() => setOverclock(farm.id, v))}
           />
           {farm.condition < 100 && (
@@ -724,7 +726,7 @@ function MiningTab({ balance = 0, onBalanceChange }) {
                   ['autoCoin', 'mining.autoCoin', 'mining.autoCoinHint'],
                   ['autoRestart', 'mining.autoRestart', 'mining.autoRestartHint'],
                 ].map(([key, lk, hk]) => (
-                  <label key={key} className="mmc-toggle" title={t(hk)}>
+                  <label key={key} className="mmc-toggle"><Tooltip text={t(hk)} />
                     <input
                       type="checkbox" disabled={busy}
                       checked={farm.manager.settings?.[key] ?? true}

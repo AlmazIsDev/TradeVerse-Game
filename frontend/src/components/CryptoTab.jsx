@@ -14,6 +14,7 @@ import {
 import AssetDetail from './AssetDetail'
 import { toast } from './Toast'
 import ConfirmDialog from './ConfirmDialog'
+import Tooltip from './Tooltip'
 
 // Простой прогноз по существующим рыночным данным.
 function forecast(coin) {
@@ -350,10 +351,10 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
                     <div className="cf-head">{coinLogo(c)}<span>{c.symbol}</span></div>
                     <div className="cf-row"><span>{t('crypto.trend')}</span><b className={f.up ? 'up' : 'down'}>{f.up ? t('crypto.trendUp') : t('crypto.trendDown')}</b></div>
                     <div className="cf-row"><span>{t('crypto.change24')}</span><b className={f.up ? 'up' : 'down'}>{f.change >= 0 ? '+' : ''}{f.change.toFixed(2)}%</b></div>
-                    <div className="cf-row"><span>{t('crypto.volatility')}</span><b>{f.vol}%</b></div>
+                    <div className="cf-row"><span>{t('crypto.volatility')}<Tooltip text={t('asset.volatilityHelp')} /></span><b>{f.vol}%</b></div>
                     <div className="cf-prob">
                       <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${f.probUp}%` }} /></div>
-                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}</span>
+                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}<Tooltip text={t('asset.probUpHelp')} /></span>
                     </div>
                   </div>
                 )

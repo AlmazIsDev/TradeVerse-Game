@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchStocksV2, tradeStock, fetchPortfolio, payDividend, fetchFavorites } from '../services/api'
 import TransactionsPanel, { formatMoney, formatQty, formatCompact } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
+import Tooltip from './Tooltip'
 import { parseQty } from '../utils/qty'
 import AssetDetail from './AssetDetail'
 import { toast } from './Toast'
@@ -297,10 +298,10 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
                     <div className="cf-head">{badge(s)}<span>{s.symbol}</span></div>
                     <div className="cf-row"><span>{t('crypto.trend')}</span><b className={f.up ? 'up' : 'down'}>{f.up ? t('crypto.trendUp') : t('crypto.trendDown')}</b></div>
                     <div className="cf-row"><span>{t('crypto.change24')}</span><b className={f.up ? 'up' : 'down'}>{f.change >= 0 ? '+' : ''}{f.change.toFixed(2)}%</b></div>
-                    <div className="cf-row"><span>{t('crypto.volatility')}</span><b>{f.vol}%</b></div>
+                    <div className="cf-row"><span>{t('crypto.volatility')}<Tooltip text={t('asset.volatilityHelp')} /></span><b>{f.vol}%</b></div>
                     <div className="cf-prob">
                       <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${f.probUp}%` }} /></div>
-                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}</span>
+                      <span className="cf-prob-label"><b className="up">{f.probUp}%</b> {t('crypto.probUp')}<Tooltip text={t('asset.probUpHelp')} /></span>
                     </div>
                   </div>
                 )
@@ -376,7 +377,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
             <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setDividend(null)}><X size={18} /></button>
             <h3>{t('stocks.payDividend')}: {dividend.symbol}</h3>
             <div className="modal-quantity">
-              <label>{t('stocks.perShare')}:</label>
+              <label>{t('stocks.perShare')}:<Tooltip text={t('stocks.perShareHelp')} /></label>
               <input type="number" min="0" step="0.01" value={perShare} autoFocus
                 onChange={e => setPerShare(e.target.value)} />
             </div>

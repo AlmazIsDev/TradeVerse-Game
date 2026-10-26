@@ -20,7 +20,7 @@ from networth import compute_net_worth
 router = APIRouter(prefix="/api/cityroof", tags=["cityroof"])
 
 ATTACK_COST_WC = 10
-MAX_ATTEMPTS = 8
+MAX_ATTEMPTS = 3
 PROTECTION_MAX = 5
 WINNER_REWARD_WC = 500
 
@@ -392,13 +392,28 @@ def _business_ready(last_collected) -> bool:
 
 
 def _make_secret(level: int) -> dict:
-    length = 3 + level
-    symbol_range = 4 + level
+    length = 3 + (level + 1) // 2
+    symbol_range = 4 + level // 2
     return {
         "secret": [random.randint(0, symbol_range - 1) for _ in range(length)],
         "symbol_range": symbol_range,
         "length": length,
     }
+
+
+def _guess_feedback(secret: list[int], guess: list[int]) -> list[str]:
+    feedback = ["absent"] * len(secret)
+    remaining = {}
+    for i, value in enumerate(secret):
+        if guess[i] == value:
+            feedback[i] = "exact"
+        else:
+            remaining[value] = remaining.get(value, 0) + 1
+    for i, value in enumerate(guess):
+        if feedback[i] == "absent" and remaining.get(value, 0):
+            feedback[i] = "present"
+            remaining[value] -= 1
+    return feedback
 
 
 async def ensure_seeded(db: AsyncIOMotorDatabase):
@@ -1210,11 +1225,9 @@ async def submit_guess(
     if len(guess) != len(secret):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неверная длина комбинации")
 
-    exact = sum(1 for i in range(len(secret)) if guess[i] == secret[i])
-    # present: совпадения по мультимножеству минус точные
-    from collections import Counter
-    common = sum((Counter(secret) & Counter(guess)).values())
-    present = common - exact
+    feedback = _guess_feedback(secret, guess)
+    exact = feedback.count("exact")
+    present = feedback.count("present")
 
     attempts = session.get("attempts", 0) + 1
     solved = exact == len(secret)
@@ -1253,7 +1266,7 @@ async def submit_guess(
         updated_doc = await db.cityroof_businesses.find_one({"_id": business["_id"]})
         from ws import broadcast
         await broadcast({"type": "cityroof_captured", "business": _serialize_business(updated_doc, "")})
-        return {"solved": True, "exact": exact, "present": present, "attempts": attempts,
+        return {"solved": True, "exact": exact, "present": present, "feedback": feedback, "attempts": attempts,
                 "capturedIncome": captured_income,
                 "business": _serialize_business(updated_doc, user_id)}
 
@@ -1269,6 +1282,7 @@ async def submit_guess(
         "exhausted": exhausted,
         "exact": exact,
         "present": present,
+        "feedback": feedback,
         "attempts": attempts,
         "maxAttempts": session.get("maxAttempts", MAX_ATTEMPTS),
     }

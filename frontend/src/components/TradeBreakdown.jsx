@@ -4,6 +4,7 @@ import { quoteStock, quoteCrypto } from '../services/api'
 import { formatMoney, formatQty } from './TransactionsPanel'
 import { AlertTriangle } from 'lucide-react'
 import { parseQty, quantizeQty } from '../utils/qty'
+import Tooltip from './Tooltip'
 
 const FRACTIONS = [0.25, 0.5, 0.75, 1]
 
@@ -65,7 +66,7 @@ function TradeBreakdown({
     <>
       <div className="tm-field">
         <div className="tm-field-head">
-          <label htmlFor="tm-qty">{t('common.quantity')}</label>
+          <label htmlFor="tm-qty">{t('common.quantity')}<Tooltip text={t('trade.quantityHelp')} /></label>
           {tradeMax > 0 && (
             <span className="tm-avail">
               {isBuy ? t('trade.affordable') : t('trade.available')}: <b>{formatQty(tradeMax)}</b>
@@ -97,7 +98,7 @@ function TradeBreakdown({
         </div>
         {priced && Math.abs(impact) > 0.004 && (
           <div className="tb-row">
-            <span>{t('trade.priceImpact')}</span>
+            <span>{t('trade.priceImpact')}<Tooltip text={t('trade.priceImpactHelp')} /></span>
             <b className={isBuy ? 'down' : 'up'}>
               {isBuy ? '+' : '−'}${formatMoney(Math.abs(impact))}
             </b>
@@ -108,7 +109,7 @@ function TradeBreakdown({
           <b>{money(quote?.cost)}</b>
         </div>
         <div className="tb-row">
-          <span>{t('trade.feeLabel')}{priced ? ` (${(quote.feeRate * 100).toFixed(1)}%)` : ''}</span>
+          <span>{t('trade.feeLabel')}{priced ? ` (${(quote.feeRate * 100).toFixed(1)}%)` : ''}<Tooltip text={t('trade.feeHelp')} /></span>
           <b>{priced ? `${isBuy ? '+' : '−'}$${formatMoney(quote.fee)}` : '—'}</b>
         </div>
         <div className="tb-row tb-total">

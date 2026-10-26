@@ -7,6 +7,7 @@ import {
   ShoppingCart, Wallet, Coins, Package, Receipt,
 } from 'lucide-react'
 import { formatMoney } from './TransactionsPanel'
+import Tooltip from './Tooltip'
 
 function ShopBuyModal({
   open,
@@ -80,7 +81,7 @@ function ShopBuyModal({
 
         <div className="market-buy-modal-qty">
           <div className="market-buy-modal-qty-label">
-            {t('buyModal.quantity', 'Количество')}
+            {t('buyModal.quantity', 'Количество')}<Tooltip text={t('buyModal.quantityHelp')} />
           </div>
           <div className="market-buy-modal-stepper">
             <button

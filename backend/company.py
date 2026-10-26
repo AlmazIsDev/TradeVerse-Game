@@ -1418,6 +1418,7 @@ async def company_issue_crypto(
         "market_price": price,
         "demand": 1.0,
         "change24h": 0.0,
+        "volatilityHour": 0.06,
         "volatility": 0.06,
         "color": "#863bff",
         "supply": payload.supply,

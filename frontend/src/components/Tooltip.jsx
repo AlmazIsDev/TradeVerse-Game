@@ -10,7 +10,7 @@ function Tooltip({ text, children }) {
       onMouseLeave={() => setShow(false)}
       onFocus={() => setShow(true)}
       onBlur={() => setShow(false)}
-      tabIndex={0}
+      tabIndex={children ? undefined : 0}
       aria-label={text}
     >
       {children || <HelpCircle size={14} className="tooltip-icon" aria-hidden="true" />}

@@ -1,139 +1,88 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Check, LockKeyhole, RotateCcw, ShieldAlert, Sparkles } from 'lucide-react'
-
-const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#6366f1']
-const ICONS = ['◆', '●', '▲', '■', '✦', '⬟']
+import { useState } from 'react'
+import { Check, Coins, LockKeyhole, RotateCcw, ShieldAlert, Sparkles, Trophy, Zap } from 'lucide-react'
 
 function Panel({ title, description, children }) {
-  return (
-    <section className="puzzle-lab-card">
-      <div className="puzzle-lab-card-head">
-        <div>
-          <h2>{title}</h2>
-          <p>{description}</p>
-        </div>
-      </div>
-      {children}
-    </section>
-  )
+  return <section className="puzzle-lab-card"><h2>{title}</h2><p>{description}</p>{children}</section>
 }
 
-function MastermindDemo() {
-  const secret = [2, 4, 1, 5]
-  const [guess, setGuess] = useState([0, 0, 0, 0])
-  const [message, setMessage] = useState('')
-  const submit = () => {
-    const exact = guess.filter((value, index) => value === secret[index]).length
-    setMessage(exact === secret.length ? 'Взломано' : `Совпадений по позиции: ${exact}`)
-  }
-  return (
-    <>
-      <div className="puzzle-lab-pegs">
-        {guess.map((value, index) => <button key={index} className="puzzle-lab-peg" style={{ background: COLORS[value] }} onClick={() => setGuess(g => g.map((v, i) => i === index ? (v + 1) % COLORS.length : v))} />)}
-      </div>
-      <button className="puzzle-lab-button" onClick={submit}>Проверить код</button>
-      <DemoResult text={message} />
-    </>
-  )
+function Result({ text, success = false }) {
+  return text ? <div className={`puzzle-lab-result ${success ? 'success' : 'warning'}`}><Check size={15} /> {text}</div> : null
 }
 
-function NetworkDemo() {
-  const base = useMemo(() => ['┌', '┐', '└', '┘', '─', '│', '┌', '┘', '└', '─', '│', '┐', '└', '─', '┌', '┘'], [])
-  const [turns, setTurns] = useState(Array(16).fill(0))
-  const [message, setMessage] = useState('')
-  const reset = () => { setTurns(Array(16).fill(0)); setMessage('') }
-  const rotate = index => setTurns(values => values.map((value, i) => i === index ? (value + 1) % 4 : value))
-  return (
-    <>
-      <div className="network-board">
-        {base.map((tile, index) => <button key={index} className="network-tile" onClick={() => rotate(index)} style={{ transform: `rotate(${turns[index] * 90}deg)` }}>{tile}</button>)}
-      </div>
-      <div className="puzzle-lab-actions">
-        <button className="puzzle-lab-button" onClick={() => setMessage('Маршрут подключён')}>Подключить маршрут <ArrowRight size={15} /></button>
-        <button className="puzzle-lab-icon-button" onClick={reset} aria-label="Сбросить"><RotateCcw size={16} /></button>
-      </div>
-      <DemoResult text={message} />
-    </>
-  )
-}
-
-function MemoryDemo() {
-  const [sequence, setSequence] = useState([1, 4, 2])
-  const [shown, setShown] = useState(true)
-  const [input, setInput] = useState([])
-  const [message, setMessage] = useState('Запомните последовательность')
-  useEffect(() => {
-    const timer = setTimeout(() => { setShown(false); setMessage('Повторите её') }, 1400)
-    return () => clearTimeout(timer)
-  }, [sequence])
-  const click = index => {
-    if (shown) return
-    const next = [...input, index]
-    setInput(next)
-    if (next.length === sequence.length) {
-      setMessage(next.every((value, i) => value === sequence[i]) ? 'Взломано' : 'Ошибка — попробуйте ещё раз')
+function RiskLadder() {
+  const [step, setStep] = useState(0)
+  const [message, setMessage] = useState('Каждый шаг — новый бросок удачи')
+  const [stopped, setStopped] = useState(false)
+  const risk = [72, 62, 52, 42, 32]
+  const tryNext = () => {
+    if (step >= 5 || stopped) return
+    if (Math.random() * 100 < risk[step]) {
+      const next = step + 1
+      setStep(next)
+      setMessage(next === 5 ? 'Щит полностью отключён' : `Прорыв успешен · следующий шанс ${risk[next]}%`)
+    } else {
+      setStopped(true)
+      setMessage(`Тревога на уровне ${step + 1} · попытка закончена`)
     }
   }
-  const restart = () => {
-    setSequence(Array.from({ length: 3 }, () => Math.floor(Math.random() * 6)))
-    setInput([])
-    setShown(true)
-    setMessage('Запомните последовательность')
-  }
-  return (
-    <>
-      <div className="memory-status">{message}</div>
-      <div className="memory-grid">
-        {ICONS.map((icon, index) => <button key={index} className={`memory-cell ${shown && sequence.includes(index) ? 'lit' : ''}`} onClick={() => click(index)}>{icon}</button>)}
-      </div>
-      <button className="puzzle-lab-button" onClick={restart}>Новая последовательность</button>
-    </>
-  )
+  const reset = () => { setStep(0); setStopped(false); setMessage('Каждый шаг — новый бросок удачи') }
+  return <>
+    <div className="risk-ladder">{risk.map((chance, index) => <div key={chance} className={`risk-step ${index < step ? 'passed' : ''} ${index === step && !stopped ? 'current' : ''}`}><span>{index < step ? '✓' : index + 1}</span><small>{chance}%</small></div>)}</div>
+    <div className="puzzle-lab-actions"><button className="puzzle-lab-button" onClick={tryNext} disabled={stopped || step === 5}><Zap size={15} /> {step === 5 ? 'Захвачено' : 'Рискнуть ещё'}</button><button className="puzzle-lab-icon-button" onClick={reset} aria-label="Сбросить"><RotateCcw size={16} /></button></div>
+    <Result text={message} success={step === 5} />
+  </>
 }
 
-function SafePathDemo() {
-  const path = [0, 1, 5, 9, 10, 14, 15]
-  const [current, setCurrent] = useState(0)
-  const [message, setMessage] = useState('Начните со светлой клетки')
-  const move = index => {
-    if (index !== path[current + 1]) {
-      setMessage('Сработала ловушка — вернитесь на старт')
-      setCurrent(0)
-      return
-    }
-    const next = current + 1
-    setCurrent(next)
-    setMessage(next === path.length - 1 ? 'Щит отключён' : 'Путь найден, продолжайте')
+function Doors() {
+  const [round, setRound] = useState(0)
+  const [message, setMessage] = useState('Выберите одну дверь')
+  const [picked, setPicked] = useState(null)
+  const choose = door => {
+    if (picked !== null) return
+    const lucky = Math.floor(Math.random() * 3)
+    setPicked(door)
+    setMessage(door === lucky ? 'Доступ найден — повезло' : 'Ложный след — дверь закрылась')
   }
-  return (
-    <>
-      <div className="path-grid">
-        {Array.from({ length: 16 }, (_, index) => <button key={index} className={`path-cell ${index === path[current] ? 'current' : ''} ${index === 0 ? 'start' : ''}`} onClick={() => move(index)}>{index === 0 ? 'ВХОД' : index === 15 ? 'ВЫХОД' : ''}</button>)}
-      </div>
-      <DemoResult text={message} />
-    </>
-  )
+  const reset = () => { setRound(round + 1); setPicked(null); setMessage('Выберите одну дверь') }
+  return <>
+    <div className="doors-row">{['A', 'B', 'C'].map((door, index) => <button key={door} className={`door ${picked === index ? 'picked' : ''}`} onClick={() => choose(index)} disabled={picked !== null}><span>▣</span><b>{door}</b></button>)}</div>
+    <button className="puzzle-lab-button" onClick={reset}><RotateCcw size={15} /> Новая попытка</button><Result text={`${message} · раунд ${round + 1}`} success={picked !== null && message.includes('найден')} />
+  </>
 }
 
-function DemoResult({ text }) {
-  return text ? <div className="puzzle-lab-result"><Check size={15} /> {text}</div> : null
+function AlarmWheel() {
+  const [result, setResult] = useState(null)
+  const spin = () => setResult(Math.random() < 0.62 ? 'Успех — сигнал погашен' : 'Тревога — защита сработала')
+  return <>
+    <div className="alarm-wheel"><div className="alarm-wheel-pointer" /><div className="alarm-wheel-face"><span>УСПЕХ</span><span>ТРЕВОГА</span><span>УСПЕХ</span><span>ТРЕВОГА</span><span>БОНУС</span><span>УСПЕХ</span></div></div>
+    <button className="puzzle-lab-button" onClick={spin}><Zap size={15} /> Остановить сигнал</button><Result text={result || 'Колесо готово · шанс успеха 62%'} success={result?.startsWith('Успех')} />
+  </>
+}
+
+function HackSlots() {
+  const symbols = ['◆', '✦', '▣', '⬟', '●']
+  const [slots, setSlots] = useState(['?', '?', '?'])
+  const [message, setMessage] = useState('Три барабана — один шанс')
+  const spin = () => {
+    const next = Array.from({ length: 3 }, () => symbols[Math.floor(Math.random() * symbols.length)])
+    setSlots(next)
+    setMessage(next.every(value => value === next[0]) ? 'Тройное совпадение — критический взлом' : next[0] === next[1] || next[1] === next[2] ? 'Частичный доступ — попробуйте ещё' : 'Система отклонила сигнал')
+  }
+  return <>
+    <div className="hack-slots">{slots.map((slot, index) => <div className="hack-slot" key={index}>{slot}</div>)}</div>
+    <button className="puzzle-lab-button" onClick={spin}><Coins size={15} /> Запустить барабаны</button><Result text={message} success={message.includes('критический')} />
+  </>
 }
 
 export default function CityRoofPuzzleLab() {
-  return (
-    <main className="puzzle-lab">
-      <header className="puzzle-lab-header">
-        <div className="puzzle-lab-kicker"><Sparkles size={16} /> CITY ROOF / ПРОТОТИПЫ</div>
-        <h1>Как взламывать защиту зданий?</h1>
-        <p>Четыре варианта мини-игры на одной странице. Все работают локально и не списывают WarCoin.</p>
-      </header>
-      <div className="puzzle-lab-grid">
-        <Panel title="1. Цветовой код" description="Текущая механика Mastermind — для сравнения."><MastermindDemo /></Panel>
-        <Panel title="2. Взлом сети" description="Поверните узлы и соберите маршрут от входа к выходу."><NetworkDemo /></Panel>
-        <Panel title="3. Сигнальная память" description="Запомните последовательность и повторите её после вспышки."><MemoryDemo /></Panel>
-        <Panel title="4. Безопасный маршрут" description="Выберите клетки и пройдите через защитную сетку."><SafePathDemo /></Panel>
-      </div>
-      <footer className="puzzle-lab-footer"><LockKeyhole size={16} /> Тестовая страница · <ShieldAlert size={16} /> данные игры не изменяются</footer>
-    </main>
-  )
+  return <main className="puzzle-lab puzzle-lab-dark">
+    <header className="puzzle-lab-header"><div className="puzzle-lab-kicker"><Sparkles size={16} /> CITY ROOF / LUCK LAB</div><h1>Четыре способа рискнуть</h1><p>Это не логические задачи — только короткие азартные решения. Нажми, испытай удачу и сравни ощущения. WarCoin не списываются.</p></header>
+    <div className="puzzle-lab-grid">
+      <Panel title="1. Риск-лестница" description="Можно остановиться или идти дальше за полным захватом."><RiskLadder /></Panel>
+      <Panel title="2. Три двери" description="За одной дверью доступ, две ведут в ложный след."><Doors /></Panel>
+      <Panel title="3. Рулетка тревоги" description="Остановите вращение в безопасной зоне."><AlarmWheel /></Panel>
+      <Panel title="4. Слоты взлома" description="Три барабана, редкое совпадение и шанс на бонус."><HackSlots /></Panel>
+    </div>
+    <footer className="puzzle-lab-footer"><LockKeyhole size={16} /> Тестовая страница · <ShieldAlert size={16} /> игровой баланс не изменяется <Trophy size={16} /></footer>
+  </main>
 }

@@ -17,9 +17,10 @@ import UserPropertyModal from './UserPropertyModal'
 import PriceHistoryEditor from './PriceHistoryEditor'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
-  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, HelpCircle, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
+  Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
   Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, LogIn, Gavel, Megaphone,
 } from 'lucide-react'
+import Tooltip from './Tooltip'
 import PriceEditorTab from './PriceEditorTab'
 import { toast } from './Toast'
 import { convertVolatility } from '../utils/volatility'
@@ -33,20 +34,6 @@ const VOLATILITY_FIELDS = [
 
 function formatVolatility(value) {
   return Number.isFinite(value) ? value.toFixed(2) : ''
-}
-
-function Tooltip({ text }) {
-  const [show, setShow] = useState(false)
-  return (
-    <span
-      className="tooltip-wrapper"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      <HelpCircle size={14} className="tooltip-icon" />
-      {show && <span className="tooltip-text">{text}</span>}
-    </span>
-  )
 }
 
 const AUDIT_ACTION_KEYS = {
@@ -945,7 +932,7 @@ function AdminPanel({ user, onClose }) {
     if (coinForm.name) payload.name = coinForm.name
     if (coinForm.price !== '') payload.price = parseFloat(coinForm.price)
     if (coinForm.marketCap !== '') payload.marketCap = parseFloat(coinForm.marketCap)
-    if (coinForm.volatility !== '') payload.volatility = parseFloat(coinForm.volatility)
+    if (coinForm.volatility !== '') payload.volatilityHour = parseFloat(coinForm.volatility)
     if (coinForm.color) payload.color = coinForm.color
     if (coinForm.description !== '') payload.description = coinForm.description
     try {
@@ -968,7 +955,7 @@ function AdminPanel({ user, onClose }) {
         symbol: newCoin.symbol.toUpperCase(),
         name: newCoin.name,
         price: parseFloat(newCoin.price),
-        volatility: parseFloat(newCoin.volatility) || 0.05,
+        volatilityHour: parseFloat(newCoin.volatility) || 0.05,
         color: newCoin.color || '#6366f1',
         supply: newCoin.supply !== '' ? parseFloat(newCoin.supply) : undefined,
         description: newCoin.description,
@@ -1376,10 +1363,13 @@ function AdminPanel({ user, onClose }) {
                 </div>
                 {SYNTH_FIELDS[market].map(key => (
                   <div key={key} className="config-field">
-                    <label title={key === 'probability' ? t('admin.synthetic.probabilityHelp')
-                      : ['buyBiasMin', 'buyBiasMax'].includes(key) ? t('admin.synthetic.biasHelp')
-                      : key === 'roundsPerTick' ? t('admin.synthetic.roundsHelp') : undefined}>
+                    <label>
                       {t(`admin.synthetic.${key}`)}
+                      {(key === 'probability' || ['buyBiasMin', 'buyBiasMax'].includes(key) || key === 'roundsPerTick') && (
+                        <Tooltip text={key === 'probability' ? t('admin.synthetic.probabilityHelp')
+                          : ['buyBiasMin', 'buyBiasMax'].includes(key) ? t('admin.synthetic.biasHelp')
+                          : t('admin.synthetic.roundsHelp')} />
+                      )}
                     </label>
                     <input type="number" step="any" min="0" value={synthForm[market][key] ?? ''}
                       onChange={e => setSynthForm({

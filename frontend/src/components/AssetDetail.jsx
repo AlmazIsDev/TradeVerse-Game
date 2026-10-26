@@ -10,6 +10,7 @@ import TradeBreakdown from './TradeBreakdown'
 import { parseQty } from '../utils/qty'
 import { computeAnalytics } from '../utils/assetAnalytics'
 import { toast } from './Toast'
+import Tooltip from './Tooltip'
 import {
   ArrowLeft, Star, TrendingUp, TrendingDown, CandlestickChart, LineChart,
   AlertTriangle, X, Activity, Gauge, Wallet, Gift, Sparkles, Flame, ShieldCheck,
@@ -209,12 +210,12 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             <div className="mkd-stat"><span>{t('asset.change7d')}</span><Change value={changes['7d']} /></div>
             <div className="mkd-stat"><span>{t('asset.change1m')}</span><Change value={changes['1m']} /></div>
             <div className="mkd-stat"><span>{t('asset.change1y')}</span><Change value={changes['1y']} /></div>
-            <div className="mkd-stat"><span>{t('asset.marketCap')}</span><b>${fmtNum(asset.marketCap, 2, t)}</b></div>
-            <div className="mkd-stat"><span>{t('asset.volume')}</span><b>${fmtNum(asset.volume24h, 2, t)}</b></div>
+            <div className="mkd-stat"><span>{t('asset.marketCap')}<Tooltip text={t('asset.marketCapHelp')} /></span><b>${fmtNum(asset.marketCap, 2, t)}</b></div>
+            <div className="mkd-stat"><span>{t('asset.volume')}<Tooltip text={t('asset.volumeHelp')} /></span><b>${fmtNum(asset.volume24h, 2, t)}</b></div>
             {market === 'stock' && <div className="mkd-stat"><span>{t('asset.shares')}</span><b>{fmtNum(asset.totalShares, 0, t)}</b></div>}
             {market === 'stock' && <div className="mkd-stat"><span>{t('common.freeShares')}</span><b>{fmtNum(asset.freeShares, 0, t)}</b></div>}
-            {market === 'crypto' && <div className="mkd-stat"><span>{t('asset.supply')}</span><b>{fmtNum(asset.supply, 0, t)}</b></div>}
-            {market === 'crypto' && <div className="mkd-stat"><span>{t('asset.ath')}</span><b>${formatMoney(asset.ath)}</b></div>}
+            {market === 'crypto' && <div className="mkd-stat"><span>{t('asset.supply')}<Tooltip text={t('asset.supplyHelp')} /></span><b>{fmtNum(asset.supply, 0, t)}</b></div>}
+            {market === 'crypto' && <div className="mkd-stat"><span>{t('asset.ath')}<Tooltip text={t('asset.athHelp')} /></span><b>${formatMoney(asset.ath)}</b></div>}
             {market === 'crypto' && <div className="mkd-stat"><span>{t('asset.atl')}</span><b>${formatMoney(asset.atl)}</b></div>}
             {held > 0 && <div className="mkd-stat"><span>{t('stocks.owned')}</span><b className="up">{formatQty(held)}</b></div>}
           </div>
@@ -269,7 +270,7 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
             </div>
             <div className="cf-prob">
               <div className="cf-prob-bar"><div className="cf-prob-fill" style={{ width: `${a.probUp}%` }} /></div>
-              <span className="cf-prob-label"><b className="up">{a.probUp}%</b> {t('asset.probUp')}</span>
+              <span className="cf-prob-label"><b className="up">{a.probUp}%</b> {t('asset.probUp')}<Tooltip text={t('asset.probUpHelp')} /></span>
             </div>
             <div className="mkd-why">
               <span className="mkd-why-title">{t('asset.recWhy')}</span>
@@ -280,12 +281,12 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
           </div>
 
           <div className="mkd-info-card">
-            <span className="mkd-info-title"><Activity size={15} /> {t('asset.forecast')}</span>
+            <span className="mkd-info-title"><Activity size={15} /> {t('asset.forecast')}<Tooltip text={t('asset.forecastHelp')} /></span>
             <div className="mkd-metric-row"><span>{t('asset.trend')}</span><b className={a.up ? 'up' : 'down'}>{a.up ? t('asset.trendUp') : t('asset.trendDown')}</b></div>
-            <div className="mkd-metric-row"><span>{t('asset.expectedReturn')}</span><b className={a.expectedReturn >= 0 ? 'up' : 'down'}>{a.expectedReturn >= 0 ? '+' : ''}{a.expectedReturn}%</b></div>
-            <div className="mkd-metric-row"><span>{t('asset.trendStrength')}</span><b>{a.trendStrength}%</b></div>
+            <div className="mkd-metric-row"><span>{t('asset.expectedReturn')}<Tooltip text={t('asset.expectedReturnHelp')} /></span><b className={a.expectedReturn >= 0 ? 'up' : 'down'}>{a.expectedReturn >= 0 ? '+' : ''}{a.expectedReturn}%</b></div>
+            <div className="mkd-metric-row"><span>{t('asset.trendStrength')}<Tooltip text={t('asset.trendStrengthHelp')} /></span><b>{a.trendStrength}%</b></div>
             <div className="mkd-meter"><div className={`mkd-meter-fill ${a.up ? 'up' : 'down'}`} style={{ width: `${a.trendStrength}%` }} /></div>
-            <div className="mkd-metric-row"><span>{t('asset.riskReward')}</span><b className={a.riskReward >= 0 ? 'up' : 'down'}>{a.riskReward >= 0 ? '+' : ''}{a.riskReward}</b></div>
+            <div className="mkd-metric-row"><span>{t('asset.riskReward')}<Tooltip text={t('asset.riskRewardHelp')} /></span><b className={a.riskReward >= 0 ? 'up' : 'down'}>{a.riskReward >= 0 ? '+' : ''}{a.riskReward}</b></div>
           </div>
 
           <div className="mkd-info-card">
@@ -355,14 +356,14 @@ function AssetDetail({ market, symbol, onBack, balance = 0, onBalanceChange, onT
           <div className="mkd-info-card">
             <span className="mkd-info-title"><Gauge size={15} /> {t('asset.risk')}</span>
             <div className="mkd-metric-row">
-              <span><ShieldCheck size={13} /> {t('asset.risk')}</span>
+              <span><ShieldCheck size={13} /> {t('asset.risk')}<Tooltip text={t('asset.riskHelp')} /></span>
               <span className={`mkd-risk-badge ${a.risk}`}>{riskLabel}</span>
             </div>
-            <div className="mkd-metric-row"><span><Flame size={13} /> {t('asset.volatility')}</span><b>{a.volatility}%</b></div>
+            <div className="mkd-metric-row"><span><Flame size={13} /> {t('asset.volatility')}<Tooltip text={t('asset.volatilityHelp')} /></span><b>{a.volatility}%</b></div>
             {liquidityLabel && (
               <>
                 <div className="mkd-metric-row">
-                  <span><Droplet size={13} /> {t('asset.liquidity')}</span>
+                  <span><Droplet size={13} /> {t('asset.liquidity')}<Tooltip text={t('asset.liquidityHelp')} /></span>
                   <span className={`mkd-risk-badge ${a.liquidity === 'high' ? 'low' : a.liquidity === 'medium' ? 'medium' : 'high'}`}>{liquidityLabel}</span>
                 </div>
                 <p className="mkd-info-hint">{t('asset.liquidityHint', { value: a.turnover })}</p>

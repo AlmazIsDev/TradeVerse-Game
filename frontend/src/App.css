@@ -3141,6 +3141,7 @@ body {
 }
 
 .tooltip-text {
+  text-transform: none;
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;

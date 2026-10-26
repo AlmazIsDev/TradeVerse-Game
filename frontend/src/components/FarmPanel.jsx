@@ -25,6 +25,7 @@ import {
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
+import Tooltip from './Tooltip'
 
 // Эмодзи культур (по cropId) — для сетки и склада.
 const CROP_EMOJI = {
@@ -369,7 +370,7 @@ function FarmPanel({ assetId, assetName, onBack, onOpenProduction, balance, onBa
               <section className="farm-block">
                 <h3><Sprout size={16} /> {t('farm.buyCells', 'Купить участок')}</h3>
                 <div className="farm-input-row">
-                  <label>{t('farm.blocks', 'Блоки')} ({cellsBuyStep} м²/блок):</label>
+                  <label>{t('farm.blocks', 'Блоки')} ({cellsBuyStep} м²/блок):<Tooltip text={t('farm.blocksHelp')} /></label>
                   <input type="number" min="1" max={cellsInfo.maxBlocks || 100} value={cellsBlocks}
                     onChange={e => setCellsBlocks(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
                 </div>
@@ -387,7 +388,7 @@ function FarmPanel({ assetId, assetName, onBack, onOpenProduction, balance, onBa
               <section className="farm-block">
                 <h3><Fuel size={16} /> {t('farm.buyFuel', 'Купить топливо')}</h3>
                 <div className="farm-input-row">
-                  <label>{t('farm.liters', 'Литры')}:</label>
+                  <label>{t('farm.liters', 'Литры')}:<Tooltip text={t('farm.litersHelp')} /></label>
                   <input type="number" min="1" max={100000} value={fuelLiters}
                     onChange={e => setFuelLiters(e.target.value)} />
                 </div>

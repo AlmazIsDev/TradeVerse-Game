@@ -5,6 +5,7 @@ import {
 } from '../services/api'
 import { formatCompact } from './TransactionsPanel'
 import { toast } from './Toast'
+import Tooltip from './Tooltip'
 import {
   DollarSign, Users, Home, Briefcase, Car, Building2, Coins, LineChart,
   Activity, Save, Check, AlertTriangle, Wallet, Zap, Square,
@@ -135,7 +136,7 @@ function EconomyAdmin({ canEditConfig = true }) {
           <div className="econ-config">
         {config && CONFIG_FIELDS.map(f => (
           <label key={f.key} className="econ-field">
-            <span>{t(`econ.${f.key}`)}</span>
+            <span>{t(`econ.${f.key}`)}<Tooltip text={t(`econ.${f.key}Help`)} /></span>
             <input
               type="number" step={f.step}
               value={config[f.key] ?? 0}

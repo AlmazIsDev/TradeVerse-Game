@@ -13,6 +13,7 @@ import {
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
+import Tooltip from './Tooltip'
 
 // Эмодзи ресурсов (res id из backend/resources.py).
 const RES_EMOJI = {
@@ -147,9 +148,9 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
 
       {unit && (
         <div className="source-kpi-grid">
-          <div className="source-kpi"><span>Производство</span><strong>{unit.outputPerHour || 0}<small>/ч</small></strong></div>
-          <div className="source-kpi"><span>Работники</span><strong>{unit.workers}/{unit.maxWorkers}</strong></div>
-          <div className="source-kpi"><span>Заполненность</span><strong>{Math.round((Object.values(unit.storage || {}).reduce((sum, qty) => sum + Number(qty || 0), 0) / Math.max(1, unit.storageCap || 1)) * 100)}<small>%</small></strong></div>
+          <div className="source-kpi"><span>{t('prod.output')}<Tooltip text={t('prod.outputHelp')} /></span><strong>{unit.outputPerHour || 0}<small>/ч</small></strong></div>
+          <div className="source-kpi"><span>{t('prod.workers')}<Tooltip text={t('prod.workersKpiHelp')} /></span><strong>{unit.workers}/{unit.maxWorkers}</strong></div>
+          <div className="source-kpi"><span>{t('prod.capacity')}<Tooltip text={t('prod.capacityHelp')} /></span><strong>{Math.round((Object.values(unit.storage || {}).reduce((sum, qty) => sum + Number(qty || 0), 0) / Math.max(1, unit.storageCap || 1)) * 100)}<small>%</small></strong></div>
         </div>
       )}
 

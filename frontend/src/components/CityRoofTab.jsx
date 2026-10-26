@@ -7,6 +7,7 @@ import {
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ItStudioOrderModal from './ItStudioOrderModal'
+import Tooltip from './Tooltip'
 import PlayerProfileModal from './PlayerProfileModal'
 import { toast } from './Toast'
 import {
@@ -363,7 +364,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <span className="cityroom-league">{t(`cityroof.leagues.${room.league}`, room.league)}</span>
               </div>
               <div className="cityroom-meta">
-                {room.roomMembers}/{room.roomCapacity} · {t('cityroof.incomeMultiplier')}: {room.incomeMultiplier}x
+                {room.roomMembers}/{room.roomCapacity} · {t('cityroof.incomeMultiplier')}<Tooltip text={t('cityroof.incomeMultiplierHelp')} />: {room.incomeMultiplier}x
               </div>
               <div className="cityroom-members">
                 {(room.members || []).map(member => (
@@ -444,8 +445,8 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             <button className="crypto-modal-close" onClick={closeModal}><X size={18} /></button>
             <h3>{buildingName(t, selected.slug, selected.name)}</h3>
             <div className="cityroof-business-bonuses">
-              <div><strong>{t('cityroof.captureBonus')}</strong><span>+{formatCompact(selected.reward)} $</span></div>
-              <div><strong>{t('cityroof.holdBonus')}</strong><span>+{formatCompact(selected.dailyIncome || 0)} $/{t('cityroof.day')}</span></div>
+              <div><strong>{t('cityroof.captureBonus')}<Tooltip text={t('cityroof.captureBonusHelp')} /></strong><span>+{formatCompact(selected.reward)} $</span></div>
+              <div><strong>{t('cityroof.holdBonus')}<Tooltip text={t('cityroof.holdBonusHelp')} /></strong><span>+{formatCompact(selected.dailyIncome || 0)} $/{t('cityroof.day')}</span></div>
               {selected.effect && <div><strong>{t(`cityroof.effects.${selected.effect}`, selected.effect)}</strong><span>+{Math.round((selected.effectMultiplier || 0) * 100)}%</span></div>}
               {selected.ownerId && <div><strong>{t('cityroof.ownerLabel')}</strong><span>{selected.ownerName || t('cityroof.yours')}</span></div>}
             </div>

@@ -4,6 +4,7 @@ import { X, ArrowUpCircle, ChevronLeft, ChevronRight, TrendingUp, Wallet, KeyRou
 import { fetchUpgradePreview } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
+import Tooltip from './Tooltip'
 
 /**
  * Модалка «Улучшения»: горизонтальный скроллер уровней. Все суммы (цена шага,
@@ -98,7 +99,7 @@ function UpgradeModal({ asset, balance = 0, busy = false, onClose, onConfirm }) 
                 </div>
               )}
               <div className="upgrade-row payback">
-                <span>{t('upgrade.payback')}</span>
+                <span>{t('upgrade.payback')}<Tooltip text={t('upgrade.paybackHelp')} /></span>
                 <b>{delta('profitPerHour') > 0
                   ? t('upgrade.paybackHours', { hours: Math.ceil(target.totalCost / delta('profitPerHour')) })
                   : '—'}</b>
@@ -106,7 +107,7 @@ function UpgradeModal({ asset, balance = 0, busy = false, onClose, onConfirm }) 
             </div>
 
             <p className="modal-total">
-              {t('upgrade.totalCost')}: <strong className={affordable ? '' : 'down'}>${formatMoney(target.totalCost)}</strong>
+              {t('upgrade.totalCost')}<Tooltip text={t('upgrade.totalCostHelp')} />: <strong className={affordable ? '' : 'down'}>${formatMoney(target.totalCost)}</strong>
               {' '}<span className="upgrade-balance">({t('upgrade.balance')}: ${formatMoney(balance)})</span>
             </p>
 

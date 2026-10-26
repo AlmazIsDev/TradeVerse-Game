@@ -275,7 +275,9 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
             <span className="crypto-card-label"><Wallet size={14} /> {t('crypto.wallet')}</span>
             <div className="crypto-wallet-row">
               <code className="crypto-wallet-addr">{account.wallet}</code>
-              <button className="crypto-copy-btn" onClick={handleCopy} title={t('common.confirm')}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>
+              <Tooltip text={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')}>
+                <button className="crypto-copy-btn" onClick={handleCopy} title={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')} aria-label={copied ? t('common.copied', 'Скопировано') : t('common.copy', 'Копировать адрес')}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>
+              </Tooltip>
             </div>
             <div className="crypto-wallet-stats">
               <div><span>{t('crypto.cashBalance')}</span><b>{formatMoney(balance)} $</b></div>
@@ -370,7 +372,7 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
       {trade && (
         <div className="crypto-modal-overlay" onClick={() => !busy && setTrade(null)}>
           <div className="crypto-modal trade-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setTrade(null)}><X size={18} /></button>
             <div className="tm-head">
               <div className={`tm-side ${trade.action}`}>{trade.action === 'buy' ? t('common.buy') : t('common.sell')}</div>
               <div className="tm-asset">

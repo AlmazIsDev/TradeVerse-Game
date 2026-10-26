@@ -303,7 +303,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                   placeholder={t('notifications.searchPlaceholder')}
                   aria-label={t('notifications.searchPlaceholder')}
                 />
-                {notifSearch && <button type="button" onClick={() => setNotifSearch('')}><X size={14} /></button>}
+                {notifSearch && <button type="button" title={t('common.clear', 'Очистить')} aria-label={t('common.clear', 'Очистить')} onClick={() => setNotifSearch('')}><X size={14} /></button>}
               </div>
               <div className="notification-tabs">
                 {tabs.map(([id, key]) => {

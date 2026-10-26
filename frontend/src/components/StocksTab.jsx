@@ -321,7 +321,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
       {trade && (
         <div className="modal-overlay" onClick={() => !busy && setTrade(null)}>
           <div className="modal-content trade-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setTrade(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setTrade(null)}><X size={18} /></button>
             <div className="tm-head">
               <div className={`tm-side ${trade.action}`}>{trade.action === 'buy' ? t('common.buy') : t('common.sell')}</div>
               <div className="tm-asset">
@@ -374,7 +374,7 @@ function StocksTab({ balance = 0, onBalanceChange, currentUserId }) {
       {dividend && (
         <div className="modal-overlay" onClick={() => !busy && setDividend(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setDividend(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setDividend(null)}><X size={18} /></button>
             <h3>{t('stocks.payDividend')}: {dividend.symbol}</h3>
             <div className="modal-quantity">
               <label>{t('stocks.perShare')}:<Tooltip text={t('stocks.perShareHelp')} /></label>

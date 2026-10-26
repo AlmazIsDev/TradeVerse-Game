@@ -33,7 +33,7 @@ function PlayerProfileModal({ userId, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content player-profile-modal" onClick={e => e.stopPropagation()}>
-        <button className="crypto-modal-close" onClick={onClose}><X size={18} /></button>
+        <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
 
         {loading ? (
           <div className="pp-loading">{t('common.loading', 'Загрузка…')}</div>

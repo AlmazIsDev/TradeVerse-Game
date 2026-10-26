@@ -50,7 +50,7 @@ function UpgradeModal({ asset, balance = 0, busy = false, onClose, onConfirm }) 
         }}
         tabIndex={-1}
       >
-        <button className="crypto-modal-close" onClick={onClose}><X size={18} /></button>
+        <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
         <h3><ArrowUpCircle size={17} /> {t('upgrade.title')}: {t(`assetNames.${asset.slug}`, asset.name)}</h3>
 
         {error && <p className="modal-price down">{error}</p>}

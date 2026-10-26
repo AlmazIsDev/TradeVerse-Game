@@ -141,7 +141,7 @@ function PriceHistoryEditor({ market, symbol, onClose }) {
       <div className="modal-content price-history-modal" onClick={e => e.stopPropagation()}>
         <div className="price-history-header">
           <h3>{t('admin.priceHistory.title')}: {symbol}</h3>
-          <button className="admin-btn" onClick={onClose}><X size={16} /></button>
+          <button className="admin-btn" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}><X size={16} /></button>
         </div>
 
         <div className="price-history-regenerate">

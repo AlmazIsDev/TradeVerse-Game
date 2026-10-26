@@ -23,7 +23,7 @@ function ConfirmDialog({
   return (
     <div className="modal-overlay tv-confirm-overlay" onClick={() => !busy && onCancel?.()}>
       <div className="modal-content tv-confirm" onClick={e => e.stopPropagation()}>
-        <button className="crypto-modal-close" onClick={() => onCancel?.()} disabled={busy}>
+        <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => onCancel?.()} disabled={busy}>
           <X size={18} />
         </button>
         <div className={`tv-confirm-icon ${danger ? 'danger' : ''}`}>

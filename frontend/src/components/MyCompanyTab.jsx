@@ -649,7 +649,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                         onClick={() => run(() => updateOwnerSalary(Number(editing.salary)), 'company.salaryUpdated', () => setEditing(null))}>
                         <Check size={14} />
                       </button>
-                      <button className="asset-act" onClick={() => setEditing(null)}><X size={14} /></button>
+                      <button className="asset-act" title={t('common.cancel')} aria-label={t('common.cancel')} onClick={() => setEditing(null)}><X size={14} /></button>
                     </div>
                   ) : (
                     <div className="company-emp-actions">
@@ -670,10 +670,12 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                       })}>
                       <Settings size={14} />
                     </button>
-                    <button className="asset-act sell" disabled={busy}
-                      onClick={() => run(() => fireMember(m.userId), 'company.fired')}>
-                      <Trash2 size={14} />
-                    </button>
+                    <Tooltip text={t('company.fireMember', 'Уволить сотрудника')}>
+                      <button className="asset-act sell" title={t('company.fireMember', 'Уволить сотрудника')} aria-label={t('company.fireMember', 'Уволить сотрудника')} disabled={busy}
+                        onClick={() => run(() => fireMember(m.userId), 'company.fired')}>
+                        <Trash2 size={14} />
+                      </button>
+                    </Tooltip>
                   </div>
                 )}
               </div>
@@ -690,7 +692,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       {moneyModal && (
         <div className="modal-overlay" onClick={() => !busy && setMoneyModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setMoneyModal(null)}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setMoneyModal(null)}><X size={18} /></button>
             <h3>{moneyModal === 'deposit' ? t('company.deposit') : t('company.withdraw')}</h3>
             <p className="modal-price">
               {moneyModal === 'deposit'
@@ -722,7 +724,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       {memberSettings && (
         <div className="modal-overlay" onClick={() => !busy && setMemberSettings(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setMemberSettings(null)} disabled={busy}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setMemberSettings(null)} disabled={busy}><X size={18} /></button>
             <h3><Settings size={18} /> {t('company.memberSettings')}</h3>
             <p className="modal-company">{memberSettings.username}</p>
             <div className="modal-quantity">
@@ -776,7 +778,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       {ipoModal && (
         <div className="modal-overlay" onClick={() => !busy && setIpoModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setIpoModal(null)} disabled={busy}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setIpoModal(null)} disabled={busy}><X size={18} /></button>
             <h3><TrendingUp size={18} /> {t('company.ipo.place')}</h3>
             <p className="modal-price">{t('company.ipo.priceNote')}</p>
             <label className="settings-label">{t('company.ipo.ticker')}</label>
@@ -802,7 +804,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       {dividendModal && (
         <div className="modal-overlay" onClick={() => !busy && setDividendModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setDividendModal(null)} disabled={busy}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setDividendModal(null)} disabled={busy}><X size={18} /></button>
             <h3><Coins size={18} /> {t('company.ipo.payDividend')}</h3>
             <p className="modal-price">{t('company.ipo.dividendNote')}</p>
             <div className="modal-quantity">
@@ -826,7 +828,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       {cryptoModal && (
         <div className="modal-overlay" onClick={() => !busy && setCryptoModal(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setCryptoModal(null)} disabled={busy}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setCryptoModal(null)} disabled={busy}><X size={18} /></button>
             <h3><Coins size={18} /> {t('company.crypto.issue')}</h3>
             <p className="modal-price">{t('company.crypto.priceNote')}</p>
             <label className="settings-label">{t('company.ipo.ticker')}</label>
@@ -856,7 +858,7 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
       {settingsModal && (
         <div className="modal-overlay" onClick={() => !busy && setSettingsModal(null)}>
           <div className="modal-content company-settings-modal" onClick={e => e.stopPropagation()}>
-            <button className="crypto-modal-close" onClick={() => setSettingsModal(null)} disabled={busy}><X size={18} /></button>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setSettingsModal(null)} disabled={busy}><X size={18} /></button>
             <h3><Settings size={18} /> {t('company.settings')}</h3>
 
             <label className="settings-label">{t('company.namePlaceholder')}</label>

@@ -45,7 +45,7 @@ function ItStudioOrderModal({ mode, map, initialBusinessId, studios = [], onSubm
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content itstudio-modal" onClick={e => e.stopPropagation()}>
-        <button className="crypto-modal-close" onClick={onClose}><X size={18} /></button>
+        <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
         <h3>
           {mode === 'attack' ? <Swords size={17} /> : <ShieldPlus size={17} />}
           {' '}{t(mode === 'attack' ? 'itstudio.orderAttack' : 'itstudio.orderDefense')}

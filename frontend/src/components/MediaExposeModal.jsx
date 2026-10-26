@@ -88,7 +88,7 @@ function MediaExposeModal({ onClose, onBalanceChange }) {
   return (
     <div className="modal-overlay" onClick={() => !busy && onClose?.()}>
       <div className="modal-content media-modal" onClick={e => e.stopPropagation()}>
-        <button className="crypto-modal-close" onClick={() => onClose?.()} disabled={busy}><X size={18} /></button>
+        <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => onClose?.()} disabled={busy}><X size={18} /></button>
         <h3><Newspaper size={18} /> {t('media.orderTitle')}</h3>
 
         {loading ? (

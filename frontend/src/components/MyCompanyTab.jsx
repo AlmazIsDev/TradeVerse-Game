@@ -670,8 +670,8 @@ function MyCompanyTab({ balance = 0, onBalanceChange }) {
                       })}>
                       <Settings size={14} />
                     </button>
-                    <Tooltip text={t('company.fireMember', 'Уволить сотрудника')}>
-                      <button className="asset-act sell" title={t('company.fireMember', 'Уволить сотрудника')} aria-label={t('company.fireMember', 'Уволить сотрудника')} disabled={busy}
+                    <Tooltip text={t('company.fireMember', 'Fire employee')}>
+                      <button className="asset-act sell" title={t('company.fireMember', 'Fire employee')} aria-label={t('company.fireMember', 'Fire employee')} disabled={busy}
                         onClick={() => run(() => fireMember(m.userId), 'company.fired')}>
                         <Trash2 size={14} />
                       </button>

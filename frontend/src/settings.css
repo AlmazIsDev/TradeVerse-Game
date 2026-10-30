@@ -1,4 +1,34 @@
-/* ===================== SETTINGS PAGE ===================== */
+  /* ===================== SETTINGS PAGE ===================== */
+.settings-country-select { position: relative; }
+.settings-country-trigger {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  background: var(--surface-2, transparent); color: inherit;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+}
+.settings-country-trigger .settings-lang-label { flex: 1; text-align: left; }
+.settings-country-chevron { transition: transform 0.15s; }
+.settings-country-chevron.open { transform: rotate(180deg); }
+.settings-country-panel {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0;
+  max-height: 480px; overflow-y: auto; padding: 6px; border-radius: 10px;
+  background: var(--surface-1, #1b1f2a);
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.settings-country-option {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  background: transparent; color: inherit; border: 0; text-align: left;
+}
+.settings-country-option:hover { background: rgba(127, 127, 127, 0.15); }
+.settings-country-option.active { background: rgba(127, 127, 127, 0.25); }
+.settings-country-option .settings-lang-check { margin-left: auto; }
+.settings-country-code { font-weight: 600; min-width: 28px; opacity: 0.8; }
+.settings-country-name { flex: 1; }
+.settings-country-flag { width: 24px; height: 16px; object-fit: cover; border-radius: 3px; flex-shrink: 0; }
+.lb-flag { width: 1.1em; height: 0.8em; object-fit: cover; border-radius: 2px; vertical-align: -0.05em; margin-right: 6px; }
+
 /* Полноценная страница настроек: Профиль, Безопасность, Аватар, Язык.
    Использует общие design-токены (index.css) и общие классы форм (App.css:
    .form-group/.submit-btn), чтобы выглядеть частью единого интерфейса. */
@@ -101,6 +131,50 @@
   align-items: center;
   gap: var(--spacing-lg);
   flex-wrap: wrap;
+}
+
+/* Значки статуса (StatusBadge): админ и бета-тестер. */
+.status-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+}
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #fff;
+}
+.status-badge-admin { background: var(--color-accent, #0071e3); }
+.status-badge-beta { background: #f59e0b; }
+
+/* Превью баннера в настройках (соотношение 4:1). */
+.settings-banner-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.settings-banner-preview {
+  width: 100%;
+  aspect-ratio: 4 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-2, rgba(128, 128, 128, 0.12));
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+.settings-banner-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .settings-avatar-preview {
@@ -384,9 +458,23 @@
   align-items: center;
   text-align: center;
   gap: 6px;
-  padding: var(--spacing-md) 0 var(--spacing-lg, 20px);
+  padding: 0 0 var(--spacing-lg, 20px);
   border-bottom: 1px solid var(--hairline);
+  position: relative;
 }
+
+/* Баннер («шапка») профиля: 4:1, аватар перекрывает его снизу. */
+.pp-banner {
+  align-self: stretch;
+  height: 120px;
+  margin: 0 calc(var(--spacing-md, 16px) * -1) 0;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover, #0071e3));
+  background-size: cover;
+  background-position: center;
+}
+.pp-banner-empty { opacity: 0.6; }
+.pp-head .pp-avatar { margin-top: -42px; border: 3px solid var(--color-surface, #fff); }
 
 .pp-avatar {
   width: 84px;
@@ -478,3 +566,110 @@
   transition: color 0.15s ease;
 }
 .player-link:hover { color: var(--color-accent); text-decoration: underline; }
+
+/* ===================== TUTORIAL (обучение) ===================== */
+.tutorial-open-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--hairline);
+  background: var(--color-bg-secondary);
+  color: var(--color-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+.tutorial-open-btn:hover { border-color: var(--color-accent); }
+.support-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.tutorial-modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg, 12px);
+  padding: var(--spacing-lg, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 12px);
+}
+.tutorial-head { display: flex; align-items: center; justify-content: space-between; }
+.tutorial-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.25rem; }
+.tutorial-subtitle { margin: 0; opacity: 0.8; }
+.tutorial-icon-btn {
+  background: none; border: none; cursor: pointer; color: inherit; padding: 4px;
+}
+.tutorial-topics { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.tutorial-topic-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 14px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--hairline);
+  background: var(--color-bg-primary, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+.tutorial-topic-card:hover { border-color: var(--color-accent); }
+.tutorial-topic-name { font-weight: 700; }
+.tutorial-topic-desc { font-size: 0.875rem; opacity: 0.8; }
+.tutorial-topic-status { font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; }
+.tutorial-progress {
+  display: block; height: 6px; border-radius: 3px; background: var(--hairline); overflow: hidden;
+}
+.tutorial-progress-bar { display: block; height: 100%; background: var(--color-accent); transition: width 0.3s ease; }
+.tutorial-back-link {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; color: var(--color-accent); cursor: pointer; padding: 0;
+}
+.tutorial-topic-heading { font-weight: 700; font-size: 1.1rem; }
+.tutorial-steps-nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.tutorial-step-dot {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--hairline); background: transparent; color: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.tutorial-step-dot.current { border-color: var(--color-accent); box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.25); }
+.tutorial-step-dot.done { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.tutorial-step-dot:disabled { opacity: 0.4; cursor: not-allowed; }
+.tutorial-step { display: flex; flex-direction: column; gap: 8px; }
+.tutorial-step-counter { font-size: 0.8rem; opacity: 0.7; }
+.tutorial-step-title { margin: 0; }
+.tutorial-step-text { margin: 0; }
+.tutorial-task {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border-radius: var(--radius-md, 8px);
+  border: 1px dashed var(--hairline);
+}
+.tutorial-task.active { border: 2px solid var(--color-accent); }
+.tutorial-task-label { font-size: 0.8rem; font-weight: 700; color: var(--color-accent); }
+.tutorial-task p { margin: 0; }
+.tutorial-task-done, .tutorial-task-locked { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; opacity: 0.8; }
+.tutorial-action-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+.tutorial-complete { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 0; }
+.tutorial-complete h3 { margin: 0; }
+.tutorial-complete p { margin: 0; opacity: 0.85; }
+.tutorial-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tutorial-ghost-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 1px solid var(--hairline); border-radius: var(--radius-md, 8px);
+  padding: 6px 10px; color: inherit; cursor: pointer;
+}
+.tutorial-ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }

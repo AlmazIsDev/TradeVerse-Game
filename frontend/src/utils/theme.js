@@ -43,10 +43,23 @@ function luminance({ r, g, b }) {
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
 }
 
+/** Системная тема по prefers-color-scheme; без window — 'light'. */
+export function getSystemTheme() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'light'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+/** Есть ли сохранённый пользователем выбор базовой темы. */
+function hasStoredTheme() {
+  if (typeof window === 'undefined') return false
+  return BASES.includes(window.localStorage.getItem(THEME_KEY))
+}
+
+/** Текущая база: сохранённый выбор, иначе — системная тема. */
 export function getTheme() {
   if (typeof window === 'undefined') return 'light'
   const s = window.localStorage.getItem(THEME_KEY)
-  return BASES.includes(s) ? s : 'light'
+  return BASES.includes(s) ? s : getSystemTheme()
 }
 
 /** Текущий акцент: 'default' или hex-строка. */
@@ -83,17 +96,41 @@ export function applyAccentVars(accent) {
   root.style.setProperty('--on-accent', luminance(rgb) > 0.55 ? '#1d1d1f' : '#ffffff')
 }
 
-export function applyTheme(base, accent = getAccent()) {
-  const next = BASES.includes(base) ? base : 'light'
+/** Применяет базу к DOM без сохранения в localStorage. */
+function paintBase(next) {
   const root = document.documentElement
   if (next === 'light') root.removeAttribute('data-theme')
   else root.setAttribute('data-theme', next)
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.setAttribute('content', META_BG[next] || META_BG.light)
+}
+
+export function applyTheme(base, accent = getAccent()) {
+  const next = BASES.includes(base) ? base : 'light'
+  paintBase(next)
   applyAccentVars(accent)
   try { window.localStorage.setItem(THEME_KEY, next) } catch { /* приватный режим */ }
   window.dispatchEvent(new CustomEvent('tv:theme', { detail: { base: next, accent } }))
   return next
+}
+
+/** Следит за сменой системной темы. Работает только пока пользователь не
+ *  выбрал тему вручную (в localStorage нет THEME_KEY). Возвращает отписку. */
+export function watchSystemTheme() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {}
+  const mq = window.matchMedia('(prefers-color-scheme: dark)')
+  const onChange = () => {
+    if (hasStoredTheme()) return
+    const next = mq.matches ? 'dark' : 'light'
+    paintBase(next)
+    window.dispatchEvent(new CustomEvent('tv:theme', { detail: { base: next, accent: getAccent() } }))
+  }
+  if (typeof mq.addEventListener === 'function') {
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }
+  mq.addListener(onChange)
+  return () => mq.removeListener(onChange)
 }
 
 /** Меняет только акцент, база не трогается. accent: 'default' | hex. */

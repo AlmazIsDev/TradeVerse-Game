@@ -1,4 +1,4 @@
-"""Производство: источники → фуры → склады/пекарня; деньги — только через ledger.
+"""Производство: источники → фуры → склады/пекарня/завод; деньги — только через ledger.
 
 Фуры до 5 на поток, рейс фиксированный (trip_minutes); пекарня 2:1 пшеница→хлеб.
 Эффективность = workers/штат (×2 потолок, 0 → стоит); еда 0.5 кг/работник/час,
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from admin_perms import get_current_user, require_allowed
 from database import get_db
-from ledger import INCOME, EXPENSE, CAT_SOURCE, CAT_FACTORY, CAT_WAREHOUSE, adjust_balance, record_transaction
+from ledger import INCOME, EXPENSE, CAT_SOURCE, CAT_FACTORY, CAT_WAREHOUSE, CAT_SHOP, adjust_balance, record_transaction
 from resources import RESOURCES_BY_ID
 from econ import get_econ
 from timeutil import now_utc
@@ -42,8 +42,36 @@ def _aware(dt) -> Optional[datetime]:
 # ── Типы производственных юнитов ──────────────────────────────────────────────
 
 
+def _recipes() -> dict:
+    from game_config import RECIPES
+    return RECIPES
+
+
+def _recipe_for(asset: dict) -> Optional[dict]:
+    """Рецепт переработки завода (пекарня, завод видеокарт) или None для источника/склада."""
+    if asset.get("type") != "factory":
+        return None
+    return _recipes().get(str((asset.get("meta") or {}).get("produces") or ""))
+
+
+COMPONENT_RESOURCE = "component"
+
+
+def _is_recipe_output_factory(asset: dict, produces: str) -> bool:
+    return asset.get("type") == "factory" and (asset.get("meta") or {}).get("produces") == produces
+
+
+def _component_unit_price(pct: float, econ: dict) -> float:
+    from game_config import COMPONENT_BASE_PRICE
+    return round(float(COMPONENT_BASE_PRICE) * float(econ.get("economy_mult", 1.0)) * float(pct) / 100.0, 2)
+
+
 def _is_bakery(asset: dict) -> bool:
     return asset.get("type") == "factory" and (asset.get("meta") or {}).get("produces") == "bread"
+
+
+def _recipe_unit_query() -> dict:
+    return {"type": "factory", "meta.produces": {"$in": list(_recipes().keys())}}
 
 
 def _is_source(asset: dict) -> bool:
@@ -67,6 +95,7 @@ def _prod_state(asset: dict) -> dict:
     p.setdefault("storageLevel", 1)
     p.setdefault("destinationId", None)
     p.setdefault("inputId", None)
+    p.setdefault("componentPricePct", 100.0)
     t = p.get("trucks") or {}
     p["trucks"] = {
         "input": [str(x) for x in (t.get("input") or [])][: _cfg()["max_trucks"]],
@@ -162,6 +191,12 @@ def _serialize_unit(asset: dict, prod: dict) -> dict:
         out["outputResource"] = meta.get("produces")
     else:
         out["resource"] = meta.get("resource")
+    is_gpu = _is_recipe_output_factory(asset, "gpu")
+    out["isGpuPlant"] = is_gpu
+    if is_gpu:
+        pct = float(prod.get("componentPricePct", 100.0))
+        out["componentPricePct"] = pct
+        out["componentUnitPrice"] = _component_unit_price(pct, {"economy_mult": 1.0})
     return out
 
 
@@ -248,6 +283,113 @@ def _store_take(store: dict, res: str, qty: float) -> float:
 # ── Тик производства ──────────────────────────────────────────────────────────
 
 
+def _storage_delta_inc(prefix: str, before: dict, after: dict) -> dict:
+    """$inc-дельты между снимком склада и итогом: не затирают параллельные изменения."""
+    inc: dict = {}
+    for res in set(before) | set(after):
+        d = round(float(after.get(res, 0.0)) - float(before.get(res, 0.0)), 2)
+        if d != 0:
+            inc[f"{prefix}.{res}"] = d
+    return inc
+
+
+async def _atomic_take(db, unit_id, prefix: str, res: str, have: float, want: float) -> float:
+    """Атомарно списывает min(want, have). Условие $gte в фильтре не даёт уйти в минус
+    при параллельной продаже/покупке. 409 — остаток изменился между чтением и записью."""
+    took = round(min(float(want), float(have)), 2)
+    if took <= 0:
+        return 0.0
+    key = f"{prefix}.{res}"
+    r = await db.user_assets.update_one({"_id": unit_id, key: {"$gte": took}}, {"$inc": {key: -took}})
+    if r.modified_count != 1:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Склад изменился — обновите данные и повторите")
+    return took
+
+
+async def _atomic_spend(db, unit_id, prefix: str, res: str, need: float) -> None:
+    """Атомарно списывает ровно need при условии остатка ≥ need; иначе 409."""
+    key = f"{prefix}.{res}"
+    r = await db.user_assets.update_one({"_id": unit_id, key: {"$gte": float(need)}},
+                                        {"$inc": {key: -float(need)}})
+    if r.modified_count != 1:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Недостаточно компонентов на складе или склад изменился — повторите")
+
+
+async def _atomic_give(db, unit_id, prefix: str, res: str, qty: float) -> None:
+    """Возврат на склад (откат списания)."""
+    await db.user_assets.update_one({"_id": unit_id}, {"$inc": {f"{prefix}.{res}": float(qty)}})
+
+
+async def _take_all_atomic(coll, doc_id, prefix: str, cargo: dict) -> bool:
+    """Условный $inc -qty по каждому ресурсу (фильтр {ключ: {$gte: qty}}).
+    Если какой-то ресурс не списался — уже списанное возвращается, результат False."""
+    done: dict = {}
+    for res, qty in cargo.items():
+        key = f"{prefix}.{res}"
+        r = await coll.update_one({"_id": doc_id, key: {"$gte": float(qty)}},
+                                  {"$inc": {key: -float(qty)}})
+        if r.modified_count != 1:
+            if done:
+                await _give_back(coll, doc_id, prefix, done)
+            return False
+        done[res] = float(qty)
+    return True
+
+
+async def _give_back(coll, doc_id, prefix: str, cargo: dict) -> None:
+    """Возврат груза в склад через $inc (откат или прочий груз)."""
+    if not cargo:
+        return
+    await coll.update_one({"_id": doc_id},
+                          {"$inc": {f"{prefix}.{res}": float(qty) for res, qty in cargo.items()}})
+
+
+async def _unload_capped(db, owner_id, dest: dict, cargo: dict) -> dict:
+    """Разгрузка в склад-получатель. Возвращает непринятый остаток.
+    Пер-ресурсный $inc принятой дельты; в фильтре $expr: сумма склада + принятое ≤ ёмкость.
+    Если склад изменился параллельно (условие не выполнено) — перечитать и повторить (до 3 раз)."""
+    is_wh = _is_warehouse(dest)
+    prefix = "storage" if is_wh else "prod.storage"
+    current = dest
+    for attempt in range(3):
+        if attempt:
+            current = await db.user_assets.find_one(
+                {"_id": dest["_id"], "userId": owner_id}, _arrival_destination_projection())
+            if not current:
+                return dict(cargo)
+        cap = _warehouse_cap(current) if is_wh else _storage_cap(current)
+        if is_wh:
+            store = dict(current.get("storage") or {})
+        else:
+            store = dict((current.get("prod") or {}).get("storage") or {})
+        accepted: dict = {}
+        left = dict(cargo)
+        for res, qty in list(cargo.items()):
+            took = _store_add(store, cap, res, float(qty))
+            if took > 0:
+                accepted[res] = round(took, 2)
+            left[res] = round(float(qty) - took, 2)
+            if left[res] <= 0.001:
+                del left[res]
+        if not accepted:
+            return left
+        total = round(sum(accepted.values()), 2)
+        cur_sum = {"$reduce": {
+            "input": {"$objectToArray": {"$ifNull": [f"${prefix}", {}]}},
+            "initialValue": 0,
+            "in": {"$add": ["$$value", "$$this.v"]},
+        }}
+        inc = {f"{prefix}.{res}": v for res, v in accepted.items()}
+        r = await db.user_assets.update_one(
+            {"_id": dest["_id"], "$expr": {"$lte": [{"$add": [cur_sum, total]}, cap + 0.005]}},
+            {"$inc": inc},
+        )
+        if r.modified_count == 1:
+            return left
+    return dict(cargo)
+
+
 async def _tick_arrivals(db, now: datetime) -> None:
     """Прибытие фур: разгрузка в склад-получатель (с потолком вместимости).
     Груз, не поместившийся, остаётся на фуре до следующего прибытия."""
@@ -269,22 +411,7 @@ async def _tick_arrivals(db, now: datetime) -> None:
             # следующей погрузке), рейс завершается.
             await db.user_assets.update_one({"_id": truck["_id"]}, {"$set": {"hauling": None}})
             continue
-        if _is_warehouse(dest):
-            cap = _warehouse_cap(dest)
-            store = dict(dest.get("storage") or {})
-        else:
-            cap = _storage_cap(dest)
-            store = dict((dest.get("prod") or {}).get("storage") or {})
-        left = dict(cargo)
-        for res, qty in list(left.items()):
-            took = _store_add(store, cap, res, float(qty))
-            left[res] = round(float(qty) - took, 2)
-            if left[res] <= 0.001:
-                del left[res]
-        if _is_warehouse(dest):
-            await db.user_assets.update_one({"_id": dest["_id"]}, {"$set": {"storage": store}})
-        else:
-            await db.user_assets.update_one({"_id": dest["_id"]}, {"$set": {"prod.storage": store}})
+        left = await _unload_capped(db, truck["userId"], dest, cargo)
         # Непоместившийся груз остаётся на фуре: until=now → разгрузится следующим тиком.
         await db.user_assets.update_one(
             {"_id": truck["_id"]},
@@ -326,69 +453,73 @@ def _trip(truck_id: str, unit_id: str, dest_id: str, cargo: dict, now: datetime)
 
 
 async def _depart_output(db, unit: dict, p: dict, truck: dict, dest_id: str, now: datetime) -> None:
-    """Отправить одну фуру с выхода юнита: погрузка → hauling."""
+    """Отправить одну фуру с выхода юнита: условное списание (-qty, $gte) → hauling.
+    Если списание не удалось или рейс не назначился — груз возвращается, фура не едет."""
     truck_id = truck["id"]
     cargo_kg = await _truck_cargo_kg(db, truck)
     if unit.get("category") == "field":
         fdoc = await db.user_fields.find_one({"assetId": str(unit["_id"])})
         if not fdoc:
             return
+        coll, doc_id, prefix = db.user_fields, fdoc["_id"], "storage"
         store = dict(fdoc.get("storage") or {})
-        cargo = _load_cargo(store, cargo_kg)
-        if cargo:
-            await db.user_fields.update_one({"_id": fdoc["_id"]}, {"$set": {"storage": store}})
     else:
         fresh = await db.user_assets.find_one({"_id": unit["_id"]}, {"prod.storage": 1})
+        coll, doc_id, prefix = db.user_assets, unit["_id"], "prod.storage"
         store = dict(((fresh or {}).get("prod") or {}).get("storage") or {})
-        cargo = _load_cargo(store, cargo_kg)
-        if cargo:
-            await db.user_assets.update_one(
-                {"_id": unit["_id"]},
-                {"$set": {f"prod.storage.{r}": q for r, q in store.items()}},
-            )
-    if cargo:
-        await db.user_assets.update_one(
-            {"_id": ObjectId(truck_id)},
-            {"$set": {"hauling": _trip(truck_id, str(unit["_id"]), dest_id, cargo, now)}},
-        )
+    cargo = _load_cargo(store, cargo_kg)
+    if not cargo:
+        return
+    if not await _take_all_atomic(coll, doc_id, prefix, cargo):
+        return
+    r = await db.user_assets.update_one(
+        {"_id": ObjectId(truck_id), "hauling": None},
+        {"$set": {"hauling": _trip(truck_id, str(unit["_id"]), dest_id, cargo, now)}},
+    )
+    if r.modified_count != 1:
+        await _give_back(coll, doc_id, prefix, cargo)
 
 
 async def _depart_input(db, unit: dict, truck: dict, input_id: str, now: datetime) -> None:
-    """Отправить одну фуру за пшеницей для пекарни (с поля или со склада)."""
+    """Отправить одну фуру за пшеницей для пекарни (с поля или со склада).
+    Списание условное ($gte); прочий груз возвращается в источник через $inc."""
     truck_id = truck["id"]
     src = await db.user_assets.find_one({"_id": ObjectId(input_id), "userId": unit["userId"]})
-    fdoc = None
-    if src and _is_warehouse(src):
+    if not src:
+        return
+    if _is_warehouse(src):
+        coll, doc_id = db.user_assets, src["_id"]
         store = dict(src.get("storage") or {})
-    elif src:  # поле: пшеница лежит в складе поля
+    else:  # поле: пшеница лежит в складе поля
         fdoc = await db.user_fields.find_one({"assetId": input_id})
         if not fdoc:
             return
+        coll, doc_id = db.user_fields, fdoc["_id"]
         store = dict(fdoc.get("storage") or {})
-    else:
-        return
+    prefix = "storage"
     cargo = _load_cargo(store, await _truck_cargo_kg(db, truck))
-    # Пекарне нужна только пшеница: прочий груз возвращаем в источник.
-    wheat = cargo.pop("wheat", 0.0)
-    for res, qty in cargo.items():
-        store[res] = round(float(store.get(res, 0.0)) + qty, 2)
+    if not cargo:
+        return
+    if not await _take_all_atomic(coll, doc_id, prefix, cargo):
+        return
+    # Пекарне нужна только пшеница: прочий груз возвращаем в источник через $inc.
+    wheat = float(cargo.pop("wheat", 0.0))
+    await _give_back(coll, doc_id, prefix, cargo)
     if wheat <= 0:
         return
-    if fdoc:
-        await db.user_fields.update_one({"_id": fdoc["_id"]}, {"$set": {"storage": store}})
-    else:
-        await db.user_assets.update_one({"_id": src["_id"]}, {"$set": {"storage": store}})
-    await db.user_assets.update_one(
-        {"_id": ObjectId(truck_id)},
+    r = await db.user_assets.update_one(
+        {"_id": ObjectId(truck_id), "hauling": None},
         {"$set": {"hauling": _trip(truck_id, input_id, str(unit["_id"]), {"wheat": wheat}, now)}},
     )
+    if r.modified_count != 1:
+        await _give_back(coll, doc_id, prefix, {"wheat": wheat})
 
 
 async def _tick_departures(db, now: datetime) -> None:
     """Разослать свободные фуры: выход юнита (до 5 фур) и вход пекарни (до 5)."""
     units = [a async for a in db.user_assets.find({"$or": [
         {"type": "source"},
-        {"type": "factory", "meta.produces": "bread"},
+        {"type": "factory", "meta.produces": {"$in": ["bread", "gpu"]}},
     ]})]
     for unit in units:
         p = _prod_state(unit)
@@ -418,22 +549,31 @@ async def _tick_departures(db, now: datetime) -> None:
 
 def _apply_production(asset: dict, prod: dict, elapsed_h: float) -> float:
     """Выпуск за elapsed_h в prod["storage"] (мутирует); возвращает съеденное (кг).
-    Пекарня: пшеница → хлеб 2:1 (лимит — запас пшеницы и место); источник:
-    outputPerHour × эффективность (лимит — место)."""
+    Завод по рецепту (game_config.RECIPES): выпуск = outputPerHour × эффективность,
+    ограничен запасом входов и местом; источник: outputPerHour × эффективность
+    (лимит — место)."""
     meta = asset.get("meta") or {}
     storage = prod["storage"]
     cap = _storage_cap(asset)
     eff, food_used = _efficiency(asset, prod, elapsed_h)
     if eff <= 0:
         return 0.0
-    if _is_bakery(asset):
-        free = max(0.0, cap - sum(float(v) for v in storage.values()))
-        bread = min(int(meta.get("outputPerHour") or 0) * eff * elapsed_h, free)
-        wheat = min(bread * 2.0, float(storage.get("wheat", 0.0)))
-        bread = wheat / 2.0
-        if bread > 0:
-            storage["wheat"] = round(float(storage.get("wheat", 0.0)) - wheat, 2)
-            storage["bread"] = round(float(storage.get("bread", 0.0)) + bread, 2)
+    recipe = _recipe_for(asset)
+    if recipe:
+        out_kg = recipe["outputPerUnit"]
+        free_units = max(0.0, cap - sum(float(v) for v in storage.values())) / out_kg
+        want = int(meta.get("outputPerHour") or 0) * eff * elapsed_h
+        stock_units = min(
+            float(storage.get(res, 0.0)) / qty for res, qty in recipe["inputs"].items()
+        )
+        units = min(want, free_units, stock_units)
+        if units > 0:
+            for res, qty in recipe["inputs"].items():
+                storage[res] = round(float(storage.get(res, 0.0)) - units * qty, 2)
+                if storage[res] <= 0.001:
+                    storage.pop(res, None)
+            produced = recipe["output"]
+            storage[produced] = round(float(storage.get(produced, 0.0)) + units * out_kg, 2)
     else:
         res = str(meta.get("resource") or "")
         if not _resource_ok(res):
@@ -454,7 +594,7 @@ async def tick(db: AsyncIOMotorDatabase) -> None:
     await _tick_departures(db, now)
     units = [a async for a in db.user_assets.find({"$or": [
         {"type": "source"},
-        {"type": "factory", "meta.produces": "bread"},
+        _recipe_unit_query(),
     ]})]
     for unit in units:
         p = _prod_state(unit)
@@ -471,11 +611,13 @@ async def tick(db: AsyncIOMotorDatabase) -> None:
             await db.user_assets.update_one(
                 {"_id": unit["_id"]}, {"$set": {"prod.ticked_at": now}})
             continue
+        before = dict(p.get("storage") or {})
         food_used = _apply_production(unit, p, elapsed_h)
         food_used = min(food_used, float(p.get("food", 0.0)))
-        setops = {"prod.storage": p["storage"], "prod.ticked_at": now,
-                  "prod.food": round(float(p.get("food", 0.0)) - food_used, 2)}
-        await db.user_assets.update_one({"_id": unit["_id"]}, {"$set": setops})
+        inc = _storage_delta_inc("prod.storage", before, p["storage"])
+        inc["prod.food"] = -round(food_used, 2)
+        await db.user_assets.update_one({"_id": unit["_id"]},
+                                        {"$set": {"prod.ticked_at": now}, "$inc": inc})
 
 
 # ── Загрузка/валидация юнитов ─────────────────────────────────────────────────
@@ -487,9 +629,10 @@ async def _load_unit(db, user_id: str, unit_id: str) -> dict:
     unit = await db.user_assets.find_one({"_id": ObjectId(unit_id), "userId": user_id})
     if not unit:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Объект не найден")
-    if not (_is_source(unit) or _is_bakery(unit) or _is_warehouse(unit)):
+    if not (_is_source(unit) or _is_bakery(unit) or _is_warehouse(unit)
+            or _is_recipe_output_factory(unit, "gpu")):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            "Управление производством доступно для источников, пекарни и складов")
+                            "Управление производством доступно для источников, пекарни, заводов видеокарт и складов")
     return unit
 
 
@@ -523,7 +666,6 @@ async def overview(
             "storage": {k: round(float(v), 2) for k, v in ((fdoc or {}).get("storage") or {}).items()},
             "storageCap": cap,
         })
-    prices = {rid: _resource_price(rid, econ) for rid in RESOURCES_BY_ID}
     prices = {rid: _resource_price(rid, econ) for rid in RESOURCES_BY_ID}
     return {
         "units": [_serialize_unit(u, _prod_state(u)) for u in units],
@@ -752,6 +894,144 @@ async def upgrade_storage(
     return {"ok": True, "level": level + 1, "cost": cost, "balance": new_balance}
 
 
+class PricePctBody(BaseModel):
+    pct: float
+
+    @field_validator("pct")
+    @classmethod
+    def pct_ok(cls, v):
+        if v < 50 or v > 200:
+            raise ValueError("Цена: 50..200% от базовой")
+        return round(float(v), 2)
+
+
+@router.post("/{unit_id}/component-price")
+async def set_component_price(
+    unit_id: str,
+    payload: PricePctBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Цена компонента завода в % от базовой цены econ (50..200)."""
+    user_id = str(current_user["_id"])
+    unit = await _load_unit(db, user_id, unit_id)
+    if not _is_recipe_output_factory(unit, "gpu"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Цена компонента задаётся у завода видеокарт")
+    old_pct = float((unit.get("prod") or {}).get("componentPricePct", 100.0))
+    shop_published = bool(((unit.get("prod") or {}).get("shop") or {}).get("published", False))
+    setops: dict = {"prod.componentPricePct": payload.pct}
+    # Смена цены компонента меняет себестоимость товаров → публикация снимается.
+    shop_unpublished = shop_published and payload.pct != old_pct
+    if shop_unpublished:
+        setops["prod.shop.published"] = False
+    await db.user_assets.update_one({"_id": unit["_id"]}, {"$set": setops})
+    return {"ok": True, "pct": payload.pct,
+            "unitPrice": _component_unit_price(payload.pct, await get_econ(db)),
+            "shopUnpublished": shop_unpublished}
+
+
+class SellComponentBody(BaseModel):
+    qty: int
+
+    @field_validator("qty")
+    @classmethod
+    def qty_ok(cls, v):
+        if v <= 0:
+            raise ValueError("Количество должно быть положительным")
+        return int(v)
+
+
+@router.post("/{unit_id}/sell-component")
+async def sell_component(
+    unit_id: str,
+    payload: SellComponentBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Продать компоненты со склада завода по цене prod.componentPricePct."""
+    user_id = str(current_user["_id"])
+    unit = await _load_unit(db, user_id, unit_id)
+    if not _is_recipe_output_factory(unit, "gpu"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Компоненты продаются только с завода видеокарт")
+    p = _prod_state(unit)
+    have = float((p.get("storage") or {}).get(COMPONENT_RESOURCE, 0.0))
+    took = await _atomic_take(db, unit["_id"], "prod.storage", COMPONENT_RESOURCE, have, float(payload.qty))
+    if took <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет компонентов на складе")
+    econ = await get_econ(db)
+    unit_price = _component_unit_price(float(p.get("componentPricePct", 100.0)), econ)
+    total = round(unit_price * took, 2)
+    new_balance = await adjust_balance(db, user_id, total)
+    if new_balance is None:
+        await _atomic_give(db, unit["_id"], "prod.storage", COMPONENT_RESOURCE, took)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ошибка изменения баланса")
+    await record_transaction(
+        db, user_id, INCOME, total, CAT_FACTORY,
+        f"Продажа компонентов × {took:g}",
+        balance_after=new_balance,
+        meta={"unitId": unit_id, "resource": COMPONENT_RESOURCE, "qty": took, "unitPrice": unit_price},
+    )
+    return {"ok": True, "qty": took, "unitPrice": unit_price, "total": total, "balance": new_balance}
+
+
+class ComponentShopBuyBody(BaseModel):
+    item: str
+    qty: int = 1
+
+    @field_validator("item")
+    @classmethod
+    def item_ok(cls, v):
+        from game_config import COMPONENT_COST
+        if v not in COMPONENT_COST:
+            raise ValueError("Неизвестный товар магазина")
+        return v
+
+    @field_validator("qty")
+    @classmethod
+    def qty_ok(cls, v):
+        if v <= 0 or v > 1000:
+            raise ValueError("Количество: 1..1000")
+        return int(v)
+
+
+@router.get("/gpu-shop/catalog")
+async def gpu_shop_catalog(
+    current_user: dict = Depends(get_current_user),
+):
+    """Товары магазина «Квантум GPU» и цена каждого в компонентах."""
+    from game_config import COMPONENT_COST
+    return {"items": [{"id": k, "components": v} for k, v in COMPONENT_COST.items()]}
+
+
+@router.post("/{unit_id}/shop-buy")
+async def shop_buy_with_components(
+    unit_id: str,
+    payload: ComponentShopBuyBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Товар магазина «Квантум GPU» за компоненты: компоненты списываются со склада завода."""
+    from game_config import COMPONENT_COST
+    user_id = str(current_user["_id"])
+    unit = await _load_unit(db, user_id, unit_id)
+    if not _is_recipe_output_factory(unit, "gpu"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Компоненты берутся с завода видеокарт")
+    need = COMPONENT_COST[payload.item] * payload.qty
+    p = _prod_state(unit)
+    have = float((p.get("storage") or {}).get(COMPONENT_RESOURCE, 0.0))
+    if have < need:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"Недостаточно компонентов: нужно {need}, на складе {have:g}")
+    await _atomic_spend(db, unit["_id"], "prod.storage", COMPONENT_RESOURCE, float(need))
+    await record_transaction(
+        db, user_id, INCOME, 0.0, CAT_FACTORY,
+        f"Списано компонентов {need}: {payload.item} × {payload.qty}",
+        balance_after=None,
+        meta={"unitId": unit_id, "item": payload.item, "qty": payload.qty, "components": need},
+    )
+    return {"ok": True, "item": payload.item, "qty": payload.qty, "componentsSpent": need}
+
+
 @router.post("/{unit_id}/sell")
 async def sell_resource(
     unit_id: str,
@@ -763,13 +1043,14 @@ async def sell_resource(
     user_id = str(current_user["_id"])
     unit = await _load_unit(db, user_id, unit_id)
     if _is_warehouse(unit):
-        store = dict(unit.get("storage") or {})
+        have_store = dict(unit.get("storage") or {})
         key, cat = "storage", CAT_WAREHOUSE
     else:
         p = _prod_state(unit)
-        store = dict(p.get("storage") or {})
+        have_store = dict(p.get("storage") or {})
         key, cat = "prod.storage", (CAT_FACTORY if _is_bakery(unit) else CAT_SOURCE)
-    took = _store_take(store, payload.resource, float(payload.qty))
+    have = float(have_store.get(payload.resource, 0.0))
+    took = await _atomic_take(db, unit["_id"], key, payload.resource, have, float(payload.qty))
     if took <= 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет этого ресурса на складе")
     econ = await get_econ(db)
@@ -777,8 +1058,8 @@ async def sell_resource(
     total = round(unit_price * took, 2)
     new_balance = await adjust_balance(db, user_id, total)
     if new_balance is None:
+        await _atomic_give(db, unit["_id"], key, payload.resource, took)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ошибка изменения баланса")
-    await db.user_assets.update_one({"_id": unit["_id"]}, {"$set": {key: store}})
     await record_transaction(
         db, user_id, INCOME, total, cat,
         f"Продажа ресурса: {RESOURCES_BY_ID[payload.resource]['name']} × {took:g}",
@@ -786,6 +1067,393 @@ async def sell_resource(
         meta={"unitId": unit_id, "resource": payload.resource, "qty": took, "unitPrice": unit_price},
     )
     return {"ok": True, "qty": took, "unitPrice": unit_price, "total": total, "balance": new_balance}
+
+
+# Магазины, принимающие компоненты со склада: GPU Market, CoreTech, Неон-Хард.
+SHOP_BUYER_SLUGS = {"admin-biz-2", "admin-biz-3", "admin-biz-4"}
+
+
+class WarehouseShopBody(BaseModel):
+    shopId: str
+    item: str
+    qty: int = 1
+
+    @field_validator("item")
+    @classmethod
+    def item_ok(cls, v):
+        from game_config import COMPONENT_COST
+        if v not in COMPONENT_COST:
+            raise ValueError("Неизвестный товар магазина")
+        return v
+
+    @field_validator("qty")
+    @classmethod
+    def qty_ok(cls, v):
+        if v <= 0 or v > 1000:
+            raise ValueError("Количество: 1..1000")
+        return int(v)
+
+
+@router.post("/{unit_id}/warehouse-shop-buy")
+async def warehouse_shop_buy(
+    unit_id: str,
+    payload: WarehouseShopBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Со склада списываются компоненты, магазин (GPU Market / CoreTech / Неон-Хард)
+    оформляет товар «Квантум GPU»."""
+    from game_config import COMPONENT_COST
+    user_id = str(current_user["_id"])
+    unit = await _load_unit(db, user_id, unit_id)
+    if not _is_warehouse(unit):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Отгрузка в магазин — только со склада")
+    if not ObjectId.is_valid(payload.shopId):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID магазина")
+    shop = await db.user_assets.find_one(
+        {"_id": ObjectId(payload.shopId), "userId": user_id, "type": "business"},
+        {"slug": 1, "name": 1},
+    )
+    if not shop or shop.get("slug") not in SHOP_BUYER_SLUGS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Этот магазин не принимает компоненты")
+    need = COMPONENT_COST[payload.item] * payload.qty
+    have = float((unit.get("storage") or {}).get(COMPONENT_RESOURCE, 0.0))
+    if have < need:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"Недостаточно компонентов на складе: нужно {need}, есть {have:g}")
+    await _atomic_spend(db, unit["_id"], "storage", COMPONENT_RESOURCE, float(need))
+    await record_transaction(
+        db, user_id, INCOME, 0.0, CAT_WAREHOUSE,
+        f"Отгрузка компонентов {need} → {shop.get('name')}: {payload.item} × {payload.qty}",
+        balance_after=None,
+        meta={"unitId": unit_id, "shopId": payload.shopId, "item": payload.item,
+              "qty": payload.qty, "components": need},
+    )
+    return {"ok": True, "item": payload.item, "qty": payload.qty, "componentsSpent": need}
+
+
+# ── Магазин «Квантум GPU»: ручные цены владельца и публикация ──────────────
+# Хранение: unit.prod.shop = {"items": {item_id: price_usd}, "published": bool}.
+# Себестоимость товара = COMPONENT_COST[item] × цена компонента завода (componentPricePct).
+
+GPU_SHOP_PRICE_MAX = 1_000_000_000.0
+
+
+def _gpu_shop_raw(unit: dict) -> dict:
+    shop = (unit.get("prod") or {}).get("shop") or {}
+    items = shop.get("items") or {}
+    return {"items": {k: float(v) for k, v in items.items()}, "published": bool(shop.get("published", False))}
+
+
+async def _gpu_item_cost(db: AsyncIOMotorDatabase, unit: dict, item: str) -> float:
+    from game_config import COMPONENT_COST
+    pct = float((unit.get("prod") or {}).get("componentPricePct", 100.0))
+    unit_price = _component_unit_price(pct, await get_econ(db))
+    return round(COMPONENT_COST[item] * unit_price, 2)
+
+
+async def _gpu_shop_view(db: AsyncIOMotorDatabase, unit: dict) -> dict:
+    from game_config import COMPONENT_COST
+    raw = _gpu_shop_raw(unit)
+    pct = float((unit.get("prod") or {}).get("componentPricePct", 100.0))
+    comp_price = _component_unit_price(pct, await get_econ(db))
+    items = []
+    for item_id, components in COMPONENT_COST.items():
+        cost = round(components * comp_price, 2)
+        price = raw["items"].get(item_id)
+        items.append({
+            "id": item_id,
+            "components": components,
+            "costPrice": cost,
+            "price": price,
+            "profit": round(price - cost, 2) if price is not None else None,
+            "priced": price is not None,
+        })
+    return {
+        "unitId": str(unit["_id"]),
+        "published": raw["published"],
+        "componentUnitPrice": comp_price,
+        "items": items,
+    }
+
+
+class GpuShopPriceBody(BaseModel):
+    item: str
+    price: Optional[float] = None  # None — убрать товар из магазина
+
+    @field_validator("item")
+    @classmethod
+    def item_ok(cls, v):
+        from game_config import COMPONENT_COST
+        if v not in COMPONENT_COST:
+            raise ValueError("Неизвестный товар магазина")
+        return v
+
+    @field_validator("price")
+    @classmethod
+    def price_ok(cls, v):
+        if v is None:
+            return None
+        if v <= 0 or v > GPU_SHOP_PRICE_MAX:
+            raise ValueError("Цена: больше 0 и не более 1 000 000 000 $")
+        return round(float(v), 2)
+
+
+class GpuShopPublishBody(BaseModel):
+    published: bool
+
+
+@router.get("/{unit_id}/gpu-shop")
+async def get_gpu_shop(
+    unit_id: str,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Магазин «Квантум GPU» владельца: товары, цены, себестоимость, published."""
+    user_id = str(current_user["_id"])
+    unit = await _load_unit(db, user_id, unit_id)
+    if not _is_recipe_output_factory(unit, "gpu"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Магазин доступен у завода видеокарт")
+    return {"ok": True, **(await _gpu_shop_view(db, unit))}
+
+
+@router.post("/{unit_id}/gpu-shop/price")
+async def set_gpu_shop_price(
+    unit_id: str,
+    payload: GpuShopPriceBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Задать цену товара владельцем. Цена должна быть > себестоимости.
+    price=null — убрать товар из магазина. Ошибки: 400 (правила), 404 (нет юнита)."""
+    user_id = str(current_user["_id"])
+    unit = await _load_unit(db, user_id, unit_id)
+    if not _is_recipe_output_factory(unit, "gpu"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Магазин доступен у завода видеокарт")
+    raw = _gpu_shop_raw(unit)
+    items = dict(raw["items"])
+    if payload.price is None:
+        items.pop(payload.item, None)
+    else:
+        cost = await _gpu_item_cost(db, unit, payload.item)
+        if payload.price <= cost:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Цена {payload.price:g} $ должна быть выше себестоимости {cost:g} $")
+        items[payload.item] = payload.price
+    await db.user_assets.update_one(
+        {"_id": unit["_id"]},
+        {"$set": {"prod.shop": {"items": items, "published": raw["published"]}}})
+    unit["prod"] = {**(unit.get("prod") or {}), "shop": {"items": items, "published": raw["published"]}}
+    return {"ok": True, **(await _gpu_shop_view(db, unit))}
+
+
+@router.post("/{unit_id}/gpu-shop/publish")
+async def set_gpu_shop_published(
+    unit_id: str,
+    payload: GpuShopPublishBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Опубликовать/снять с публикации магазин. Публикация требует хотя бы один товар
+    и что цена каждого опубликуемого товара > себестоимости (по текущей componentPricePct).
+    Снятие с публикации всегда разрешено. Ошибки: 400."""
+    user_id = str(current_user["_id"])
+    unit = await _load_unit(db, user_id, unit_id)
+    if not _is_recipe_output_factory(unit, "gpu"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Магазин доступен у завода видеокарт")
+    raw = _gpu_shop_raw(unit)
+    if payload.published:
+        if not raw["items"]:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя опубликовать пустой магазин: задайте цены товаров")
+        bad = []
+        for item_id, price in raw["items"].items():
+            cost = await _gpu_item_cost(db, unit, item_id)
+            if price <= cost:
+                bad.append(f"{item_id}: цена {price:g} ≤ себестоимость {cost:g}")
+        if bad:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Публикация отклонена: " + "; ".join(bad))
+    new_shop = {"items": raw["items"], "published": bool(payload.published)}
+    await db.user_assets.update_one({"_id": unit["_id"]}, {"$set": {"prod.shop": new_shop}})
+    unit["prod"] = {**(unit.get("prod") or {}), "shop": new_shop}
+    return {"ok": True, **(await _gpu_shop_view(db, unit))}
+
+
+# ── Покупка игроком в опубликованном магазине «Квантум GPU» ───────────────
+
+async def _gpu_unit_any_owner(db: AsyncIOMotorDatabase, unit_id: str) -> dict:
+    """Завод видеокарт любого владельца (для покупателя). 404 — не найден."""
+    if not ObjectId.is_valid(unit_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
+    unit = await db.user_assets.find_one({"_id": ObjectId(unit_id)})
+    if not unit or not _is_recipe_output_factory(unit, "gpu"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Магазин не найден")
+    return unit
+
+
+def _gpu_cost_with(unit: dict, item: str, econ: dict) -> float:
+    """Себестоимость товара по текущей componentPricePct юнита и экономике."""
+    from game_config import COMPONENT_COST
+    pct = float((unit.get("prod") or {}).get("componentPricePct", 100.0))
+    return round(COMPONENT_COST[item] * _component_unit_price(pct, econ), 2)
+
+
+@router.get("/gpu-shops/published")
+async def list_published_gpu_shops(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Опубликованные магазины «Квантум GPU» игроков. Товар с price <= себестоимости
+    или без компонентов на складе помечен available=false. Остаток — число возможных
+    покупок (availableQty), сырой склад владельца не отдаётся."""
+    from game_config import COMPONENT_COST
+    me = str(current_user["_id"])
+    econ = await get_econ(db)
+    shops = []
+    async for unit in db.user_assets.find({
+        "type": "factory", "meta.produces": "gpu", "prod.shop.published": True,
+    }).limit(200):
+        raw = _gpu_shop_raw(unit)
+        if not raw["published"]:
+            continue
+        owner_id = str(unit.get("userId") or "")
+        owner = None
+        if ObjectId.is_valid(owner_id):
+            owner = await db.users.find_one({"_id": ObjectId(owner_id)}, {"username": 1})
+        store = (unit.get("prod") or {}).get("storage") or {}
+        have = float(store.get(COMPONENT_RESOURCE, 0.0))
+        items = []
+        for item_id, price in raw["items"].items():
+            if item_id not in COMPONENT_COST:
+                continue
+            cost = _gpu_cost_with(unit, item_id, econ)
+            price_ok = price > cost
+            qty_left = int(have // COMPONENT_COST[item_id]) if price_ok else 0
+            items.append({
+                "id": item_id,
+                "price": price,
+                "costPrice": cost,
+                "priceOk": price_ok,
+                "availableQty": qty_left,
+                "available": price_ok and qty_left > 0,
+            })
+        shops.append({
+            "unitId": str(unit["_id"]),
+            "ownerId": owner_id,
+            "ownerName": (owner or {}).get("username", "Игрок"),
+            "isOwn": owner_id == me,
+            "items": items,
+        })
+    return {"ok": True, "shops": shops}
+
+
+@router.post("/{unit_id}/gpu-shop/buy")
+async def buy_gpu_shop_item(
+    unit_id: str,
+    payload: ComponentShopBuyBody,
+    current_user: dict = Depends(require_allowed("assets")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Покупка товара опубликованного магазина игроком. Тело: {item, qty}.
+    Порядок: проверки → атомарное списание компонентов со склада владельца
+    (условный $inc: published, та же цена, остаток ≥ нужного) → списание у покупателя
+    (adjust_balance отказывает при нехватке средств; склад откатывается) → зачисление
+    владельцу. Обе стороны пишутся в ledger через record_transaction.
+    Ошибки: 400 (правила/средства), 404 (нет магазина), 409 (остаток/цена изменились)."""
+    from game_config import COMPONENT_COST
+    buyer_id = str(current_user["_id"])
+    unit = await _gpu_unit_any_owner(db, unit_id)
+    owner_id = str(unit.get("userId") or "")
+    if owner_id == buyer_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нельзя покупать в собственном магазине")
+    if not ObjectId.is_valid(owner_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Владелец магазина недоступен")
+    owner = await db.users.find_one({"_id": ObjectId(owner_id)}, {"username": 1})
+    if not owner:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Владелец магазина недоступен")
+
+    raw = _gpu_shop_raw(unit)
+    if not raw["published"]:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Магазин не опубликован")
+    price = raw["items"].get(payload.item)
+    if price is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Товара нет в магазине")
+    econ = await get_econ(db)
+    cost = _gpu_cost_with(unit, payload.item, econ)
+    if price <= cost:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"Товар недоступен: цена {price:g} $ не выше себестоимости {cost:g} $")
+
+    components = COMPONENT_COST[payload.item]
+    need = components * payload.qty
+    total = round(price * payload.qty, 2)
+    cost_total = round(cost * payload.qty, 2)
+    profit = round(total - cost_total, 2)
+    comp_key = f"prod.storage.{COMPONENT_RESOURCE}"
+
+    # 1) Атомарно списываем компоненты со склада владельца. Условие гарантирует:
+    #    магазин опубликован, цена не изменилась с проверки, остатка хватает.
+    #    Две параллельные покупки не могут списать один и тот же остаток дважды.
+    stock_doc = await db.user_assets.find_one_and_update(
+        {
+            "_id": unit["_id"],
+            "prod.shop.published": True,
+            f"prod.shop.items.{payload.item}": price,
+            comp_key: {"$gte": float(need)},
+        },
+        {"$inc": {comp_key: -float(need)}},
+        return_document=True,
+    )
+    if not stock_doc:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Недостаточно товара или магазин/цена изменились — обновите список")
+
+    async def _restore_stock() -> None:
+        await db.user_assets.update_one({"_id": unit["_id"]}, {"$inc": {comp_key: float(need)}})
+
+    # 2) Списание у покупателя: adjust_balance атомарно отказывает при нехватке средств.
+    buyer_balance = await adjust_balance(db, buyer_id, -total)
+    if buyer_balance is None:
+        await _restore_stock()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+
+    # 3) Зачисление выручки владельцу (владелец проверен выше).
+    owner_balance = await adjust_balance(db, owner_id, total)
+    if owner_balance is None:
+        # Сбой после списания: возвращаем покупателю и склад через adjust_balance/$inc.
+        await adjust_balance(db, buyer_id, total)
+        await _restore_stock()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ошибка зачисления владельцу")
+
+    owner_name = owner.get("username", "Игрок")
+    buyer_name = current_user.get("username", "Игрок")
+    meta = {"unitId": str(unit["_id"]), "item": payload.item, "qty": payload.qty,
+            "components": need, "unitPrice": price, "costPrice": cost}
+    await record_transaction(
+        db, buyer_id, EXPENSE, total, CAT_SHOP,
+        f"Покупка «Квантум GPU»: {payload.item} × {payload.qty}",
+        counterparty=owner_name,
+        balance_after=buyer_balance,
+        meta={**meta, "sellerId": owner_id},
+    )
+    await record_transaction(
+        db, owner_id, INCOME, total, CAT_FACTORY,
+        f"Продажа в магазине «Квантум GPU»: {payload.item} × {payload.qty}",
+        counterparty=buyer_name,
+        balance_after=owner_balance,
+        meta={**meta, "buyerId": buyer_id, "revenue": total, "cost": cost_total, "profit": profit},
+    )
+    left = float(((stock_doc.get("prod") or {}).get("storage") or {}).get(COMPONENT_RESOURCE, 0.0))
+    return {
+        "ok": True,
+        "item": payload.item,
+        "qty": payload.qty,
+        "amount": total,
+        "ownerProfit": profit,
+        "warehouseLeft": left,
+        "balance": buyer_balance,
+    }
 
 
 @router.post("/{unit_id}/haul-now")
@@ -861,6 +1529,22 @@ if __name__ == "__main__":
     assert pb["storage"]["bread"] == 120.0, pb["storage"]
     assert pb["storage"]["wheat"] == 760.0, pb["storage"]
 
+    gpu_plant_check = {"type": "factory", "price": 250000, "employees": 24,
+                       "meta": {"produces": "gpu", "outputPerHour": 4, "capacity": 20000}}
+    pg = _prod_state(gpu_plant_check)
+    pg["workers"] = 24
+    pg["food"] = 100.0
+    pg["storage"] = {"metal": 100.0, "copper": 100.0, "bronze": 100.0, "processed_wood": 100.0}
+    _apply_production(gpu_plant_check, pg, 1.0)
+    assert pg["storage"]["component"] == 4.0, pg["storage"]
+    assert pg["storage"]["metal"] == 84.0 and pg["storage"]["copper"] == 92.0, pg["storage"]
+    pg2 = _prod_state(gpu_plant_check)
+    pg2["workers"] = 24
+    pg2["food"] = 100.0
+    pg2["storage"] = {"metal": 100.0, "copper": 100.0, "bronze": 0.0, "processed_wood": 100.0}
+    _apply_production(gpu_plant_check, pg2, 1.0)
+    assert "component" not in pg2["storage"], pg2["storage"]
+
     # Погрузка: сначала большие стаки, в пределах грузоподъёмности.
     store = {"wood": 300.0, "metal": 1000.0}
     cargo = _load_cargo(store, 500.0)
@@ -869,8 +1553,8 @@ if __name__ == "__main__":
 
     # Цены: хлеб 30 × economy_mult=1.
     econ = {"economy_mult": 1.0}
-    assert _resource_price("bread", econ) == 30.0
-    assert _food_unit_price(econ) == 30.0
+    assert _resource_price("bread", econ) == RESOURCES_BY_ID["bread"]["base_price"]
+    assert _food_unit_price(econ) == RESOURCES_BY_ID["bread"]["base_price"]
     assert _resource_price("nope", econ) == 0.0
 
     print("production self-check OK")

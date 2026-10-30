@@ -17,6 +17,8 @@
           var meta = document.querySelector('meta[name="theme-color"]');
           var bg = { light: '#f5f5f7', dark: '#000000', tradeverse: '#0f1117' };
           var t = localStorage.getItem('tradeverse_theme');
+          // Нет ручного выбора — берём системную тему (prefers-color-scheme).
+          if (!t && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark';
           if (t === 'dark' || t === 'tradeverse') {
             root.setAttribute('data-theme', t);
             if (meta) meta.setAttribute('content', bg[t]);

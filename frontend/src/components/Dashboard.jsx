@@ -8,6 +8,8 @@ import BankTab from './BankTab'
 import CryptoTab from './CryptoTab'
 import ShopTab from './ShopTab'
 import LeaderboardTab from './LeaderboardTab'
+import AchievementsTab from './AchievementsTab'
+import TutorialTab from './TutorialTab'
 import MarketTab from './MarketTab'
 import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
@@ -18,6 +20,7 @@ import MiningTab from './MiningTab'
 import CarsTab from './CarsTab'
 import PlayerBusinessesTab from './PlayerBusinessesTab'
 import SettingsPage from './SettingsPage'
+import SupportPage from './SupportPage'
 import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
 import LegalFooter from './LegalFooter'
@@ -130,7 +133,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         if (data.balance != null) setBalance(data.balance)
         onUserUpdate?.({
           balance: data.balance, username: data.username,
-          avatar: data.avatar, created_at: data.created_at,
+          avatar: data.avatar, banner: data.banner, badges: data.badges,
+          created_at: data.created_at,
           role: data.role, adminLevel: data.adminLevel,
           adminFunctions: data.adminFunctions,
         })
@@ -179,8 +183,14 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <PlayerBusinessesTab />
       case 'leaderboard':
         return <LeaderboardTab currentUserId={user?.id} />
+      case 'achievements':
+        return <AchievementsTab />
+      case 'tutorial':
+        return <TutorialTab />
       case 'settings':
         return <SettingsPage user={user} onUserUpdate={onUserUpdate} />
+      case 'support':
+        return <SupportPage />
       default:
         return <AccountTab balance={balance} />
     }

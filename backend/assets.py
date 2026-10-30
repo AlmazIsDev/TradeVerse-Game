@@ -27,6 +27,7 @@ from ledger import (
 )
 from notifications import push_notification
 from econ import get_econ
+from levels import realestate_limit
 from timeutil import now_utc, to_aware
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -103,6 +104,9 @@ async def check_type_limit(db, user_id: str, asset_type: str) -> None:
     limit = TYPE_LIMITS.get(asset_type)
     if not limit:
         return
+    if asset_type == TYPE_REALESTATE:
+        user = await db.users.find_one({"_id": ObjectId(user_id)}, {"level": 1})
+        limit = realestate_limit(int((user or {}).get("level", 1)))
     cnt = await db.user_assets.count_documents({"userId": user_id, "type": asset_type})
     if cnt >= limit:
         raise HTTPException(
@@ -303,9 +307,11 @@ _ADMIN_MARKET_HOUSES = [
 
 _ADMIN_MARKET_BUSINESSES = [
     {"slug": "admin-biz-1", "type": TYPE_BUSINESS, "name": "Pixel Store", "category": "retail", "rarity": "common", "price": 6000, "income_per_hour": 60, "upkeep_per_hour": 19, "employees": 4},
-    {"slug": "admin-biz-2", "type": TYPE_BUSINESS, "name": "GPU Market", "category": "tech", "rarity": "common", "price": 50000, "income_per_hour": 400, "upkeep_per_hour": 128, "employees": 6},
-    {"slug": "admin-biz-3", "type": TYPE_BUSINESS, "name": "CoreTech Shop", "category": "tech", "rarity": "common", "price": 55000, "income_per_hour": 440, "upkeep_per_hour": 141, "employees": 8},
-    {"slug": "admin-biz-4", "type": TYPE_BUSINESS, "name": "Neon Hardware", "category": "tech", "rarity": "common", "price": 60000, "income_per_hour": 480, "upkeep_per_hour": 154, "employees": 10},
+    # Магазины игроков (GPU Market, CoreTech, Неон-Хард): без пассивного дохода и улучшений;
+    # выручка — только от продажи товаров игрокам по цене владельца (см. production.py).
+    {"slug": "admin-biz-2", "type": TYPE_BUSINESS, "name": "GPU Market", "category": "tech", "rarity": "common", "price": 50000, "income_per_hour": 0, "upkeep_per_hour": 128, "employees": 6, "shop": True},
+    {"slug": "admin-biz-3", "type": TYPE_BUSINESS, "name": "CoreTech Shop", "category": "tech", "rarity": "common", "price": 55000, "income_per_hour": 0, "upkeep_per_hour": 141, "employees": 8, "shop": True},
+    {"slug": "admin-biz-4", "type": TYPE_BUSINESS, "name": "Neon Hardware", "category": "tech", "rarity": "common", "price": 60000, "income_per_hour": 0, "upkeep_per_hour": 154, "employees": 10, "shop": True},
     {"slug": "admin-biz-5", "type": TYPE_BUSINESS, "name": "Quantum GPUs", "category": "tech", "rarity": "common", "price": 65000, "income_per_hour": 520, "upkeep_per_hour": 166, "employees": 2},
     {"slug": "admin-biz-6", "type": TYPE_BUSINESS, "name": "Street Kiosk", "category": "retail", "rarity": "common", "price": 6600, "income_per_hour": 66, "upkeep_per_hour": 21, "employees": 4},
     {"slug": "admin-biz-7", "type": TYPE_BUSINESS, "name": "Mini Market", "category": "retail", "rarity": "common", "price": 7200, "income_per_hour": 72, "upkeep_per_hour": 23, "employees": 6},
@@ -314,6 +320,8 @@ _ADMIN_MARKET_BUSINESSES = [
     {"slug": "admin-biz-10", "type": TYPE_BUSINESS, "name": "Tech Repair", "category": "service", "rarity": "common", "price": 18000, "income_per_hour": 150, "upkeep_per_hour": 48, "employees": 2},
     {"slug": "admin-biz-11", "type": TYPE_BUSINESS, "name": "Overclock Lab", "category": "service", "rarity": "common", "price": 19800, "income_per_hour": 165, "upkeep_per_hour": 53, "employees": 4},
     {"slug": "admin-biz-12", "type": TYPE_BUSINESS, "name": "Crypto Office", "category": "office", "rarity": "common", "price": 28000, "income_per_hour": 250, "upkeep_per_hour": 80, "employees": 6},
+    # Магазин «Квантум GPU»: без пассивного дохода; выручка — только от продажи товаров за компоненты.
+    {"slug": "admin-biz-quantum-gpu", "type": TYPE_BUSINESS, "name": "Магазин «Квантум GPU»", "category": "tech", "rarity": "common", "price": 65000, "income_per_hour": 0, "upkeep_per_hour": 166, "employees": 2, "shop": True},
 ]
 
 # ── Каталог инфраструктурных активов (заводы, источники, склады) ──────────────
@@ -730,14 +738,8 @@ def _mining_cost(asset: dict, econ: Optional[dict] = None) -> float:
 
 
 def _infra_income_per_hour(asset: dict, econ: Optional[dict] = None) -> float:
-    """Денежный доход только у GPU-завода (продукция продаётся по цене из econ).
-    Источники/пекарня копят физические ресурсы (production.py), склады не платят —
-    денежный поток источников отключён, чтобы не платить дважды."""
-    t = asset.get("type")
-    meta = asset.get("meta") or {}
-    if t == TYPE_FACTORY and meta.get("produces") == "gpu":
-        return round(int(meta.get("outputPerHour") or 0) * float(
-            econ.get("infra_gpu_price") if econ else DEFAULT_ECON["infra_gpu_price"]), 2)
+    """Инфраструктура не платит пассивом: завод видеокарт выпускает компоненты
+    (production.py), деньги приходят только от их продажи на рынке и в магазин."""
     return 0.0
 
 
@@ -1506,6 +1508,10 @@ async def upgrade_asset(
     if asset.get("type") == TYPE_CAR:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Автомобиль не улучшается по уровню — используйте тюнинг деталей")
+    # Магазины игроков: доход только от продажи товаров, улучшений нет.
+    if (CATALOG_BY_SLUG.get(asset.get("slug") or "") or {}).get("shop"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Магазин не улучшается — доход формируется продажами товаров")
     steps = payload.levels
     seen_level = asset.get("level", 1)
     cost = _upgrade_plan(asset, steps)[-1]["totalCost"]
@@ -1711,6 +1717,9 @@ async def sell_asset(
     """Продать актив обратно (70% текущей стоимости) + невыбранный доход."""
     user_id = str(current_user["_id"])
     asset = await _load_owned(db, user_id, asset_id)
+    if asset.get("frozen"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Актив заморожен: погасите займ, чтобы продать его")
     # Продажа умножает ту же стоимость, что покупка: иначе при mult<0.7 арбитраж.
     # Тюнинг и накопленный доход к рынку не привязаны.
     await _ensure_asset_market(db)

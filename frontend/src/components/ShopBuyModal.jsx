@@ -68,7 +68,7 @@ function ShopBuyModal({
           </div>
           <div className="market-buy-modal-item-text">
             <div className="market-buy-modal-eyebrow">
-              {t('buyModal.title', { defaultValue: 'Покупка' })}
+              {t('buyModal.title')}
             </div>
             <h3 className="market-buy-modal-name">{item.name}</h3>
             {item.category && (
@@ -81,7 +81,7 @@ function ShopBuyModal({
 
         <div className="market-buy-modal-qty">
           <div className="market-buy-modal-qty-label">
-            {t('buyModal.quantity', 'Количество')}<Tooltip text={t('buyModal.quantityHelp')} />
+            {t('buyModal.quantity')}<Tooltip text={t('buyModal.quantityHelp')} />
           </div>
           <div className="market-buy-modal-stepper">
             <button
@@ -112,28 +112,28 @@ function ShopBuyModal({
 
         <div className="market-buy-modal-row">
           <div className="market-buy-modal-row-label">
-            <Wallet size={14} /> {t('buyModal.balance', 'Баланс')}
+            <Wallet size={14} /> {t('buyModal.balance')}
           </div>
           <div className="market-buy-modal-row-value">${formatMoney(balance)}</div>
         </div>
 
         <div className="market-buy-modal-row">
           <div className="market-buy-modal-row-label">
-            <Coins size={14} /> {t('buyModal.pricePerUnit', 'Цена за шт.')}
+            <Coins size={14} /> {t('buyModal.pricePerUnit')}
           </div>
           <div className="market-buy-modal-row-value">${formatMoney(price)}</div>
         </div>
 
         <div className="market-buy-modal-row market-buy-modal-row-price">
           <div className="market-buy-modal-row-label">
-            <Receipt size={14} /> {t('buyModal.total', 'Итого')}
+            <Receipt size={14} /> {t('buyModal.total')}
           </div>
           <div className="market-buy-modal-row-value">${formatMoney(total)}</div>
         </div>
 
         {!affordable && (
           <div className="buy-modal-warn">
-            {t('stocks.insufficientFunds', 'Недостаточно средств')}
+            {t('stocks.insufficientFunds')}
           </div>
         )}
 
@@ -145,8 +145,8 @@ function ShopBuyModal({
           onClick={() => onConfirm?.(qty)}
         >
           <ShoppingCart size={16} /> {busy
-            ? t('common.loading', 'Загрузка...')
-            : t('common.buy', 'Купить')}
+            ? t('common.loading')
+            : t('common.buy')}
         </button>
       </div>
     </div>

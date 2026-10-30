@@ -16,11 +16,12 @@ import MediaExposeModal from './MediaExposeModal'
 import UpgradeModal from './UpgradeModal'
 import FarmPanel from './FarmPanel'
 import ProductionPanel from './ProductionPanel'
+import GpuShopEditor from './GpuShopEditor'
 import {
   Home, Car, Briefcase, ArrowUpCircle, HandCoins, Trash2, AlertTriangle,
   TrendingUp, Users, Wallet, Building2, KeyRound, Check, X, Gauge, LayoutGrid, Wrench, Package,
   Swords, ShieldPlus, Cpu, SlidersHorizontal, ChevronDown, ChevronLeft, Send, Newspaper, Info, Pencil,
-  Pickaxe, Factory, Mountain, Warehouse, Sprout,
+  Pickaxe, Factory, Mountain, Warehouse, Sprout, Store,
 } from 'lucide-react'
 
 // Детали тюнинга авто (порядок и подписи; стоимость считает сервер).
@@ -81,6 +82,8 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
   const [rentForm, setRentForm] = useState({ minHours: '6' })
   const [tuneModal, setTuneModal] = useState(null)   // car asset
   const [upgradeModal, setUpgradeModal] = useState(null)  // актив в модалке «Улучшения»
+  const [gpuModal, setGpuModal] = useState(null)          // завод видеокарт — модалка «Управление заводом»
+  const [shopModal, setShopModal] = useState(null)        // завод видеокарт — редактор магазина (цены, публикация)
   const [confirm, setConfirm] = useState(null)       // { title, message, danger, onConfirm }
   const [isCompanyOwner, setIsCompanyOwner] = useState(false)
   const [materialsModal, setMaterialsModal] = useState(null)   // business asset
@@ -429,16 +432,17 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     const isCar = a.type === 'car'
     const isRealEstate = a.type === 'realestate'
     const isSource = a.type === 'source'
+    const isGpuFactory = a.type === 'factory' && a.meta?.produces === 'gpu'
     const actions = []
 
-    if (!isCar && a.profitPerHour > 0) {
+    if (!isCar && !isGpuFactory && a.profitPerHour > 0) {
       actions.push({
         key: 'collect', className: 'collect', disabled: busy || a.accrued <= 0,
         icon: <HandCoins size={15} />, label: t('myassets.collect'),
         onClick: () => askAct(a.id, collectAsset, 'myassets.collected', { title: t('myassets.collect'), message: t('confirm.collect', { amount: formatMoney(a.accrued) }) }),
       })
     }
-    if (!isCar && !isSource) {
+    if (!isCar && !isSource && !isGpuFactory) {
       actions.push({
         key: 'upgrade', className: 'upgrade', disabled: busy,
         icon: <ArrowUpCircle size={15} />, label: `${t('upgrade.title')} ($${formatMoney(a.upgradeCost)})`,
@@ -505,10 +509,24 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
         onClick: () => { setFieldModal(a); setMenuOpenId(null) },
       })
     }
+    // Завод видеокарт: кнопка «Управление заводом» (модалка с параметрами завода)
+    // и «Управлять магазином» (редактор цен и публикации магазина).
+    if (isGpuFactory) {
+      actions.push({
+        key: 'manage-gpu-factory', disabled: busy, icon: <Pickaxe size={15} />,
+        label: t('gpuFactory.manage', 'Управление заводом'),
+        onClick: () => { setGpuModal(a); setMenuOpenId(null) },
+      })
+      actions.push({
+        key: 'manage-gpu-shop', disabled: busy, icon: <Store size={15} />,
+        label: t('gpuShop.manage'),
+        onClick: () => { setShopModal(a); setMenuOpenId(null) },
+      })
+    }
     // Шахта/лесопилка, пекарня (завод produces='bread') и склад: панель
     // производства — работники, еда, хранилище, фуры, получатель, продажа.
     const isBakery = a.type === 'factory' && a.meta?.produces === 'bread'
-    if ((a.type === 'source' && a.category !== 'field') || isBakery || a.type === 'warehouse') {
+    if (!isGpuFactory && ((a.type === 'source' && a.category !== 'field') || isBakery || a.type === 'warehouse')) {
       actions.push({
         key: 'manage-production', disabled: busy,
         icon: isBakery ? <Package size={15} /> : (a.type === 'warehouse' ? <Warehouse size={15} /> : <Pickaxe size={15} />),
@@ -663,17 +681,17 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                 </div>
                 <div className="asset-card-head">
                   <span className="asset-name">{nameOf(a)}</span>
-                  {a.type === 'source' && <span className="source-live-dot is-running"><span /> Производит ресурсы</span>}
+                  {a.type === 'source' && <span className="source-live-dot is-running"><span /> {t('myassets.producing', 'Производит ресурсы')}</span>}
                 </div>
                 {a.type === 'source' && (
                   <div className="source-card-highlight">
-                    <div><span>Доход</span><strong>${formatMoney(a.profitPerHour || 0)}<small>/ч</small></strong></div>
-                    <div><span>Уровень</span><strong>{a.level}</strong></div>
+                    <div><span>{t('myassets.incomeLabel', 'Доход')}</span><strong>${formatMoney(a.profitPerHour || 0)}<small>/ч</small></strong></div>
+                    <div><span>{t('myassets.levelLabel', 'Уровень')}</span><strong>{a.level}</strong></div>
                   </div>
                 )}
                 <div className="asset-stats">
                   <div className="asset-stat"><span>{t('myassets.value')}</span><b>${formatMoney(a.value)}</b></div>
-                  {!isCar && a.profitPerHour !== 0 && (
+                  {!isCar && a.meta?.produces !== 'gpu' && a.profitPerHour !== 0 && (
                     <div className="asset-stat"><span><TrendingUp size={12} /> {t('market.profitPerHour')}</span>
                       <b className={a.profitPerHour >= 0 ? 'up' : 'down'}>${formatMoney(a.profitPerHour)}</b></div>
                   )}
@@ -700,7 +718,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                   {isCar && <div className="asset-stat"><span><Gauge size={12} /> {t('car.condition')}</span><b className="up">{t(`car.cond_${Math.min(a.level, 3)}`, t('car.cond_1'))}</b></div>}
                 </div>
 
-                {!isCar && a.profitPerHour > 0 && (
+                {!isCar && a.meta?.produces !== 'gpu' && a.profitPerHour > 0 && (
                   <div className="asset-accrued"><Wallet size={14} /> {t('myassets.accrued')}: <b>${formatMoney(a.accrued)}</b></div>
                 )}
                 {isCar && (
@@ -718,6 +736,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
                     <button className="source-primary-action" onClick={() => {
                       setMenuOpenId(null)
                       if (a.category === 'field') setFieldModal(a)
+                      else if (a.meta?.produces === 'gpu') setGpuModal(a)
                       else setProductionModal(a)
                     }}>
                       {a.category === 'field' ? <Sprout size={15} /> : <Pickaxe size={15} />}
@@ -751,6 +770,30 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
       {upgradeModal && (
         <UpgradeModal asset={upgradeModal} balance={balance} busy={busyId === upgradeModal.id}
           onClose={() => setUpgradeModal(null)} onConfirm={submitUpgrade} />
+      )}
+
+      {gpuModal && (
+        <div className="modal-overlay" onClick={() => setGpuModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={() => setGpuModal(null)}><X size={18} /></button>
+            <h3><Pickaxe size={17} /> {t('gpuFactory.manage', 'Управление заводом')}: {nameOf(gpuModal)}</h3>
+            <div className="asset-stats">
+              <div className="asset-stat"><span>{t('myassets.level')}</span><b>{gpuModal.level}</b></div>
+              <div className="asset-stat"><span>{t('myassets.value')}</span><b>${formatMoney(gpuModal.value)}</b></div>
+              <div className="asset-stat"><span>{t('market.employees')}</span><b>{gpuModal.employees ?? '—'}</b></div>
+              <div className="asset-stat"><span>{t('gpuFactory.output', 'Выпуск')}</span><b>{gpuModal.meta?.outputPerHour ?? 0} {t('gpuFactory.unitsPerHour', 'шт./ч')}</b></div>
+            </div>
+            <div className="modal-buttons">
+              <button className="stock-btn buy-btn" onClick={() => { setShopModal(gpuModal); setGpuModal(null) }}>
+                <Store size={14} /> {t('gpuShop.manage')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shopModal && (
+        <GpuShopEditor unitId={shopModal.id} onClose={() => setShopModal(null)} />
       )}
 
       {rentModal && (

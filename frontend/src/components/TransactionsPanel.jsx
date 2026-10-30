@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '../i18n'
 import { fetchTransactions } from '../services/api'
 import {
   ArrowDownLeft, ArrowUpRight, Search, ChevronLeft, ChevronRight,
@@ -22,8 +23,14 @@ const CATEGORY_ICON = {
   system: Settings,
 }
 
+// Локаль числового форматирования по текущему языку интерфейса.
+const LOCALE_BY_LANG = { es: 'es-ES', en: 'en-US', ru: 'ru-RU' }
+function currentLocale() {
+  return LOCALE_BY_LANG[i18n.language?.slice(0, 2)] || 'en-US'
+}
+
 function formatMoney(n) {
-  return Number(n || 0).toLocaleString('ru-RU', {
+  return Number(n || 0).toLocaleString(currentLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
@@ -33,12 +40,14 @@ function formatMoney(n) {
 function formatCompact(n) {
   const v = Number(n || 0)
   const abs = Math.abs(v)
-  const s = (x) => String(x).replace('.', ',')
-  if (abs >= 1e12) return s((v / 1e12).toFixed(2)) + ' трлн'
-  if (abs >= 1e9) return s((v / 1e9).toFixed(2)) + ' млрд'
-  if (abs >= 1e6) return s((v / 1e6).toFixed(2)) + ' млн'
-  if (abs >= 1e5) return s((v / 1e3).toFixed(1)) + ' тыс'
-  return v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const locale = currentLocale()
+  const s = (x) => Number(x).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const u = (k) => ' ' + i18n.t(`units.${k}`)
+  if (abs >= 1e12) return s(v / 1e12) + u('trillionShort')
+  if (abs >= 1e9) return s(v / 1e9) + u('billionShort')
+  if (abs >= 1e6) return s(v / 1e6) + u('millionShort')
+  if (abs >= 1e5) return Number(v / 1e3).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + u('thousandShort')
+  return v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 /** Полная сумма до миллиона, компактная (млн/млрд) выше — числа не переносятся по цифрам. */
@@ -60,7 +69,7 @@ function formatQty(n) {
   if (Number.isInteger(v)) {
     // Целые с хвостом нулей (3 500 000) компактно: «3,50 млн» вместо «3,5e+6».
     if (Math.abs(v) >= 1e6) return formatCompact(v)
-    return v.toLocaleString('ru-RU')
+    return v.toLocaleString(currentLocale())
   }
   const [int, frac = ''] = v.toFixed(8).replace(/0+$/, '').split('.')
   // Пыль меньше 1e-8 округлилась бы в ноль — показываем значащие цифры как есть.
@@ -68,18 +77,53 @@ function formatQty(n) {
     if (Math.abs(v) >= 1e6) return formatCompact(v)
     return v.toPrecision(2).replace('.', ',')
   }
-  const intPart = Number(int).toLocaleString('ru-RU')
-  return frac ? `${intPart},${frac}` : intPart
+  const intPart = Number(int).toLocaleString(currentLocale())
+  const decSep = currentLocale().startsWith('ru') || currentLocale().startsWith('es') ? ',' : '.'
+  return frac ? `${intPart}${decSep}${frac}` : intPart
 }
 
 function formatDateTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('ru-RU', {
+  return d.toLocaleString(currentLocale(), {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+/**
+ * Описание операции по структурированным полям (meta/symbol/category).
+ * Если данных недостаточно, возвращает исходный label с сервера.
+ */
+function describeItem(item, t) {
+  const meta = item.meta || {}
+  const qty = meta.quantity ?? meta.qty
+  const action = meta.action
+  if (item.symbol && qty != null && (action === 'buy' || action === 'sell')) {
+    return t(`tx.tpl.${action}`, {
+      qty: formatQty(qty),
+      symbol: item.symbol,
+      defaultValue: item.label,
+    })
+  }
+  if (item.category === 'crypto' && item.symbol && qty != null) {
+    const kind = item.direction === 'income' ? 'sell' : 'buy'
+    return t(`tx.tpl.${kind}`, { qty: formatQty(qty), symbol: item.symbol, defaultValue: item.label })
+  }
+  if (item.category === 'farm' && meta.liters != null) {
+    return t('tx.tpl.fuel', { liters: formatQty(meta.liters), defaultValue: item.label })
+  }
+  if (item.category === 'cityroof' && meta.warcoin != null) {
+    return t('tx.tpl.warcoin', { qty: formatQty(meta.warcoin), defaultValue: item.label })
+  }
+  if (meta.slug && i18n.exists(`assetNames.${meta.slug}`)) {
+    const name = t(`assetNames.${meta.slug}`)
+    if (/^Покупка:/.test(item.label)) return t('tx.tpl.buyItem', { name })
+    if (/^Продажа:/.test(item.label)) return t('tx.tpl.sellItem', { name })
+    if (/^Доход:/.test(item.label)) return t('tx.tpl.income', { name })
+  }
+  return item.label
 }
 
 /**
@@ -197,7 +241,7 @@ function TransactionsPanel({ refreshKey = 0, category, companyId }) {
                   {isIncome ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}
                 </div>
                 <div className="tx-card-body">
-                  <span className="tx-card-label">{item.label}</span>
+                  <span className="tx-card-label">{describeItem(item, t)}</span>
                   <span className="tx-card-meta">
                     <span className="tx-card-cat">
                       <CatIcon size={12} />

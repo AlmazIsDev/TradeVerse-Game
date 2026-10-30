@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 // Car — иконка для пункта меню «Автосалон» (CarsTab).
-import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Store, Trophy, Cpu, Settings, Landmark, Car, Handshake, Boxes } from 'lucide-react'
+import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Building, Store, Trophy, Cpu, Settings, Landmark, Car, Handshake, Boxes, LifeBuoy, Award, BookOpen } from 'lucide-react'
 
 const ICON_MAP = {
   account: Wallet,
@@ -36,8 +36,8 @@ function Sidebar({ activeTab, onTabChange }) {
       { id: 'stocks', label: t('nav.stocks') },
       { id: 'realestate', label: t('nav.realestate') },
       { id: 'shop', label: t('nav.shop') },
-      { id: 'cars', label: t('nav.cars', 'Автосалон') },
-      { id: 'playerbusinesses', label: t('nav.playerBusinesses', 'Бизнесы игроков') },
+      { id: 'cars', label: t('nav.cars') },
+      { id: 'playerbusinesses', label: t('nav.playerBusinesses') },
     ] },
     { title: t('nav.groupAssets'), items: [
       { id: 'inventory', label: t('nav.inventory') },
@@ -83,6 +83,27 @@ function Sidebar({ activeTab, onTabChange }) {
         ))}
       </nav>
       <div className="sidebar-footer">
+        <button
+          className={`sidebar-item ${activeTab === 'tutorial' ? 'active' : ''}`}
+          onClick={() => onTabChange('tutorial')}
+        >
+          <span className="sidebar-item-icon"><BookOpen size={18} /></span>
+          <span className="sidebar-item-label">{t('tutorial.open')}</span>
+        </button>
+        <button
+          className={`sidebar-item ${activeTab === 'achievements' ? 'active' : ''}`}
+          onClick={() => onTabChange('achievements')}
+        >
+          <span className="sidebar-item-icon"><Award size={18} /></span>
+          <span className="sidebar-item-label">{t('nav.achievements')}</span>
+        </button>
+        <button
+          className={`sidebar-item ${activeTab === 'support' ? 'active' : ''}`}
+          onClick={() => onTabChange('support')}
+        >
+          <span className="sidebar-item-icon"><LifeBuoy size={18} /></span>
+          <span className="sidebar-item-label">{t('nav.support')}</span>
+        </button>
         <button
           className={`sidebar-item ${activeTab === 'settings' ? 'active' : ''}`}
           onClick={() => onTabChange('settings')}

@@ -221,8 +221,8 @@ function NewFarmModal({ open, slotIndex, houseName, busy, onConfirm, onCancel })
   const { t } = useTranslation()
   const [name, setName] = useState('')
   useEffect(() => {
-    if (open) setName(`Ферма #${(slotIndex ?? 0) + 1}`)
-  }, [open, slotIndex])
+    if (open) setName(t('mining.defaultFarmName', { n: (slotIndex ?? 0) + 1, defaultValue: 'Ферма #{{n}}' }))
+  }, [open, slotIndex, t])
   if (!open) return null
   const submit = () => {
     const v = name.trim()

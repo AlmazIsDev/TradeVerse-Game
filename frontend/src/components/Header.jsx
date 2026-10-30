@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '../i18n'
 import {
-  toggleCardVisibility, fetchCurrentUser,
+  toggleCardVisibility, fetchCurrentUser, getUserLevel,
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
   acceptInvite, declineInvite, acceptApplication, declineApplication,
 } from '../services/api'
 import ProfileCard from './ProfileCard'
+import StatusBadge from './StatusBadge'
+import { flagUrl } from '../utils/countries'
 import { formatCompact } from './TransactionsPanel'
 import {
   Bell, LogOut, X, Check, Wallet, Megaphone, Zap, Users, Store,
@@ -13,7 +16,7 @@ import {
 } from 'lucide-react'
 
 function formatMoney(n) {
-  return Number(n || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return Number(n || 0).toLocaleString(i18n.language === 'es' ? 'es-ES' : i18n.language === 'en' ? 'en-US' : 'ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 const STORAGE_KEY = 'tradeverse_user'
@@ -52,6 +55,21 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     storedUser?.card_visible !== undefined ? storedUser.card_visible : true
   )
   const [copied, setCopied] = useState(false)
+  const [levelInfo, setLevelInfo] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getUserLevel()
+      .then((data) => { if (!cancelled) setLevelInfo(data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const levelProgress = levelInfo
+    ? Math.min(100, Math.round(
+        ((levelInfo.xp - levelInfo.xpCurrentLevel) /
+          Math.max(1, levelInfo.xpNextLevel - levelInfo.xpCurrentLevel)) * 100))
+    : 0
 
   const displayName = user?.username || storedUser?.username || t('header.user')
   const avatar = user?.avatar || storedUser?.avatar || null
@@ -271,6 +289,13 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
             <span className="header-balance-value">{formatCompact(balance)} $</span>
           </div>
         )}
+        {levelInfo && (
+          <div className="header-level" title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}>
+            <span>{t('header.levelShort', 'Ур.')} {levelInfo.level}</span>
+            <div className="header-level-bar"><div style={{ width: `${levelProgress}%` }} /></div>
+            <span className="header-level-left">{levelInfo.xpNextLevel - levelInfo.xp} XP</span>
+          </div>
+        )}
         <div className="notification-wrapper" ref={notifRef}>
           <button
             className="header-icon-btn notification-btn"
@@ -375,12 +400,16 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
           title={t('nav.settings')}
           onClick={onOpenSettings}
         >
+          {(user?.country || storedUser?.country) && (
+            <img className="lb-flag header-flag" src={flagUrl(user?.country || storedUser?.country)} alt={user?.country || storedUser?.country} title={user?.country || storedUser?.country} />
+          )}
           <span className="header-username">{displayName}</span>
           {avatar ? (
             <img className="header-avatar header-avatar-img" src={avatar} alt={displayName} />
           ) : (
             <div className="header-avatar">{initials}</div>
           )}
+          <StatusBadge user={user || storedUser} size={12} />
         </button>
         {localStorage.getItem('admin_return_token') && (
           <button className="header-icon-btn" title={t('header.returnToAdmin')} onClick={returnFromImpersonation}>

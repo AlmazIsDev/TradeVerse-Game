@@ -64,12 +64,12 @@ function FarmPanel({ assetId, assetName, onBack, onOpenProduction, balance, onBa
       fetchFarmCatalog()
         .then(c => setCatalog(c))
         .catch(err => {
-          toast(`Каталог фермы: ${err?.message || t('common.error', 'Ошибка')}`, 'error')
+          toast(t('farm.catalogError', 'Каталог фермы: {{message}}', { message: err?.message || t('common.error', 'Ошибка'), interpolation: { escapeValue: false } }), 'error')
         }),
       fetchMyFarm()
         .then(m => setFarm(m))
         .catch(err => {
-          toast(`Данные фермы: ${err?.message || t('common.error', 'Ошибка')}`, 'error')
+          toast(t('farm.dataError', 'Данные фермы: {{message}}', { message: err?.message || t('common.error', 'Ошибка'), interpolation: { escapeValue: false } }), 'error')
         }),
     ])
     setLoading(false)

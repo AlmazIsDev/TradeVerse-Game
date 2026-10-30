@@ -8,7 +8,8 @@ function AuthPage({ onLogin }) {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    referrerUsername: ''
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -49,7 +50,12 @@ function AuthPage({ onLogin }) {
     const endpoint = tab === 'login' ? '/api/login' : '/api/register'
     const body = tab === 'login'
       ? { username: formData.username, password: formData.password }
-      : { username: formData.username, password: formData.password, confirm_password: formData.confirmPassword }
+      : {
+          username: formData.username,
+          password: formData.password,
+          confirm_password: formData.confirmPassword,
+          referrer_username: formData.referrerUsername.trim() || null,
+        }
 
     try {
       const data = await request(endpoint, {
@@ -174,6 +180,20 @@ function AuthPage({ onLogin }) {
                   name="confirmPassword"
                   placeholder={t('auth.repeatPassword')}
                   value={formData.confirmPassword}
+                  onChange={handleChange}
+                />
+              </div>
+            )}
+
+            {tab === 'register' && (
+              <div className="form-group">
+                <label htmlFor="referrerUsername">{t('auth.referrerLabel', 'Никнейм друга (необязательно)')}</label>
+                <input
+                  type="text"
+                  id="referrerUsername"
+                  name="referrerUsername"
+                  placeholder={t('auth.referrerPlaceholder', 'Ник пригласившего друга')}
+                  value={formData.referrerUsername}
                   onChange={handleChange}
                 />
               </div>

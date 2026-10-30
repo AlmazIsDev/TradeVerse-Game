@@ -1,22 +1,40 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 import re
 
 from pydantic import BaseModel, field_validator
 
+from username_filter import is_profane
+
+NICKNAME_PROFANITY_MSG = "Этот никнейм недопустим: в нём есть нецензурная лексика"
+
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 # data:image/<png|jpeg|jpg|webp>;base64,<...> — тот же формат, что отдаёт
 # canvas.toDataURL() на клиенте (см. SettingsPage).
 AVATAR_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]+={0,2})$")
 AVATAR_MAX_BASE64_CHARS = 700_000  # ≈ 525 КБ декодированного изображения — с запасом
+BANNER_MAX_BASE64_CHARS = 1_000_000  # баннер шире аватара, поэтому лимит больше
 
 
 class UserCreate(BaseModel):
     username: str
     password: str
     confirm_password: str
+    # Ник друга, пригласившего игрока; необязательный.
+    referrer_username: Optional[str] = None
+
+    @field_validator("referrer_username")
+    @classmethod
+    def referrer_valid(cls, v):
+        v = (v or "").strip()
+        if not v:
+            return None
+        if not USERNAME_RE.match(v):
+            raise ValueError("Некорректный никнейм друга")
+        return v
 
     @field_validator("username")
     @classmethod
@@ -29,6 +47,8 @@ class UserCreate(BaseModel):
             raise ValueError(
                 "Имя пользователя может содержать только латинские буквы, цифры, _ и -"
             )
+        if is_profane(v):
+            raise ValueError(NICKNAME_PROFANITY_MSG)
         return v
 
     @field_validator("password")
@@ -87,7 +107,89 @@ class ProfileUpdate(BaseModel):
             raise ValueError(
                 "Имя пользователя может содержать только латинские буквы, цифры, _ и -"
             )
+        if is_profane(v):
+            raise ValueError(NICKNAME_PROFANITY_MSG)
         return v
+
+
+class CountryUpdate(BaseModel):
+    """Страна игрока — ISO 3166-1 alpha-2 код или пустая строка (сброс)."""
+    country: Optional[str] = None
+
+    @field_validator("country")
+    @classmethod
+    def country_valid(cls, v):
+        v = (v or "").strip().upper()
+        if not v:
+            return None
+        if not re.fullmatch(r"[A-Z]{2}", v):
+            raise ValueError("Код страны должен состоять из двух латинских букв")
+        return v
+
+
+class PromoRedeem(BaseModel):
+    """Активация промокода в настройках."""
+    code: str
+
+    @field_validator("code")
+    @classmethod
+    def code_valid(cls, v):
+        v = (v or "").strip().upper()
+        if not v or len(v) > 32:
+            raise ValueError("Промокод должен содержать от 1 до 32 символов")
+        return v
+
+
+class PromoAdminUpsert(BaseModel):
+    """Создание/изменение промокода в админке.
+
+    Награды: деньги (amount), бизнес (business_slug, из каталога) и значок
+    (badge, см. ALLOWED_BADGES). Всё выдаётся атомарно: если что-то не выдаётся,
+    промокод не применяется. Срок действия — expires_at (необязательный)."""
+    code: str
+    amount: float = 0.0
+    business_slug: Optional[str] = None
+    badge: Optional[str] = None
+    max_uses: Optional[int] = None
+    expires_at: Optional[datetime] = None
+    active: bool = True
+
+    @field_validator("badge")
+    @classmethod
+    def promo_badge_valid(cls, v):
+        if v is None or v == "":
+            return None
+        if v not in ALLOWED_BADGES:
+            raise ValueError(f"Неизвестный значок: {v}")
+        return v
+
+    @field_validator("business_slug")
+    @classmethod
+    def promo_business_clean(cls, v):
+        v = (v or "").strip()
+        return v or None
+
+    @field_validator("amount")
+    @classmethod
+    def promo_amount_non_negative(cls, v):
+        if v < 0 or v > 1_000_000_000_000:
+            raise ValueError("Сумма бонуса не может быть отрицательной")
+        return round(v, 2)
+
+    @field_validator("code")
+    @classmethod
+    def admin_code_valid(cls, v):
+        v = (v or "").strip().upper()
+        if not re.fullmatch(r"[A-Z0-9_-]{3,32}", v):
+            raise ValueError("Промокод: 3–32 символа, латиница, цифры, _ и -")
+        return v
+
+    @field_validator("amount")
+    @classmethod
+    def amount_positive(cls, v):
+        if v <= 0 or v > 1_000_000_000_000:
+            raise ValueError("Сумма бонуса должна быть больше 0")
+        return round(v, 2)
 
 
 class BioUpdate(BaseModel):
@@ -139,6 +241,21 @@ class AvatarUpdate(BaseModel):
         return v
 
 
+class BannerUpdate(BaseModel):
+    """Баннер профиля («шапка») — data URL изображения, сжатого на клиенте до
+    широкого формата. Хранится в документе пользователя, как и аватар."""
+    banner: str
+
+    @field_validator("banner")
+    @classmethod
+    def banner_valid(cls, v):
+        if not v or not AVATAR_DATA_URL_RE.match(v):
+            raise ValueError("Некорректный формат изображения (нужны PNG/JPEG/WEBP)")
+        if len(v) > BANNER_MAX_BASE64_CHARS:
+            raise ValueError("Баннер слишком большой — выберите файл поменьше")
+        return v
+
+
 class AuthResponse(UserResponse):
     """Ответ /api/register и /api/login: данные пользователя + пара токенов.
 
@@ -172,8 +289,14 @@ class AdminPasswordReset(BaseModel):
         return v
 
 
+# Значки, которые может выдать админ вручную (админский значок выводится из роли).
+ALLOWED_BADGES = ("beta_tester",)
+
+
 class AdminUserUpdate(BaseModel):
     username: Optional[str] = None
+    # Список значков игрока (например, ["beta_tester"]); null не допускается.
+    badges: Optional[list[str]] = None
     balance: Optional[float] = None
     role: Optional[str] = None
     admin_level: Optional[int] = None
@@ -196,6 +319,16 @@ class AdminUserUpdate(BaseModel):
         if v is not None and v not in ("user", "admin"):
             raise ValueError("Роль может быть только 'user' или 'admin'")
         return v
+
+    @field_validator("badges")
+    @classmethod
+    def badges_valid(cls, v):
+        if v is None:
+            return v
+        unknown = [b for b in v if b not in ALLOWED_BADGES]
+        if unknown:
+            raise ValueError(f"Неизвестные значки: {', '.join(unknown)}")
+        return sorted(set(v))
 
     @field_validator("admin_level")
     @classmethod

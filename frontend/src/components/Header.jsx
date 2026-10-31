@@ -44,6 +44,8 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   }
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState([])
+  const [unreadTotal, setUnreadTotal] = useState(0)
+  const [unreadByCategory, setUnreadByCategory] = useState({})
   const [notifTab, setNotifTab] = useState('all')
   const [notifSearch, setNotifSearch] = useState('')
   const notifRef = useRef(null)
@@ -74,7 +76,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const displayName = user?.username || storedUser?.username || t('header.user')
   const avatar = user?.avatar || storedUser?.avatar || null
   const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'TV'
-  const unreadCount = notifications.filter(n => !n.read).length
+  const unreadCount = unreadTotal
 
   const isActionable = useCallback(
     (n) =>
@@ -127,11 +129,10 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const tabCategory = { all: null, auto: 'automatic', announce: 'announcement', company: 'company', market: 'market', mining: 'mining', event: 'event' }
   const query = notifSearch.trim().toLocaleLowerCase()
   const visibleNotifications = notifications.filter((n) => {
-    const matchesTab = !tabCategory[notifTab] || categoryOf(n) === tabCategory[notifTab]
     const haystack = `${n.title || ''} ${n.body || ''}`.toLocaleLowerCase()
-    return matchesTab && (!query || haystack.includes(query))
+    return !query || haystack.includes(query)
   })
-  const tabUnread = (category) => notifications.filter((n) => !n.read && (!category || categoryOf(n) === category)).length
+  const tabUnread = (category) => (category ? unreadByCategory[category] || 0 : unreadTotal)
   const tabs = [
     ['all', 'tabAll'], ['auto', 'tabAuto'], ['announce', 'tabAnnounce'],
     ['company', 'tabCompany'], ['market', 'tabMarket'], ['mining', 'tabMining'], ['event', 'tabEvent'],
@@ -175,13 +176,16 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     return () => { cancelled = true }
   }, [])
 
-  // Живая лента уведомлений с сервера (в т.ч. приглашения в компанию)
+  // Лента грузится по активной вкладке: иначе последние 30 записей одной категории
+  // вытесняют остальные и их не видно. Счётчики по категориям приходят всегда.
   const loadNotifs = useCallback(async () => {
     try {
-      const data = await fetchNotifications(30)
+      const data = await fetchNotifications(30, tabCategory[notifTab])
       setNotifications(data.items || [])
+      setUnreadTotal(data.unread || 0)
+      setUnreadByCategory(data.unreadByCategory || {})
     } catch { /* ignore */ }
-  }, [])
+  }, [notifTab])
 
   // 30с был основным источником обновлений до WS; tv:notif покрывает
   // live-обновления, поэтому интервал — редкий резервный фолбэк.
@@ -199,13 +203,13 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   }, [loadNotifs])
 
   const markAsRead = async (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     try { await markNotificationRead(id) } catch { /* ignore */ }
+    loadNotifs()
   }
 
   const markAllRead = async () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     try { await markAllNotificationsRead() } catch { /* ignore */ }
+    loadNotifs()
   }
 
   const handleInvite = async (notif, accept) => {

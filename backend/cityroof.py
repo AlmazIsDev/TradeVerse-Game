@@ -435,11 +435,23 @@ def _business_ready(last_collected) -> bool:
     return _seconds_since_collected(last_collected) >= BONUS_CLAIM_INTERVAL_MIN * 60
 
 
+def _color_weights(symbol_range: int) -> list[int]:
+    if symbol_range <= 2:
+        return [1] * symbol_range
+    return [1 if index in (0, symbol_range - 1) else 3 for index in range(symbol_range)]
+
+
 def _make_secret(level: int) -> dict:
     length = 3 + (level + 1) // 2
-    symbol_range = 4 + level // 2
+    symbol_range = 5 + level // 2
+    weights = _color_weights(symbol_range)
+    secret = []
+    for _ in range(length):
+        value = random.choices(range(symbol_range), weights=weights, k=1)[0]
+        secret.append(value)
+        weights[value] *= 0.2
     return {
-        "secret": [random.randint(0, symbol_range - 1) for _ in range(length)],
+        "secret": secret,
         "symbol_range": symbol_range,
         "length": length,
     }
@@ -1347,19 +1359,29 @@ async def submit_guess(
 
     exhausted = attempts >= session.get("maxAttempts", MAX_ATTEMPTS)
     if exhausted:
-        # Прогресс сброшен — нужно платить и начинать заново.
-        await db.cityroof_sessions.delete_one({"_id": session["_id"]})
+        new_secret = _make_secret(business.get("protection_level", 0))
+        await db.cityroof_businesses.update_one(
+            {"_id": business["_id"]},
+            {"$set": new_secret},
+        )
+        await db.cityroof_sessions.update_one(
+            {"_id": session["_id"]},
+            {"$set": {"attempts": 0}},
+        )
     else:
         await db.cityroof_sessions.update_one({"_id": session["_id"]}, {"$set": {"attempts": attempts}})
 
     return {
         "solved": False,
         "exhausted": exhausted,
+        "newCombination": exhausted,
         "exact": exact,
         "present": present,
         "feedback": feedback,
-        "attempts": attempts,
+        "attempts": 0 if exhausted else attempts,
         "maxAttempts": session.get("maxAttempts", MAX_ATTEMPTS),
+        "length": new_secret["length"] if exhausted else len(secret),
+        "symbolRange": new_secret["symbol_range"] if exhausted else business.get("symbol_range", 4),
     }
 
 

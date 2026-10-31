@@ -250,9 +250,10 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         await load()
         setTimeout(() => setSelected(null), 1200)
       } else if (res.exhausted) {
-        setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
-        toast(t('cityroof.exhausted'), 'error')
-        setSession(null)
+        setAttempts([])
+        setGuess(Array(res.length).fill(0))
+        setSession(s => ({ ...s, length: res.length, symbolRange: res.symbolRange, attempts: 0 }))
+        toast(t('cityroof.newCombination'), 'info')
       } else {
         setAttempts(a => [...a, { guess: [...guess], feedback: res.feedback, exact: res.exact, present: res.present }])
         toast(t('cityroof.tryAgain', { attempts: res.attempts, max: res.maxAttempts }), 'info')
@@ -541,12 +542,10 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <p className="cityroof-game-hint">{t('cityroof.guessHint', { len: session.length, colors: session.symbolRange })}</p>
                 <div className="peg-row">
                   {guess.map((s, i) => (
-                    <Tooltip key={i} text={t('cityroof.pegHelp', { position: i + 1 })}>
-                      <button className="peg" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }}
-                        onClick={() => cyclePeg(i)} disabled={busy} aria-label={t('cityroof.pegHelp', { position: i + 1 })}>
-                        {s + 1}
-                      </button>
-                    </Tooltip>
+                    <button key={i} className="peg" style={{ background: PEG_COLORS[s % PEG_COLORS.length] }}
+                      onClick={() => cyclePeg(i)} disabled={busy} aria-label={`peg-${i}`}>
+                      {s}
+                    </button>
                   ))}
                 </div>
                 <button className="cityroof-attack-btn" onClick={submitGuess} disabled={busy}>
@@ -559,8 +558,8 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                       <div key={idx} className="attempt-row">
                         <div className="attempt-pegs">
                           {a.guess.map((s, i) => (
-                            <span key={i} className={`peg-mini ${a.feedback?.[i] || ''}`} title={`${s + 1}: ${a.feedback?.[i] || 'absent'}`}>
-                              {s + 1}
+                            <span key={i} className={`peg-mini ${a.feedback?.[i] || ''}`}>
+                              {s}
                             </span>
                           ))}
                         </div>

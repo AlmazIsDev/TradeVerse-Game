@@ -1,0 +1,410 @@
+/* Вкладка «Обучение». Цвета берутся из токенов index.css (light / dark / tradeverse),
+   жёсткими остаются только цвета тем: майнинг, акции, крипта, бизнес. */
+
+.tutorial-tab {
+  --tut-mining: #f59e0b;
+  --tut-stocks: #0a84ff;
+  --tut-crypto: #8b5cf6;
+  --tut-business: #10b981;
+  --tut-radius: var(--radius-lg);
+  --tut-card-bg: var(--color-bg-secondary);
+  --tut-soft: var(--fill-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-width: 960px;
+  margin: 0 auto;
+  color: var(--color-text-primary);
+}
+
+.tutorial-tab .leaderboard-title-row { margin-bottom: 0; }
+
+.tutorial-subtitle,
+.tutorial-hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ---------- Общий прогресс ---------- */
+
+.tutorial-overview {
+  background: var(--tut-card-bg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--tut-radius);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.tutorial-overview-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+}
+
+.tutorial-overview-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.tutorial-overview-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.tutorial-overview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.tutorial-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--tut-soft);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  font-size: 13px;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.tutorial-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.tutorial-chip b { font-variant-numeric: tabular-nums; }
+.tutorial-chip--mining { color: var(--tut-mining); }
+.tutorial-chip--stocks { color: var(--tut-stocks); }
+.tutorial-chip--crypto { color: var(--tut-crypto); }
+.tutorial-chip--business { color: var(--tut-business); }
+
+/* ---------- Прогресс-бар ---------- */
+
+.tutorial-progress {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-soft);
+  overflow: hidden;
+}
+.tutorial-progress--lg { height: 10px; }
+
+.tutorial-progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tut-topic-color, var(--color-accent));
+  transition: width var(--dur-med) var(--ease-out);
+}
+
+/* ---------- Тема (карточка) ---------- */
+
+.tutorial-topics-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.tutorial-topic {
+  --tut-topic-color: var(--color-accent);
+  background: var(--tut-card-bg);
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--tut-topic-color);
+  border-radius: var(--tut-radius);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  transition: box-shadow var(--dur-med) var(--ease-out), transform var(--dur-med) var(--ease-out);
+}
+.tutorial-topic:hover { box-shadow: var(--shadow-lg); }
+.tutorial-topic--mining { --tut-topic-color: var(--tut-mining); }
+.tutorial-topic--stocks { --tut-topic-color: var(--tut-stocks); }
+.tutorial-topic--crypto { --tut-topic-color: var(--tut-crypto); }
+.tutorial-topic--business { --tut-topic-color: var(--tut-business); }
+
+.tutorial-anchor { scroll-margin-top: 80px; }
+
+.tutorial-topic-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.tutorial-topic-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tut-topic-color);
+  background: color-mix(in srgb, var(--tut-topic-color) 16%, transparent);
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+.tutorial-topic:hover .tutorial-topic-icon { transform: scale(1.06); }
+.tutorial-topic-icon--sm { width: 32px; height: 32px; border-radius: var(--radius-sm); color: var(--color-accent); background: var(--accent-soft); }
+
+.tutorial-topic-titles { flex: 1 1 200px; min-width: 0; }
+.tutorial-topic-titles h3 { margin: 0; font-size: 18px; font-weight: 700; }
+.tutorial-topic-titles p { margin: 2px 0 0; font-size: 13px; color: var(--color-text-secondary); }
+
+.tutorial-topic-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tut-topic-color);
+  background: color-mix(in srgb, var(--tut-topic-color) 14%, transparent);
+  white-space: nowrap;
+}
+
+.tutorial-topic.is-completed .tutorial-progress-bar { background: var(--color-success); }
+
+/* ---------- Сворачиваемая теория ---------- */
+
+.tutorial-theory-block {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--tut-soft);
+  overflow: hidden;
+}
+
+.tutorial-theory-block > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  user-select: none;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.tutorial-theory-block > summary::-webkit-details-marker { display: none; }
+.tutorial-theory-block > summary:hover { background: var(--fill-soft); }
+.tutorial-theory-block > summary > span:nth-child(2) { flex: 1; min-width: 0; }
+.tutorial-theory-block > summary svg:first-child { color: var(--color-text-secondary); flex: 0 0 auto; }
+
+.tutorial-chevron {
+  margin-left: auto;
+  color: var(--color-text-tertiary);
+  transition: transform var(--dur-med) var(--ease-out);
+}
+.tutorial-theory-block[open] > summary .tutorial-chevron { transform: rotate(180deg); }
+
+.tutorial-theory-body {
+  padding: 4px 16px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  animation: tutorial-fade var(--dur-med) var(--ease-out);
+}
+.tutorial-theory-body p { margin: 8px 0; }
+.tutorial-theory-body h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-tertiary);
+}
+.tutorial-theory-body ul { margin: 0; padding-left: 20px; }
+.tutorial-theory-body dl { margin: 0; display: grid; gap: 8px; }
+.tutorial-term dt { color: var(--color-text-primary); }
+.tutorial-term dd { margin: 0; }
+
+@keyframes tutorial-fade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- Шаги миссии ---------- */
+
+.tutorial-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.tutorial-step {
+  display: flex;
+  gap: var(--spacing-md);
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.tutorial-step--current {
+  border-color: color-mix(in srgb, var(--tut-topic-color) 45%, transparent);
+  background: color-mix(in srgb, var(--tut-topic-color) 6%, transparent);
+}
+.tutorial-step--done { opacity: 0.85; }
+.tutorial-step--locked { opacity: 0.55; }
+
+.tutorial-step-num {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  background: var(--fill-soft);
+  color: var(--color-text-secondary);
+}
+.tutorial-step--current .tutorial-step-num { background: var(--tut-topic-color); color: #fff; }
+.tutorial-step--done .tutorial-step-num { background: var(--color-success); color: #fff; }
+
+.tutorial-step-body { flex: 1; min-width: 0; }
+.tutorial-step-counter { font-size: 12px; color: var(--color-text-tertiary); }
+.tutorial-step-title { margin: 2px 0 6px; font-size: 15px; font-weight: 700; }
+.tutorial-step-text {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.tutorial-task {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--tut-card-bg);
+  border: 1px dashed var(--color-border-strong);
+}
+.tutorial-task p { margin: 0; font-size: 14px; }
+.tutorial-task-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tut-topic-color);
+}
+.tutorial-task-done,
+.tutorial-task-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+.tutorial-task-done { color: var(--color-success); font-weight: 600; }
+
+.tutorial-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: transform var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
+}
+.tutorial-action-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
+.tutorial-action-btn:active:not(:disabled) { transform: translateY(0); }
+.tutorial-action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ---------- Завершение темы ---------- */
+
+.tutorial-complete {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success-strong);
+  animation: tutorial-fade var(--dur-med) var(--ease-out);
+}
+.tutorial-complete h4 { margin: 0; font-size: 15px; color: var(--color-text-primary); }
+.tutorial-complete p { margin: 2px 0 0; font-size: 13px; color: var(--color-text-secondary); }
+
+/* ---------- Справочник ---------- */
+
+.tutorial-reference {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+.tutorial-reference-title { margin: 0; font-size: 18px; font-weight: 700; }
+
+.tutorial-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-sm);
+  align-items: start;
+}
+
+.tutorial-reference-card {
+  background: var(--tut-card-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+.tutorial-reference-card:hover { box-shadow: var(--shadow-md); }
+.tutorial-reference-card > summary { font-size: 14px; }
+
+/* ---------- Низ страницы ---------- */
+
+.tutorial-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--spacing-sm);
+}
+
+.tutorial-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.tutorial-ghost-btn:hover:not(:disabled) { background: var(--fill-soft); color: var(--color-text-primary); }
+
+/* ---------- Адаптив ---------- */
+
+@media (max-width: 640px) {
+  .tutorial-overview,
+  .tutorial-topic { padding: var(--spacing-md); }
+  .tutorial-topic-counter { margin-left: auto; }
+  .tutorial-step { padding: 12px; gap: var(--spacing-sm); }
+  .tutorial-step-num { width: 26px; height: 26px; font-size: 12px; }
+  .tutorial-reference-grid { grid-template-columns: 1fr; }
+  .tutorial-footer { justify-content: stretch; }
+  .tutorial-ghost-btn { width: 100%; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-tab *,
+  .tutorial-tab *::before,
+  .tutorial-tab *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

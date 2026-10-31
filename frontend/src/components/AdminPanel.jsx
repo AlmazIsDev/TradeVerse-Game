@@ -7,18 +7,22 @@ import {
   fetchCryptoMarket, adminUpdateCoin, adminCreateCoin, adminDeleteCoin,
   fetchAdminPermissions, updateAdminPermissions, adminUpdateUserBans,
   adminSetUserPassword, adminLogoutUser, adminLoginAs, adminGetIpGroups, adminGetAuditLog, adminListLots, adminCancelLot, adminBroadcast,
+  adminListSupportTickets, adminUpdateSupportTicket,
   fetchSyntheticConfig, saveSyntheticConfig, triggerSynthetic, fetchSyntheticOrders,
+  adminListPromos, adminCreatePromo, adminDeletePromo,
 } from '../services/api'
 import TxFilters, { TX_FIELDS } from './TxFilters'
+import SupportTicketsAdmin from './SupportTicketsAdmin'
+import PromoCodesTab from './PromoCodesTab'
 import { formatCompact } from './TransactionsPanel'
 import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
 import UserPropertyModal from './UserPropertyModal'
 import PriceHistoryEditor from './PriceHistoryEditor'
 import {
-  Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight,
+  Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight, Ticket,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
-  Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, LogIn, Gavel, Megaphone,
+  Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, LogIn, Gavel, Megaphone, LifeBuoy,
 } from 'lucide-react'
 import Tooltip from './Tooltip'
 import PriceEditorTab from './PriceEditorTab'
@@ -230,6 +234,7 @@ function AdminPanel({ user, onClose }) {
     card_number: '',
     hidden_from_leaderboard: false,
     leaderboard_lock: false,
+    beta_tester: false,
   })
   const [editErrors, setEditErrors] = useState({})
   const [originalEditForm, setOriginalEditForm] = useState(null)
@@ -527,6 +532,7 @@ function AdminPanel({ user, onClose }) {
       card_number: u.card_number || '',
       hidden_from_leaderboard: !!u.hidden_from_leaderboard,
       leaderboard_lock: !!u.leaderboard_lock,
+      beta_tester: Array.isArray(u.badges) && u.badges.includes('beta_tester'),
     }
     setEditForm(form)
     setOriginalEditForm(form)
@@ -610,6 +616,7 @@ function AdminPanel({ user, onClose }) {
       card_number: '',
       hidden_from_leaderboard: false,
       leaderboard_lock: false,
+      beta_tester: false,
     })
     setBanDraft({})
     setEditErrors({})
@@ -623,6 +630,11 @@ function AdminPanel({ user, onClose }) {
       if (normalized[key] !== originalEditForm[key]) payload[key] = normalized[key]
     }
     if (normalized.role !== 'admin') delete payload.admin_level
+    // Бета-тестер — значок в массиве badges, а не отдельное поле.
+    delete payload.beta_tester
+    if (normalized.beta_tester !== originalEditForm.beta_tester) {
+      payload.badges = normalized.beta_tester ? ['beta_tester'] : []
+    }
     const bans = {}
     for (const f of ['account', ...PLAYER_BAN_FUNCS]) {
       const d = banDraft[f]
@@ -1037,9 +1049,11 @@ function AdminPanel({ user, onClose }) {
     { id: 'users', perm: 'users_view', label: t('admin.users'), icon: Users },
     { id: 'audit', perm: 'users_view', label: t('admin.auditLog'), icon: Activity },
     { id: 'lots', perm: 'central_market', label: t('admin.lots.title'), icon: Gavel },
+    { id: 'support', perm: 'users_view', label: t('admin.supportTickets', 'Обращения игроков'), icon: LifeBuoy },
     { id: 'transactions', perm: 'transactions_view', label: t('admin.transactions'), icon: ArrowLeftRight },
     { id: 'broadcast', perm: 'broadcast', label: t('admin.broadcast.title'), icon: Megaphone },
     { id: 'economy', perm: 'economy_view', label: t('econ.tab'), icon: Activity },
+    { id: 'promos', perm: 'promo_codes', label: t('admin.promos.title', 'Промокоды'), icon: Ticket },
     { id: 'config', perm: 'config', label: t('admin.config'), icon: Settings },
     { id: 'database', perm: 'database', label: t('admin.database.title'), icon: Database },
     { id: 'perms', perm: 'admin_perms', label: t('adminPerms.title'), icon: ShieldAlert },
@@ -1699,7 +1713,7 @@ function AdminPanel({ user, onClose }) {
                       <span className="user-date">{fmtTs(u.created_at)}</span>
                       {u.ips?.length > 0 && (
                         <span className="user-date" title={u.ips.map(x => x.ip).join(', ')}>
-                          IP: {u.ips[0].ip}{u.ips.length > 1 ? ` (+${u.ips.length - 1})` : ''}
+                          {t('admin.ipLabel', 'IP:')} {u.ips[0].ip}{u.ips.length > 1 ? ` (+${u.ips.length - 1})` : ''}
                         </span>
                       )}
                     </div>
@@ -1798,6 +1812,13 @@ function AdminPanel({ user, onClose }) {
                         <input type="checkbox" checked={editForm.leaderboard_lock}
                           onChange={e => setEditForm({ ...editForm, leaderboard_lock: e.target.checked })} />
                         {t('admin.fieldLeaderboardLock')}
+                      </label>
+                    </div>
+                    <div className="admin-field-checkbox">
+                      <label>
+                        <input type="checkbox" checked={editForm.beta_tester}
+                          onChange={e => setEditForm({ ...editForm, beta_tester: e.target.checked })} />
+                        {t('admin.fieldBetaTester', 'Бета-тестер')}
                       </label>
                     </div>
                   </div>
@@ -1939,6 +1960,14 @@ function AdminPanel({ user, onClose }) {
           </div>
         )}
 
+        {!loading && activeSection === 'support' && (
+          <SupportTicketsAdmin />
+        )}
+
+        {!loading && activeSection === 'promos' && (
+          <PromoCodesTab />
+        )}
+
         {!loading && activeSection === 'broadcast' && (
           <div>
             <div className="admin-section-divider">
@@ -1977,7 +2006,7 @@ function AdminPanel({ user, onClose }) {
                 <div key={f.id} className="admin-stock-item">
                   <div className="stock-info">
                     <strong>{t(f.label)}</strong>
-                    {f.fixed && <span className="user-role admin" title={t('adminPerms.fixedHint')}>fixed L4</span>}
+                    {f.fixed && <span className="user-role admin" title={t('adminPerms.fixedHint')}>{t('admin.fixedLevel', 'fixed L4')}</span>}
                   </div>
                   <select
                     className="admin-input"

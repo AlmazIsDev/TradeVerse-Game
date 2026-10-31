@@ -36,6 +36,7 @@ from auth import (
     use_refresh_token,
     delete_refresh_token,
     username_taken,
+    username_pattern,
 )
 from admin_perms import (
     require_admin,
@@ -49,11 +50,14 @@ from admin_perms import (
     FIXED_ADMIN_FUNCTIONS,
 )
 from economy import router as economy_router
+from bank_credit import router as bank_credit_router
+from bank_p2p import router as bank_p2p_router
 from crypto import router as crypto_router
 from stocks import router as stocks_router
 from assets import router as assets_router
 from company import router as company_router
 from user_profile import router as user_profile_router
+from promo import router as promo_router, admin_router as promo_admin_router, ensure_promo_indexes
 from cityroof import router as cityroof_router
 from notifications import router as notifications_router
 from market_data import router as market_router
@@ -67,6 +71,7 @@ from media import router as media_router
 from farm import router as farm_router
 from production import router as production_router
 from synthetic import router as synthetic_router
+from support import router as support_router, admin_router as support_admin_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
 
@@ -114,6 +119,7 @@ async def lifespan(app: FastAPI):
     await db.app_config.create_index("key", unique=True)
     await db.admin_action_logs.create_index([("createdAt", -1)])
     await db.admin_action_logs.create_index([("actorId", 1), ("createdAt", -1)])
+    await db.user_achievements.create_index([("userId", 1), ("achievementId", 1)], unique=True)
     await db.admin_action_logs.create_index([("targetId", 1), ("createdAt", -1)])
     await db.transactions.create_index("userId")
     await db.transactions.create_index([("userId", 1), ("timestamp", -1)])
@@ -126,6 +132,7 @@ async def lifespan(app: FastAPI):
     await db.transactions.create_index([("timestamp", 1), ("userId", 1), ("direction", 1), ("amount", 1)])
     await db.analytics.create_index("userId")
     await db.leaderboard.create_index("profit")
+    await ensure_promo_indexes(db)
     await db.crypto_assets.create_index("symbol", unique=True)
     await db.crypto_holdings.create_index([("userId", 1), ("symbol", 1)], unique=True)
     await db.crypto_transfers.create_index("fromId")
@@ -229,11 +236,15 @@ logging.getLogger("uvicorn.access").disabled = True
 
 # Роутеры модулей
 app.include_router(economy_router)
+app.include_router(bank_credit_router)
+app.include_router(bank_p2p_router)
 app.include_router(crypto_router)
 app.include_router(stocks_router)
 app.include_router(assets_router)
 app.include_router(company_router)
 app.include_router(user_profile_router)
+app.include_router(promo_router)
+app.include_router(promo_admin_router)
 app.include_router(cityroof_router)
 app.include_router(notifications_router)
 app.include_router(market_router)
@@ -253,6 +264,9 @@ app.include_router(ws_router)
 app.include_router(farm_router)
 app.include_router(production_router)
 app.include_router(synthetic_router)
+# Техподдержка: обращения игроков и их обработка в админке.
+app.include_router(support_router)
+app.include_router(support_admin_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────
@@ -327,6 +341,19 @@ async def register_user(
             detail="Пользователь с таким именем уже существует",
         )
 
+    referrer_id = None
+    if user_data.referrer_username:
+        referrer = await db.users.find_one(
+            {"username": {"$regex": username_pattern(user_data.referrer_username), "$options": "i"}},
+            {"_id": 1},
+        )
+        if not referrer:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пользователь-реферал с таким никнеймом не найден",
+            )
+        referrer_id = referrer["_id"]
+
     card_number = await ensure_unique_card_number(users)
 
     now = datetime.now(timezone.utc)
@@ -343,6 +370,9 @@ async def register_user(
         # Все IP, с которых заходил пользователь: {ip: iso-время последнего входа}
         "login_ips": {ip: now.isoformat()},
         "last_login": now.isoformat(),
+        # Реферал: бонус начисляется рефереру, когда новичок достигнет REFERRAL_TARGET_NET_WORTH.
+        "referrer_id": referrer_id,
+        "referral_bonus_paid": False,
     }
     result = await users.insert_one(new_user)
     new_user["_id"] = result.inserted_id
@@ -475,7 +505,10 @@ async def get_me(
         "card_visible": current_user.get("card_visible", True),
         "crypto_account_opened": bool(current_user.get("crypto_account_opened", False)),
         "avatar": current_user.get("avatar"),
+        "banner": current_user.get("banner"),
+        "badges": current_user.get("badges") or [],
         "bio": current_user.get("bio", ""),
+        "country": current_user.get("country"),
         "hideFromLeaderboard": bool(current_user.get("hidden_from_leaderboard", False)),
         "leaderboardLock": bool(current_user.get("leaderboard_lock", False)),
         "created_at": created_at.isoformat() if isinstance(created_at, datetime) else None,
@@ -691,6 +724,7 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             "profit": round(period_net.get(uid, 0.0), 2),
             "profitAllTime": round(net_worth - STARTING_BALANCE, 2),
             "hidden": bool(u.get("hidden_from_leaderboard", False)),
+            "country": u.get("country"),
         })
     return entries
 
@@ -853,7 +887,12 @@ async def get_public_profile(
         "userId": str(user["_id"]),
         "username": user.get("username", "—"),
         "avatar": user.get("avatar"),
+        "banner": user.get("banner"),
+        "badges": user.get("badges") or [],
+        "role": user.get("role", "user"),
+        "adminLevel": admin_level_of(user) if user.get("role") == "admin" else None,
         "bio": user.get("bio") or "",
+        "country": user.get("country"),
         "createdAt": user.get("created_at"),
         "stats": stats,
         "achievements": achievements,
@@ -1697,6 +1736,7 @@ def _format_leaderboard(entry: dict) -> dict:
         "userId": entry["userId"],
         "username": entry["username"],
         "avatar": entry.get("avatar"),
+        "country": entry.get("country"),
         "profit": entry.get("profit", 0.0),
         "rank": entry.get("rank", 0),
     }

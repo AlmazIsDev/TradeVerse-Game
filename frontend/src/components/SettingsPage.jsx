@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { updateProfile, changePassword, uploadAvatar, deleteAvatar, toggleLeaderboardVisibility, updateBio, fetchMyStats } from '../services/api'
+import { updateProfile, changePassword, uploadAvatar, deleteAvatar, uploadBanner, deleteBanner, toggleLeaderboardVisibility, updateBio, fetchMyStats, updateCountry, redeemPromo } from '../services/api'
 import { getTheme, applyTheme } from '../utils/theme'
 import ConfirmDialog from './ConfirmDialog'
+import { COUNTRIES, flagUrl } from '../utils/countries'
+import StatusBadge from './StatusBadge'
 import { toast } from './Toast'
 import {
   Settings as SettingsIcon, User, Lock, Globe,
-  Save, Trash2, Check, Upload, Moon, Award, BarChart3,
+  Save, Trash2, Check, Upload, Moon, Award, BarChart3, Ticket, MapPin, ChevronDown,
 } from 'lucide-react'
 
 // Итоговый размер аватара — сжимается на клиенте через canvas (cover-crop до
@@ -14,10 +16,16 @@ import {
 // отдельной инфраструктуре файлового хранилища (см. backend/user_profile.py).
 const AVATAR_SIZE = 256
 const AVATAR_QUALITY = 0.85
+// Баннер («шапка») — широкий формат 4:1, сжимается на клиенте в JPEG.
+const BANNER_WIDTH = 1200
+const BANNER_HEIGHT = 300
+const BANNER_QUALITY = 0.8
 
 const LANGUAGES = [
   { code: 'ru', label: 'Русский', flag: '🇷🇺' },
   { code: 'en', label: 'English', flag: '🇬🇧' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'ja', label: '日本語', flag: '🇯🇵' },
 ]
 
 /** Сжимает выбранное изображение до квадрата AVATAR_SIZE×AVATAR_SIZE (cover-crop). */
@@ -38,6 +46,31 @@ function readAndResizeImage(file) {
         const h = img.height * scale
         ctx.drawImage(img, (AVATAR_SIZE - w) / 2, (AVATAR_SIZE - h) / 2, w, h)
         resolve(canvas.toDataURL('image/jpeg', AVATAR_QUALITY))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Сжимает изображение до BANNER_WIDTH×BANNER_HEIGHT (cover-crop по центру). */
+function readAndResizeBanner(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('read-failed'))
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('decode-failed'))
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = BANNER_WIDTH
+        canvas.height = BANNER_HEIGHT
+        const ctx = canvas.getContext('2d')
+        const scale = Math.max(BANNER_WIDTH / img.width, BANNER_HEIGHT / img.height)
+        const w = img.width * scale
+        const h = img.height * scale
+        ctx.drawImage(img, (BANNER_WIDTH - w) / 2, (BANNER_HEIGHT - h) / 2, w, h)
+        resolve(canvas.toDataURL('image/jpeg', BANNER_QUALITY))
       }
       img.src = reader.result
     }
@@ -116,6 +149,53 @@ function SettingsPage({ user, onUserUpdate }) {
     }
   }
 
+  // ── Страна (флаг слева от ника) ─────────────────────────────────────────────
+  const [country, setCountry] = useState(user?.country || '')
+  const [savingCountry, setSavingCountry] = useState(false)
+  const countryChanged = (country || '') !== (user?.country || '')
+  const [countryOpen, setCountryOpen] = useState(false)
+  const selectedCountry = COUNTRIES.find(c => c.code === country) || null
+
+  const saveCountry = async () => {
+    setSavingCountry(true)
+    try {
+      const res = await updateCountry(country || null)
+      onUserUpdate?.({ country: res.country })
+      toast(t('settings.countrySaved'))
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSavingCountry(false)
+    }
+  }
+
+  // ── Промокод ───────────────────────────────────────────────────────────────
+  const [promoCode, setPromoCode] = useState('')
+  const [redeemingPromo, setRedeemingPromo] = useState(false)
+
+  const applyPromo = async () => {
+    const code = promoCode.trim()
+    if (!code) return
+    setRedeemingPromo(true)
+    try {
+      const res = await redeemPromo(code)
+      setPromoCode('')
+      const parts = []
+      if (res.amount) parts.push(`$${Number(res.amount).toLocaleString('ru-RU')}`)
+      if (res.business) parts.push(res.business)
+      if (res.badge === 'beta_tester') parts.push('значок «Бета-тестер»')
+      onUserUpdate?.({
+        balance: res.balance,
+        ...(res.badge ? { badges: [...new Set([...(user?.badges || []), res.badge])] } : {}),
+      })
+      toast(parts.length ? `Промокод применён: ${parts.join(', ')}` : 'Промокод применён')
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setRedeemingPromo(false)
+    }
+  }
+
   // ── Пароль ─────────────────────────────────────────────────────────────────
   const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' })
   const [savingPwd, setSavingPwd] = useState(false)
@@ -188,6 +268,51 @@ function SettingsPage({ user, onUserUpdate }) {
     }
   }
 
+  // ── Баннер («шапка» профиля) ───────────────────────────────────────────────
+  const bannerInputRef = useRef(null)
+  const [stagedBanner, setStagedBanner] = useState(null)
+  const [savingBanner, setSavingBanner] = useState(false)
+
+  const onBannerFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) { toast(t('settings.avatarInvalidType'), 'error'); return }
+    try {
+      setStagedBanner(await readAndResizeBanner(file))
+    } catch {
+      toast(t('settings.avatarInvalidType'), 'error')
+    }
+  }
+
+  const saveBanner = async () => {
+    if (!stagedBanner) return
+    setSavingBanner(true)
+    try {
+      const res = await uploadBanner(stagedBanner)
+      onUserUpdate?.({ banner: res.banner })
+      setStagedBanner(null)
+      toast(t('settings.bannerSaved', 'Баннер сохранён'))
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSavingBanner(false)
+    }
+  }
+
+  const removeBanner = async () => {
+    setSavingBanner(true)
+    try {
+      await deleteBanner()
+      onUserUpdate?.({ banner: null })
+      toast(t('settings.bannerRemoved', 'Баннер удалён'))
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSavingBanner(false)
+    }
+  }
+
   // ── Локализация ────────────────────────────────────────────────────────────
   const changeLanguage = (code) => {
     if (code === i18n.language) return
@@ -247,8 +372,35 @@ function SettingsPage({ user, onUserUpdate }) {
           </div>
           <p className="settings-hint">{t('settings.avatarHint')}</p>
 
+          <div className="settings-banner-block">
+            <div className="settings-banner-preview">
+              {(stagedBanner || user?.banner) ? (
+                <img src={stagedBanner || user?.banner} alt="" />
+              ) : (
+                <span>{t('settings.bannerEmpty', 'Баннер не задан')}</span>
+              )}
+            </div>
+            <div className="settings-avatar-actions">
+              <input ref={bannerInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={onBannerFileChange} />
+              <button className="asset-act upgrade" onClick={() => bannerInputRef.current?.click()}>
+                <Upload size={14} /> {t('settings.chooseBanner', 'Выбрать баннер')}
+              </button>
+              {stagedBanner && (
+                <button className="submit-btn settings-save-btn" disabled={savingBanner} onClick={saveBanner}>
+                  <Save size={14} /> {savingBanner ? t('bank.processing') : t('settings.saveBanner', 'Сохранить баннер')}
+                </button>
+              )}
+              {user?.banner && !stagedBanner && (
+                <button className="asset-act sell" disabled={savingBanner} onClick={removeBanner}>
+                  <Trash2 size={14} /> {t('settings.removeBanner', 'Удалить баннер')}
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="settings-hint">{t('settings.bannerHint', 'Широкое изображение, будет обрезано до пропорций 4:1')}</p>
+
           <div className="settings-current-info">
-            <span>{t('profile.name')}: <b>{user?.username}</b></span>
+            <span>{t('profile.name')}: <b>{user?.username}</b> <StatusBadge user={user} size={13} /></span>
             {since && <span>{t('profile.since')}: {since}</span>}
           </div>
 
@@ -308,6 +460,77 @@ function SettingsPage({ user, onUserUpdate }) {
               {user?.leaderboardLock ? t('settings.leaderboardLocked') : t('settings.hideFromLeaderboardHint')}
             </p>
           </div>
+        </div>
+
+        {/* Страна (флаг слева от ника) */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><MapPin size={18} /></span>
+            <h3>{t('settings.countryTitle')}</h3>
+          </div>
+          <div className="settings-country-select">
+            <button
+              type="button"
+              className="settings-country-trigger"
+              onClick={() => setCountryOpen(o => !o)}
+            >
+              {selectedCountry
+                ? <img className="settings-country-flag" src={flagUrl(selectedCountry.code)} alt={selectedCountry.code} />
+                : <span className="settings-lang-flag">🏳️</span>}
+              <span className="settings-lang-label">
+              {selectedCountry ? `${selectedCountry.code} · ${selectedCountry.name}` : t('settings.countryNone')}
+            </span>
+              <ChevronDown size={16} className={`settings-country-chevron ${countryOpen ? 'open' : ''}`} />
+            </button>
+            {countryOpen && (
+              <div className="settings-country-panel">
+                {COUNTRIES.map(c => (
+                  <button
+                    type="button"
+                    key={c.code}
+                    className={`settings-country-option ${country === c.code ? 'active' : ''}`}
+                    onClick={() => { setCountry(c.code); setCountryOpen(false) }}
+                  >
+                    <img className="settings-country-flag" src={flagUrl(c.code)} alt={c.code} />
+                    <span className="settings-country-code">{c.code}</span>
+                    <span className="settings-country-name">{c.name}</span>
+                    {country === c.code && <Check size={16} className="settings-lang-check" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            className="submit-btn settings-save-btn"
+            disabled={savingCountry || !countryChanged}
+            onClick={saveCountry}
+          >
+            <Save size={15} /> {savingCountry ? t('bank.processing') : t('settings.saveCountry')}
+          </button>
+        </div>
+
+        {/* Промокод */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <span className="settings-card-icon"><Ticket size={18} /></span>
+            <h3>{t('settings.promoTitle')}</h3>
+          </div>
+          <div className="form-group">
+            <label>{t('settings.promoLabel')}</label>
+            <input
+              value={promoCode}
+              onChange={e => setPromoCode(e.target.value)}
+              placeholder={t('settings.promoPlaceholder')}
+              maxLength={32}
+            />
+          </div>
+          <button
+            className="submit-btn settings-save-btn"
+            disabled={redeemingPromo || !promoCode.trim()}
+            onClick={applyPromo}
+          >
+            <Ticket size={15} /> {redeemingPromo ? t('bank.processing') : t('settings.promoApply')}
+          </button>
         </div>
 
         {/* Пароль */}
@@ -408,22 +631,6 @@ function SettingsPage({ user, onUserUpdate }) {
           </div>
         </div>
 
-        {/* Достижения */}
-        <div className="settings-card">
-          <div className="settings-card-header">
-            <span className="settings-card-icon"><Award size={18} /></span>
-            <h3>{t('settings.achievementsTitle')}</h3>
-          </div>
-          <div className="settings-achievements">
-            {(profile?.achievements || []).map(a => (
-              <div className={`settings-achievement ${a.reached ? 'reached' : ''}`} key={a.id}>
-                <Award size={16} />
-                <span>{t(`settings.achievement.${a.id}`)}</span>
-                {a.reached && <Check size={14} className="settings-achievement-check" />}
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       <ConfirmDialog

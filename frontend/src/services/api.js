@@ -1,6 +1,6 @@
-import i18n from '../i18n'
+      import i18n from '../i18n'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:20301'
 
 const STORAGE_KEY = 'tradeverse_user'
 
@@ -337,6 +337,14 @@ export async function fetchCompanyLeaderboard(limit = 20) {
   return request(`/api/leaderboard/companies?limit=${limit}`)
 }
 
+export async function getUserLevel() {
+  return request('/api/user/level')
+}
+
+export async function getUserAchievements() {
+  return request('/api/user/achievements')
+}
+
 export async function toggleCardVisibility() {
   return request('/api/user/card-visibility', { method: 'PATCH' })
 }
@@ -358,6 +366,31 @@ export async function updateProfile(data) {
 /** Сменить пароль (требует текущий пароль). */
 export async function changePassword(data) {
   return request('/api/user/password', { method: 'POST', body: JSON.stringify(data) })
+}
+
+/** Установить страну (ISO alpha-2) или сбросить (null). Возвращает { country }. */
+export async function updateCountry(country) {
+  return request('/api/user/country', { method: 'PATCH', body: JSON.stringify({ country }) })
+}
+
+/** Активировать промокод. Возвращает { amount, balance }. */
+export async function redeemPromo(code) {
+  return request('/api/user/promo/redeem', { method: 'POST', body: JSON.stringify({ code }) })
+}
+
+/** Админ: список промокодов. */
+export async function adminListPromos() {
+  return request('/api/admin/promo')
+}
+
+/** Админ: создать промокод (награды: amount, business_slug, badge; срок expires_at; лимит max_uses). */
+export async function adminCreatePromo(body) {
+  return request('/api/admin/promo', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** Админ: удалить промокод вместе с историей активаций. */
+export async function adminDeletePromo(promoId) {
+  return request(`/api/admin/promo/${promoId}`, { method: 'DELETE' })
 }
 
 /** Обновить описание профиля («о себе»). Возвращает { bio }. */
@@ -383,6 +416,16 @@ export async function uploadAvatar(dataUrl) {
 /** Удалить аватар — сброс на инициалы. */
 export async function deleteAvatar() {
   return request('/api/user/avatar', { method: 'DELETE' })
+}
+
+/** Загрузить/сменить баннер профиля. dataUrl — сжатое на клиенте изображение. Возвращает { banner }. */
+export async function uploadBanner(dataUrl) {
+  return request('/api/user/banner', { method: 'PATCH', body: JSON.stringify({ banner: dataUrl }) })
+}
+
+/** Удалить баннер профиля. */
+export async function deleteBanner() {
+  return request('/api/user/banner', { method: 'DELETE' })
 }
 
 /** Переключить участие в таблице лидеров. */
@@ -468,6 +511,30 @@ export async function adminBroadcast(title, message) {
   return request('/api/admin/broadcast', {
     method: 'POST',
     body: JSON.stringify({ title, message }),
+  })
+}
+
+// ── Техническая поддержка ───────────────────────────────────────────────────
+/** Создать обращение: {type: bug|loss|suggestion, description?, lost_item?, method?, time?, suggestion?}. */
+export async function createSupportTicket(payload) {
+  return request('/api/support/tickets', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+/** Мои обращения. */
+export async function fetchMySupportTickets() {
+  return request('/api/support/tickets')
+}
+
+/** Все обращения (админ). */
+export async function adminListSupportTickets() {
+  return request('/api/admin/support/tickets')
+}
+
+/** Админ: изменить статус (pending|rejected|resolved) и/или ответ. */
+export async function adminUpdateSupportTicket(ticketId, payload) {
+  return request(`/api/admin/support/tickets/${encodeURIComponent(ticketId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   })
 }
 
@@ -706,6 +773,84 @@ export async function openCryptoAccount() {
 
 export async function fetchCryptoAccount() {
   return request('/api/crypto/account')
+}
+
+export async function fetchUtilityAccount() {
+  return request('/api/account/utility')
+}
+
+export async function utilityTopUp(amount) {
+  return request('/api/account/utility/topup', {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  })
+}
+
+export async function fetchCreditOverview() {
+  return request('/api/bank/credit/overview')
+}
+
+export async function takeLoan(amount) {
+  return request('/api/bank/credit/take', {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  })
+}
+
+export async function repayLoan(loanId) {
+  return request(`/api/bank/credit/repay/${loanId}`, { method: 'POST' })
+}
+
+export async function openDeposit(amount) {
+  return request('/api/bank/deposit/open', {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  })
+}
+
+export async function closeDeposit(depositId) {
+  return request(`/api/bank/deposit/close/${depositId}`, { method: 'POST' })
+}
+
+export async function fetchP2POffers() {
+  return request('/api/bank/p2p/offers')
+}
+
+export async function fetchMyP2PLoans() {
+  return request('/api/bank/p2p/loans')
+}
+
+export async function createP2POffer({ side, amount, termDays, dailyRate }) {
+  return request('/api/bank/p2p/offers', {
+    method: 'POST',
+    body: JSON.stringify({ side, amount, term_days: termDays, daily_rate: dailyRate }),
+  })
+}
+
+export async function acceptP2POffer(offerId) {
+  return request(`/api/bank/p2p/offers/${offerId}/accept`, { method: 'POST' })
+}
+
+export async function repayP2PLoan(loanId) {
+  return request(`/api/bank/p2p/loans/${loanId}/repay`, { method: 'POST' })
+}
+
+export async function donateToBank(amount) {
+  return request('/api/bank/p2p/donate', {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  })
+}
+
+export async function fetchBankAuctions() {
+  return request('/api/bank/p2p/auctions')
+}
+
+export async function bidBankAuction(auctionId, amount) {
+  return request(`/api/bank/p2p/auctions/${auctionId}/bid`, {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  })
 }
 
 export async function fetchCryptoMarket() {
@@ -1341,6 +1486,55 @@ export async function sellProductionResource(unitId, resource, qty) {
 }
 export async function productionHaulNow(unitId) {
   return request(`/api/production/${unitId}/haul-now`, { method: 'POST' })
+}
+export async function setComponentPrice(unitId, pct) {
+  return request(`/api/production/${unitId}/component-price`, {
+    method: 'POST',
+    body: JSON.stringify({ pct }),
+  })
+}
+export async function sellComponents(unitId, qty) {
+  return request(`/api/production/${unitId}/sell-component`, {
+    method: 'POST',
+    body: JSON.stringify({ qty }),
+  })
+}
+export async function gpuShopCatalog() {
+  return request('/api/production/gpu-shop/catalog')
+}
+export async function shopBuyComponents(unitId, item, qty = 1) {
+  return request(`/api/production/${unitId}/shop-buy`, {
+    method: 'POST',
+    body: JSON.stringify({ item, qty }),
+  })
+}
+
+// ── Магазин завода видеокарт (витрина владельца и покупка игроками) ──────────
+/** Магазин завода: {ok, unitId, published, componentUnitPrice, items: [{id, components, costPrice, price, profit, priced}]}. */
+export async function fetchGpuShop(unitId) {
+  return request(`/api/production/${encodeURIComponent(unitId)}/gpu-shop`)
+}
+/** Установить цену товара; price=null — убрать товар из магазина. */
+export async function setGpuShopPrice(unitId, item, price) {
+  return request(`/api/production/${encodeURIComponent(unitId)}/gpu-shop/price`, {
+    method: 'POST', body: JSON.stringify({ item, price }),
+  })
+}
+/** Открыть (published=true) или закрыть магазин. */
+export async function setGpuShopPublished(unitId, published) {
+  return request(`/api/production/${encodeURIComponent(unitId)}/gpu-shop/publish`, {
+    method: 'POST', body: JSON.stringify({ published }),
+  })
+}
+/** Опубликованные магазины всех игроков: {ok, shops: [{unitId, ownerId, ownerName, isOwn, items}]}. */
+export async function fetchPublishedGpuShops() {
+  return request('/api/production/gpu-shops/published')
+}
+/** Купить qty штук товара в магазине завода. */
+export async function buyGpuShopItem(unitId, item, qty = 1) {
+  return request(`/api/production/${encodeURIComponent(unitId)}/gpu-shop/buy`, {
+    method: 'POST', body: JSON.stringify({ item, qty }),
+  })
 }
 
 export {

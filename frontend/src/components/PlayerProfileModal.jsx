@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchPlayerProfile } from '../services/api'
+import StatusBadge from './StatusBadge'
+import { countryFlag } from '../utils/countryFlag'
 import { X, Award, Check, BarChart3 } from 'lucide-react'
 
 /**
@@ -36,16 +38,25 @@ function PlayerProfileModal({ userId, onClose }) {
         <button className="crypto-modal-close" title={t('common.close')} aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
 
         {loading ? (
-          <div className="pp-loading">{t('common.loading', 'Загрузка…')}</div>
+          <div className="pp-loading">{t('common.loading')}</div>
         ) : error ? (
           <div className="pp-error">{error}</div>
         ) : (
           <>
             <div className="pp-head">
+              <div
+                className={`pp-banner ${data.banner ? '' : 'pp-banner-empty'}`}
+                style={data.banner ? { backgroundImage: `url(${data.banner})` } : undefined}
+                aria-hidden="true"
+              />
               <div className="pp-avatar">
                 {data.avatar ? <img src={data.avatar} alt={data.username} /> : <span>{initials}</span>}
               </div>
-              <h3 className="pp-name">{data.username}</h3>
+              <h3 className="pp-name">
+                {data.country && <span className="player-flag" title={data.country}>{countryFlag(data.country)} </span>}
+                {data.username}
+                <StatusBadge user={data} size={14} className="pp-status-badges" />
+              </h3>
               {data.bio && <p className="pp-bio">{data.bio}</p>}
             </div>
 
@@ -77,7 +88,7 @@ function PlayerProfileModal({ userId, onClose }) {
                   {data.achievements.map(a => (
                     <div className={`pp-achievement ${a.reached ? 'reached' : ''}`} key={a.id}>
                       <Award size={14} />
-                      <span>{t(`settings.achievement.${a.id}`)}</span>
+                      <span>{t(`achievementCatalog.items.${a.id}.name`, { defaultValue: t(`settings.achievement.${a.id}`) })}</span>
                       {a.reached && <Check size={13} className="pp-achievement-check" />}
                     </div>
                   ))}

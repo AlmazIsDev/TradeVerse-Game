@@ -43,7 +43,7 @@ function ProfileCard({ cardNumber, cardVisible, onVisibilityChange }) {
   }, [cardNumber])
 
   return (
-    <div className="profile-card" onClick={handleCopyCard} title={t('header.copyCard') || 'Скопировать номер карты'}>
+    <div className="profile-card" onClick={handleCopyCard} title={t('header.copyCard')}>
       <div className="profile-card-chip"><CreditCard size={16} /></div>
       {displayNumber ? (
         <div className="profile-card-number">{displayNumber}</div>
@@ -55,7 +55,7 @@ function ProfileCard({ cardNumber, cardVisible, onVisibilityChange }) {
         <button
           className="profile-card-visibility-btn"
           onClick={handleToggleVisibility}
-          title={cardVisible ? (t('header.hideCard') || 'Скрыть карту') : (t('header.showCard') || 'Показать карту')}
+          title={cardVisible ? t('header.hideCard') : t('header.showCard')}
         >
           {cardVisible ? <Eye size={14} /> : <EyeOff size={14} />}
         </button>

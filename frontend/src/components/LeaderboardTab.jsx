@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchLeaderboard, fetchCompanyLeaderboard } from '../services/api'
 import { formatMoney, formatCompact } from './TransactionsPanel'
 import PlayerProfileModal from './PlayerProfileModal'
+import { flagUrl } from '../utils/countries'
 import { Trophy, AlertTriangle, Crown, Medal, Building2 } from 'lucide-react'
 
 const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company']
@@ -137,6 +138,7 @@ function LeaderboardTab({ currentUserId }) {
                   )}
                   <span style={{ minWidth: 0 }}>
                     <span className="lb-name">
+                      {entry.country && <img className="lb-flag" src={flagUrl(entry.country)} alt={entry.country} title={entry.country} />}
                       <span className="player-link" onClick={() => setProfileId(entry.userId)}>{entry.username}</span>
                       {isMe && <span className="lb-you">{t('leaderboard.you')}</span>}
                     </span>

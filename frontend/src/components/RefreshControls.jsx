@@ -25,8 +25,8 @@ export function useAutoRefresh(onRefresh, intervalMs) {
 export default function RefreshControls({ intervalMs, onIntervalChange, onRefresh, busy = false }) {
   const { t } = useTranslation()
   const label = (ms) => (ms >= 60000
-    ? t('refresh.min', { n: ms / 60000, defaultValue: `${ms / 60000} мин` })
-    : t('refresh.sec', { n: ms / 1000, defaultValue: `${ms / 1000} с` }))
+    ? t('refresh.min', { n: ms / 60000 })
+    : t('refresh.sec', { n: ms / 1000 }))
   return (
     <div className="refresh-controls">
       <select
@@ -34,8 +34,8 @@ export default function RefreshControls({ intervalMs, onIntervalChange, onRefres
         value={intervalMs}
         disabled={busy}
         onChange={e => onIntervalChange(Number(e.target.value))}
-        title={t('refresh.auto', 'Автообновление')}
-        aria-label={t('refresh.auto', 'Автообновление')}
+        title={t('refresh.auto')}
+        aria-label={t('refresh.auto')}
       >
         {REFRESH_OPTIONS.map(ms => (
           <option key={ms} value={ms}>{label(ms)}</option>
@@ -46,8 +46,8 @@ export default function RefreshControls({ intervalMs, onIntervalChange, onRefres
         className="refresh-btn"
         disabled={busy}
         onClick={onRefresh}
-        title={t('refresh.now', 'Обновить сейчас')}
-        aria-label={t('refresh.now', 'Обновить сейчас')}
+        title={t('refresh.now')}
+        aria-label={t('refresh.now')}
       >
         <RefreshCw size={15} className={busy ? 'refresh-spin' : ''} />
       </button>

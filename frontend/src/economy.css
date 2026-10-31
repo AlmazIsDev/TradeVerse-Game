@@ -99,6 +99,26 @@
   font-size: 15px;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
+.transfer-field select {
+  padding: 12px 14px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 15px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-text-secondary) 50%),
+    linear-gradient(135deg, var(--color-text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.transfer-field select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
 .transfer-field input:focus {
   outline: none;
   border-color: var(--color-accent);
@@ -1531,16 +1551,131 @@ select.company-name-input option {
 .ctr-amount.in { color: var(--color-success); }
 
 /* ===================== BANK HUB (redesign) ===================== */
-.bank-nav { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); margin-bottom: var(--spacing-lg); }
-.bank-nav-btn {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 10px 16px; border-radius: var(--radius-md);
-  background: var(--color-bg-secondary); border: 1px solid var(--hairline);
-  color: var(--color-text-secondary); font-weight: 600; font-size: 14px; cursor: pointer;
-  transition: all 0.16s ease;
+/* ===================== BANK PAGE (single page + modals) ===================== */
+.bank-page { display: flex; flex-direction: column; gap: var(--spacing-lg); }
+.bank-section { margin-top: 0; }
+
+/* Быстрые действия */
+.bank-quick {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--spacing-md);
 }
-.bank-nav-btn:hover { color: var(--color-text-primary); transform: translateY(-1px); }
-.bank-nav-btn.active { background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover)); border-color: transparent; color: var(--on-accent); }
+.bank-quick-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: var(--spacing-md); background: var(--color-bg-secondary);
+  border: 1px solid var(--hairline); border-radius: var(--radius-lg);
+  color: var(--color-text-primary); font-weight: 600; font-size: 13px; cursor: pointer;
+  transition: transform .14s ease, border-color .16s ease, background .16s ease;
+}
+.bank-quick-btn:hover { transform: translateY(-1px); border-color: var(--color-accent); }
+.bank-quick-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--color-bg-tertiary); color: var(--color-accent);
+}
+
+/* Секция-карточка с заголовком и ссылкой */
+.bank-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); margin-bottom: var(--spacing-md); }
+.bank-section-head h3 { font-size: 15px; margin: 0; }
+.bank-link-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; color: var(--color-accent); font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.bank-link-btn:hover { text-decoration: underline; }
+.bank-empty { font-size: 13px; color: var(--color-text-secondary); margin: 0; }
+.bank-subtitle { font-size: 14px; font-weight: 700; margin: var(--spacing-lg) 0 var(--spacing-sm); }
+
+/* Карточки долгов (P2P) и кредитов/депозитов */
+.bank-debt-list { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+.bank-debt-card {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap;
+  padding: var(--spacing-md); background: var(--color-bg-tertiary);
+  border: 1px solid var(--hairline); border-radius: var(--radius-md);
+}
+.bank-debt-card.compact { background: var(--color-bg-primary, var(--color-bg-tertiary)); }
+.bank-debt-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bank-debt-info b { font-size: 15px; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.bank-debt-meta { font-size: 12px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.bank-debt-side {
+  align-self: flex-start; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: rgba(0, 110, 219, 0.14); color: var(--color-accent);
+}
+.bank-debt-side.borrow { background: rgba(255, 159, 10, 0.16); color: #ff9f0a; }
+.bank-debt-card .transfer-submit { width: auto; padding: 8px 14px; }
+
+/* Статистика в модалках */
+.bank-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--spacing-md); margin-bottom: var(--spacing-md); }
+.bank-stat {
+  display: flex; flex-direction: column; gap: 4px; padding: var(--spacing-md);
+  background: var(--color-bg-tertiary); border: 1px solid var(--hairline); border-radius: var(--radius-md);
+}
+.bank-stat span { font-size: 12px; color: var(--color-text-secondary); }
+.bank-stat b { font-size: 16px; color: var(--color-text-primary); overflow-wrap: anywhere; }
+
+/* Два блока рядом: перевод слева, электричество справа */
+.bank-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); align-items: start; }
+.bank-two-col > .bank-section { margin: 0; min-width: 0; }
+.bank-utility-card { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.bank-utility-card .transfer-balance-card { padding: var(--spacing-md); }
+.bank-utility-card .transfer-balance-value { font-size: 22px; }
+@media (max-width: 900px) {
+  .bank-two-col { grid-template-columns: 1fr; }
+}
+/* Форма перевода: поля в столбик, крупные */
+.bank-stack-form { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
+.bank-stack-form .transfer-field input { padding: 14px 16px; font-size: 16px; }
+.bank-stack-submit { width: 100%; padding: 14px 18px; font-size: 16px; justify-content: center; }
+/* Компактная форма в одну строку (перевод, пополнение) */
+.bank-inline-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.bank-inline-form > * { flex: 1 1 0; min-width: 0; }
+.bank-inline-form > .transfer-submit { flex: 0 0 auto; width: auto; white-space: nowrap; }
+.bank-inline-form .transfer-field > span { white-space: nowrap; }
+.bank-inline-form .transfer-field input { width: 100%; box-sizing: border-box; }
+@media (min-width: 900px) {
+  .bank-inline-form { flex-wrap: nowrap; }
+}
+
+/* Модальная оболочка банка */
+.bank-modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--spacing-md);
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px);
+  animation: bankModalFade .16s ease-out;
+}
+.bank-modal {
+  width: 100%; max-width: 460px; max-height: calc(100vh - 2 * var(--spacing-md));
+  display: flex; flex-direction: column;
+  background: var(--color-bg-secondary); border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  animation: bankModalIn .18s ease-out;
+}
+.bank-modal.wide { max-width: 720px; }
+.bank-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+  border-bottom: 1px solid var(--hairline);
+}
+.bank-modal-head h3 { font-size: 17px; font-weight: 700; margin: 0; }
+.bank-modal-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--color-bg-tertiary); color: var(--color-text-secondary);
+  transition: color .16s ease, background .16s ease;
+}
+.bank-modal-close:hover { color: var(--color-text-primary); background: var(--hairline); }
+.bank-modal-body {
+  padding: var(--spacing-lg); overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--spacing-md);
+}
+.bank-offer-form { margin-top: var(--spacing-md); padding-top: var(--spacing-lg); border-top: 1px solid var(--hairline); }
+
+@keyframes bankModalFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bankModalIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 640px) {
+  .bank-quick { grid-template-columns: repeat(2, 1fr); }
+  .bank-debt-card .transfer-submit { width: 100%; }
+}
 
 .bank-overview { display: flex; flex-direction: column; gap: var(--spacing-lg); }
 .bank-hero-card {
@@ -3263,3 +3398,22 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 }
 .mining-house-rename-btn:hover { color: var(--color-text, #fff); background: rgba(255, 255, 255, 0.08); }
 .mining-house-rename { min-width: 0; flex: 1; height: 26px; padding: 2px 8px; font-size: 14px; }
+
+/* ===================== GPU FACTORY SHOP (витрина и редактор) ===================== */
+.gpu-shop-card { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.gpu-shop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.gpu-shop-own { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(99, 102, 241, 0.2); }
+.gpu-shop-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.gpu-shop-table th, .gpu-shop-table td { padding: 6px 8px; text-align: left; vertical-align: middle; }
+.gpu-shop-table th { font-size: 12px; color: var(--color-text-dim, #9ca3af); font-weight: 500; }
+.gpu-shop-name { font-weight: 600; }
+.gpu-shop-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.gpu-shop-qty-input, .gpu-shop-price-input { width: 96px; height: 28px; padding: 2px 6px; }
+.gpu-shop-open { color: #22c55e; }
+.gpu-shop-closed { color: #ef4444; }
+.gpu-shop-status { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.gpu-shop-hint { margin: 8px 0; }
+.gpu-shop-error { color: #ef4444; }
+.gpu-shop-violations { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); color: #fca5a5; font-size: 13px; }
+.gpu-shop-violations ul { margin: 6px 0 0 18px; padding: 0; }
+.gpu-shop-editor { max-width: 720px; width: 100%; }

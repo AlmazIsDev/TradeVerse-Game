@@ -46,14 +46,14 @@ function specLine(cat, s = {}, t) {
     case 'gpu': return `${s.hashrate >= 1000 ? (s.hashrate / 1000).toFixed(1) + 'k' : s.hashrate} H/s · ${s.power}W`
     case 'cpu': return `${t('units.cores', { count: s.cores })} · ${s.power}W`
     case 'motherboard': return `${s.gpuSlots || 0} GPU · ${s.power || 0}W`
-    case 'ram': return `${s.gb} ГБ · ${s.power || 0}W`
-    case 'ssd': return `${s.gb} ГБ · ${s.power || 0}W`
-    case 'cooling': return `${s.cooling || 0} Вт охл. · ${s.power || 0}W`
-    case 'fan': return `${s.cooling || 0} Вт охл. · ${s.power || 0}W`
+    case 'ram': return `${t('shop.specGb', { n: s.gb })} · ${s.power || 0}W`
+    case 'ssd': return `${t('shop.specGb', { n: s.gb })} · ${s.power || 0}W`
+    case 'cooling': return `${t('shop.specCooling', { n: s.cooling || 0 })} · ${s.power || 0}W`
+    case 'fan': return `${t('shop.specCooling', { n: s.cooling || 0 })} · ${s.power || 0}W`
     case 'psu': return `${s.power || 0}W`
     case 'case': return `${t('units.slots', { count: s.slots })}`
     case 'rack': return `${t('units.slots', { count: s.slots })}`
-    case 'network': return s.speed >= 1000 ? `${s.speed / 1000} Гбит/с` : `${s.speed || 0} Мбит/с`
+    case 'network': return s.speed >= 1000 ? t('shop.specGbps', { n: s.speed / 1000 }) : t('shop.specMbps', { n: s.speed || 0 })
     case 'ups': return s.backup >= 1000 ? `${s.backup / 1000} kVA` : `${s.backup || 0} VA`
     case 'supplies': return t(`supplies.${s.kind}`, s.kind || '')
     default: return ''
@@ -115,7 +115,7 @@ async function loadShopItems(category) {
       toast(t('market.bought', { defaultValue: 'Куплено' }) + ` — $${formatMoney(total)}`)
       setBuyItem(null)
     } catch (err) {
-      toast(err?.message || t('common.error', { defaultValue: 'Ошибка' }), 'error')
+      toast(err?.message || t('common.error'), 'error')
     } finally {
       setBuyBusy(false)
     }
@@ -155,8 +155,8 @@ async function loadShopItems(category) {
             <Search size={16} className="tx-search-icon" />
             <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder={t('market.searchPlaceholder')} />
           </div>
-          <Tooltip text={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending', 'по возрастанию') : t('common.descending', 'по убыванию') })}>
-            <button className="gpu-sort-btn active" title={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending', 'по возрастанию') : t('common.descending', 'по убыванию') })} aria-label={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending', 'по возрастанию') : t('common.descending', 'по убыванию') })} onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}>
+          <Tooltip text={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending') : t('common.descending') })}>
+            <button className="gpu-sort-btn active" title={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending') : t('common.descending') })} aria-label={t('shop.sortPriceHelp', { direction: sortOrder === 'asc' ? t('common.ascending') : t('common.descending') })} onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}>
               <ArrowUpDown size={14} /> {t('common.price')} {sortOrder === 'asc' ? '↑' : '↓'}
             </button>
           </Tooltip>

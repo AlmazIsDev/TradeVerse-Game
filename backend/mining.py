@@ -33,6 +33,8 @@ from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_MINING, adjust_balance, record_transaction
 from econ import get_econ
+from state_bank import credit_state
+from utility_account import CAT_UTILITY, debit as utility_debit, credit as utility_credit
 from shop import CATALOG_BY_NAME, CATEGORY_ROLE
 from notifications import push_notification
 
@@ -1813,6 +1815,7 @@ async def tick_all(db: AsyncIOMotorDatabase):
     market = await _coin_market(db)
     econ = await get_econ(db)
     ec, em = econ.get("energy_cost", 0.12), econ.get("economy_mult", 1.0)
+    elec_fee_rate = float(econ.get("electricity_fee_rate", 0.0))
     now = _now()
 
     # запускаем, как только она собрана, прибыльна И у игрока есть кэш на тик
@@ -1952,6 +1955,7 @@ async def tick_all(db: AsyncIOMotorDatabase):
             "user_id": user_id,
             "name": farm.get("name"),
             "costs": costs,
+            "elec": electricity,
             "revenue": revenue,
             "coin_sym": coin_sym,
             "coin_price": coin_price,
@@ -1961,6 +1965,7 @@ async def tick_all(db: AsyncIOMotorDatabase):
             "new_condition": round(new_condition, 2),
             # для отката при нехватке денег (ферма отключается, ремонт не чинится)
             "worn_condition": round(worn_condition, 2),
+            "elec_fee": round(electricity * elec_fee_rate, 2),
             "owed": round(electricity + salary, 2),
             "old_owed": round(farm.get("electricity_owed", 0.0), 2),
             "old_total_spent": round(farm.get("total_spent", 0.0), 2),
@@ -1978,34 +1983,53 @@ async def tick_all(db: AsyncIOMotorDatabase):
     for p in plans:
         by_user.setdefault(p["user_id"], []).append(p)
 
+    # Электричество списывается со счёта «Электричество», зарплата и ремонт — с основного.
+    # Пакетный путь на пользователя; при нехватке любого из счетов — поплановый разбор.
+    util_acc: dict[str, dict] = {}
     for user_id, plist in by_user.items():
-        total = round(sum(p["costs"] for p in plist), 2)
-        if total <= 0.01:
-            paid.extend(plist)
-            continue
-        nb = await adjust_balance(db, user_id, -total)
-        if nb is not None:
-            exp_acc[user_id] = {"amount": total, "farms": len(plist)}
-            paid.extend(plist)
-            continue
+        elec_total = round(sum(p["elec"] for p in plist), 2)
+        other_total = round(sum(p["costs"] - p["elec"] for p in plist), 2)
+        if (elec_total <= 0.01 or await utility_debit(db, user_id, elec_total)):
+            if other_total <= 0.01 or await adjust_balance(db, user_id, -other_total) is not None:
+                if elec_total > 0.01:
+                    util_acc[user_id] = {"amount": elec_total, "farms": len(plist)}
+                if other_total > 0.01:
+                    exp_acc[user_id] = {"amount": other_total, "farms": len(plist)}
+                paid.extend(plist)
+                continue
+            if elec_total > 0.01:
+                await utility_credit(db, user_id, elec_total)
         for p in plist:
-            if p["costs"] <= 0.01:
-                paid.append(p)
-            elif await adjust_balance(db, user_id, -p["costs"]) is not None:
-                acc = exp_acc.setdefault(user_id, {"amount": 0.0, "farms": 0})
-                acc["amount"] = round(acc["amount"] + p["costs"], 2)
-                acc["farms"] += 1
-                paid.append(p)
-            else:
-                # Откатываем авто-ремонт и отключаем ферму.
-                sf = p["set_fields"]
-                sf["condition"] = p["worn_condition"]
-                sf["status"] = "off"
-                sf["electricity_owed"] = round(p["old_owed"] + p["owed"], 2)
-                sf["total_spent"] = p["old_total_spent"]
-                await push_notification(db, user_id, "mining", "Ферма отключена",
-                                        f"«{p['name']}»: недостаточно денег на электричество.",
-                                        data={"farmId": str(p["_id"])})
+            other = round(p["costs"] - p["elec"], 2)
+            if (p["elec"] <= 0.01 or await utility_debit(db, user_id, p["elec"])):
+                if other <= 0.01 or await adjust_balance(db, user_id, -other) is not None:
+                    if p["elec"] > 0.01:
+                        acc_u = util_acc.setdefault(user_id, {"amount": 0.0, "farms": 0})
+                        acc_u["amount"] = round(acc_u["amount"] + p["elec"], 2)
+                        acc_u["farms"] += 1
+                    if other > 0.01:
+                        acc = exp_acc.setdefault(user_id, {"amount": 0.0, "farms": 0})
+                        acc["amount"] = round(acc["amount"] + other, 2)
+                        acc["farms"] += 1
+                    paid.append(p)
+                    continue
+                if p["elec"] > 0.01:
+                    await utility_credit(db, user_id, p["elec"])
+            # Откатываем авто-ремонт и отключаем ферму.
+            sf = p["set_fields"]
+            sf["condition"] = p["worn_condition"]
+            sf["status"] = "off"
+            sf["electricity_owed"] = round(p["old_owed"] + p["owed"], 2)
+            sf["total_spent"] = p["old_total_spent"]
+            await push_notification(db, user_id, "mining", "Ферма отключена",
+                                    f"«{p['name']}»: недостаточно денег на электричество.",
+                                    data={"farmId": str(p["_id"])})
+
+    # Комиссия с оплаченного электричества уходит государству; сумма уже входит
+    # в списанные costs, поэтому пользователю дополнительно ничего не списывается.
+    elec_fee_total = round(sum(p["elec_fee"] for p in paid), 2)
+    if elec_fee_total > 0:
+        await credit_state(db, elec_fee_total, "electricity")
 
     # на каждую ферму: при ~100мс RTT до Mongo 2500 ферм × 3 запроса = минуты.
     from pymongo import UpdateOne
@@ -2042,6 +2066,10 @@ async def tick_all(db: AsyncIOMotorDatabase):
     for user_id, acc in exp_acc.items():
         await record_transaction(db, user_id, EXPENSE, acc["amount"], CAT_MINING,
                                  f"Расходы ферм ({acc['farms']})")
+    for user_id, acc in util_acc.items():
+        await record_transaction(db, user_id, EXPENSE, acc["amount"], CAT_UTILITY,
+                                 f"Электричество ферм ({acc['farms']})",
+                                 meta={"account": "utility", "kind": "electricity"})
     for sym, qty in emission_acc.items():
         await db.crypto_assets.update_one({"symbol": sym}, {"$inc": {"emission_sold": qty}})
 

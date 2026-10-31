@@ -20,8 +20,10 @@ from ledger import (
 )
 from market_data import MarketDataService
 from networth import ensure_transfer_allowed
+from levels import TRANSFER_SEND_MIN_LEVEL, TRANSFER_RECEIVE_MIN_LEVEL
 from notifications import push_notification
 from timeutil import now_utc
+from state_bank import credit_state
 from ws import broadcast
 
 router = APIRouter(prefix="/api/crypto", tags=["crypto"])
@@ -742,6 +744,7 @@ async def trade_crypto(
             f"Покупка {qty:g} {symbol}", symbol=symbol, price=price,
             balance_after=new_balance, meta={"quantity": qty, "action": "buy", "fee": fee},
         )
+        await credit_state(db, fee, "crypto_fee")
         await _apply_trade_impact(db, symbol, "buy", qty * ref_price)
         # Монета компании: выручка от покупки на бирже пополняет бюджет эмитента
         # (привлечение капитала). См. stocks._credit_company_budget — та же логика.
@@ -793,6 +796,7 @@ async def trade_crypto(
         f"Продажа {qty:g} {symbol}", symbol=symbol, price=price,
         balance_after=new_balance, meta={"quantity": qty, "action": "sell", "fee": fee},
     )
+    await credit_state(db, fee, "crypto_fee")
     await _apply_trade_impact(db, symbol, "sell", qty * ref_price)
     # Монеты вернулись в свободный оборот: уменьшаем счётчик эмиссии.
     if float(coin.get("supply") or 0) > 0:
@@ -953,6 +957,19 @@ async def transfer_crypto(
     # Гейт новичка: и отправитель, и получатель должны иметь состояние от порога.
     await ensure_transfer_allowed(db, current_user)
     await ensure_transfer_allowed(db, recipient, recipient=True)
+
+    sender_level = int(current_user.get("level", 1))
+    if sender_level < TRANSFER_SEND_MIN_LEVEL:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Переводы доступны с {TRANSFER_SEND_MIN_LEVEL} уровня (ваш: {sender_level})",
+        )
+    recipient_level = int(recipient.get("level", 1))
+    if recipient_level < TRANSFER_RECEIVE_MIN_LEVEL:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Получатель может принимать переводы с {TRANSFER_RECEIVE_MIN_LEVEL} уровня",
+        )
 
     # Атомарное списание у отправителя с проверкой достаточности (с учётом комиссии).
     debited = await db.crypto_holdings.find_one_and_update(

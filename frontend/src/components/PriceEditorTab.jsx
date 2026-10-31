@@ -317,7 +317,7 @@ function PriceEditorTab() {
 
       {saveError && (
         <div className="price-editor-saved-msg price-editor-save-error">
-          {t('admin.prices.saveFailed', 'Не удалось сохранить цены')}
+          {t('admin.prices.saveFailed')}
         </div>
       )}
 

@@ -10,6 +10,7 @@ import {
   fetchProductionOverview, setProductionConfig, setProductionTrucks,
   setProductionWorkers, buyProductionFood, upgradeProductionStorage,
   sellProductionResource, productionHaulNow,
+  setComponentPrice, sellComponents,
 } from '../services/api'
 import { formatMoney } from './TransactionsPanel'
 import { toast } from './Toast'
@@ -49,6 +50,8 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
   const [workersInput, setWorkersInput] = useState('')
   const [foodQty, setFoodQty] = useState('100')
   const [sellQty, setSellQty] = useState({})
+  const [componentPctInput, setComponentPctInput] = useState('')
+  const [componentSellQty, setComponentSellQty] = useState('')
   const [tick, setTick] = useState(0)
 
   const load = useCallback(async (silent = false) => {
@@ -137,7 +140,7 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
         </button>
         {import.meta.env.DEV && (
           <button className="asset-interact-btn source-debug-btn" onClick={() => load()} disabled={busy}>
-            <RefreshCw size={14} /> Обновить данные
+            <RefreshCw size={14} /> {t('myassets.refreshData', 'Обновить данные')}
           </button>
         )}
       </div>
@@ -211,7 +214,7 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
             </div>
             <p className="farm-price">
               {t('prod.efficiency')}: <b>{efficiencyPct(unit)}%</b>
-              {unit.employees > 0 && <> · Штат: {unit.employees} · Нанято: {unit.workers}/{unit.maxWorkers}</>}
+              {unit.employees > 0 && <> · {t('myassets.staff', 'Штат')}: {unit.employees} · {t('myassets.hired', 'Нанято')}: {unit.workers}/{unit.maxWorkers}</>}
             </p>
           </section>
 
@@ -219,11 +222,11 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
             <h3><Wheat size={16} /> {t('prod.food', 'Еда (хлеб)')}</h3>
             <p className="farm-hint"><Info size={12} /> {t('prod.foodHint')}</p>
             <p className="farm-price">
-              {t('prod.foodStock')}: <b>{unit.food} кг</b>
-              {unit.foodDemandPerH > 0 && <> · −{unit.foodDemandPerH} кг/ч</>}
+              {t('prod.foodStock')}: <b>{unit.food} {t('myassets.kg', 'кг')}</b>
+              {unit.foodDemandPerH > 0 && <> · −{unit.foodDemandPerH} {t('myassets.kgPerHour', 'кг/ч')}</>}
             </p>
             <div className="farm-input-row">
-              <label>{t('prod.foodBuy')} (кг):</label>
+              <label>{t('prod.foodBuy')} ({t('myassets.kg', 'кг')}):</label>
               <input type="number" min="1" value={foodQty} onChange={e => setFoodQty(e.target.value)} />
               <button className="farm-btn" disabled={busy}
                 onClick={() => runAction(() => buyProductionFood(unit.id, Math.max(1, Math.floor(Number(foodQty) || 0))), t('prod.foodBuy'))}>
@@ -231,9 +234,49 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
               </button>
             </div>
             <p className="farm-price">
-              ${formatMoney(prices.bread || 0)}/кг · {t('common.total', 'Итого')}: <b className="up">${formatMoney((Math.floor(Number(foodQty)) || 0) * (prices.bread || 0))}</b>
+              ${formatMoney(prices.bread || 0)}{t('myassets.perKg', '/кг')} · {t('common.total', 'Итого')}: <b className="up">${formatMoney((Math.floor(Number(foodQty)) || 0) * (prices.bread || 0))}</b>
             </p>
           </section>
+
+          {unit.isGpuPlant && (
+            <section className="farm-block">
+              <h3><Package size={16} /> {t('prod.components', 'Компоненты')}</h3>
+              <p className="farm-hint"><Info size={12} /> {t('prod.componentsHint', 'Цена за компонент — % от базовой цены. Шаг кнопок ±5%.')}</p>
+              <p className="farm-price">
+                {t('prod.componentsStock', 'На складе')}: <b>{Number(unit.storage?.component || 0)}</b>
+                {' · '}{t('prod.componentPrice', 'Цена')}: <b>{unit.componentPricePct}%</b>
+                {' · '}<b>${formatMoney(unit.componentUnitPrice || 0)}</b>
+              </p>
+              <div className="farm-input-row">
+                <button className="farm-btn" disabled={busy || unit.componentPricePct <= 50}
+                  onClick={() => runAction(() => setComponentPrice(unit.id, Math.max(50, unit.componentPricePct - 5)))}>−5%</button>
+                <input type="number" min="50" max="200" step="1" value={componentPctInput}
+                  placeholder={String(unit.componentPricePct)}
+                  onChange={e => setComponentPctInput(e.target.value)} />
+                <button className="farm-btn" disabled={busy}
+                  onClick={() => {
+                    const pct = Math.max(50, Math.min(200, Number(componentPctInput) || 0))
+                    if (!pct) return
+                    runAction(() => setComponentPrice(unit.id, pct), t('prod.componentPriceSaved', 'Цена сохранена'))
+                    setComponentPctInput('')
+                  }}>{t('common.save', 'Сохранить')}</button>
+                <button className="farm-btn" disabled={busy || unit.componentPricePct >= 200}
+                  onClick={() => runAction(() => setComponentPrice(unit.id, Math.min(200, unit.componentPricePct + 5)))}>+5%</button>
+              </div>
+              <div className="farm-input-row">
+                <label>{t('prod.sellQty', 'Продать, шт.')}:</label>
+                <input type="number" min="1" value={componentSellQty}
+                  onChange={e => setComponentSellQty(e.target.value)} />
+                <button className="farm-btn primary" disabled={busy || !(Number(unit.storage?.component) > 0)}
+                  onClick={() => {
+                    const qty = Math.floor(Number(componentSellQty) || 0)
+                    if (qty <= 0) return
+                    runAction(() => sellComponents(unit.id, qty), t('prod.sell', 'Продано'))
+                    setComponentSellQty('')
+                  }}>{t('prod.sell', 'Продать')}</button>
+              </div>
+            </section>
+          )}
 
           {unit.isBakery && (
             <section className="farm-block">

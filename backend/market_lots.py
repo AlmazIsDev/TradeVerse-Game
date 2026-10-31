@@ -60,16 +60,16 @@ async def _rollback_debit(db, user_id: str, total: float) -> None:
 
 
 class LotCreate(BaseModel):
-    kind: str                 # "asset" | "hardware"
-    itemId: str               # _id актива или itemId железа
+    kind: str                 # "asset" | "hardware" | "component"
+    itemId: str               # _id актива, itemId железа или _id завода (component)
     qty: int = 1
     pricePerItem: float
 
     @field_validator("kind")
     @classmethod
     def kind_ok(cls, v):
-        if v not in ("asset", "hardware"):
-            raise ValueError("kind должен быть asset или hardware")
+        if v not in ("asset", "hardware", "component"):
+            raise ValueError("kind должен быть asset, hardware или component")
         return v
 
     @field_validator("pricePerItem")
@@ -192,6 +192,19 @@ async def create_lot(
         if await db.market_lots.find_one({"itemId": payload.itemId, "status": "active"}):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Этот актив уже выставлен на рынок")
         name = asset.get("name") or asset.get("slug")
+    elif payload.kind == "component":
+        factory = await db.user_assets.find_one({"_id": _oid(payload.itemId), "userId": user_id})
+        if not factory or (factory.get("meta") or {}).get("produces") != "gpu":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Завод видеокарт не найден среди ваших")
+        have = int(((factory.get("prod") or {}).get("storage") or {}).get("component", 0))
+        if have <= 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "На складе завода нет компонентов")
+        qty = min(qty, have)
+        if await db.market_lots.find_one({"kind": "component", "itemId": payload.itemId,
+                                          "sellerId": user_id, "status": "active"}):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "С этого завода уже выставлен лот компонентов — измените его")
+        name = "Компоненты (завод видеокарт)"
     else:
         avail = await _available_hw_qty(db, user_id, payload.itemId)
         if avail <= 0:
@@ -333,7 +346,33 @@ async def buy_lot(
 
     seller_balance = await adjust_balance(db, seller_id, total)
 
-    if lot["kind"] == "asset":
+    if lot["kind"] == "component":
+        buyer_factory = await db.user_assets.find_one(
+            {"userId": user_id, "type": "factory", "meta.produces": "gpu"}, {"_id": 1})
+        if not buyer_factory:
+            await adjust_balance(db, user_id, total)
+            await _rollback_debit(db, seller_id, total)
+            await db.market_lots.update_one({"_id": lot["_id"]},
+                                            {"$set": {"status": "active"}, "$inc": {"qty": qty}})
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Для покупки компонентов нужен свой завод видеокарт")
+        taken = await db.user_assets.find_one_and_update(
+            {"_id": _oid(lot["itemId"]), "userId": seller_id,
+             "prod.storage.component": {"$gte": qty}},
+            {"$inc": {"prod.storage.component": -qty}},
+            return_document=True,
+        )
+        if not taken:
+            await adjust_balance(db, user_id, total)
+            await _rollback_debit(db, seller_id, total)
+            await db.market_lots.update_one({"_id": lot["_id"]},
+                                            {"$set": {"status": "cancelled"}})
+            raise HTTPException(status.HTTP_409_CONFLICT, "Компоненты больше недоступны")
+        await db.user_assets.update_one(
+            {"_id": buyer_factory["_id"]},
+            {"$inc": {"prod.storage.component": qty}},
+        )
+    elif lot["kind"] == "asset":
         # Перепроверка передаваемости: с момента создания лота актив мог уйти в
         # компанию/аренду — иначе покупатель вырвал бы его оттуда.
         asset = await db.user_assets.find_one_and_update(

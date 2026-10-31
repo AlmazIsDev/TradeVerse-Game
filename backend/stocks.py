@@ -22,6 +22,7 @@ from ledger import (
     adjust_balance, record_transaction,
 )
 from market_data import MarketDataService
+from state_bank import credit_state
 from ws import broadcast
 
 router = APIRouter(prefix="/api/v2/stocks", tags=["stocks"])
@@ -773,6 +774,7 @@ async def trade_stock(
             f"Покупка {quantity} {symbol}", symbol=symbol, price=fill_price,
             balance_after=new_balance, meta={"quantity": quantity, "action": "buy", "fee": fee},
         )
+        await credit_state(db, fee, "stock_fee")
         # Акция компании: выручка от покупки на бирже идёт в БЮДЖЕТ компании
         # (привлечение капитала). Деньги не «сгорают», а перетекают эмитенту.
         await _credit_company_budget(db, stock, cost)
@@ -807,6 +809,7 @@ async def trade_stock(
 
         proceeds = round(cost - fee, 2)
         new_balance = await adjust_balance(db, user_id, proceeds)
+        await credit_state(db, fee, "stock_fee")
         new_price = q["nextPrice"]
         await db.stocks.update_one(
             {"symbol": symbol},

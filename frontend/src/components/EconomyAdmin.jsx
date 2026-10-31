@@ -26,6 +26,9 @@ const CONFIG_FIELDS = [
   { key: 'infra_food_price', step: 0.5 },
   { key: 'infra_wood_price', step: 1 },
   { key: 'infra_warehouse_rate', step: 0.01 },
+  { key: 'electricity_fee_rate', step: 0.01 },
+  { key: 'loan_rate', step: 0.01 },
+  { key: 'deposit_rate', step: 0.001 },
 ]
 
 function EconomyAdmin({ canEditConfig = true }) {

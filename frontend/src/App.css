@@ -2433,6 +2433,20 @@ body {
   padding: 8px 12px 0;
 }
 
+.notification-hide-auto {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 12px 0;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.notification-hide-auto:hover { color: var(--color-text-primary); }
+
 .notification-tab {
   flex: 1;
   display: flex;

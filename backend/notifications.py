@@ -19,6 +19,8 @@ from database import get_db
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
+CATEGORY_PATTERN = "^(automatic|announcement|company|market|mining|event|system)$"
+
 
 _AUTO_TITLES = {
     "Появился арендатор", "Аренда компании завершена", "Аренда завершена",
@@ -92,15 +94,18 @@ def _serialize(n: dict) -> dict:
 @router.get("")
 async def list_notifications(
     limit: int = Query(30, ge=1, le=100),
-    category: Optional[str] = Query(None, pattern="^(automatic|announcement|company|market|mining|event|system)$"),
+    category: Optional[str] = Query(None, pattern=CATEGORY_PATTERN),
+    exclude_category: Optional[str] = Query(None, pattern=CATEGORY_PATTERN),
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Лента уведомлений игрока (новые сверху), опционально по категории, + непрочитанные по категориям."""
+    """Лента уведомлений игрока (новые сверху), с фильтром категории, + непрочитанные по категориям."""
     user_id = str(current_user["_id"])
     query = {"userId": user_id}
     if category:
         query["category"] = category
+    elif exclude_category:
+        query["category"] = {"$ne": exclude_category}
     items = [
         _serialize(n)
         async for n in db.notifications.find(query).sort("created_at", -1).limit(limit)
@@ -110,6 +115,8 @@ async def list_notifications(
         {"userId": user_id, "read": False}, {"type": 1, "title": 1, "category": 1},
     ):
         cat = n.get("category") or _category(n.get("type", ""), n.get("title", ""))
+        if cat == exclude_category:
+            continue
         unread_by_category[cat] = unread_by_category.get(cat, 0) + 1
     return {
         "items": items,

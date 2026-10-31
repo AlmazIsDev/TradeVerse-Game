@@ -12,7 +12,7 @@ import { flagUrl } from '../utils/countries'
 import { formatCompact } from './TransactionsPanel'
 import {
   Bell, LogOut, X, Check, Wallet, Megaphone, Zap, Users, Store,
-  Cpu, Trophy, Settings2, Search, Undo2,
+  Cpu, Trophy, Settings2, Search, Undo2, Eye, EyeOff,
 } from 'lucide-react'
 
 function formatMoney(n) {
@@ -47,6 +47,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const [unreadTotal, setUnreadTotal] = useState(0)
   const [unreadByCategory, setUnreadByCategory] = useState({})
   const [notifTab, setNotifTab] = useState('all')
+  const [hideAutoInAll, setHideAutoInAll] = useState(() => localStorage.getItem('notifHideAutoInAll') === '1')
   const [notifSearch, setNotifSearch] = useState('')
   const notifRef = useRef(null)
   const dropdownRef = useRef(null)
@@ -180,12 +181,21 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   // вытесняют остальные и их не видно. Счётчики по категориям приходят всегда.
   const loadNotifs = useCallback(async () => {
     try {
-      const data = await fetchNotifications(30, tabCategory[notifTab])
+      const exclude = notifTab === 'all' && hideAutoInAll ? 'automatic' : null
+      const data = await fetchNotifications(30, tabCategory[notifTab], exclude)
       setNotifications(data.items || [])
       setUnreadTotal(data.unread || 0)
       setUnreadByCategory(data.unreadByCategory || {})
     } catch { /* ignore */ }
-  }, [notifTab])
+  }, [notifTab, hideAutoInAll])
+
+  const toggleHideAuto = () => {
+    setHideAutoInAll(prev => {
+      const next = !prev
+      localStorage.setItem('notifHideAutoInAll', next ? '1' : '0')
+      return next
+    })
+  }
 
   // 30с был основным источником обновлений до WS; tv:notif покрывает
   // live-обновления, поэтому интервал — редкий резервный фолбэк.
@@ -353,6 +363,17 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                   )
                 })}
               </div>
+              {notifTab === 'all' && (
+                <button
+                  type="button"
+                  className="notification-hide-auto"
+                  onClick={toggleHideAuto}
+                  title={t(hideAutoInAll ? 'notifications.showAuto' : 'notifications.hideAuto')}
+                >
+                  {hideAutoInAll ? <Eye size={13} /> : <EyeOff size={13} />}
+                  <span>{t(hideAutoInAll ? 'notifications.showAuto' : 'notifications.hideAuto')}</span>
+                </button>
+              )}
               <div className="notification-list">
                 {visibleNotifications.length === 0 && (
                   <div className="notification-empty">{t('notifications.noNotifications')}</div>

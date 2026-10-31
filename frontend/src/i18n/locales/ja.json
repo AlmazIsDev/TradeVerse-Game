@@ -2154,6 +2154,8 @@
     "noNotifications": "通知はありません",
     "new": "新規",
     "tabAll": "すべて",
+    "hideAuto": "「すべて」から自動通知を非表示",
+    "showAuto": "「すべて」に自動通知を表示",
     "tabAuto": "自動",
     "tabAnnounce": "お知らせ",
     "tabCompany": "会社",

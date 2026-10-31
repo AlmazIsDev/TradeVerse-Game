@@ -2164,6 +2164,8 @@
     "noNotifications": "No notifications",
     "new": "New",
     "tabAll": "All",
+    "hideAuto": "Hide automatic notifications from All",
+    "showAuto": "Show automatic notifications in All",
     "tabAuto": "Auto",
     "tabAnnounce": "Announcements",
     "tabCompany": "Company",

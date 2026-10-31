@@ -34,7 +34,7 @@ from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_MINING, adjust_balance, record_transaction
 from econ import get_econ
 from state_bank import credit_state
-from utility_account import CAT_UTILITY, debit as utility_debit, credit as utility_credit
+from utility_account import CAT_UTILITY, debit as utility_debit, credit as utility_credit, get_utility_balance
 from shop import CATALOG_BY_NAME, CATEGORY_ROLE
 from notifications import push_notification
 
@@ -1831,9 +1831,12 @@ async def tick_all(db: AsyncIOMotorDatabase):
             if stats.get("profitPerHour", 0) <= 0:
                 continue
             tick_h = 60.0 / 3600.0
-            tick_cost = (stats.get("electricityPerHour", 0.0) + stats.get("salaryPerHour", 0.0)) * tick_h
+            elec_cost = stats.get("electricityPerHour", 0.0) * tick_h
+            salary_cost = stats.get("salaryPerHour", 0.0) * tick_h
             owner = await db.users.find_one({"_id": ObjectId(farm["userId"])}, {"balance": 1}) if ObjectId.is_valid(farm["userId"]) else None
-            if not owner or owner.get("balance", 0.0) < tick_cost:
+            if not owner or owner.get("balance", 0.0) < salary_cost:
+                continue
+            if await get_utility_balance(db, farm["userId"]) < elec_cost:
                 continue
             await db.mining_farms.update_one(
                 {"_id": farm["_id"]},

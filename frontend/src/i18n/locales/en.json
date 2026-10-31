@@ -1,4 +1,164 @@
 {
+  "achievements": {
+    "title": "Achievements",
+    "received": "Unlocked: {{unlocked}} of {{total}}"
+  },
+  "achievementCatalog": {
+    "rarity": {
+      "common": "Common",
+      "uncommon": "Uncommon",
+      "rare": "Rare",
+      "epic": "Epic",
+      "legendary": "Legendary",
+      "mythic": "Mythic"
+    },
+    "items": {
+      "trades_1": { "name": "First Trade", "desc": "Make 1 trades" },
+      "trades_3": { "name": "Cautious Start", "desc": "Make 3 trades" },
+      "trades_5": { "name": "Five Strikes", "desc": "Make 5 trades" },
+      "trades_10": { "name": "Warming Up", "desc": "Make 10 trades" },
+      "trades_25": { "name": "Regular Player", "desc": "Make 25 trades" },
+      "trades_50": { "name": "Half a Hundred", "desc": "Make 50 trades" },
+      "trades_75": { "name": "Steady Ground", "desc": "Make 75 trades" },
+      "trades_100": { "name": "Trader", "desc": "Make 100 trades" },
+      "trades_150": { "name": "Seasoned", "desc": "Make 150 trades" },
+      "trades_250": { "name": "Exchange Regular", "desc": "Make 250 trades" },
+      "trades_400": { "name": "Ticker-Dependent", "desc": "Make 400 trades" },
+      "trades_500": { "name": "Five Hundreder", "desc": "Make 500 trades" },
+      "trades_750": { "name": "Market Rhythm", "desc": "Make 750 trades" },
+      "trades_1000": { "name": "Market Maker", "desc": "Make 1000 trades" },
+      "trades_1500": { "name": "Exchange Master", "desc": "Make 1500 trades" },
+      "trades_2500": { "name": "Old-Timer", "desc": "Make 2500 trades" },
+      "trades_5000": { "name": "Trade Machine", "desc": "Make 5000 trades" },
+      "trades_7500": { "name": "Tireless", "desc": "Make 7500 trades" },
+      "trades_10000": { "name": "Orderbook Legend", "desc": "Make 10000 trades" },
+      "trades_25000": { "name": "Immortal Ticker", "desc": "Make 25000 trades" },
+      "volume_10000": { "name": "Ten Thousand", "desc": "Trading turnover 10 000 $" },
+      "volume_100000": { "name": "One Hundred Thousand", "desc": "Trading turnover 100 000 $" },
+      "volume_500000": { "name": "Half a Million", "desc": "Trading turnover 500 000 $" },
+      "volume_1000000": { "name": "Turnover Millionaire", "desc": "Trading turnover 1 000 000 $" },
+      "volume_5000000": { "name": "Five Million", "desc": "Trading turnover 5 000 000 $" },
+      "volume_10000000": { "name": "Ten Million", "desc": "Trading turnover 10 000 000 $" },
+      "volume_50000000": { "name": "Fifty Million", "desc": "Trading turnover 50 000 000 $" },
+      "volume_100000000": { "name": "One Hundred Million", "desc": "Trading turnover 100 000 000 $" },
+      "volume_500000000": { "name": "Half a Billion", "desc": "Trading turnover 500 000 000 $" },
+      "volume_1000000000": { "name": "Billion Turnover", "desc": "Trading turnover 1 000 000 000 $" },
+      "volume_5000000000": { "name": "Five Billion", "desc": "Trading turnover 5 000 000 000 $" },
+      "volume_10000000000": { "name": "Ten Billion", "desc": "Trading turnover 10 000 000 000 $" },
+      "volume_50000000000": { "name": "Fifty Billion", "desc": "Trading turnover 50 000 000 000 $" },
+      "volume_100000000000": { "name": "One Hundred Billion", "desc": "Trading turnover 100 000 000 000 $" },
+      "volume_1000000000000": { "name": "Turnover Trillionaire", "desc": "Trading turnover 1 000 000 000 000 $" },
+      "level_5": { "name": "Got the Hang of It", "desc": "Reach level 5" },
+      "level_10": { "name": "Experienced", "desc": "Reach level 10" },
+      "level_15": { "name": "Confident", "desc": "Reach level 15" },
+      "level_20": { "name": "Connoisseur", "desc": "Reach level 20" },
+      "level_25": { "name": "Veteran", "desc": "Reach level 25" },
+      "level_30": { "name": "Trained", "desc": "Reach level 30" },
+      "level_35": { "name": "Pro", "desc": "Reach level 35" },
+      "level_40": { "name": "Elite", "desc": "Reach level 40" },
+      "level_50": { "name": "Legend", "desc": "Reach level 50" },
+      "level_60": { "name": "Invincible", "desc": "Reach level 60" },
+      "level_70": { "name": "Overlord", "desc": "Reach level 70" },
+      "level_75": { "name": "Mythical", "desc": "Reach level 75" },
+      "level_80": { "name": "Market Oracle", "desc": "Reach level 80" },
+      "level_90": { "name": "Eternal", "desc": "Reach level 90" },
+      "level_100": { "name": "Absolute", "desc": "Reach level 100" },
+      "capital_10000": { "name": "First Money", "desc": "Net worth 10 000 $" },
+      "capital_100000": { "name": "Six Figures", "desc": "Net worth 100 000 $" },
+      "capital_1000000": { "name": "Millionaire", "desc": "Net worth 1 000 000 $" },
+      "capital_5000000": { "name": "Well-Off", "desc": "Net worth 5 000 000 $" },
+      "capital_10000000": { "name": "Ten-Millionaire", "desc": "Net worth 10 000 000 $" },
+      "capital_50000000": { "name": "Fifty Million", "desc": "Net worth 50 000 000 $" },
+      "capital_100000000": { "name": "Hundred-Millionaire", "desc": "Net worth 100 000 000 $" },
+      "capital_500000000": { "name": "Half-Billionaire", "desc": "Net worth 500 000 000 $" },
+      "capital_1000000000": { "name": "Billionaire", "desc": "Net worth 1 000 000 000 $" },
+      "capital_5000000000": { "name": "Oligarch", "desc": "Net worth 5 000 000 000 $" },
+      "capital_10000000000": { "name": "Ten-Billionaire", "desc": "Net worth 10 000 000 000 $" },
+      "capital_15000000000": { "name": "Market Magnate", "desc": "Net worth 15 000 000 000 $" },
+      "capital_20000000000": { "name": "Twenty", "desc": "Net worth 20 000 000 000 $" },
+      "capital_25000000000": { "name": "Financial Titan", "desc": "Net worth 25 000 000 000 $" },
+      "capital_30000000000": { "name": "Thirty", "desc": "Net worth 30 000 000 000 $" },
+      "capital_35000000000": { "name": "Heir", "desc": "Net worth 35 000 000 000 $" },
+      "capital_40000000000": { "name": "Forty-Billionaire", "desc": "Net worth 40 000 000 000 $" },
+      "capital_50000000000": { "name": "Market Emperor", "desc": "Net worth 50 000 000 000 $" },
+      "capital_75000000000": { "name": "Owner of the Economy", "desc": "Net worth 75 000 000 000 $" },
+      "capital_100000000000": { "name": "Hundred-Billionaire", "desc": "Net worth 100 000 000 000 $" },
+      "capital_250000000000": { "name": "Scale Investor", "desc": "Net worth 250 000 000 000 $" },
+      "capital_500000000000": { "name": "Half a Trillion", "desc": "Net worth 500 000 000 000 $" },
+      "capital_1000000000000": { "name": "Trillionaire", "desc": "Net worth 1 000 000 000 000 $" },
+      "small_1": { "name": "Penny", "desc": "Make 1 small trade (up to 100 $)" },
+      "small_200": { "name": "Small-Change Player", "desc": "Make 200 small trades" },
+      "small_1000": { "name": "Piggy Bank", "desc": "Make 1000 small trades" },
+      "crypto_1": { "name": "First Block", "desc": "Make 1 crypto trade" },
+      "crypto_50": { "name": "Crypto Enthusiast", "desc": "Make 50 crypto trades" },
+      "crypto_vol_1m": { "name": "Crypto Million", "desc": "Crypto turnover 1 000 000 $" },
+      "crypto_vol_1b": { "name": "Crypto Whale", "desc": "Crypto turnover 1 000 000 000 $" },
+      "big_trade_100k": { "name": "Large Order", "desc": "A single trade of 100 000 $" },
+      "big_trade_10m": { "name": "Market Strike", "desc": "A single trade of 10 000 000 $" },
+      "big_trade_1b": { "name": "Elephant in the Shop", "desc": "A single trade of 1 000 000 000 $" },
+      "realestate_1": { "name": "First Home", "desc": "Buy your first property" },
+      "realestate_10": { "name": "Developer", "desc": "Own 10 real estate properties" },
+      "realestate_30": { "name": "Homeowner", "desc": "Own 30 real estate properties" },
+      "business_1": { "name": "My Business", "desc": "Buy your first business" },
+      "business_5": { "name": "Business Network", "desc": "Own 5 businesses" },
+      "car_1": { "name": "First Car", "desc": "Buy your first car" },
+      "car_10": { "name": "Car Fleet", "desc": "Own 10 cars" },
+      "diversified_cap": { "name": "Versatility", "desc": "Own real estate, a business and a car at the same time" },
+      "meta_10": { "name": "Collector I", "desc": "Earn 10 achievements" },
+      "meta_25": { "name": "Collector II", "desc": "Earn 25 achievements" },
+      "meta_50": { "name": "Collector III", "desc": "Earn 50 achievements" },
+      "meta_75": { "name": "Collector IV", "desc": "Earn 75 achievements" },
+      "meta_99": { "name": "Almost Everything", "desc": "Earn 99 achievements" },
+      "meta_rare_10": { "name": "Rare Connoisseur", "desc": "Earn 10 rare achievements" },
+      "meta_epic_5": { "name": "Epic Collector", "desc": "Earn 5 epic achievements" },
+      "meta_legend_3": { "name": "Legendary Trio", "desc": "Earn 3 legendary achievements" },
+      "meta_myth_1": { "name": "Myth Incarnate", "desc": "Earn at least 1 mythic achievement" },
+      "donate_1": { "name": "Generous Hand", "desc": "Donate to the bank for the first time" },
+      "donate_10": { "name": "Patron", "desc": "Make 10 donations to the bank" },
+      "donate_50": { "name": "Philanthropist", "desc": "Make 50 donations to the bank" },
+      "donate_sum_1k": { "name": "First Contribution", "desc": "Donate a total of 1 000 $ to the bank" },
+      "donate_sum_50k": { "name": "Benefactor", "desc": "Donate a total of 50 000 $ to the bank" },
+      "donate_sum_500k": { "name": "State Sponsor", "desc": "Donate a total of 500 000 $ to the bank" },
+      "donate_sum_5m": { "name": "People's Hero", "desc": "Donate a total of 5 000 000 $ to the bank" },
+      "donate_sum_50m": { "name": "Gold Reserve", "desc": "Donate a total of 50 000 000 $ to the bank" },
+      "donate_sum_1b": { "name": "Benefactor of the Nation", "desc": "Donate a total of 1 000 000 000 $ to the bank" }
+    }
+  },
+  "supportAdmin": {
+    "back": "← Back to list",
+    "statusLabel": "Status",
+    "save": "Save",
+    "saved": "Ticket saved",
+    "empty": "No tickets.",
+    "open": "Open",
+    "statusPending": "Under review",
+    "statusRejected": "Rejected",
+    "statusResolved": "Resolved"
+  },
+  "support": {
+    "title": "Technical Support",
+    "openTicket": "Open ticket",
+    "empty": "No tickets yet.",
+    "openFull": "Open full ticket",
+    "newTicket": "New ticket",
+    "ticketType": "Ticket type",
+    "describeBug": "Describe the bug",
+    "lostItem": "What was lost",
+    "method": "How it happened",
+    "approxTime": "Approximate time",
+    "yourSuggestion": "Your suggestion",
+    "cancel": "Cancel",
+    "submit": "Submit",
+    "bugDescription": "Bug description",
+    "suggestion": "Suggestion",
+    "adminReply": "Administration reply",
+    "typeBug": "Bug",
+    "typeLoss": "Property loss",
+    "typeSuggestion": "Improvement suggestion",
+    "statusPending": "Under review",
+    "statusRejected": "Rejected",
+    "statusResolved": "Resolved"
+  },
   "errors": {
     "sessionExpired": "Session expired. Please sign in again.",
     "sessionRefreshFailed": "Failed to refresh session.",
@@ -28,7 +188,9 @@
     "groupMarkets": "Markets",
     "groupAssets": "Assets & Business",
     "groupCommunity": "Community",
-    "inventory": "Inventory"
+    "inventory": "Inventory",
+    "achievements": "Achievements",
+    "support": "Support"
   },
   "inventory": {
     "page_overview": "Overview",
@@ -135,6 +297,8 @@
   },
   "common": {
     "loading": "Loading...",
+    "ascending": "ascending",
+    "descending": "descending",
     "error": "Error",
     "success": "Success",
     "save": "Save",
@@ -191,6 +355,7 @@
     "notSet": "Not set",
     "name": "Name",
     "confirmTitle": "Confirm action",
+    "edit": "Edit",
     "delete": "Delete"
   },
   "stocks": {
@@ -292,7 +457,77 @@
     "overview": "Overview",
     "mainAccount": "Main account",
     "cryptoAccount": "Crypto account",
-    "cryptoClosed": "Crypto account not opened — open it in the Cryptocurrency section"
+    "cryptoClosed": "Crypto account not opened — open it in the Cryptocurrency section",
+    "errorDefault": "Error",
+    "termRange": "Term must be from 7 to 21 days",
+    "invalidRate": "Invalid percentage",
+    "offerCreated": "Offer created",
+    "sideLend": "Lends",
+    "sideBorrow": "Borrows",
+    "accept": "Accept",
+    "loanAccepted": "Loan accepted",
+    "daysShort": "days",
+    "perDay": "/day",
+    "quickCredit": "Loan",
+    "quickDeposit": "Deposit",
+    "quickDebt": "Debt",
+    "quickDonate": "Donate",
+    "utilityAccount": "\"Electricity\" account",
+    "utilityTopUpTitle": "Top up from main account",
+    "utilityToppedUp": "\"Electricity\" account topped up",
+    "utilityTopUp": "Top up",
+    "seizedTitle": "Seized property",
+    "noAuctions": "No auctions",
+    "leaderName": "Leader: {{name}}",
+    "noBids": "No bids",
+    "yourDebt": "your debt",
+    "bidAccepted": "Bid accepted",
+    "bidFrom": "from {{amount}}",
+    "bid": "Bid",
+    "youLead": "You are leading",
+    "debtsTitle": "Player debts",
+    "showMore": "Show more",
+    "noOffers": "No offers",
+    "donateTitle": "Donate to the bank",
+    "loading": "Loading…",
+    "loanLimit": "Loan limit",
+    "rate": "Rate",
+    "debt": "Debt",
+    "bankBalance": "Bank balance",
+    "takeLoanTitle": "Take a loan",
+    "takeLoan": "Take loan",
+    "activeLoans": "Active loans",
+    "noActiveLoans": "No active loans",
+    "repay": "Repay",
+    "loanIssued": "Loan issued",
+    "loanRepaid": "Loan repaid",
+    "dailyRate": "Daily rate",
+    "openDepositTitle": "Open deposit",
+    "depositOpened": "Deposit opened",
+    "myDeposits": "My deposits",
+    "noDeposits": "No open deposits",
+    "open": "Open",
+    "close": "Close",
+    "depositClosed": "Deposit closed",
+    "donateHint": "The money goes to the state bank account and unlocks achievements.",
+    "donateThanks": "Thank you for your donation!",
+    "donate": "Donate",
+    "openOffers": "Open offers",
+    "myLoans": "My loans",
+    "noLoans": "No loans",
+    "roleBorrower": "debt",
+    "roleLender": "lent",
+    "statusFrozen": "assets frozen",
+    "statusActive": "active",
+    "loanRepaidEarly": "Loan repaid early",
+    "repayEarly": "Repay early",
+    "offerTitle": "Loan offer",
+    "type": "Type",
+    "offerLend": "Lend",
+    "offerBorrow": "Borrow",
+    "termLabel": "Term, days (7–21)",
+    "rateLabel": "Daily rate, %",
+    "place": "Post"
   },
   "tx": {
     "all": "All",
@@ -308,6 +543,16 @@
     "prev": "Prev",
     "next": "Next",
     "empty": "No operations found",
+    "tpl": {
+      "buy": "Buy {{qty}} {{symbol}}",
+      "sell": "Sell {{qty}} {{symbol}}",
+      "buyItem": "Purchase: {{name}}",
+      "sellItem": "Sale: {{name}}",
+      "income": "Income: {{name}}",
+      "fuel": "Fuel purchase: {{liters}} L",
+      "crop": "Crop sale: {{name}} × {{qty}}",
+      "warcoin": "Buy {{qty}} WC"
+    },
     "categories": {
       "transfer": "Transfer",
       "trade": "Stocks",
@@ -538,7 +783,16 @@
     "interact": "Interact",
     "collectAll": "Collect all profit",
     "collectedAll": "Collected ${{amount}} from {{count}} assets",
-    "nothingToCollect": "Nothing to collect yet"
+    "nothingToCollect": "Nothing to collect yet",
+    "producing": "Producing resources",
+    "incomeLabel": "Income",
+    "levelLabel": "Level",
+    "staff": "Staff",
+    "hired": "Hired",
+    "kg": "kg",
+    "kgPerHour": "kg/h",
+    "perKg": "/kg",
+    "refreshData": "Refresh data"
   },
   "rent": {
     "list": "Rent out",
@@ -629,6 +883,7 @@
     "hire": "Hire",
     "hired": "Employee hired",
     "fired": "Employee fired",
+    "fireMember": "Fire employee",
     "editSalary": "Salary",
     "salaryUpdated": "Salary updated",
     "memberSettings": "Employee settings",
@@ -806,6 +1061,7 @@
     }
   },
   "mining": {
+    "defaultFarmName": "Farm #{{n}}",
     "farmName": "Farm name",
     "createFarm": "Create farm",
     "created": "Farm created",
@@ -957,20 +1213,20 @@
       "asmMultiHint": "{{qty}} per farm · {{free}} in stock",
       "asmCaseRackWarn": "Rack and case are mutually exclusive — pick one. A rack is a shared slot pool for several farms.",
       "asmSummary": "Assembling: {{farms}} farms · {{cats}} categories selected",
-    "tip": {
-      "rack": "A rack is a shared slot pool for several farms. Mutually exclusive with a case: pick one.",
-      "case": "The case goes into a house basement. Mutually exclusive with a rack; up to 5 GPUs.",
-      "motherboard": "Board slots cap the farm GPUs; the board must fit the case/rack.",
-      "cpu": "One CPU per farm; multiplier boosts income.",
-      "ram": "One stick per farm; capacity affects mining efficiency.",
-      "ssd": "One drive per farm; capacity affects mining efficiency.",
-      "cooling": "One system per farm; lowers temperature and wear.",
-      "ups": "One unit per farm; smooths power brownouts.",
-      "network": "One per farm; network speed is shared between the farm GPUs.",
-      "psu": "Wattage must cover consumption including overclock. Up to 2 in a case, ~1 per 3 rack slots.",
-      "gpu": "Requires a motherboard and free case/rack slots.",
-      "fan": "Requires free case/rack slots; help with cooling."
-    },
+      "tip": {
+        "rack": "A rack is a shared slot pool for several farms. Mutually exclusive with a case: pick one.",
+        "case": "The case goes into a house basement. Mutually exclusive with a rack; up to 5 GPUs.",
+        "motherboard": "Board slots cap the farm GPUs; the board must fit the case/rack.",
+        "cpu": "One CPU per farm; multiplier boosts income.",
+        "ram": "One stick per farm; capacity affects mining efficiency.",
+        "ssd": "One drive per farm; capacity affects mining efficiency.",
+        "cooling": "One system per farm; lowers temperature and wear.",
+        "ups": "One unit per farm; smooths power brownouts.",
+        "network": "One per farm; network speed is shared between the farm GPUs.",
+        "psu": "Wattage must cover consumption including overclock. Up to 2 in a case, ~1 per 3 rack slots.",
+        "gpu": "Requires a motherboard and free case/rack slots.",
+        "fan": "Requires free case/rack slots; help with cooling."
+      },
       "creating": "Creating farms"
     },
     "autoRepair": "Auto-repair",
@@ -1040,6 +1296,10 @@
     "orderedMinutes": "Order placed. Ready in ~{{minutes}} min."
   },
   "shop": {
+    "specGb": "{{n}} GB",
+    "specCooling": "{{n}} W cooling",
+    "specGbps": "{{n}} Gbit/s",
+    "specMbps": "{{n}} Mbit/s",
     "nexusDesc": "Component & real estate store: graphics cards, processors, cases, supplies and homes.",
     "houses": "Homes",
     "housesDesc": "Cottages, villas, penthouses and castles. In-store purchase coming soon.",
@@ -1111,6 +1371,10 @@
   },
   "assetNames": {
     "studio": "Studio",
+    "tractor_basic": "Tractor “Sower”",
+    "tractor_pro": "Tractor “Bulldozer”",
+    "combine_basic": "Combine “Collector”",
+    "combine_pro": "Combine “Gigaheavy”",
     "flat2": "Two-room Apartment",
     "townhouse": "Townhouse",
     "villa": "Seaside Villa",
@@ -1349,7 +1613,8 @@
     "copyCard": "Copy card number",
     "hideCard": "Hide card",
     "showCard": "Show card",
-    "cardCopied": "Card number copied"
+    "cardCopied": "Card number copied",
+    "levelShort": "Lvl"
   },
   "profile": {
     "name": "Name",
@@ -1381,6 +1646,16 @@
     "hideFromLeaderboard": "Hide me from the leaderboard",
     "hideFromLeaderboardHint": "Your profile will be excluded from the public player ranking — nothing else changes.",
     "leaderboardLocked": "Changing this setting has been disabled by an administrator.",
+    "countryTitle": "Country",
+    "countryLabel": "Country (flag next to nickname)",
+    "countryNone": "Not set",
+    "saveCountry": "Save country",
+    "countrySaved": "Country saved",
+    "promoTitle": "Promo code",
+    "promoLabel": "Activation code",
+    "promoPlaceholder": "Enter promo code",
+    "promoApply": "Redeem",
+    "promoRedeemed": "Promo code redeemed: +{{amount}}",
     "appearanceTitle": "Appearance",
     "darkMode": "Dark mode",
     "darkModeHint": "Dark interface theme. The setting is saved on this device.",
@@ -1441,7 +1716,9 @@
     "featureWarDesc": "Every move affects the overall market. This is not just economics — it's war by all available means.",
     "featureEmpireTitle": "Financial empire",
     "featureEmpireDesc": "Build your empire, buy out rivals' stocks and become the top magnate of TradeVerse.",
-    "footerText": "Two asset classes. One goal. You decide who owns the market."
+    "footerText": "Two asset classes. One goal. You decide who owns the market.",
+    "referrerLabel": "Friend's nickname (optional)",
+    "referrerPlaceholder": "Nickname of the friend who invited you"
   },
   "admin": {
     "title": "Admin Panel",
@@ -1484,6 +1761,9 @@
     "sort_balance": "By cash",
     "sort_netWorth": "By net worth",
     "searchStocks": "Search stock...",
+    "supportTickets": "Player tickets",
+    "ipLabel": "IP:",
+    "fixedLevel": "fixed L4",
     "totalTransactions": "Total Transactions",
     "noUsers": "No users",
     "noTransactions": "No transactions",
@@ -1520,6 +1800,13 @@
     "txAutoRealestate": "Business/house income",
     "txWords": "Words",
     "txWordsPh": "Word from description + Enter",
+    "txSource": "Source",
+    "txSourceUser": "Players",
+    "txSearchInList": "Search in list...",
+    "txModeInclude": "Include",
+    "txModeExclude": "Except",
+    "txRangeFrom": "from",
+    "txRangeTo": "to",
     "txCategory": "Category",
     "txUser": "Player",
     "txAmount": "Amount",
@@ -1770,7 +2057,6 @@
     "ipCount": "Count",
     "loginAs": "Log in as user",
     "banReason": "Reason",
-
     "banUntil": "Until date",
     "banSave": "Save bans",
     "banSaved": "Bans updated",
@@ -2013,6 +2299,10 @@
   "units": {
     "perHour": "/h",
     "perYear": "/yr",
+    "thousandShort": "K",
+    "millionShort": "M",
+    "billionShort": "B",
+    "trillionShort": "T",
     "cores_one": "{{count}} core",
     "cores_other": "{{count}} cores",
     "gb": "GB",
@@ -2026,7 +2316,13 @@
     "gbit": "Gbit",
     "mbit": "Mbit",
     "billion": "B",
-    "million": "M"
+    "million": "M",
+    "cores_few": "{{count}} cores",
+    "cores_many": "{{count}} cores",
+    "gpuSlots_few": "{{count}} GPU slots",
+    "gpuSlots_many": "{{count}} GPU slots",
+    "slots_few": "{{count}} slots",
+    "slots_many": "{{count}} slots"
   },
   "chart": {
     "noData": "Not enough data"
@@ -2088,6 +2384,8 @@
   },
   "farm": {
     "manage": "Manage field",
+    "catalogError": "Farm catalog: {{message}}",
+    "dataError": "Farm data: {{message}}",
     "noField": "No field yet. Buy a plot in the “Market” section.",
     "fuel": "Fuel",
     "tractor": "Tractor",
@@ -2213,6 +2511,49 @@
     "active": "Production active",
     "needWorkers": "Workers needed"
   },
+  "gpuShop": {
+    "tabTitle": "Player Businesses",
+    "error": "Shop error",
+    "loadError": "Failed to load the shop",
+    "emptyPlayers": "No published shops yet.",
+    "ownShop": "Your shop",
+    "owner": "Owner",
+    "price": "Price",
+    "inStock": "In stock: {{count}} pcs.",
+    "outOfStock": "Out of stock",
+    "qty": "Qty",
+    "qtyRange": "Enter a quantity from 1 to {{max}}",
+    "buy": "Buy",
+    "bought": "Bought {{qty}} pcs. for ${{amount}}",
+    "manage": "Manage shop",
+    "manageTitle": "GPU factory shop",
+    "item": "Item",
+    "costPrice": "Cost price",
+    "profit": "Profit",
+    "notPriced": "Not priced",
+    "priceInput": "Price, $",
+    "priceHint": "The price must be above the cost price. Unpriced items are not sold; to open the shop, every item must be priced above its cost price.",
+    "invalidPrice": "Price must be a positive number",
+    "save": "Save",
+    "remove": "Remove",
+    "saved": "Price saved",
+    "removed": "Item removed from the shop",
+    "open": "Open my shop",
+    "close": "Close shop",
+    "published": "Shop is open to players",
+    "unpublished": "Shop closed",
+    "violations": "Cost price violations:",
+    "status": "Status",
+    "statusOpen": "Open",
+    "statusClosed": "Closed",
+    "items": {
+      "gpu_basic": "Basic GPU",
+      "gpu_pro": "Pro GPU",
+      "gpu_flagship": "Flagship GPU",
+      "case": "Case",
+      "psu": "Power supply"
+    }
+  },
   "prod": {
     "manage": "Production management",
     "storage": "Storage",
@@ -2287,5 +2628,480 @@
     "sec": "{{n}}s",
     "min": "{{n}} min",
     "now": "Refresh"
+  },
+  "tutorial": {
+    "open": "Tutorial",
+    "theory": {
+      "tabInteractive": "Interactive",
+      "tabTheory": "Theory",
+      "intro": "This describes what the game offers and how to use it. Read the sections in order and complete the tasks in the Interactive tab.",
+      "actionsLabel": "Main actions",
+      "termsLabel": "Key terms",
+      "sections": {
+        "account": {
+          "title": "Account and balance",
+          "paragraphs": [
+            "Your account is your game profile. It shows your current balance and how much you earned and spent over the selected period.",
+            "The Account tab opens first after login. Periods Today, Yesterday, Week, Month and All change the numbers and the chart. Recent operations are listed below."
+          ],
+          "actions": [
+            "Choose a period and check income, spending and change for it.",
+            "Look at the daily chart and the list of recent operations.",
+            "Check world events shown at the top of the tab; they affect the whole game."
+          ],
+          "terms": [
+            {
+              "name": "Balance",
+              "desc": "Money you can spend right now."
+            },
+            {
+              "name": "Income",
+              "desc": "Total money received during the period."
+            },
+            {
+              "name": "Spending",
+              "desc": "Total purchases and transfers during the period."
+            },
+            {
+              "name": "Change",
+              "desc": "Income minus spending. Positive means you became richer."
+            }
+          ]
+        },
+        "market": {
+          "title": "Market and stocks",
+          "paragraphs": [
+            "The market is where you buy and sell stocks, which are shares of companies. Prices change over time: if you buy cheaper and sell higher, the difference is your profit.",
+            "The Stocks tab has search and sorting by market cap, gainers and losers. Favourite stocks (with a star) are always shown first. Click a stock to open its page with a chart. Other markets are in the same section: Real estate, Shop, Cars and Central market."
+          ],
+          "actions": [
+            "Find a stock with search or sorting.",
+            "Buy the amount you need: a trade window shows the total.",
+            "Sell some or all shares from your portfolio.",
+            "Track the value and profit (or loss) of your positions."
+          ],
+          "terms": [
+            {
+              "name": "Stock",
+              "desc": "A share of a company. The owner gets a part of its success."
+            },
+            {
+              "name": "Price",
+              "desc": "Current cost of one share."
+            },
+            {
+              "name": "Change, %",
+              "desc": "How many percent the price went up or down."
+            },
+            {
+              "name": "Portfolio",
+              "desc": "All the stocks you own now."
+            },
+            {
+              "name": "Commission",
+              "desc": "A small fee for a trade. It is already included in the total."
+            }
+          ]
+        },
+        "crypto": {
+          "title": "Cryptocurrency",
+          "paragraphs": [
+            "Cryptocurrencies are digital coins. They are bought and sold like stocks, but each coin has its own rate. To trade, first open a crypto account with one click in the Crypto tab.",
+            "The account has a wallet address that you can copy and give to another player. The forecast on the tab is a rough estimate based on recent price change and demand, not a guarantee. You can transfer coins to another player: the transfer must be confirmed, and a small fee is added."
+          ],
+          "actions": [
+            "Open a crypto account.",
+            "Copy the wallet address.",
+            "Buy or sell coins, checking the total in the trade window.",
+            "Transfer coins to another player after confirmation."
+          ],
+          "terms": [
+            {
+              "name": "Crypto account",
+              "desc": "An account for holding and trading coins."
+            },
+            {
+              "name": "Wallet",
+              "desc": "The account address other players can send coins to."
+            },
+            {
+              "name": "Rate",
+              "desc": "Current price of one coin."
+            },
+            {
+              "name": "Forecast",
+              "desc": "An estimate of possible growth, not a guarantee."
+            },
+            {
+              "name": "Transfer",
+              "desc": "Sending coins to another player."
+            }
+          ]
+        },
+        "mining": {
+          "title": "Mining and farms",
+          "paragraphs": [
+            "Mining is producing coins with computer hardware. Mining works only in house basements: first you need a house with a basement, which you buy on the real estate market. Each basement slot is a separate case, that is a separate farm.",
+            "A farm is built from components: motherboard, CPU, power supply, memory, storage, cooling and graphics cards. Once the farm is built and running, it mines the chosen coin. Overclocking speeds mining but increases wear, so the farm must be repaired and cooled."
+          ],
+          "actions": [
+            "Choose a house with a basement and a free slot.",
+            "Build a farm from components, including ones from your inventory.",
+            "Start or stop mining and choose the coin.",
+            "Set overclocking, repair or cool the farm, and delete it if needed."
+          ],
+          "terms": [
+            {
+              "name": "Basement slot",
+              "desc": "A place for one mining case in a house."
+            },
+            {
+              "name": "Farm",
+              "desc": "A built case with components."
+            },
+            {
+              "name": "Components",
+              "desc": "Hardware parts: CPU, graphics card, memory and so on."
+            },
+            {
+              "name": "Overclocking",
+              "desc": "Faster mining at the cost of more wear."
+            },
+            {
+              "name": "Wear and repair",
+              "desc": "Wear lowers the farm's work, repair restores it."
+            },
+            {
+              "name": "Hashrate",
+              "desc": "The mining speed of a graphics card."
+            }
+          ]
+        },
+        "business": {
+          "title": "Businesses and company",
+          "paragraphs": [
+            "A company is your business with employees. To create one, pay a registration fee and choose a name. The owner assigns roles, salaries and permissions to employees, funds the company budget and withdraws money from it.",
+            "If you do not want your own company, you can apply to an existing one: its owner decides whether to accept you. A company can also issue shares (IPO), pay dividends and issue its own cryptocurrency."
+          ],
+          "actions": [
+            "Create a company by paying the fee.",
+            "Invite a player by nickname and assign a role and salary.",
+            "Deposit into the company budget, withdraw money or collect profit.",
+            "Change the name, description, logo and application settings.",
+            "Apply to another company or leave your own."
+          ],
+          "terms": [
+            {
+              "name": "Fee",
+              "desc": "Payment for registering a new company."
+            },
+            {
+              "name": "Role",
+              "desc": "An employee position with a set of permissions."
+            },
+            {
+              "name": "Budget",
+              "desc": "Company money used to pay salaries."
+            },
+            {
+              "name": "IPO",
+              "desc": "Issuing company shares so players can buy them."
+            },
+            {
+              "name": "Dividends",
+              "desc": "Payment of part of the profit to shareholders."
+            }
+          ]
+        },
+        "bank": {
+          "title": "Bank",
+          "paragraphs": [
+            "The bank handles money: transfers to players, loans, deposits and loans between players. A transfer is sent by the recipient's nickname or card number, and you can add a comment. You cannot transfer money to yourself.",
+            "A loan is taken from the bank and repaid with interest. A deposit is money kept in an account that earns income. P2P offers are loans between players for 7 to 21 days at a daily rate. The bank also runs auctions and accepts donations."
+          ],
+          "actions": [
+            "Send money to a player with a comment.",
+            "Take a loan or repay it.",
+            "Open or close a deposit.",
+            "Create a loan offer or accept another player's offer.",
+            "Top up the utility account."
+          ],
+          "terms": [
+            {
+              "name": "Loan",
+              "desc": "Money taken from the bank and repaid with interest."
+            },
+            {
+              "name": "Deposit",
+              "desc": "Money in an account that earns income."
+            },
+            {
+              "name": "P2P loan",
+              "desc": "A loan from one player to another."
+            },
+            {
+              "name": "Daily rate",
+              "desc": "The percent paid for each day of using the money."
+            },
+            {
+              "name": "Card",
+              "desc": "The number other players use to send you money."
+            }
+          ]
+        },
+        "inventory": {
+          "title": "Inventory and property",
+          "paragraphs": [
+            "The inventory is everything you own: property, for example houses, and hardware, that is components for farms. The Overview page shows a summary: total value, income per hour and the amount you can collect right now.",
+            "The Property page is the full list of your assets: you can rent, upgrade, configure or sell them. The Hardware page shows free components and those installed in farms. Unneeded hardware can be sold to the state for 65% of its purchase price."
+          ],
+          "actions": [
+            "Check value and income per hour.",
+            "Collect accumulated income from property.",
+            "Rent out, upgrade or sell an asset.",
+            "Sell unneeded hardware to the state."
+          ],
+          "terms": [
+            {
+              "name": "Asset",
+              "desc": "Property that earns income."
+            },
+            {
+              "name": "Income per hour",
+              "desc": "How much an asset earns in one hour."
+            },
+            {
+              "name": "Accrued income",
+              "desc": "Income that can already be collected."
+            },
+            {
+              "name": "Hardware",
+              "desc": "Components for farms."
+            },
+            {
+              "name": "Free / installed",
+              "desc": "Free means in the inventory, installed means it is in a farm."
+            }
+          ]
+        },
+        "achievements": {
+          "title": "Achievements",
+          "paragraphs": [
+            "Achievements are rewards for important events in the game. Each achievement has a rarity: the higher it is, the harder the achievement is to get.",
+            "The tab shows all achievements. Unlocked ones show the date they were earned. Locked ones have a lock, and the description tells what to do."
+          ],
+          "actions": [
+            "Check how many achievements you have.",
+            "Read the condition of a locked achievement.",
+            "Check the date of an unlocked achievement."
+          ],
+          "terms": [
+            {
+              "name": "Achievement",
+              "desc": "A reward for completing a task in the game."
+            },
+            {
+              "name": "Rarity",
+              "desc": "How hard the achievement is to get."
+            },
+            {
+              "name": "Unlocked / locked",
+              "desc": "Unlocked means already earned, locked means not yet."
+            }
+          ]
+        },
+        "leaderboard": {
+          "title": "Leaderboard",
+          "paragraphs": [
+            "The leaderboard is a table of the best players. It has two modes: players and companies. Players can be sorted by net worth, profit for 7 days, cash, stocks, crypto, property and company share.",
+            "Your row is highlighted. Click a player's nickname to open their profile. If you do not want to appear in the table, hide yourself in settings."
+          ],
+          "actions": [
+            "Switch between players and companies.",
+            "Change sorting to compare different values.",
+            "Open a player's profile by nickname."
+          ],
+          "terms": [
+            {
+              "name": "Net worth",
+              "desc": "Everything you own: money, stocks, crypto, property and company."
+            },
+            {
+              "name": "Profit for 7 days",
+              "desc": "How much your capital changed over the last week."
+            },
+            {
+              "name": "Profit for all time",
+              "desc": "Total profit since the start of the game."
+            },
+            {
+              "name": "Place (#)",
+              "desc": "Your number in the table."
+            }
+          ]
+        },
+        "support": {
+          "title": "Support",
+          "paragraphs": [
+            "If something broke, money or property was lost, or you have an idea for improving the game, open a ticket. There are three types: bug, property loss and improvement suggestion.",
+            "All your tickets are listed with a status: Pending, Resolved or Rejected. Click a card to read what you wrote."
+          ],
+          "actions": [
+            "Open a ticket and choose its type.",
+            "For a property loss, say what was lost, how and when.",
+            "Follow the ticket status."
+          ],
+          "terms": [
+            {
+              "name": "Ticket",
+              "desc": "A message to support with a problem or idea."
+            },
+            {
+              "name": "Bug",
+              "desc": "An error in how the game works."
+            },
+            {
+              "name": "Status",
+              "desc": "Current state of the ticket: pending, resolved or rejected."
+            }
+          ]
+        },
+        "settings": {
+          "title": "Settings",
+          "paragraphs": [
+            "In settings you change your profile data: nickname, bio and avatar. The avatar is cropped to a square and saved on the server.",
+            "Here you also change your password (at least 6 characters), interface language (Russian or English), dark theme and visibility in the leaderboard."
+          ],
+          "actions": [
+            "Change your nickname and bio.",
+            "Upload a new avatar or remove the old one.",
+            "Change your password.",
+            "Choose language and theme, or hide yourself from the leaderboard."
+          ],
+          "terms": [
+            {
+              "name": "Nickname",
+              "desc": "The name other players see."
+            },
+            {
+              "name": "Avatar",
+              "desc": "Your profile picture."
+            },
+            {
+              "name": "Dark theme",
+              "desc": "Dark interface appearance."
+            },
+            {
+              "name": "Leaderboard visibility",
+              "desc": "Whether you are shown in the leaderboard."
+            }
+          ]
+        }
+      }
+    },
+    "title": "Tutorial",
+    "subtitle": "Pick a topic and complete the tasks step by step. Progress is saved on this device.",
+    "close": "Close",
+    "back": "Back to topics",
+    "stepOf": "Step {{n}} of {{total}}",
+    "completed": "Completed",
+    "completedTitle": "Topic completed!",
+    "completedText": "Great! All steps are done. You can pick another topic.",
+    "explainLabel": "What it is",
+    "taskLabel": "Task",
+    "doneBadge": "Done",
+    "check": "Check",
+    "markDone": "Done",
+    "notYet": "The task is not done yet. Try again.",
+    "locked": "Finish the previous steps first",
+    "prev": "Back",
+    "next": "Next",
+    "reset": "Reset progress",
+    "topics": {
+      "mining": {
+        "name": "Mining",
+        "desc": "How a farm works and why mining matters.",
+        "steps": [
+          {
+            "title": "What is mining",
+            "text": "Mining is producing cryptocurrency with computers. A farm uses hardware and earns coins.",
+            "task": "Open the Mining tab and look at your farms."
+          },
+          {
+            "title": "Hardware for a farm",
+            "text": "To make a farm work, you add graphics cards and other components. Without hardware mining will not start.",
+            "task": "Buy at least one mining component in the Shop."
+          },
+          {
+            "title": "Start mining",
+            "text": "When a farm is ready, you can turn it on. The farm starts earning coins.",
+            "task": "Start mining on your farm."
+          }
+        ]
+      },
+      "stocks": {
+        "name": "Stocks",
+        "desc": "What shares are and how they go up or down.",
+        "steps": [
+          {
+            "title": "What is a share",
+            "text": "A share is a small part of a company. If the company grows, its share price may grow too.",
+            "task": "Open the Stocks tab and pick any company."
+          },
+          {
+            "title": "Buying a share",
+            "text": "You can buy a share with money from your account. Then you own a part of the company.",
+            "task": "Buy 1 share."
+          },
+          {
+            "title": "Portfolio",
+            "text": "All bought shares go into your portfolio. There you can see what they are worth now.",
+            "task": "Open your portfolio and find the share you bought."
+          }
+        ]
+      },
+      "crypto": {
+        "name": "Cryptocurrency",
+        "desc": "How to buy and keep cryptocurrency.",
+        "steps": [
+          {
+            "title": "What is cryptocurrency",
+            "text": "Cryptocurrency is digital money. Its price can change quickly.",
+            "task": "Open the Cryptocurrency tab and look at the market."
+          },
+          {
+            "title": "Buying a coin",
+            "text": "You can buy a coin with money from your account. A good buy can pay off when the price goes up.",
+            "task": "Buy any cryptocurrency."
+          },
+          {
+            "title": "Crypto account",
+            "text": "All your coins are kept in a crypto account. There you can see how many coins you have.",
+            "task": "Open your crypto account and check your coins."
+          }
+        ]
+      },
+      "business": {
+        "name": "Businesses",
+        "desc": "How your own business and company work.",
+        "steps": [
+          {
+            "title": "What is a business",
+            "text": "A business is an enterprise that earns money. You can buy it or create it.",
+            "task": "Open the My Businesses tab and look at your assets."
+          },
+          {
+            "title": "Your company",
+            "text": "A company groups businesses and employees. It has its own budget.",
+            "task": "Open the My Company tab."
+          },
+          {
+            "title": "Other players' businesses",
+            "text": "The Player Businesses tab shows enterprises of other students. You can compare your results.",
+            "task": "Open the Player Businesses tab and look at any business."
+          }
+        ]
+      }
+    }
   }
 }

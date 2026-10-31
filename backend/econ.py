@@ -42,6 +42,10 @@ DEFAULT_ECON = {
     "infra_food_price": 15.0,       # $ за единицу ресурса
     "infra_wood_price": 40.0,       # $ за единицу ресурса
     "infra_warehouse_rate": 0.15,   # $/ч за м² площади склада
+    # ── Банк государства ─────────────────────────────────────────────────────
+    "electricity_fee_rate": 0.05,   # доля комиссии с оплаты электроэнергии → счёт государства
+    "loan_rate": 0.10,              # процент кредита (доля от суммы) → счёт государства
+    "deposit_rate": 0.02,           # процент депозита (доля в сутки) → списывается со счёта государства
 }
 
 
@@ -72,6 +76,9 @@ class EconConfigUpdate(BaseModel):
     infra_food_price: Optional[float] = None
     infra_wood_price: Optional[float] = None
     infra_warehouse_rate: Optional[float] = None
+    electricity_fee_rate: Optional[float] = None
+    loan_rate: Optional[float] = None
+    deposit_rate: Optional[float] = None
 
 
 @router.get("/config")

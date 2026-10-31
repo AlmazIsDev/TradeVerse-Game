@@ -45,6 +45,7 @@ ADMIN_FUNCTIONS: list[tuple[str, int, str]] = [
     ("economy_config", 3, "adminPerms.func_economy_config"),
     ("market_events", 3, "adminPerms.func_market_events"),
     ("synthetic", 3, "adminPerms.func_synthetic"),
+    ("promo_codes", 3, "adminPerms.func_promo_codes"),
     # L4 — владение (опасные/глобальные операции)
     ("users_delete", 4, "adminPerms.func_users_delete"),
     ("transactions_delete", 4, "adminPerms.func_transactions_delete"),

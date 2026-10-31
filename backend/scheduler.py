@@ -74,6 +74,12 @@ async def _tick():
         await media.sweep_pending_exposes(db)
     except Exception as exc:
         logger.warning("media expose sweep failed: %s", exc, exc_info=True)
+    # 5d) P2P-займы: суточные проценты и возврат долга по сроку (см. bank_p2p.py).
+    try:
+        from bank_p2p import accrue_p2p_loans
+        await accrue_p2p_loans(db)
+    except Exception as exc:
+        logger.warning("p2p loan accrual failed: %s", exc, exc_info=True)
     # 6) Аналитика экономики — только админам (не всем игрокам), для живого
     #    обновления вкладки EconomyAdmin без ручного релоада.
     try:
@@ -99,6 +105,12 @@ async def _tick():
         await _drift_asset_market(db)
     except Exception as exc:
         logger.warning("asset market drift failed: %s", exc)
+    # 7c) Реферальные бонусы: выплата рефереру, когда приглашённый достиг цели.
+    try:
+        from referral import pay_referral_bonuses
+        await pay_referral_bonuses(db)
+    except Exception as exc:
+        logger.warning("referral bonus sweep failed: %s", exc, exc_info=True)
     try:
         await broadcast({"type": "leaderboard_update"})
     except Exception as exc:

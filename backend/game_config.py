@@ -155,3 +155,32 @@ PRODUCTION_CONFIG = {
     "storage_cost_pct": 0.10,      # цена уровня = base_price × pct × новый уровень
     "max_tick_hours": 2.0,         # потолок офсетов одного тика (сервер спал — производство не копилось)
 }
+
+# ── Рецепты переработки ───────────────────────────────────────────────────────
+# Ключ — meta.produces завода (bread/gpu). inputs: ресурсы на одну единицу выпуска;
+# output — что кладётся в хранилище; outputPerUnit — количество выпуска за единицу.
+# Товары магазина «Квантум GPU» требуют разное число компонентов (см. COMPONENT_COST).
+RECIPES = {
+    "bread": {
+        "inputs": {"wheat": 2.0},
+        "output": "bread",
+        "outputPerUnit": 1.0,
+    },
+    "gpu": {
+        "inputs": {"metal": 4.0, "copper": 2.0, "bronze": 1.0, "processed_wood": 1.0},
+        "output": "component",
+        "outputPerUnit": 1.0,
+    },
+}
+
+# Базовая цена одного компонента ($). Владелец задаёт % от неё (production.py, 50..200).
+COMPONENT_BASE_PRICE = 500.0
+
+# Компонентов на один товар магазина «Квантум GPU» (штук на единицу товара).
+COMPONENT_COST = {
+    "gpu_basic": 1,
+    "gpu_pro": 2,
+    "gpu_flagship": 4,
+    "case": 1,
+    "psu": 1,
+}

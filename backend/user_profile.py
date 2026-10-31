@@ -17,11 +17,35 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from auth import get_current_user, hash_password, verify_password, username_taken
 from database import get_db
-from schemas import ProfileUpdate, PasswordChangeRequest, AvatarUpdate, BioUpdate
+from levels import level_from_xp, xp_for_level, realestate_limit, MAX_LEVEL
+from schemas import ProfileUpdate, PasswordChangeRequest, AvatarUpdate, BannerUpdate, BioUpdate, CountryUpdate
 
 logger = logging.getLogger("tradeverse.profile")
 
 router = APIRouter(prefix="/api/user", tags=["profile"])
+
+
+@router.get("/achievements")
+async def get_achievements(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
+    """Список достижений игрока: открытые и закрытые."""
+    from achievements import list_user_achievements
+    return {"achievements": await list_user_achievements(db, str(current_user["_id"]))}
+
+
+@router.get("/level")
+async def get_level(current_user: dict = Depends(get_current_user)):
+    """Уровень игрока, XP и прогресс до следующего уровня."""
+    xp = int(current_user.get("xp", 0))
+    level = level_from_xp(xp)
+    current_floor = xp_for_level(level)
+    next_floor = xp_for_level(level + 1) if level < MAX_LEVEL else current_floor
+    return {
+        "level": level,
+        "xp": xp,
+        "xpCurrentLevel": current_floor,
+        "xpNextLevel": next_floor,
+        "realestateLimit": realestate_limit(level),
+    }
 
 
 @router.patch("/profile")
@@ -54,6 +78,17 @@ async def update_bio(
     """Обновить описание профиля («о себе») — уже провалидировано схемой."""
     await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"bio": payload.bio}})
     return {"bio": payload.bio}
+
+
+@router.patch("/country")
+async def update_country(
+    payload: CountryUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Страна игрока (ISO alpha-2) — флаг отображается слева от ника."""
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"country": payload.country}})
+    return {"country": payload.country}
 
 
 @router.post("/password")
@@ -93,6 +128,27 @@ async def delete_avatar(
     """Удалить аватар — пользователь возвращается к отображению инициалами."""
     await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"avatar": None}})
     return {"avatar": None}
+
+
+@router.patch("/banner")
+async def update_banner(
+    payload: BannerUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Загрузить/сменить баннер профиля (data URL, уже провалидирован схемой)."""
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"banner": payload.banner}})
+    return {"banner": payload.banner}
+
+
+@router.delete("/banner")
+async def delete_banner(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Удалить баннер — профиль возвращается к стандартному фону."""
+    await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"banner": None}})
+    return {"banner": None}
 
 
 @router.patch("/leaderboard-visibility")

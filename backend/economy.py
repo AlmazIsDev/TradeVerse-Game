@@ -13,6 +13,7 @@ from pydantic import BaseModel, field_validator
 from admin_perms import get_current_user, require_allowed
 from database import get_db
 from networth import ensure_transfer_allowed
+from levels import TRANSFER_SEND_MIN_LEVEL, TRANSFER_RECEIVE_MIN_LEVEL
 from ledger import (
     EXPENSE,
     INCOME,
@@ -22,6 +23,7 @@ from ledger import (
     record_transaction,
     weekly_analytics,
 )
+from utility_account import get_utility_balance, top_up as utility_top_up
 
 router = APIRouter(prefix="/api", tags=["economy"])
 logger = logging.getLogger("tradeverse.economy")
@@ -95,6 +97,19 @@ async def create_transfer(
     await ensure_transfer_allowed(db, current_user)
     await ensure_transfer_allowed(db, recipient, recipient=True)
 
+    sender_level = int(current_user.get("level", 1))
+    if sender_level < TRANSFER_SEND_MIN_LEVEL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Переводы доступны с {TRANSFER_SEND_MIN_LEVEL} уровня (ваш: {sender_level})",
+        )
+    recipient_level = int(recipient.get("level", 1))
+    if recipient_level < TRANSFER_RECEIVE_MIN_LEVEL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Получатель может принимать переводы с {TRANSFER_RECEIVE_MIN_LEVEL} уровня",
+        )
+
     # Атомарное списание с проверкой достаточности средств
     new_sender_balance = await adjust_balance(db, sender_id, -amount)
     if new_sender_balance is None:
@@ -141,6 +156,48 @@ async def create_transfer(
         "recipient": recipient["username"],
         "balance": new_sender_balance,
     }
+
+
+class UtilityTopUp(BaseModel):
+    amount: float
+
+    @field_validator("amount")
+    @classmethod
+    def amount_positive(cls, v):
+        if v is None or v <= 0:
+            raise ValueError("Сумма должна быть положительной")
+        if v > 1_000_000_000:
+            raise ValueError("Слишком большая сумма")
+        return round(float(v), 2)
+
+
+@router.get("/account/utility")
+async def get_utility_account(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Баланс счёта «Электричество» и основной баланс."""
+    user_id = str(current_user["_id"])
+    return {
+        "balance": current_user.get("balance", 0.0),
+        "utilityBalance": await get_utility_balance(db, user_id),
+    }
+
+
+@router.post("/account/utility/topup", status_code=status.HTTP_201_CREATED)
+async def topup_utility_account(
+    payload: UtilityTopUp,
+    current_user: dict = Depends(require_allowed("transfer")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Пополнение счёта «Электричество» переводом с основного счёта."""
+    result = await utility_top_up(db, str(current_user["_id"]), payload.amount)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недостаточно средств",
+        )
+    return result
 
 
 # ── History ──────────────────────────────────────────────────────────────────

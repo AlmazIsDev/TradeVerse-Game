@@ -6,6 +6,7 @@ from typing import Any, Optional
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from levels import record_trade
 from timeutil import now_utc
 
 INCOME = "income"
@@ -33,6 +34,7 @@ CAT_FARM = "farm"
 CAT_FUEL = "fuel"
 
 VALID_DIRECTIONS = {INCOME, EXPENSE}
+TRADE_XP_CATEGORIES = {CAT_TRADE, CAT_CRYPTO}
 
 
 async def adjust_balance(
@@ -105,6 +107,8 @@ async def record_transaction(
     result = await db.transactions.insert_one(doc)
     doc["id"] = str(result.inserted_id)
     doc.pop("_id", None)
+    if category in TRADE_XP_CATEGORIES:
+        await record_trade(db, str(user_id), amount, is_crypto=category == CAT_CRYPTO)
     return doc
 
 

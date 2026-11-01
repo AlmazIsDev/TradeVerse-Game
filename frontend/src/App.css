@@ -1899,7 +1899,6 @@ body {
 
 /* Свечение по редкости: цвет задаёт --glow, выполненные светятся ярче */
 .achievement-card { --glow: #8e9aaf; }
-
 .achievements-filters {
   display: flex;
   flex-wrap: wrap;
@@ -1960,6 +1959,7 @@ body {
     min-height: 44px;
   }
 }
+
 .achievement-card.rarity-common { --glow: #9aa4b2; }
 .achievement-card.rarity-uncommon { --glow: #3ddc84; }
 .achievement-card.rarity-rare { --glow: #4da3ff; }

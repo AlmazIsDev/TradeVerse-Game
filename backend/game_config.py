@@ -184,7 +184,6 @@ COMPONENT_COST = {
     "case": 1,
     "psu": 1,
 }
-
 # ── Аукцион бизнесов между игроками (см. player_auctions.py) ────────────────
 PLAYER_AUCTION_CONFIG = {
     "duration_minutes": 5.0,          # длительность одного раунда

@@ -12,7 +12,7 @@ import { flagUrl } from '../utils/countries'
 import { formatCompact } from './TransactionsPanel'
 import {
   Bell, LogOut, X, Check, Wallet, Megaphone, Zap, Users, Store,
-  Cpu, Trophy, Settings2, Search, Undo2,
+  Cpu, Trophy, Settings2, Search, Undo2, Eye, EyeOff,
 } from 'lucide-react'
 
 function formatMoney(n) {
@@ -44,7 +44,10 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   }
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState([])
+  const [unreadTotal, setUnreadTotal] = useState(0)
+  const [unreadByCategory, setUnreadByCategory] = useState({})
   const [notifTab, setNotifTab] = useState('all')
+  const [hideAutoInAll, setHideAutoInAll] = useState(() => localStorage.getItem('notifHideAutoInAll') === '1')
   const [notifSearch, setNotifSearch] = useState('')
   const notifRef = useRef(null)
   const dropdownRef = useRef(null)
@@ -74,7 +77,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const displayName = user?.username || storedUser?.username || t('header.user')
   const avatar = user?.avatar || storedUser?.avatar || null
   const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'TV'
-  const unreadCount = notifications.filter(n => !n.read).length
+  const unreadCount = unreadTotal
 
   const isActionable = useCallback(
     (n) =>
@@ -127,11 +130,10 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const tabCategory = { all: null, auto: 'automatic', announce: 'announcement', company: 'company', market: 'market', mining: 'mining', event: 'event' }
   const query = notifSearch.trim().toLocaleLowerCase()
   const visibleNotifications = notifications.filter((n) => {
-    const matchesTab = !tabCategory[notifTab] || categoryOf(n) === tabCategory[notifTab]
     const haystack = `${n.title || ''} ${n.body || ''}`.toLocaleLowerCase()
-    return matchesTab && (!query || haystack.includes(query))
+    return !query || haystack.includes(query)
   })
-  const tabUnread = (category) => notifications.filter((n) => !n.read && (!category || categoryOf(n) === category)).length
+  const tabUnread = (category) => (category ? unreadByCategory[category] || 0 : unreadTotal)
   const tabs = [
     ['all', 'tabAll'], ['auto', 'tabAuto'], ['announce', 'tabAnnounce'],
     ['company', 'tabCompany'], ['market', 'tabMarket'], ['mining', 'tabMining'], ['event', 'tabEvent'],
@@ -175,37 +177,44 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     return () => { cancelled = true }
   }, [])
 
-  // Живая лента уведомлений с сервера (в т.ч. приглашения в компанию)
   const loadNotifs = useCallback(async () => {
     try {
-      const data = await fetchNotifications(30)
+      const exclude = notifTab === 'all' && hideAutoInAll ? 'automatic' : null
+      const data = await fetchNotifications(30, tabCategory[notifTab], exclude)
       setNotifications(data.items || [])
+      setUnreadTotal(data.unread || 0)
+      setUnreadByCategory(data.unreadByCategory || {})
     } catch { /* ignore */ }
-  }, [])
+  }, [notifTab, hideAutoInAll])
 
-  // 30с был основным источником обновлений до WS; tv:notif покрывает
-  // live-обновления, поэтому интервал — редкий резервный фолбэк.
   useEffect(() => {
     loadNotifs()
     const id = setInterval(loadNotifs, 120000)
     return () => clearInterval(id)
   }, [loadNotifs])
 
-  // Push-событие от NotificationCenter — обновляем ленту без задержки debounce.
   useEffect(() => {
     const onNotif = () => loadNotifs()
     window.addEventListener('tv:notif', onNotif)
     return () => window.removeEventListener('tv:notif', onNotif)
   }, [loadNotifs])
 
+  const toggleHideAuto = () => {
+    setHideAutoInAll(prev => {
+      const next = !prev
+      localStorage.setItem('notifHideAutoInAll', next ? '1' : '0')
+      return next
+    })
+  }
+
   const markAsRead = async (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     try { await markNotificationRead(id) } catch { /* ignore */ }
+    loadNotifs()
   }
 
   const markAllRead = async () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     try { await markAllNotificationsRead() } catch { /* ignore */ }
+    loadNotifs()
   }
 
   const handleInvite = async (notif, accept) => {
@@ -349,6 +358,17 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                   )
                 })}
               </div>
+              {notifTab === 'all' && (
+                <button
+                  type="button"
+                  className="notification-hide-auto"
+                  onClick={toggleHideAuto}
+                  title={t(hideAutoInAll ? 'notifications.showAuto' : 'notifications.hideAuto')}
+                >
+                  {hideAutoInAll ? <Eye size={13} /> : <EyeOff size={13} />}
+                  <span>{t(hideAutoInAll ? 'notifications.showAuto' : 'notifications.hideAuto')}</span>
+                </button>
+              )}
               <div className="notification-list">
                 {visibleNotifications.length === 0 && (
                   <div className="notification-empty">{t('notifications.noNotifications')}</div>

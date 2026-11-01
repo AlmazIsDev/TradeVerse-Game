@@ -2637,6 +2637,8 @@
     "noNotifications": "No hay notificaciones",
     "new": "Nuevo",
     "tabAll": "Todas",
+    "hideAuto": "Ocultar notificaciones automáticas en «Todas»",
+    "showAuto": "Mostrar notificaciones automáticas en «Todas»",
     "tabAuto": "Automáticas",
     "tabAnnounce": "Anuncios",
     "tabCompany": "Empresa",

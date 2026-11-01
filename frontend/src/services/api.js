@@ -1132,8 +1132,11 @@ export async function buyMaterials(id, qty) {
 
 // ── Notifications API ───────────────────────────────────────────────────────────
 
-export async function fetchNotifications(limit = 30) {
-  return request(`/api/notifications?limit=${limit}`)
+export async function fetchNotifications(limit = 30, category = null, excludeCategory = null) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (category) params.set('category', category)
+  if (excludeCategory) params.set('exclude_category', excludeCategory)
+  return request(`/api/notifications?${params}`)
 }
 
 export async function markNotificationRead(id) {

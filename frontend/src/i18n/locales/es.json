@@ -13,6 +13,442 @@
       "mythic": "Mítico"
     },
     "items": {
+      "trades_1": {
+        "name": "Primera operación",
+        "desc": "Realiza 1 operaciones"
+      },
+      "trades_3": {
+        "name": "Inicio cauteloso",
+        "desc": "Realiza 3 operaciones"
+      },
+      "trades_5": {
+        "name": "Cinco golpes",
+        "desc": "Realiza 5 operaciones"
+      },
+      "trades_10": {
+        "name": "Calentamiento",
+        "desc": "Realiza 10 operaciones"
+      },
+      "trades_25": {
+        "name": "Jugador habitual",
+        "desc": "Realiza 25 operaciones"
+      },
+      "trades_50": {
+        "name": "Medio centenar",
+        "desc": "Realiza 50 operaciones"
+      },
+      "trades_75": {
+        "name": "En terreno firme",
+        "desc": "Realiza 75 operaciones"
+      },
+      "trades_100": {
+        "name": "Operador",
+        "desc": "Realiza 100 operaciones"
+      },
+      "trades_150": {
+        "name": "Veterano",
+        "desc": "Realiza 150 operaciones"
+      },
+      "trades_250": {
+        "name": "Asiduo de la bolsa",
+        "desc": "Realiza 250 operaciones"
+      },
+      "trades_400": {
+        "name": "Dependiente del ticker",
+        "desc": "Realiza 400 operaciones"
+      },
+      "trades_500": {
+        "name": "Quinientista",
+        "desc": "Realiza 500 operaciones"
+      },
+      "trades_750": {
+        "name": "Ritmo del mercado",
+        "desc": "Realiza 750 operaciones"
+      },
+      "trades_1000": {
+        "name": "Creador de mercado",
+        "desc": "Realiza 1000 operaciones"
+      },
+      "trades_1500": {
+        "name": "Maestro de la bolsa",
+        "desc": "Realiza 1500 operaciones"
+      },
+      "trades_2500": {
+        "name": "Veterano del mercado",
+        "desc": "Realiza 2500 operaciones"
+      },
+      "trades_5000": {
+        "name": "Máquina de operaciones",
+        "desc": "Realiza 5000 operaciones"
+      },
+      "trades_7500": {
+        "name": "Incansable",
+        "desc": "Realiza 7500 operaciones"
+      },
+      "trades_10000": {
+        "name": "Leyenda del libro de órdenes",
+        "desc": "Realiza 10000 operaciones"
+      },
+      "trades_25000": {
+        "name": "Ticker inmortal",
+        "desc": "Realiza 25000 operaciones"
+      },
+      "volume_10000": {
+        "name": "Diez mil",
+        "desc": "Volumen de operaciones 10 000 $"
+      },
+      "volume_100000": {
+        "name": "Cien mil",
+        "desc": "Volumen de operaciones 100 000 $"
+      },
+      "volume_500000": {
+        "name": "Medio millón",
+        "desc": "Volumen de operaciones 500 000 $"
+      },
+      "volume_1000000": {
+        "name": "Millonario de volumen",
+        "desc": "Volumen de operaciones 1 000 000 $"
+      },
+      "volume_5000000": {
+        "name": "Cinco millones",
+        "desc": "Volumen de operaciones 5 000 000 $"
+      },
+      "volume_10000000": {
+        "name": "Diez millones",
+        "desc": "Volumen de operaciones 10 000 000 $"
+      },
+      "volume_50000000": {
+        "name": "Cincuenta millones",
+        "desc": "Volumen de operaciones 50 000 000 $"
+      },
+      "volume_100000000": {
+        "name": "Cien millones",
+        "desc": "Volumen de operaciones 100 000 000 $"
+      },
+      "volume_500000000": {
+        "name": "Medio mil millones",
+        "desc": "Volumen de operaciones 500 000 000 $"
+      },
+      "volume_1000000000": {
+        "name": "Mil millones de volumen",
+        "desc": "Volumen de operaciones 1 000 000 000 $"
+      },
+      "volume_5000000000": {
+        "name": "Cinco mil millones",
+        "desc": "Volumen de operaciones 5 000 000 000 $"
+      },
+      "volume_10000000000": {
+        "name": "Diez mil millones",
+        "desc": "Volumen de operaciones 10 000 000 000 $"
+      },
+      "volume_50000000000": {
+        "name": "Cincuenta mil millones",
+        "desc": "Volumen de operaciones 50 000 000 000 $"
+      },
+      "volume_100000000000": {
+        "name": "Cien mil millones",
+        "desc": "Volumen de operaciones 100 000 000 000 $"
+      },
+      "volume_1000000000000": {
+        "name": "Billonario de volumen",
+        "desc": "Volumen de operaciones 1 000 000 000 000 $"
+      },
+      "level_5": {
+        "name": "Familiarizado",
+        "desc": "Alcanza el nivel 5"
+      },
+      "level_10": {
+        "name": "Experimentado",
+        "desc": "Alcanza el nivel 10"
+      },
+      "level_15": {
+        "name": "Seguro de sí",
+        "desc": "Alcanza el nivel 15"
+      },
+      "level_20": {
+        "name": "Conocedor",
+        "desc": "Alcanza el nivel 20"
+      },
+      "level_25": {
+        "name": "Veterano",
+        "desc": "Alcanza el nivel 25"
+      },
+      "level_30": {
+        "name": "Entrenado",
+        "desc": "Alcanza el nivel 30"
+      },
+      "level_35": {
+        "name": "Profesional",
+        "desc": "Alcanza el nivel 35"
+      },
+      "level_40": {
+        "name": "Élite",
+        "desc": "Alcanza el nivel 40"
+      },
+      "level_50": {
+        "name": "Leyenda",
+        "desc": "Alcanza el nivel 50"
+      },
+      "level_60": {
+        "name": "Invencible",
+        "desc": "Alcanza el nivel 60"
+      },
+      "level_70": {
+        "name": "Soberano",
+        "desc": "Alcanza el nivel 70"
+      },
+      "level_75": {
+        "name": "Mítico",
+        "desc": "Alcanza el nivel 75"
+      },
+      "level_80": {
+        "name": "Oráculo del mercado",
+        "desc": "Alcanza el nivel 80"
+      },
+      "level_90": {
+        "name": "Eterno",
+        "desc": "Alcanza el nivel 90"
+      },
+      "level_100": {
+        "name": "Absoluto",
+        "desc": "Alcanza el nivel 100"
+      },
+      "capital_10000": {
+        "name": "Primer dinero",
+        "desc": "Capital 10 000 $"
+      },
+      "capital_100000": {
+        "name": "Seis cifras",
+        "desc": "Capital 100 000 $"
+      },
+      "capital_1000000": {
+        "name": "Millonario",
+        "desc": "Capital 1 000 000 $"
+      },
+      "capital_5000000": {
+        "name": "Acomodado",
+        "desc": "Capital 5 000 000 $"
+      },
+      "capital_10000000": {
+        "name": "Diez millonario",
+        "desc": "Capital 10 000 000 $"
+      },
+      "capital_50000000": {
+        "name": "Cincuenta millones",
+        "desc": "Capital 50 000 000 $"
+      },
+      "capital_100000000": {
+        "name": "Centemillonario",
+        "desc": "Capital 100 000 000 $"
+      },
+      "capital_500000000": {
+        "name": "Medio mil millonario",
+        "desc": "Capital 500 000 000 $"
+      },
+      "capital_1000000000": {
+        "name": "Mil millonario",
+        "desc": "Capital 1 000 000 000 $"
+      },
+      "capital_5000000000": {
+        "name": "Oligarca",
+        "desc": "Capital 5 000 000 000 $"
+      },
+      "capital_10000000000": {
+        "name": "Diez mil millonario",
+        "desc": "Capital 10 000 000 000 $"
+      },
+      "capital_15000000000": {
+        "name": "Magnate del mercado",
+        "desc": "Capital 15 000 000 000 $"
+      },
+      "capital_20000000000": {
+        "name": "Veintena",
+        "desc": "Capital 20 000 000 000 $"
+      },
+      "capital_25000000000": {
+        "name": "Titán financiero",
+        "desc": "Capital 25 000 000 000 $"
+      },
+      "capital_30000000000": {
+        "name": "Treintena",
+        "desc": "Capital 30 000 000 000 $"
+      },
+      "capital_35000000000": {
+        "name": "Heredero",
+        "desc": "Capital 35 000 000 000 $"
+      },
+      "capital_40000000000": {
+        "name": "Cuarenta mil millonario",
+        "desc": "Capital 40 000 000 000 $"
+      },
+      "capital_50000000000": {
+        "name": "Emperador del mercado",
+        "desc": "Capital 50 000 000 000 $"
+      },
+      "capital_75000000000": {
+        "name": "Dueño de la economía",
+        "desc": "Capital 75 000 000 000 $"
+      },
+      "capital_100000000000": {
+        "name": "Cien mil millonario",
+        "desc": "Capital 100 000 000 000 $"
+      },
+      "capital_250000000000": {
+        "name": "Inversor de escala",
+        "desc": "Capital 250 000 000 000 $"
+      },
+      "capital_500000000000": {
+        "name": "Medio billón",
+        "desc": "Capital 500 000 000 000 $"
+      },
+      "capital_1000000000000": {
+        "name": "Billonario",
+        "desc": "Capital 1 000 000 000 000 $"
+      },
+      "small_1": {
+        "name": "Centavo",
+        "desc": "Realiza 1 operación pequeña (hasta 100 $)"
+      },
+      "small_200": {
+        "name": "Jugador de calderilla",
+        "desc": "Realiza 200 operaciones pequeñas"
+      },
+      "small_1000": {
+        "name": "Hucha",
+        "desc": "Realiza 1000 operaciones pequeñas"
+      },
+      "crypto_1": {
+        "name": "Primer bloque",
+        "desc": "Realiza 1 operación con cripto"
+      },
+      "crypto_50": {
+        "name": "Entusiasta cripto",
+        "desc": "Realiza 50 operaciones con cripto"
+      },
+      "crypto_vol_1m": {
+        "name": "Cripto-millón",
+        "desc": "Volumen en cripto 1 000 000 $"
+      },
+      "crypto_vol_1b": {
+        "name": "Cripto-ballena",
+        "desc": "Volumen en cripto 1 000 000 000 $"
+      },
+      "big_trade_100k": {
+        "name": "Orden grande",
+        "desc": "Una operación de 100 000 $"
+      },
+      "big_trade_10m": {
+        "name": "Golpe bursátil",
+        "desc": "Una operación de 10 000 000 $"
+      },
+      "big_trade_1b": {
+        "name": "Elefante en la tienda",
+        "desc": "Una operación de 1 000 000 000 $"
+      },
+      "realestate_1": {
+        "name": "Primera casa",
+        "desc": "Compra tu primer inmueble"
+      },
+      "realestate_10": {
+        "name": "Promotor",
+        "desc": "Posee 10 inmuebles"
+      },
+      "realestate_30": {
+        "name": "Propietario",
+        "desc": "Posee 30 inmuebles"
+      },
+      "business_1": {
+        "name": "Negocio propio",
+        "desc": "Compra tu primer negocio"
+      },
+      "business_5": {
+        "name": "Red de negocios",
+        "desc": "Posee 5 negocios"
+      },
+      "car_1": {
+        "name": "Primer coche",
+        "desc": "Compra tu primer automóvil"
+      },
+      "car_10": {
+        "name": "Flota de coches",
+        "desc": "Posee 10 automóviles"
+      },
+      "diversified_cap": {
+        "name": "Versatilidad",
+        "desc": "Posee inmuebles, un negocio y un automóvil al mismo tiempo"
+      },
+      "meta_10": {
+        "name": "Coleccionista I",
+        "desc": "Obtén 10 logros"
+      },
+      "meta_25": {
+        "name": "Coleccionista II",
+        "desc": "Obtén 25 logros"
+      },
+      "meta_50": {
+        "name": "Coleccionista III",
+        "desc": "Obtén 50 logros"
+      },
+      "meta_75": {
+        "name": "Coleccionista IV",
+        "desc": "Obtén 75 logros"
+      },
+      "meta_99": {
+        "name": "Casi todo",
+        "desc": "Obtén 99 logros"
+      },
+      "meta_rare_10": {
+        "name": "Amante de lo raro",
+        "desc": "Obtén 10 logros raros"
+      },
+      "meta_epic_5": {
+        "name": "Coleccionista épico",
+        "desc": "Obtén 5 logros épicos"
+      },
+      "meta_legend_3": {
+        "name": "Trío legendario",
+        "desc": "Obtén 3 logros legendarios"
+      },
+      "meta_myth_1": {
+        "name": "Mito en persona",
+        "desc": "Obtén al menos 1 logro mítico"
+      },
+      "donate_1": {
+        "name": "Mano generosa",
+        "desc": "Haz una donación al banco por primera vez"
+      },
+      "donate_10": {
+        "name": "Mecenas",
+        "desc": "Haz 10 donaciones al banco"
+      },
+      "donate_50": {
+        "name": "Filántropo",
+        "desc": "Haz 50 donaciones al banco"
+      },
+      "donate_sum_1k": {
+        "name": "Primera aportación",
+        "desc": "Dona un total de 1 000 $ al banco"
+      },
+      "donate_sum_50k": {
+        "name": "Benefactor",
+        "desc": "Dona un total de 50 000 $ al banco"
+      },
+      "donate_sum_500k": {
+        "name": "Patrocinador del estado",
+        "desc": "Dona un total de 500 000 $ al banco"
+      },
+      "donate_sum_5m": {
+        "name": "Héroe del pueblo",
+        "desc": "Dona un total de 5 000 000 $ al banco"
+      },
+      "donate_sum_50m": {
+        "name": "Fondo de oro",
+        "desc": "Dona un total de 50 000 000 $ al banco"
+      },
+      "donate_sum_1b": {
+        "name": "Benefactor de la nación",
+        "desc": "Dona un total de 1 000 000 000 $ al banco"
+      },
       "trades_1": { "name": "Primera operación", "desc": "Realiza 1 operaciones" },
       "trades_3": { "name": "Inicio cauteloso", "desc": "Realiza 3 operaciones" },
       "trades_5": { "name": "Cinco golpes", "desc": "Realiza 5 operaciones" },
@@ -297,6 +733,8 @@
   },
   "common": {
     "loading": "Cargando...",
+    "sectionTemporarilyUnavailable": "Esta sección no está disponible temporalmente",
+    "sectionTemporarilyUnavailableHint": "Estamos trabajando en ello: la sección volverá en la próxima actualización.",
     "ascending": "ascendente",
     "descending": "descendente",
     "error": "Error",
@@ -704,6 +1142,8 @@
     "sort_crypto": "Por cripto",
     "modePlayers": "Jugadores",
     "modeCompanies": "Empresas",
+    "col_donated": "Donado",
+    "sort_donated": "Por donaciones",
     "sort_assets": "Activos",
     "sort_company": "Empresa",
     "profit7d": "Beneficio (7 d)",
@@ -1004,6 +1444,31 @@
     "day": "día",
     "incomeMultiplier": "Multiplicador de ingresos",
     "incomeMultiplierHelp": "Cuánto se multiplican los ingresos diarios del negocio en esta sala.",
+    "yieldShare": "Rentabilidad de la liga",
+    "yieldShareHelp": "Qué porcentaje del capital del jugador en esta liga aportan al día todos los negocios del mapa. En rangos altos el porcentaje es menor, pero la suma en dólares es mayor.",
+    "leaguePlayers": "Jugadores de la liga",
+    "roomPlayers": "Jugadores de la sala",
+    "warcoinShort": "WarCoin",
+    "capturedCount": "Negocios conquistados",
+    "noPlayers": "Eres el único en esta sala",
+    "dualShield": "Doble escudo",
+    "dualShieldBuy": "Doble escudo · ${{cost}}",
+    "dualShieldOn": "Doble escudo activo",
+    "dualShieldUntil": "hasta {{date}}",
+    "dualShieldHelp": "Mientras el escudo esté activo, una combinación acertada no conquista el negocio: solo derriba el escudo. El atacante debe adivinar otra combinación nueva. Solo lo coloca el estudio de TI premium.",
+    "dualShieldNeedsPremium": "El doble escudo requiere el estudio de TI premium",
+    "protectionReplacedByDual": "El doble escudo sustituye la protección normal: los niveles 1–5 no están disponibles mientras esté activo",
+    "dualShieldBought": "Doble escudo instalado por {{hours}} h",
+    "dualShieldBroken": "¡Combinación correcta, pero el doble escudo resistió! Debes adivinar otra combinación.",
+    "division": "División",
+    "divisionHelp": "La liga se divide en divisiones por capital y actividad. Solo coincidirás con jugadores de tu división, así que nunca te encontrarás con alguien mucho más fuerte. La actividad es el número de acciones en los últimos {{days}} días.",
+    "activity": {
+      "idle": "Inactivo",
+      "casual": "Ocasional",
+      "regular": "Regular",
+      "active": "Activo",
+      "legend": "Leyenda"
+    },
     "leagues": {
       "novice": "Novatos",
       "bronze": "Bronce",
@@ -1249,6 +1714,7 @@
     "coolantAdded": "Líquido refrigerante rellenado"
   },
   "confirm": {
+    "dualShield": "¿Colocar un doble escudo por ${{cost}}? La primera combinación correcta del atacante solo derriba el escudo: podrá conquistar el negocio solo al segundo intento.",
     "collect": "¿Cobrar el beneficio acumulado de ${{amount}}?",
     "upgrade": "¿Mejorar este activo por ${{cost}}?",
     "transfer": "¿Transferir « {{name}} » a tu empresa?",
@@ -1752,6 +2218,23 @@
     "sort_netWorth": "Por patrimonio neto",
     "searchStocks": "Buscar acción...",
     "supportTickets": "Solicitudes de jugadores",
+    "cityroof": {
+      "title": "Tejado de la ciudad",
+      "refresh": "Actualizar",
+      "season": "Temporada",
+      "rooms": "Salas",
+      "players": "Jugadores",
+      "warcoin": "WarCoin en salas",
+      "captured": "Negocios conquistados",
+      "free": "libres",
+      "player": "Jugador",
+      "wcCol": "WC",
+      "capturedCol": "Conquistados",
+      "capitalCol": "Capital",
+      "activityCol": "Actividad",
+      "empty": "No hay salas esta temporada",
+      "note": "Solo los administradores ven otras salas: los jugadores solo entran en la suya."
+    },
     "ipLabel": "IP:",
     "fixedLevel": "fijo L4",
     "totalTransactions": "Transacciones totales",
@@ -3091,6 +3574,252 @@
             "task": "Abre la pestaña Negocios de jugadores y mira cualquier negocio."
           }
         ]
+      }
+    }
+  },
+  "tour": {
+    "ariaLabel": "Tutorial guiado",
+    "skip": "Omitir",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "finish": "Finalizar",
+    "check": "Comprobar",
+    "checking": "Comprobando…",
+    "stepNotDone": "Este paso aún no se ha completado",
+    "progress": "{{current}} / {{total}}",
+    "choices": {
+      "mining": "Minería",
+      "stocks": "Acciones",
+      "crypto": "Criptomonedas",
+      "realestate": "Inmuebles",
+      "business": "Negocio"
+    },
+    "main": {
+      "welcome": {
+        "title": "Bienvenido a TradeVerse",
+        "text": "Hagamos un breve recorrido por las secciones. Todo alrededor está oscurecido y solo se resalta la sección actual."
+      },
+      "account": {
+        "title": "Cuenta",
+        "text": "Aquí están tu saldo y tus indicadores principales. Todo el dinero del juego pasa por la cuenta."
+      },
+      "bank": {
+        "title": "Banco",
+        "text": "Operaciones bancarias: transferencias, ingresos, préstamos y donaciones al banco estatal."
+      },
+      "stocks": {
+        "title": "Acciones",
+        "text": "Compra y venta de acciones. Los precios cambian con el tiempo, así que mira el gráfico antes de operar."
+      },
+      "crypto": {
+        "title": "Cripto",
+        "text": "Comercio de criptomonedas. Cada operación otorga experiencia (XP) y hace subir tu nivel."
+      },
+      "realestate": {
+        "title": "Inmuebles y mercado",
+        "text": "Compra y venta de propiedades. El número de propiedades que puedes tener crece con tu nivel."
+      },
+      "mining": {
+        "title": "Minería",
+        "text": "Una granja que genera monedas. Puedes ponerla en marcha y configurarla."
+      },
+      "mycompany": {
+        "title": "Mi empresa",
+        "text": "El negocio que posees: presupuesto, activos e ingresos."
+      },
+      "openBusiness": {
+        "title": "Cómo abrir un negocio",
+        "text": "El negocio se crea en la pestaña Mi empresa. Elige el tipo, paga el coste inicial y añade activos. Puedes publicar una tienda de la fábrica de tarjetas gráficas para otros jugadores con el botón de publicación en la página de la fábrica."
+      },
+      "achievements": {
+        "title": "Logros",
+        "text": "Recompensas por acciones: operaciones, volumen, nivel y capital. La lista se puede filtrar por estado y rareza."
+      },
+      "choice": {
+        "title": "Recorrido principal completado",
+        "text": "Elige el sector que quieres conocer mejor. El recorrido te guiará por sus secciones."
+      }
+    },
+    "stocksTour": {
+      "market": {
+        "title": "Mercado de acciones",
+        "text": "Aquí se negocian acciones. El precio cambia con el tiempo, así que revisa el gráfico antes de comprar."
+      },
+      "fee": {
+        "title": "Compra y comisión",
+        "text": "Indica la cantidad y confirma la compra. Se cobra una comisión en cada operación, tenlo en cuenta en tus cálculos."
+      },
+      "portfolio": {
+        "title": "Cartera",
+        "text": "El saldo y el valor de los activos se muestran en la pestaña Cuenta. Vender acciones devuelve el dinero a tu cuenta principal."
+      }
+    },
+    "crypto": {
+      "tab": {
+        "title": "Criptomoneda",
+        "text": "El comercio de criptomonedas se realiza en la pestaña Cripto. Aquí los precios son más volátiles que en las acciones."
+      },
+      "xp": {
+        "title": "Operaciones y experiencia",
+        "text": "Cada operación con cripto otorga XP y cuenta para los logros de criptomonedas."
+      },
+      "achievements": {
+        "title": "Logros de cripto",
+        "text": "El número de operaciones y el volumen en cripto desbloquean logros propios. Se ven en la pestaña Logros."
+      }
+    },
+    "realestateTour": {
+      "market": {
+        "title": "Mercado inmobiliario",
+        "text": "Las propiedades se compran en la pestaña Inmuebles. Elige por precio, rareza y rentabilidad."
+      },
+      "myhomes": {
+        "title": "Mis propiedades",
+        "text": "Las propiedades compradas aparecen en la pestaña Mis propiedades. Ahí también puedes ponerlas en alquiler."
+      },
+      "limit": {
+        "title": "Límite de propiedades",
+        "text": "El número de propiedades está limitado por el nivel: un límite base más una propiedad por cada nivel. Sube de nivel para ampliar tu cartera."
+      }
+    },
+    "businessTour": {
+      "company": {
+        "title": "Empresa",
+        "text": "Una empresa tiene presupuesto y activos. Todos sus indicadores cuentan para tu capital."
+      },
+      "budget": {
+        "title": "Presupuesto e ingresos",
+        "text": "Los ingresos por ventas y de los activos van al presupuesto de la empresa. El presupuesto cuenta para el capital del propietario."
+      },
+      "players": {
+        "title": "Negocios de jugadores",
+        "text": "Un escaparate con las tiendas de otros jugadores. La compra se realiza en la pestaña Negocios de jugadores."
+      }
+    },
+    "miningTour": {
+      "s1": {
+        "title": "Paso 1. Para qué sirve el sótano",
+        "text": "La granja solo se crea en el sótano de una casa. Primero compremos una casa que tenga sótano."
+      },
+      "s2": {
+        "title": "Paso 2. La pestaña Inmuebles",
+        "text": "Abre el mercado inmobiliario: aquí se venden casas y apartamentos."
+      },
+      "s3": {
+        "title": "Paso 3. Buscar sótano",
+        "text": "La ficha de la propiedad tiene una fila Sótano. Busca casas donde el valor sea mayor que 0: equivale al número de espacios para granjas."
+      },
+      "s4": {
+        "title": "Paso 4. Elegir casa",
+        "text": "Para empezar sirven casas económicas con sótano, por ejemplo Estudio (2 espacios) o Apartamento de dos habitaciones (3 espacios)."
+      },
+      "s5": {
+        "title": "Paso 5. La ficha de la casa",
+        "text": "Abre la ficha: comprueba el precio, los ingresos por hora, el impuesto y el número de espacios del sótano."
+      },
+      "s6": {
+        "title": "Paso 6. Saldo",
+        "text": "Asegúrate de que hay dinero suficiente en la cuenta para la compra. El saldo se ve en la cabecera y en la pestaña Cuenta."
+      },
+      "s7": {
+        "title": "Paso 7. El botón de compra",
+        "text": "Pulsa Comprar en la ficha de la casa elegida. El paso se completa automáticamente cuando se abre la ventana de confirmación."
+      },
+      "s8": {
+        "title": "Paso 8. Confirmación",
+        "text": "Confirma la compra en la ventana de confirmación. El paso se completa automáticamente una vez cargado el dinero."
+      },
+      "s9": {
+        "title": "Paso 9. Verificar la compra",
+        "text": "Comprobemos que la casa con sótano apareció en tu cartera."
+      },
+      "s10": {
+        "title": "Paso 10. Mis propiedades",
+        "text": "La casa comprada aparece en la pestaña Mis propiedades."
+      },
+      "s11": {
+        "title": "Paso 11. Espacios del sótano",
+        "text": "El número de espacios en la ficha de la casa equivale al número de granjas que puedes colocar en ella."
+      },
+      "s12": {
+        "title": "Paso 12. Mejora Minería (opcional)",
+        "text": "El botón Minería en la ficha de la casa se compra una sola vez y aporta ingresos pasivos del sótano. El precio depende del número de espacios."
+      },
+      "s13": {
+        "title": "Paso 13. La pestaña Minería",
+        "text": "Abre la pestaña Minería en el menú lateral."
+      },
+      "s14": {
+        "title": "Paso 14. Elegir casa",
+        "text": "Elige la casa con sótano donde estará la granja."
+      },
+      "s15": {
+        "title": "Paso 15. Espacio libre",
+        "text": "Los espacios se muestran según el número de plazas del sótano. Un espacio vacío se puede llenar con una nueva granja."
+      },
+      "s16": {
+        "title": "Paso 16. Crear una granja",
+        "text": "Pulsa un espacio vacío, escribe un nombre y crea la granja. Después pulsa Comprobar."
+      },
+      "s17": {
+        "title": "Paso 17. Tienda de componentes",
+        "text": "Todo el hardware de la granja se compra en NEXUS. Arriba están los filtros por categoría, la búsqueda y la ordenación por precio; abajo, las fichas de producto."
+      },
+      "s18": {
+        "title": "Paso 18. Cómo leer una ficha de producto",
+        "text": "Una ficha tiene cuatro elementos: el icono con la categoría, el nombre del modelo, una fila de características (H/s y vatios en las GPU, núcleos en la CPU, ranuras en placas y cajas, capacidad en RAM y SSD, potencia en la fuente) y el precio en dólares. El botón Comprar está desactivado si no hay saldo suficiente."
+      },
+      "s191": {
+        "title": "Paso 19.1. La regla principal de orden",
+        "text": "La placa base determina cuántas tarjetas gráficas caben en la granja, y la caja o el rack determina cuántas plazas hay en total. Por eso compra primero la caja/rack y la placa base: el resto de piezas se eligen para encajar con ellas, no al contrario."
+      },
+      "s192": {
+        "title": "Paso 19.2. Caja o rack",
+        "text": "La caja es la opción compacta para hasta 5 tarjetas gráficas, el rack es un gran conjunto de espacios para varias granjas. En un espacio del sótano cabe una de las dos: caja y rack son mutuamente excluyentes."
+      },
+      "s193": {
+        "title": "Paso 19.3. Placa base",
+        "text": "El número de ranuras de la placa indica el máximo de tarjetas gráficas en la granja: una placa de 2 ranuras no admitirá 4 GPU. La placa debe caber en la caja o rack elegido."
+      },
+      "s194": {
+        "title": "Paso 19.4. CPU, RAM y SSD",
+        "text": "Uno de cada por granja. Los núcleos de la CPU alimentan a las tarjetas gráficas, la RAM debe contener el archivo DAG de la moneda elegida y el SSD guarda el nodo y la caché. Con poca memoria o espacio baja la eficiencia de la minería."
+      },
+      "s195": {
+        "title": "Paso 19.5. Fuente de alimentación",
+        "text": "La potencia total de la fuente debe cubrir el consumo de la granja incluido el overclocking, si no la granja simplemente no arrancará. En la caja caben hasta dos fuentes, así que puedes usar dos débiles en vez de una potente."
+      },
+      "s196": {
+        "title": "Paso 19.6. Refrigeración y tarjetas gráficas",
+        "text": "La refrigeración baja la temperatura y el desgaste: un sistema barato se come rápido el beneficio en reparaciones. Las tarjetas gráficas son la fuente principal de hashrate y se instalan al final, cuando ya se conocen las ranuras de la placa y las plazas de la caja."
+      },
+      "s197": {
+        "title": "Paso 19.7. Consumibles: refrigerante",
+        "text": "En los filtros hay una categoría de Consumibles. El artículo Refrigerante se vierte en una granja en marcha con el botón Rellenar: una lata baja la temperatura un 25% durante 12 horas y frena el desgaste. En la granja caben hasta 4 latas. Cómpralas con antelación: sin reserva la granja se desgasta más rápido."
+      },
+      "s198": {
+        "title": "Paso 19.8. El artículo más barato",
+        "text": "Está resaltado el botón de compra del artículo más barato de la selección actual. Si hay poco dinero, empieza por él o filtra una sola categoría y ordena por precio ascendente."
+      },
+      "s199": {
+        "title": "Paso 19.9. Comprobar las compras",
+        "text": "Hacen falta todas las categorías obligatorias: placa base, CPU, fuente, RAM, SSD, refrigeración, tarjeta de red y al menos una tarjeta gráfica. Caja/rack y ventiladores son opcionales, pero la caja determina el número de plazas. Pulsa Comprobar cuando tengas las piezas en el inventario."
+      },
+      "s20": {
+        "title": "Paso 20. Instalar en la granja",
+        "text": "Abre la granja, busca el bloque Montaje de la granja y pulsa + Añadir pieza en cada categoría. Primero caja/rack, luego placa base, después CPU, RAM, SSD, refrigeración, fuente y tarjetas gráficas."
+      },
+      "s21": {
+        "title": "Paso 21. Comprobar el montaje",
+        "text": "Cuando todo lo obligatorio está instalado, desaparece el aviso La granja aún no está montada y aparecen los indicadores: hashrate, consumo, temperatura, ingresos y gasto por hora. Pulsa Comprobar."
+      },
+      "s22": {
+        "title": "Paso 22. Moneda y beneficio",
+        "text": "Elige una moneda en la lista Seleccionar moneda, guiándote por la pista La IA recomienda. Compara Ingresos/h con Electricidad/h: el beneficio neto debe ser positivo, si no la granja trabaja con pérdidas."
+      },
+      "s23": {
+        "title": "Paso 23. Arranque",
+        "text": "Pulsa ▶ Iniciar minería. El estado cambia a Minería en curso y los ingresos empiezan a acumularse por ticks, incluso estando desconectado. La electricidad se cobra de la cuenta Electricidad en el Banco: vigila que no se vacíe. Pulsa Comprobar."
       }
     }
   }

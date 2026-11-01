@@ -1,0 +1,228 @@
+/* Оверлей обучения не перехватывает клики: затемнение чисто визуальное,
+   игрок может нажимать кнопки приложения на любом шаге. Кликабельна только карточка.
+   Все цвета берутся из токенов index.css, поэтому тур следует активной теме
+   (light / dark / tradeverse) и пользовательскому акценту из настроек. */
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-tour, 1200);
+  pointer-events: none;
+}
+
+.tour-root .tour-card {
+  pointer-events: auto;
+}
+
+/* Модалки покупки и подтверждения должны быть выше тура, иначе их не нажать.
+   Модалки рендерятся внутри вкладок, а не рядом с .tour-root, поэтому правило глобальное. */
+.modal-overlay,
+.tv-confirm-overlay,
+.market-buy-modal-overlay {
+  z-index: var(--z-modal, 1100);
+}
+
+.tour-blocker {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.tour-blocker--dim {
+  /* Непрозрачность затемнения зависит от темы: на белом фоне 0.72 выглядит
+     как чёрный экран, на тёмном — наоборот, почти незаметно. */
+  background: var(--tour-dim, rgba(0, 0, 0, 0.55));
+}
+
+/* Подсветченный шаг: клики проходят к реальному интерфейсу под дыркой. */
+.tour-blocker--passthrough {
+  pointer-events: none;
+}
+
+/* Без затемнения всего экрана на подсвеченных шагах: только рамка вокруг элемента. */
+.tour-hole {
+  position: fixed;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--color-warning);
+  pointer-events: none;
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+
+.tour-card {
+  position: fixed;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.tour-card--center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+}
+
+.tour-card h3 {
+  margin: 4px 0 8px;
+  font-size: 18px;
+  color: var(--color-text-primary);
+}
+
+.tour-card p {
+  margin: 0 0 14px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.tour-counter {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.tour-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--fill-soft);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.tour-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.25s ease;
+}
+
+.tour-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.tour-ghost,
+.tour-primary {
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.tour-ghost {
+  background: transparent;
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.tour-ghost:hover {
+  background: var(--fill-subtle);
+}
+
+/* --on-accent держит текст читаемым на светлых пользовательских акцентах. */
+.tour-primary {
+  background: var(--color-accent);
+  color: var(--on-accent);
+  border-color: transparent;
+}
+
+.tour-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.tour-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tour-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tour-choice {
+  background: var(--fill-subtle);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tour-choice:hover {
+  border-color: var(--color-accent);
+  background: var(--accent-soft);
+}
+
+.tour-check-error {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--color-danger);
+}
+
+@media (max-width: 640px) {
+  .tour-choices {
+    grid-template-columns: 1fr;
+  }
+  .tour-choice {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .tour-card--anchored {
+    top: auto !important;
+    left: 8px !important;
+    right: 8px;
+    bottom: 8px;
+    width: auto !important;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .tour-card--center {
+    width: calc(100vw - 24px);
+  }
+  .tour-actions {
+    flex-direction: column-reverse;
+  }
+  .tour-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+  .tour-hole {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-hole,
+  .tour-progress > span {
+    transition: none;
+  }
+}
+
+/* Подсветка целевого элемента шага (кнопка «Купить» и т.п.) — поверх затемнения. */
+.tour-pulse {
+  position: relative;
+  z-index: var(--z-tour-highlight, 1250);
+  outline: 3px solid var(--color-warning);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--color-warning-soft, rgba(255, 149, 0, 0.35));
+  animation: tour-pulse-anim 1.2s ease-in-out infinite;
+}
+
+@keyframes tour-pulse-anim {
+  0%, 100% { box-shadow: 0 0 0 6px var(--color-warning-soft, rgba(255, 149, 0, 0.35)); }
+  50% { box-shadow: 0 0 0 12px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-pulse { animation: none; }
+}

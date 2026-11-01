@@ -13,6 +13,442 @@
       "mythic": "Mythic"
     },
     "items": {
+      "trades_1": {
+        "name": "First Trade",
+        "desc": "Make 1 trades"
+      },
+      "trades_3": {
+        "name": "Cautious Start",
+        "desc": "Make 3 trades"
+      },
+      "trades_5": {
+        "name": "Five Strikes",
+        "desc": "Make 5 trades"
+      },
+      "trades_10": {
+        "name": "Warming Up",
+        "desc": "Make 10 trades"
+      },
+      "trades_25": {
+        "name": "Regular Player",
+        "desc": "Make 25 trades"
+      },
+      "trades_50": {
+        "name": "Half a Hundred",
+        "desc": "Make 50 trades"
+      },
+      "trades_75": {
+        "name": "Steady Ground",
+        "desc": "Make 75 trades"
+      },
+      "trades_100": {
+        "name": "Trader",
+        "desc": "Make 100 trades"
+      },
+      "trades_150": {
+        "name": "Seasoned",
+        "desc": "Make 150 trades"
+      },
+      "trades_250": {
+        "name": "Exchange Regular",
+        "desc": "Make 250 trades"
+      },
+      "trades_400": {
+        "name": "Ticker-Dependent",
+        "desc": "Make 400 trades"
+      },
+      "trades_500": {
+        "name": "Five Hundreder",
+        "desc": "Make 500 trades"
+      },
+      "trades_750": {
+        "name": "Market Rhythm",
+        "desc": "Make 750 trades"
+      },
+      "trades_1000": {
+        "name": "Market Maker",
+        "desc": "Make 1000 trades"
+      },
+      "trades_1500": {
+        "name": "Exchange Master",
+        "desc": "Make 1500 trades"
+      },
+      "trades_2500": {
+        "name": "Old-Timer",
+        "desc": "Make 2500 trades"
+      },
+      "trades_5000": {
+        "name": "Trade Machine",
+        "desc": "Make 5000 trades"
+      },
+      "trades_7500": {
+        "name": "Tireless",
+        "desc": "Make 7500 trades"
+      },
+      "trades_10000": {
+        "name": "Orderbook Legend",
+        "desc": "Make 10000 trades"
+      },
+      "trades_25000": {
+        "name": "Immortal Ticker",
+        "desc": "Make 25000 trades"
+      },
+      "volume_10000": {
+        "name": "Ten Thousand",
+        "desc": "Trading turnover 10 000 $"
+      },
+      "volume_100000": {
+        "name": "One Hundred Thousand",
+        "desc": "Trading turnover 100 000 $"
+      },
+      "volume_500000": {
+        "name": "Half a Million",
+        "desc": "Trading turnover 500 000 $"
+      },
+      "volume_1000000": {
+        "name": "Turnover Millionaire",
+        "desc": "Trading turnover 1 000 000 $"
+      },
+      "volume_5000000": {
+        "name": "Five Million",
+        "desc": "Trading turnover 5 000 000 $"
+      },
+      "volume_10000000": {
+        "name": "Ten Million",
+        "desc": "Trading turnover 10 000 000 $"
+      },
+      "volume_50000000": {
+        "name": "Fifty Million",
+        "desc": "Trading turnover 50 000 000 $"
+      },
+      "volume_100000000": {
+        "name": "One Hundred Million",
+        "desc": "Trading turnover 100 000 000 $"
+      },
+      "volume_500000000": {
+        "name": "Half a Billion",
+        "desc": "Trading turnover 500 000 000 $"
+      },
+      "volume_1000000000": {
+        "name": "Billion Turnover",
+        "desc": "Trading turnover 1 000 000 000 $"
+      },
+      "volume_5000000000": {
+        "name": "Five Billion",
+        "desc": "Trading turnover 5 000 000 000 $"
+      },
+      "volume_10000000000": {
+        "name": "Ten Billion",
+        "desc": "Trading turnover 10 000 000 000 $"
+      },
+      "volume_50000000000": {
+        "name": "Fifty Billion",
+        "desc": "Trading turnover 50 000 000 000 $"
+      },
+      "volume_100000000000": {
+        "name": "One Hundred Billion",
+        "desc": "Trading turnover 100 000 000 000 $"
+      },
+      "volume_1000000000000": {
+        "name": "Turnover Trillionaire",
+        "desc": "Trading turnover 1 000 000 000 000 $"
+      },
+      "level_5": {
+        "name": "Got the Hang of It",
+        "desc": "Reach level 5"
+      },
+      "level_10": {
+        "name": "Experienced",
+        "desc": "Reach level 10"
+      },
+      "level_15": {
+        "name": "Confident",
+        "desc": "Reach level 15"
+      },
+      "level_20": {
+        "name": "Connoisseur",
+        "desc": "Reach level 20"
+      },
+      "level_25": {
+        "name": "Veteran",
+        "desc": "Reach level 25"
+      },
+      "level_30": {
+        "name": "Trained",
+        "desc": "Reach level 30"
+      },
+      "level_35": {
+        "name": "Pro",
+        "desc": "Reach level 35"
+      },
+      "level_40": {
+        "name": "Elite",
+        "desc": "Reach level 40"
+      },
+      "level_50": {
+        "name": "Legend",
+        "desc": "Reach level 50"
+      },
+      "level_60": {
+        "name": "Invincible",
+        "desc": "Reach level 60"
+      },
+      "level_70": {
+        "name": "Overlord",
+        "desc": "Reach level 70"
+      },
+      "level_75": {
+        "name": "Mythical",
+        "desc": "Reach level 75"
+      },
+      "level_80": {
+        "name": "Market Oracle",
+        "desc": "Reach level 80"
+      },
+      "level_90": {
+        "name": "Eternal",
+        "desc": "Reach level 90"
+      },
+      "level_100": {
+        "name": "Absolute",
+        "desc": "Reach level 100"
+      },
+      "capital_10000": {
+        "name": "First Money",
+        "desc": "Net worth 10 000 $"
+      },
+      "capital_100000": {
+        "name": "Six Figures",
+        "desc": "Net worth 100 000 $"
+      },
+      "capital_1000000": {
+        "name": "Millionaire",
+        "desc": "Net worth 1 000 000 $"
+      },
+      "capital_5000000": {
+        "name": "Well-Off",
+        "desc": "Net worth 5 000 000 $"
+      },
+      "capital_10000000": {
+        "name": "Ten-Millionaire",
+        "desc": "Net worth 10 000 000 $"
+      },
+      "capital_50000000": {
+        "name": "Fifty Million",
+        "desc": "Net worth 50 000 000 $"
+      },
+      "capital_100000000": {
+        "name": "Hundred-Millionaire",
+        "desc": "Net worth 100 000 000 $"
+      },
+      "capital_500000000": {
+        "name": "Half-Billionaire",
+        "desc": "Net worth 500 000 000 $"
+      },
+      "capital_1000000000": {
+        "name": "Billionaire",
+        "desc": "Net worth 1 000 000 000 $"
+      },
+      "capital_5000000000": {
+        "name": "Oligarch",
+        "desc": "Net worth 5 000 000 000 $"
+      },
+      "capital_10000000000": {
+        "name": "Ten-Billionaire",
+        "desc": "Net worth 10 000 000 000 $"
+      },
+      "capital_15000000000": {
+        "name": "Market Magnate",
+        "desc": "Net worth 15 000 000 000 $"
+      },
+      "capital_20000000000": {
+        "name": "Twenty",
+        "desc": "Net worth 20 000 000 000 $"
+      },
+      "capital_25000000000": {
+        "name": "Financial Titan",
+        "desc": "Net worth 25 000 000 000 $"
+      },
+      "capital_30000000000": {
+        "name": "Thirty",
+        "desc": "Net worth 30 000 000 000 $"
+      },
+      "capital_35000000000": {
+        "name": "Heir",
+        "desc": "Net worth 35 000 000 000 $"
+      },
+      "capital_40000000000": {
+        "name": "Forty-Billionaire",
+        "desc": "Net worth 40 000 000 000 $"
+      },
+      "capital_50000000000": {
+        "name": "Market Emperor",
+        "desc": "Net worth 50 000 000 000 $"
+      },
+      "capital_75000000000": {
+        "name": "Owner of the Economy",
+        "desc": "Net worth 75 000 000 000 $"
+      },
+      "capital_100000000000": {
+        "name": "Hundred-Billionaire",
+        "desc": "Net worth 100 000 000 000 $"
+      },
+      "capital_250000000000": {
+        "name": "Scale Investor",
+        "desc": "Net worth 250 000 000 000 $"
+      },
+      "capital_500000000000": {
+        "name": "Half a Trillion",
+        "desc": "Net worth 500 000 000 000 $"
+      },
+      "capital_1000000000000": {
+        "name": "Trillionaire",
+        "desc": "Net worth 1 000 000 000 000 $"
+      },
+      "small_1": {
+        "name": "Penny",
+        "desc": "Make 1 small trade (up to 100 $)"
+      },
+      "small_200": {
+        "name": "Small-Change Player",
+        "desc": "Make 200 small trades"
+      },
+      "small_1000": {
+        "name": "Piggy Bank",
+        "desc": "Make 1000 small trades"
+      },
+      "crypto_1": {
+        "name": "First Block",
+        "desc": "Make 1 crypto trade"
+      },
+      "crypto_50": {
+        "name": "Crypto Enthusiast",
+        "desc": "Make 50 crypto trades"
+      },
+      "crypto_vol_1m": {
+        "name": "Crypto Million",
+        "desc": "Crypto turnover 1 000 000 $"
+      },
+      "crypto_vol_1b": {
+        "name": "Crypto Whale",
+        "desc": "Crypto turnover 1 000 000 000 $"
+      },
+      "big_trade_100k": {
+        "name": "Large Order",
+        "desc": "A single trade of 100 000 $"
+      },
+      "big_trade_10m": {
+        "name": "Market Strike",
+        "desc": "A single trade of 10 000 000 $"
+      },
+      "big_trade_1b": {
+        "name": "Elephant in the Shop",
+        "desc": "A single trade of 1 000 000 000 $"
+      },
+      "realestate_1": {
+        "name": "First Home",
+        "desc": "Buy your first property"
+      },
+      "realestate_10": {
+        "name": "Developer",
+        "desc": "Own 10 real estate properties"
+      },
+      "realestate_30": {
+        "name": "Homeowner",
+        "desc": "Own 30 real estate properties"
+      },
+      "business_1": {
+        "name": "My Business",
+        "desc": "Buy your first business"
+      },
+      "business_5": {
+        "name": "Business Network",
+        "desc": "Own 5 businesses"
+      },
+      "car_1": {
+        "name": "First Car",
+        "desc": "Buy your first car"
+      },
+      "car_10": {
+        "name": "Car Fleet",
+        "desc": "Own 10 cars"
+      },
+      "diversified_cap": {
+        "name": "Versatility",
+        "desc": "Own real estate, a business and a car at the same time"
+      },
+      "meta_10": {
+        "name": "Collector I",
+        "desc": "Earn 10 achievements"
+      },
+      "meta_25": {
+        "name": "Collector II",
+        "desc": "Earn 25 achievements"
+      },
+      "meta_50": {
+        "name": "Collector III",
+        "desc": "Earn 50 achievements"
+      },
+      "meta_75": {
+        "name": "Collector IV",
+        "desc": "Earn 75 achievements"
+      },
+      "meta_99": {
+        "name": "Almost Everything",
+        "desc": "Earn 99 achievements"
+      },
+      "meta_rare_10": {
+        "name": "Rare Connoisseur",
+        "desc": "Earn 10 rare achievements"
+      },
+      "meta_epic_5": {
+        "name": "Epic Collector",
+        "desc": "Earn 5 epic achievements"
+      },
+      "meta_legend_3": {
+        "name": "Legendary Trio",
+        "desc": "Earn 3 legendary achievements"
+      },
+      "meta_myth_1": {
+        "name": "Myth Incarnate",
+        "desc": "Earn at least 1 mythic achievement"
+      },
+      "donate_1": {
+        "name": "Generous Hand",
+        "desc": "Donate to the bank for the first time"
+      },
+      "donate_10": {
+        "name": "Patron",
+        "desc": "Make 10 donations to the bank"
+      },
+      "donate_50": {
+        "name": "Philanthropist",
+        "desc": "Make 50 donations to the bank"
+      },
+      "donate_sum_1k": {
+        "name": "First Contribution",
+        "desc": "Donate a total of 1 000 $ to the bank"
+      },
+      "donate_sum_50k": {
+        "name": "Benefactor",
+        "desc": "Donate a total of 50 000 $ to the bank"
+      },
+      "donate_sum_500k": {
+        "name": "State Sponsor",
+        "desc": "Donate a total of 500 000 $ to the bank"
+      },
+      "donate_sum_5m": {
+        "name": "People's Hero",
+        "desc": "Donate a total of 5 000 000 $ to the bank"
+      },
+      "donate_sum_50m": {
+        "name": "Gold Reserve",
+        "desc": "Donate a total of 50 000 000 $ to the bank"
+      },
+      "donate_sum_1b": {
+        "name": "Benefactor of the Nation",
+        "desc": "Donate a total of 1 000 000 000 $ to the bank"
+      },
       "trades_1": { "name": "First Trade", "desc": "Make 1 trades" },
       "trades_3": { "name": "Cautious Start", "desc": "Make 3 trades" },
       "trades_5": { "name": "Five Strikes", "desc": "Make 5 trades" },
@@ -297,6 +733,8 @@
   },
   "common": {
     "loading": "Loading...",
+    "sectionTemporarilyUnavailable": "This section is temporarily unavailable",
+    "sectionTemporarilyUnavailableHint": "We are working on it — the section will be back in the next update.",
     "ascending": "ascending",
     "descending": "descending",
     "error": "Error",
@@ -704,6 +1142,8 @@
     "sort_crypto": "By crypto",
     "modePlayers": "Players",
     "modeCompanies": "Companies",
+    "col_donated": "Donated",
+    "sort_donated": "By donations",
     "sort_assets": "Assets",
     "sort_company": "Company",
     "profit7d": "Profit (7d)",
@@ -1004,6 +1444,31 @@
     "day": "day",
     "incomeMultiplier": "Income multiplier",
     "incomeMultiplierHelp": "How much the business's daily income is multiplied in this room.",
+    "yieldShare": "League yield",
+    "yieldShareHelp": "What share of a player's capital in this league all city businesses bring per day. Higher ranks pay a smaller share but a larger dollar amount.",
+    "leaguePlayers": "League players",
+    "roomPlayers": "Room players",
+    "warcoinShort": "WarCoin",
+    "capturedCount": "Businesses captured",
+    "noPlayers": "You are the only one in this room",
+    "dualShield": "Double shield",
+    "dualShieldBuy": "Double shield · ${{cost}}",
+    "dualShieldOn": "Double shield active",
+    "dualShieldUntil": "until {{date}}",
+    "dualShieldHelp": "While this shield is up, a correctly guessed combination does not capture the business — it only knocks the shield down. The attacker must guess a new combination again. Only the premium IT studio can place it.",
+    "dualShieldNeedsPremium": "The double shield requires the premium IT studio",
+    "protectionReplacedByDual": "The double shield replaces regular protection: levels 1–5 are unavailable while it is active",
+    "dualShieldBought": "Double shield installed for {{hours}} h",
+    "dualShieldBroken": "Combination solved, but the double shield held! You need to guess a new combination.",
+    "division": "Division",
+    "divisionHelp": "A league is split into divisions by capital and activity. You only meet players of your division, so you never run into someone far stronger. Activity is the number of actions in the last {{days}} days.",
+    "activity": {
+      "idle": "Idle",
+      "casual": "Casual",
+      "regular": "Regular",
+      "active": "Active",
+      "legend": "Legend"
+    },
     "leagues": {
       "novice": "Novices",
       "bronze": "Bronze",
@@ -1249,6 +1714,7 @@
     "coolantAdded": "Coolant refilled"
   },
   "confirm": {
+    "dualShield": "Place a double shield for ${{cost}}? The attacker's first correct combination only knocks it down — they can capture the business only on the second try.",
     "collect": "Collect accrued profit ${{amount}}?",
     "upgrade": "Upgrade this asset for ${{cost}}?",
     "transfer": "Transfer \"{{name}}\" to your company?",
@@ -1762,6 +2228,23 @@
     "sort_netWorth": "By net worth",
     "searchStocks": "Search stock...",
     "supportTickets": "Player tickets",
+    "cityroof": {
+      "title": "City Roof",
+      "refresh": "Refresh",
+      "season": "Season",
+      "rooms": "Rooms",
+      "players": "Players",
+      "warcoin": "WarCoin in rooms",
+      "captured": "Businesses captured",
+      "free": "free",
+      "player": "Player",
+      "wcCol": "WC",
+      "capturedCol": "Captured",
+      "capitalCol": "Capital",
+      "activityCol": "Activity",
+      "empty": "No rooms this season",
+      "note": "Only admins see other rooms — players are placed in their own room only."
+    },
     "ipLabel": "IP:",
     "fixedLevel": "fixed L4",
     "totalTransactions": "Total Transactions",
@@ -3020,87 +3503,556 @@
     "topics": {
       "mining": {
         "name": "Mining",
-        "desc": "How a farm works and why mining matters.",
+        "desc": "A step-by-step course on the real interface: from a basement house to a profitable AI-run farm.",
         "steps": [
           {
-            "title": "What is mining",
-            "text": "Mining is producing cryptocurrency with computers. A farm uses hardware and earns coins.",
-            "task": "Open the Mining tab and look at your farms."
+            "title": "Step 1. How mining works",
+            "text": "A farm solves computational tasks and earns coins. Revenue = hashrate × network share × coin price. Electricity and the AI salary are deducted, and the rest is your profit. A farm lives only in a house basement, with its own case and its own slot.",
+            "task": "Open the Mining tab in the sidebar — you will see the house selection screen."
           },
           {
-            "title": "Hardware for a farm",
-            "text": "To make a farm work, you add graphics cards and other components. Without hardware mining will not start.",
-            "task": "Buy at least one mining component in the Shop."
+            "title": "Step 2. A house with a basement",
+            "text": "Mining is only allowed in basements. The \"Basement (case slots)\" row shows how many farms fit in a house, \"Occupied by farms\" shows used slots and \"Free\" shows the remainder. A house without a basement will not work.",
+            "task": "Open Market → real estate and make sure you own a house with basement capacity above 0."
           },
           {
-            "title": "Start mining",
-            "text": "When a farm is ready, you can turn it on. The farm starts earning coins.",
-            "task": "Start mining on your farm."
+            "title": "Step 3. Pick a house and open its slots",
+            "text": "On the \"Choose a house for mining\" screen click the house card to open the basement slot grid. A free slot is labelled \"Empty / Create farm\"; an occupied one shows the farm name and status.",
+            "task": "Open your house card and look at the slot grid."
+          },
+          {
+            "title": "Step 4. Create a farm",
+            "text": "Click a free slot to open the creation dialog and enter a name (\"Farm name\"). If you have many slots, \"Fill free slots\" creates farms in bulk, and the main screen offers \"Create farms in all houses\".",
+            "task": "Create a farm in a free slot — the farm card opens right after creation."
+          },
+          {
+            "title": "Step 5. Buy components by category",
+            "text": "The \"Farm assembly\" block in the farm card lists every category. Required ones are marked with an asterisk in the \"* = required\" hint: motherboard, CPU, PSU, RAM, SSD, cooling and at least one GPU. A case or rack sets the slot count; fans and a UPS add extra value.",
+            "task": "Buy at least one part of every required category in the Shop."
+          },
+          {
+            "title": "Step 6. Install the hardware",
+            "text": "In \"Farm assembly\" press \"+ Add part\" on a category and pick an item from your inventory — the list shows quantity (×N) and specs. Order matters: case/rack first, then the motherboard, because it defines the GPU slots. Without space the block reports \"No free slots\" or \"No free motherboard slots\".",
+            "task": "Install every required part: until the farm is assembled it shows \"The farm is not assembled yet\" instead of stats."
+          },
+          {
+            "title": "Step 7. Check PSU headroom and stats",
+            "text": "Once assembled, stat tiles appear: Hashrate, Power draw, Temperature, Condition, Income/h, Electricity/h and Net profit/h. The farm also shows CPU→GPU, RAM, SSD and Network efficiency — the weakest link caps your income.",
+            "task": "Open the assembled farm and compare Income/h with Electricity/h: net profit must be positive."
+          },
+          {
+            "title": "Step 8. Choose a coin",
+            "text": "The coin list shows the price of every coin. The \"AI suggests\" hint ranks coins for your exact farm: weak farms drift to cheap coins, strong ones to expensive coins. A pricier coin needs more RAM for the DAG file.",
+            "task": "Pick a coin (the AI suggestion is a safe start)."
+          },
+          {
+            "title": "Step 9. Start mining",
+            "text": "The ▶ \"Start mining\" button is only enabled for an assembled farm. After starting, the status becomes \"Mining\" and ▶ turns into ■ \"Stop\". Income accrues in ticks, even while you are offline.",
+            "task": "Start the farm and confirm the status became Mining."
+          },
+          {
+            "title": "Step 10. Electricity and the farm bill",
+            "text": "Electricity is charged from the \"Electricity\" account (Bank tab), while salary and repair are charged from your main account. If money runs short the farm shuts down and accumulates an electricity debt: while the debt is unpaid the AI will not restart the farm, so you stop getting notification spam.",
+            "task": "Open Bank → \"Electricity\" account and make sure it holds enough funds for your farms."
+          },
+          {
+            "title": "Step 11. Overclock and wear",
+            "text": "The \"Overclock\" slider runs from 0.8x to 1.5x: it raises income but linearly increases power draw, temperature and wear. The PSU check blocks overclocking when there is not enough headroom. Watch the Temperature tile: above the threshold wear grows fast.",
+            "task": "Set overclock to 1.2x and see how Income/h, Power draw and Net profit/h change."
+          },
+          {
+            "title": "Step 12. Repair, cooling and coolant",
+            "text": "\"Repair ($price)\" restores Condition to 100% and costs a share of the hardware price. \"Coolant\" (0/4) cuts temperature by 25% for 12 hours: the \"Refill\" button uses one canister from your inventory.",
+            "task": "Check your farm repair cost and how many coolant canisters you have in the inventory."
+          },
+          {
+            "title": "Step 13. AI manager",
+            "text": "\"Hire AI\" is available only for an assembled farm. The manager picks coins, repairs and restarts the farm but charges an hourly salary. Levels up to 5 reduce temperature and raise the maintenance threshold. AI settings include Auto-repair, Auto coin selection and Auto-restart toggles.",
+            "task": "Open the \"AI manager\" block and review the hire terms and autonomy settings."
+          },
+          {
+            "title": "Step 14. Scaling and stats",
+            "text": "\"Farms bulk management\" opens bulk mode: start/stop/repair in batches, auto-assembly from chosen parts, shared AI settings and overclock. Results appear in \"Mining stats\": coins mined, mined ($), total earned and profit per hour.",
+            "task": "Open \"Farms bulk management\" and review which actions are available for your farms."
           }
         ]
       },
       "stocks": {
         "name": "Stocks",
-        "desc": "What shares are and how they go up or down.",
+        "desc": "Step-by-step guide to trading stocks.",
         "steps": [
           {
-            "title": "What is a share",
-            "text": "A share is a small part of a company. If the company grows, its share price may grow too.",
-            "task": "Open the Stocks tab and pick any company."
+            "title": "Step 1. What a share is",
+            "text": "A share is a stake in a company. Its price moves with player trades and market events, so a trader earns the difference between the buy and sell price.",
+            "task": "Open the Stocks tab and find any company using search or sorting."
           },
           {
-            "title": "Buying a share",
-            "text": "You can buy a share with money from your account. Then you own a part of the company.",
-            "task": "Buy 1 share."
+            "title": "Step 2. Study the card and chart",
+            "text": "The stock card shows price, 24h change, market cap, volume, liquidity, analytics and a forecast. The lower the liquidity, the more your order moves the price on execution.",
+            "task": "Open a stock card and look at its chart, liquidity and analytics."
           },
           {
-            "title": "Portfolio",
-            "text": "All bought shares go into your portfolio. There you can see what they are worth now.",
-            "task": "Open your portfolio and find the share you bought."
+            "title": "Step 3. Buy shares",
+            "text": "The trade window shows the fill price including volume impact and the commission. The total already includes both, so compare it with your balance.",
+            "task": "Buy 1 share of any company."
+          },
+          {
+            "title": "Step 4. Portfolio and position tracking",
+            "text": "Bought shares go to your portfolio: average entry price, position value and unrealised profit or loss. That is where you track the result of a trade.",
+            "task": "Open the Stocks tab and make sure your share appears in your portfolio."
+          },
+          {
+            "title": "Step 5. Sell and lock in the result",
+            "text": "Selling returns money to your main account. A commission is charged on every trade, and a large order may fill at a worse price — split big volumes into parts.",
+            "task": "Sell some or all shares from your portfolio."
           }
         ]
       },
       "crypto": {
         "name": "Cryptocurrency",
-        "desc": "How to buy and keep cryptocurrency.",
+        "desc": "Step-by-step guide to working with crypto.",
         "steps": [
           {
-            "title": "What is cryptocurrency",
-            "text": "Cryptocurrency is digital money. Its price can change quickly.",
-            "task": "Open the Cryptocurrency tab and look at the market."
+            "title": "Step 1. What cryptocurrency is",
+            "text": "Cryptocurrencies are digital coins traded on the market. Volatility is higher than in stocks, so prices move faster.",
+            "task": "Open the Crypto tab and study the coin list, prices and 24h change."
           },
           {
-            "title": "Buying a coin",
-            "text": "You can buy a coin with money from your account. A good buy can pay off when the price goes up.",
-            "task": "Buy any cryptocurrency."
+            "title": "Step 2. Open a crypto account",
+            "text": "Trading is unavailable without a crypto account. Once opened, you get a wallet address other players can send coins to.",
+            "task": "Open a crypto account on the Crypto tab."
           },
           {
-            "title": "Crypto account",
-            "text": "All your coins are kept in a crypto account. There you can see how many coins you have.",
-            "task": "Open your crypto account and check your coins."
+            "title": "Step 3. Buy a coin",
+            "text": "In the trade window check the fill price and the commission. A cheaper entry means more profit when the price rises — but also more downside risk.",
+            "task": "Buy any cryptocurrency for a small amount."
+          },
+          {
+            "title": "Step 4. Check your portfolio",
+            "text": "Bought coins appear under My assets on the crypto tab with the average entry price, position value and current result.",
+            "task": "Make sure the coin you bought appears in your assets."
+          },
+          {
+            "title": "Step 5. Transfers between players",
+            "text": "Coins can be sent to another player by wallet address or nickname. The transfer must be confirmed, and a network fee of 1% of the amount is added.",
+            "task": "Open the wallet transfer form and check the fields and the fee (you do not have to send)."
           }
         ]
       },
       "business": {
         "name": "Businesses",
-        "desc": "How your own business and company work.",
+        "desc": "Step-by-step guide: businesses, company and their income.",
         "steps": [
           {
-            "title": "What is a business",
-            "text": "A business is an enterprise that earns money. You can buy it or create it.",
-            "task": "Open the My Businesses tab and look at your assets."
+            "title": "Step 1. What a business is",
+            "text": "A business is an enterprise that earns regular income. Businesses are bought on the market; part of the income goes to tax and upkeep.",
+            "task": "Open the My Businesses tab and review your assets (or the business market)."
           },
           {
-            "title": "Your company",
-            "text": "A company groups businesses and employees. It has its own budget.",
-            "task": "Open the My Company tab."
+            "title": "Step 2. Buy or acquire a business",
+            "text": "Businesses are sold on the market, traded between players on the Central Market and awarded at auctions. The business card lists income per hour, upkeep and tax.",
+            "task": "Open any business card and check income per hour, upkeep and tax."
           },
           {
-            "title": "Other players' businesses",
-            "text": "The Player Businesses tab shows enterprises of other students. You can compare your results.",
-            "task": "Open the Player Businesses tab and look at any business."
+            "title": "Step 3. Your own company",
+            "text": "A company is a legal wrapper for businesses and assets: it has its own budget, employees with roles and permissions, and salaries. Registration costs a fixed fee.",
+            "task": "Open the My Company tab and review the creation terms."
+          },
+          {
+            "title": "Step 4. Create a company",
+            "text": "Pay the fee and choose a name — the company is created. From there you can fund the budget, hire employees, hand over assets and configure applications.",
+            "task": "Create your company (or apply to an existing one)."
+          },
+          {
+            "title": "Step 5. Employees and their roles",
+            "text": "A role defines how much an employee contributes to company income: higher roles give a bigger bonus. Roles also grant permissions: finance, employees, assets. Salaries are paid from the company budget.",
+            "task": "Invite a player or assign a role with a salary in your company."
+          },
+          {
+            "title": "Step 6. Income and company budget",
+            "text": "Company income comes only from its assets. Profit accumulates in the budget and counts toward your net worth. Salaries and fees are paid from the budget — keep it from going negative.",
+            "task": "Fund the company budget and collect the accrued profit."
+          },
+          {
+            "title": "Step 7. Other players' businesses",
+            "text": "The Player Businesses tab shows other players' shops: you can buy their goods and compare your results with competitors.",
+            "task": "Open the Player Businesses tab and browse any shop."
           }
         ]
+      },
+      "realestate": {
+        "name": "Real estate",
+        "desc": "Step-by-step guide: buying, renting and upgrades.",
+        "steps": [
+          {
+            "title": "Step 1. What real estate is",
+            "text": "Real estate is a long-term asset. Houses and flats earn hourly income that depends on the object type, rarity and upgrade level. Tax and upkeep take a share of it.",
+            "task": "Open the Market section and switch to the real estate tab."
+          },
+          {
+            "title": "Step 2. Read the object properties",
+            "text": "The object card shows price, hourly income, tax, upkeep, rarity, room count and basement capacity. The basement matters beyond income — mining farms cannot be placed without it.",
+            "task": "Open a house card and find its hourly income, tax and basement capacity."
+          },
+          {
+            "title": "Step 3. Compare and buy",
+            "text": "Payback is the price divided by net hourly profit. Expensive objects give more absolute income but take longer to pay back. The purchase price is charged from your main account.",
+            "task": "Buy a property (the cheapest one is fine for practice)."
+          },
+          {
+            "title": "Step 4. Find the asset in your portfolio",
+            "text": "A bought object appears under My Property, showing condition, accrued income and the buttons to upgrade, sell, hand to a company and rent out.",
+            "task": "Open My Property and find the object you bought."
+          },
+          {
+            "title": "Step 5. Collect accrued income",
+            "text": "Income accrues and can be collected per object with Collect, or for every object at once with Collect all profit. The accrued amount is shown on each card.",
+            "task": "Open My Property and check how much income has accrued."
+          },
+          {
+            "title": "Step 6. Upgrade the object",
+            "text": "Upgrades raise hourly income but cost money. The upgrade window shows the chosen levels, their total cost and the estimated payback.",
+            "task": "Open the upgrade window and review the cost and payback (buying is optional)."
+          },
+          {
+            "title": "Step 7. Rent the object out",
+            "text": "Rent is hands-off income: a tenant appears randomly within 1–48 hours and the money arrives when the term ends. The rental rate depends on the object price.",
+            "task": "Open the rent window and check the hourly rate and term options."
+          },
+          {
+            "title": "Step 8. Selling and handing to a company",
+            "text": "An object can be sold (part of the value is returned) or handed to your company so the income goes to the company budget. The handover is irreversible, so double-check the recipient.",
+            "task": "Open the object actions menu and review Sell and Give to company."
+          }
+        ]
+      },
+      "banking": {
+        "name": "Banking & finance",
+        "desc": "Step-by-step guide: transfers, loans, deposits and P2P lending.",
+        "steps": [
+          {
+            "title": "Step 1. What the bank offers",
+            "text": "The bank brings every money operation together: transfers to players, bank loans, deposits, P2P loans between players, auctions of seized property and donations.",
+            "task": "Open the Bank section and review the available blocks."
+          },
+          {
+            "title": "Step 2. Balance and transaction history",
+            "text": "The bank tab shows your main account, balance and transaction history. Every deal in the game goes through accounts, so history is the reliable way to see where money went.",
+            "task": "Open the transaction history and find at least one of your recent operations."
+          },
+          {
+            "title": "Step 3. Transfer to a player",
+            "text": "A transfer is sent by nickname or recipient card number and can include a comment. You cannot transfer money to yourself. Every transfer is recorded in history.",
+            "task": "Open the transfer window and fill in recipient and amount (sending is optional)."
+          },
+          {
+            "title": "Step 4. Bank loan",
+            "text": "Your loan limit depends on your net worth and the rate comes from the economy config. Debt is repaid in parts or early; an unpaid debt counts as a liability.",
+            "task": "Open the Loan block and check your limit and rate."
+          },
+          {
+            "title": "Step 5. Deposit",
+            "text": "A deposit is money held in an account that earns interest. Interest is paid from the state account, so a deposit is risk-free income with lower returns.",
+            "task": "Open the Deposit block and check the current rate."
+          },
+          {
+            "title": "Step 6. P2P loan between players",
+            "text": "P2P means loans between players: one lends money for interest, another borrows it. Terms run from 7 to 21 days and the daily rate is set by the offer author. Only accept offers you can actually repay.",
+            "task": "Open the P2P offers list and review rates and terms."
+          },
+          {
+            "title": "Step 7. Utility account",
+            "text": "The Electricity account pays for your mining farms. If it runs short, farms shut down and accumulate debt. The account is topped up from your main balance.",
+            "task": "Open the utility account block and check your balance and debt."
+          }
+        ]
+      },
+      "inventory": {
+        "name": "Inventory & property",
+        "desc": "Step-by-step guide: tracking and selling what you own.",
+        "steps": [
+          {
+            "title": "Step 1. What the inventory is",
+            "text": "The inventory is everything you own: property (houses, businesses, cars) and hardware (farm components). It is the single place to track your assets.",
+            "task": "Open the Inventory section."
+          },
+          {
+            "title": "Step 2. The Overview page",
+            "text": "Overview summarises property and hardware value, hourly income and the amount you can collect right now. It is the fastest screen for sizing up your capital.",
+            "task": "Review the Overview page: value, hourly income and the collectable amount."
+          },
+          {
+            "title": "Step 3. The Property page",
+            "text": "This is the full asset list: rent out, upgrade, configure, sell or hand to a company. Hourly income and accruals are shown on every card.",
+            "task": "Open the Property page and compare hourly income of two of your assets."
+          },
+          {
+            "title": "Step 4. The Hardware page",
+            "text": "Shows free components and the ones installed in farms (with the farm name). Category filters, search and sorting help you find the right unit among thousands.",
+            "task": "Open the Hardware page and filter by any category."
+          },
+          {
+            "title": "Step 5. Installing hardware into a farm",
+            "text": "Free hardware can be installed into a farm straight from the inventory. Installed hardware cannot be sold — uninstall it back to the inventory first.",
+            "task": "Find a free component and check where farm installation is available."
+          },
+          {
+            "title": "Step 6. Selling what you do not need",
+            "text": "Free hardware can be sold to the state for 65% of the purchase price or listed on the Central Market at your own price. Selling to the state is instant, the Central Market pays more but needs a buyer.",
+            "task": "Open the sell window for free hardware and compare the sum with the purchase price."
+          }
+        ]
+      }
+    },
+    "optional": {
+      "title": "Optional tutorial",
+      "desc": "Unlocked after the base course. Complete the topics in any order — each is just as detailed and step by step.",
+      "locked": "Finish the base course first"
+    }
+  },
+  "tour": {
+    "ariaLabel": "Guided tour",
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish",
+    "check": "Check",
+    "checking": "Checking…",
+    "stepNotDone": "This step is not done yet",
+    "progress": "{{current}} / {{total}}",
+    "choices": {
+      "mining": "Mining",
+      "stocks": "Stocks",
+      "crypto": "Crypto",
+      "realestate": "Real estate",
+      "business": "Business"
+    },
+    "main": {
+      "welcome": {
+        "title": "Welcome to TradeVerse",
+        "text": "Let us take a short tour of the sections. Everything around is dimmed, only the current section is highlighted."
+      },
+      "account": {
+        "title": "Account",
+        "text": "Your balance and key figures live here. All money in the game flows through the account."
+      },
+      "bank": {
+        "title": "Bank",
+        "text": "Banking operations: transfers, deposits, loans and donations to the state bank."
+      },
+      "stocks": {
+        "title": "Stocks",
+        "text": "Buying and selling shares. Prices change over time, so watch the chart before you trade."
+      },
+      "crypto": {
+        "title": "Crypto",
+        "text": "Trading cryptocurrencies. Every trade grants experience (XP) and advances your level."
+      },
+      "realestate": {
+        "title": "Real estate and market",
+        "text": "Buying and selling properties. The number of properties you can hold grows with your level."
+      },
+      "mining": {
+        "title": "Mining",
+        "text": "A farm that generates coins. You can start it and tune it."
+      },
+      "mycompany": {
+        "title": "My company",
+        "text": "The business you own: budget, assets and income."
+      },
+      "openBusiness": {
+        "title": "How to open a business",
+        "text": "A business is created on the My company tab. Pick a type, pay the starting cost and add assets. You can publish a GPU factory store for other players with the publish button on the factory page."
+      },
+      "achievements": {
+        "title": "Achievements",
+        "text": "Rewards for actions: trades, turnover, level and capital. The list can be filtered by status and rarity."
+      },
+      "choice": {
+        "title": "Main tour complete",
+        "text": "Choose the industry you want to explore further. The tour will walk you through its sections."
+      }
+    },
+    "stocksTour": {
+      "market": {
+        "title": "Stock market",
+        "text": "Shares are traded here. The price changes over time, so check the chart before buying."
+      },
+      "fee": {
+        "title": "Buying and fees",
+        "text": "Enter the quantity and confirm the purchase. A fee is charged on every trade, so factor it into your calculations."
+      },
+      "portfolio": {
+        "title": "Portfolio",
+        "text": "Your balance and asset value are shown on the Account tab. Selling shares returns money to your main account."
+      }
+    },
+    "crypto": {
+      "tab": {
+        "title": "Cryptocurrency",
+        "text": "Crypto trading happens on the Crypto tab. Prices here are more volatile than stocks."
+      },
+      "xp": {
+        "title": "Trades and experience",
+        "text": "Every crypto trade grants XP and counts toward crypto achievements."
+      },
+      "achievements": {
+        "title": "Crypto achievements",
+        "text": "The number of trades and crypto turnover unlock separate achievements. You can see them on the Achievements tab."
+      }
+    },
+    "realestateTour": {
+      "market": {
+        "title": "Real estate market",
+        "text": "Properties are bought on the Real estate tab. Choose by price, rarity and yield."
+      },
+      "myhomes": {
+        "title": "My properties",
+        "text": "Purchased properties appear on the My properties tab. You can also put them up for rent there."
+      },
+      "limit": {
+        "title": "Property limit",
+        "text": "The number of properties is capped by level: a base limit plus one property per level. Level up to expand your portfolio."
+      }
+    },
+    "businessTour": {
+      "company": {
+        "title": "Company",
+        "text": "A company has a budget and assets. All of its figures count toward your capital."
+      },
+      "budget": {
+        "title": "Budget and income",
+        "text": "Revenue and asset income go into the company budget. The budget counts toward the owner's capital."
+      },
+      "players": {
+        "title": "Player businesses",
+        "text": "A showcase of other players' stores. Purchases happen on the Player businesses tab."
+      }
+    },
+    "miningTour": {
+      "s1": {
+        "title": "Step 1. Why you need a basement",
+        "text": "A farm can only be built in a house basement. First let us buy a house that has a basement."
+      },
+      "s2": {
+        "title": "Step 2. The Real estate tab",
+        "text": "Open the real estate market: houses and apartments are sold here."
+      },
+      "s3": {
+        "title": "Step 3. Finding a basement",
+        "text": "The property card has a Basement row. Look for houses where the value is above 0: it equals the number of farm slots."
+      },
+      "s4": {
+        "title": "Step 4. Choosing a house",
+        "text": "Inexpensive houses with a basement are fine to start, for example Studio (2 slots) or a Two-room apartment (3 slots)."
+      },
+      "s5": {
+        "title": "Step 5. The house card",
+        "text": "Open the card: check the price, income per hour, tax and the number of basement slots."
+      },
+      "s6": {
+        "title": "Step 6. Balance",
+        "text": "Make sure your account has enough money for the purchase. The balance is visible in the header and on the Account tab."
+      },
+      "s7": {
+        "title": "Step 7. The buy button",
+        "text": "Press Buy on the card of the chosen house. The step completes automatically when the confirmation window opens."
+      },
+      "s8": {
+        "title": "Step 8. Confirmation",
+        "text": "Confirm the purchase in the confirmation window. The step completes automatically once the money is charged."
+      },
+      "s9": {
+        "title": "Step 9. Verifying the purchase",
+        "text": "Let us check that the house with a basement appeared in your portfolio."
+      },
+      "s10": {
+        "title": "Step 10. My properties",
+        "text": "The purchased house appears on the My properties tab."
+      },
+      "s11": {
+        "title": "Step 11. Basement slots",
+        "text": "The number of slots on the house card equals the number of farms you can place in it."
+      },
+      "s12": {
+        "title": "Step 12. The Mining upgrade (optional)",
+        "text": "The Mining button on the house card is a one-time purchase that brings passive income from the basement. The price depends on the number of slots."
+      },
+      "s13": {
+        "title": "Step 13. The Mining tab",
+        "text": "Open the Mining tab in the side menu."
+      },
+      "s14": {
+        "title": "Step 14. Choosing a house",
+        "text": "Pick the house with a basement that will host the farm."
+      },
+      "s15": {
+        "title": "Step 15. A free slot",
+        "text": "Slots are shown according to the number of places in the basement. An empty slot can be filled with a new farm."
+      },
+      "s16": {
+        "title": "Step 16. Creating a farm",
+        "text": "Click an empty slot, enter a name and create the farm. Press Check afterwards."
+      },
+      "s17": {
+        "title": "Step 17. The parts store",
+        "text": "All farm hardware is bought in NEXUS. On top are category filters, search and price sorting, below are the product cards."
+      },
+      "s18": {
+        "title": "Step 18. Reading a product card",
+        "text": "A card has four elements: an icon with the category, the model name, a specs row (H/s and watts for GPUs, cores for CPUs, slots for motherboards and cases, capacity for RAM and SSDs, wattage for PSUs) and the price in dollars. The Buy button is disabled if your balance is too low."
+      },
+      "s191": {
+        "title": "Step 19.1. The main ordering rule",
+        "text": "The motherboard determines how many GPUs fit into a farm, while the case or rack determines how many places there are in total. So buy the case/rack and motherboard first: the other parts are chosen to fit them, not the other way round."
+      },
+      "s192": {
+        "title": "Step 19.2. Case or rack",
+        "text": "A case is a compact option for up to 5 GPUs, a rack is a large pool of slots for several farms. One basement slot holds one of the two: case and rack are mutually exclusive."
+      },
+      "s193": {
+        "title": "Step 19.3. Motherboard",
+        "text": "The board's slot count shows the maximum number of GPUs in a farm: a 2-slot board will not take 4 GPUs. The board must fit into the chosen case or rack."
+      },
+      "s194": {
+        "title": "Step 19.4. CPU, RAM and SSD",
+        "text": "One of each per farm. CPU cores feed the GPUs, RAM must hold the DAG file of the chosen coin, and the SSD stores the node and cache. Too little memory or space lowers mining efficiency."
+      },
+      "s195": {
+        "title": "Step 19.5. Power supply",
+        "text": "The total PSU wattage must cover the farm's consumption including overclocking, otherwise the farm simply will not start. A case fits up to two PSUs, so two weaker units can replace one powerful one."
+      },
+      "s196": {
+        "title": "Step 19.6. Cooling and GPUs",
+        "text": "Cooling lowers temperature and wear: a cheap cooling system quickly eats your profit in repairs. GPUs are the main source of hashrate and go in last, once the board slots and case places are known."
+      },
+      "s197": {
+        "title": "Step 19.7. Consumables: coolant",
+        "text": "The filters include a Consumables category. The Coolant item is poured into a running farm with the Refill button: one canister lowers the temperature by 25% for 12 hours and slows wear. A farm holds up to 4 canisters. Buy them in advance, as a farm without a reserve wears out faster."
+      },
+      "s198": {
+        "title": "Step 19.8. The cheapest item",
+        "text": "The buy button of the cheapest item in the current selection is highlighted. If money is tight, start with it or filter a single category and sort by price ascending."
+      },
+      "s199": {
+        "title": "Step 19.9. Checking the purchase",
+        "text": "All required categories are needed: motherboard, CPU, PSU, RAM, SSD, cooling, network card and at least one GPU. Case/rack and fans are optional, but the case determines the number of places. Press Check once the parts are in your inventory."
+      },
+      "s20": {
+        "title": "Step 20. Installing into the farm",
+        "text": "Open the farm, find the Farm assembly block and press + Add part in each category. Start with case/rack, then motherboard, then CPU, RAM, SSD, cooling, PSU and GPUs."
+      },
+      "s21": {
+        "title": "Step 21. Checking the assembly",
+        "text": "Once everything required is installed, the Farm is not assembled yet banner disappears and the figures appear: hashrate, power draw, temperature, income and cost per hour. Press Check."
+      },
+      "s22": {
+        "title": "Step 22. Coin and profit",
+        "text": "Pick a coin in the Select coin list, guided by the AI recommends hint. Compare Income/h against Electricity/h: net profit must be positive, otherwise the farm runs at a loss."
+      },
+      "s23": {
+        "title": "Step 23. Starting",
+        "text": "Press ▶ Start mining. The status switches to Mining in progress and income starts accruing in ticks, even while you are offline. Electricity is charged from the Electricity account in the Bank: make sure it does not run dry. Press Check."
       }
     }
   }

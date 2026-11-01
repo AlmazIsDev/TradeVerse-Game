@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LifeBuoy, Plus, X } from 'lucide-react'
 import { createSupportTicket, fetchMySupportTickets } from '../services/api'
@@ -26,26 +26,33 @@ const EMPTY_FORM = {
   suggestion: '',
 }
 
+const EMPTY_VALUE = '—'
+
 // Текст обращения, который показывается в карточке (2–3 строки через CSS-обрезку).
+// Любое отсутствующее поле подменяется прочерком: сервер может вернуть тип, о
+// котором фронтенд ещё не знает, и пустая карточка выглядит как баг вёрстки.
 function ticketPreview(ticket) {
-  if (ticket.type === 'loss') return `${ticket.lost_item} — ${ticket.method}`
-  if (ticket.type === 'suggestion') return ticket.suggestion
-  return ticket.description
+  if (ticket.type === 'loss') {
+    return [ticket.lost_item, ticket.method].filter(Boolean).join(' — ') || EMPTY_VALUE
+  }
+  if (ticket.type === 'suggestion') return ticket.suggestion || EMPTY_VALUE
+  return ticket.description || EMPTY_VALUE
 }
 
 // Полные поля обращения для модального окна просмотра.
 function ticketFields(ticket, t) {
+  const value = (v) => (v == null || v === '' ? EMPTY_VALUE : v)
   if (ticket.type === 'loss') {
     return [
-      { label: t('support.lostItem', 'Что потерялось'), value: ticket.lost_item },
-      { label: t('support.method', 'Каким способом'), value: ticket.method },
-      { label: t('support.approxTime', 'Примерное время'), value: ticket.time },
+      { label: t('support.lostItem', 'Что потерялось'), value: value(ticket.lost_item) },
+      { label: t('support.method', 'Каким способом'), value: value(ticket.method) },
+      { label: t('support.approxTime', 'Примерное время'), value: value(ticket.time) },
     ]
   }
   if (ticket.type === 'suggestion') {
-    return [{ label: t('support.suggestion', 'Предложение'), value: ticket.suggestion }]
+    return [{ label: t('support.suggestion', 'Предложение'), value: value(ticket.suggestion) }]
   }
-  return [{ label: t('support.bugDescription', 'Описание бага'), value: ticket.description }]
+  return [{ label: t('support.bugDescription', 'Описание бага'), value: value(ticket.description) }]
 }
 
 function isFormValid(form) {
@@ -70,12 +77,15 @@ function buildPayload(form) {
 }
 
 function SupportPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [tickets, setTickets] = useState([])
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [selected, setSelected] = useState(null)
+  // Ref, а не state: второй submit в том же тике (двойной Enter) читает ещё
+  // не обновлённое значение and успевает создать дубликат обращения.
+  const submitLock = useRef(false)
 
   useEffect(() => {
     fetchMySupportTickets().then(setTickets).catch(err => toast(err.message, 'error'))
@@ -90,7 +100,8 @@ function SupportPage() {
 
   const submitTicket = async (e) => {
     e.preventDefault()
-    if (!isFormValid(form) || submitting) return
+    if (!isFormValid(form) || submitLock.current) return
+    submitLock.current = true
     setSubmitting(true)
     try {
       const ticket = await createSupportTicket(buildPayload(form))
@@ -99,12 +110,22 @@ function SupportPage() {
     } catch (err) {
       toast(err.message, 'error')
     } finally {
+      submitLock.current = false
       setSubmitting(false)
     }
   }
 
-  const typeLabel = (type) => (TYPES[type] ? t(TYPES[type].key, TYPES[type].label) : undefined)
+  // Неизвестный тип приходит, если бэкенд добавил категорию раньше фронтенда:
+  // показываем сырой идентификатор, а не пустой заголовок карточки.
+  const typeLabel = (type) => (TYPES[type] ? t(TYPES[type].key, TYPES[type].label) : type)
   const statusLabel = (status) => (STATUS_LABELS[status] ? t(STATUS_LABELS[status].key, STATUS_LABELS[status].label) : status)
+
+  // Дата — по активной локали интерфейса, а не жёстко по ru-RU.
+  const locale = i18n?.language || 'ru'
+  const formatDate = (iso) => {
+    const d = new Date(iso)
+    return Number.isNaN(d.getTime()) ? EMPTY_VALUE : d.toLocaleString(locale)
+  }
 
   return (
     <div className="support-page">
@@ -210,7 +231,7 @@ function SupportPage() {
             </div>
             <div className="support-card-top">
               <span className="support-status">{statusLabel(selected.status)}</span>
-              <span className="support-date">{new Date(selected.created_at).toLocaleString('ru-RU')}</span>
+              <span className="support-date">{formatDate(selected.created_at)}</span>
             </div>
             {ticketFields(selected, t).map(field => (
               <div className="support-field" key={field.label}>

@@ -14,6 +14,7 @@ import {
 import TxFilters, { TX_FIELDS } from './TxFilters'
 import SupportTicketsAdmin from './SupportTicketsAdmin'
 import PromoCodesTab from './PromoCodesTab'
+import CityRoofAdmin from './CityRoofAdmin'
 import { formatCompact } from './TransactionsPanel'
 import { useApiOnMount } from '../hooks/useApi'
 import EconomyAdmin from './EconomyAdmin'
@@ -23,6 +24,7 @@ import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight, Ticket,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
   Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, LogIn, Gavel, Megaphone, LifeBuoy,
+  Building2,
 } from 'lucide-react'
 import Tooltip from './Tooltip'
 import PriceEditorTab from './PriceEditorTab'
@@ -1054,6 +1056,7 @@ function AdminPanel({ user, onClose }) {
     { id: 'broadcast', perm: 'broadcast', label: t('admin.broadcast.title'), icon: Megaphone },
     { id: 'economy', perm: 'economy_view', label: t('econ.tab'), icon: Activity },
     { id: 'promos', perm: 'promo_codes', label: t('admin.promos.title', 'Промокоды'), icon: Ticket },
+    { id: 'cityroof', perm: 'users_view', label: t('admin.cityroof.title'), icon: Building2 },
     { id: 'config', perm: 'config', label: t('admin.config'), icon: Settings },
     { id: 'database', perm: 'database', label: t('admin.database.title'), icon: Database },
     { id: 'perms', perm: 'admin_perms', label: t('adminPerms.title'), icon: ShieldAlert },
@@ -1966,6 +1969,10 @@ function AdminPanel({ user, onClose }) {
 
         {!loading && activeSection === 'promos' && (
           <PromoCodesTab />
+        )}
+
+        {!loading && activeSection === 'cityroof' && (
+          <CityRoofAdmin />
         )}
 
         {!loading && activeSection === 'broadcast' && (

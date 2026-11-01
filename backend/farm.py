@@ -29,8 +29,8 @@ router = APIRouter(prefix="/api/farm", tags=["farm"])
 
 
 def _cfg():
-    from game_config import FARM_CONFIG
-    return FARM_CONFIG
+    from game_balance import current
+    return current("farm")
 
 
 def _now() -> datetime:

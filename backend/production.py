@@ -25,8 +25,8 @@ router = APIRouter(prefix="/api/production", tags=["production"])
 
 
 def _cfg() -> dict:
-    from game_config import PRODUCTION_CONFIG
-    return PRODUCTION_CONFIG
+    from game_balance import current
+    return current("production")
 
 
 def _now() -> datetime:
@@ -43,8 +43,8 @@ def _aware(dt) -> Optional[datetime]:
 
 
 def _recipes() -> dict:
-    from game_config import RECIPES
-    return RECIPES
+    from game_balance import current
+    return current("recipes")
 
 
 def _recipe_for(asset: dict) -> Optional[dict]:
@@ -62,8 +62,8 @@ def _is_recipe_output_factory(asset: dict, produces: str) -> bool:
 
 
 def _component_unit_price(pct: float, econ: dict) -> float:
-    from game_config import COMPONENT_BASE_PRICE
-    return round(float(COMPONENT_BASE_PRICE) * float(econ.get("economy_mult", 1.0)) * float(pct) / 100.0, 2)
+    from game_balance import current
+    return round(float(current("component_base_price")) * float(econ.get("economy_mult", 1.0)) * float(pct) / 100.0, 2)
 
 
 def _is_bakery(asset: dict) -> bool:
@@ -659,8 +659,8 @@ async def overview(
     async for a in db.user_assets.find({"userId": user_id, "type": "source", "category": "field"}):
         fdoc = await db.user_fields.find_one({"assetId": str(a["_id"])})
         level = max(1, int((a.get("prod") or {}).get("storageLevel", 1)))
-        from game_config import FARM_CONFIG
-        cap = float(FARM_CONFIG["storage_slots_per_resource"]) * level
+        from game_balance import current
+        cap = float(current("farm")["storage_slots_per_resource"]) * level
         fields.append({
             "id": str(a["_id"]), "name": a.get("name"),
             "storage": {k: round(float(v), 2) for k, v in ((fdoc or {}).get("storage") or {}).items()},
@@ -981,8 +981,8 @@ class ComponentShopBuyBody(BaseModel):
     @field_validator("item")
     @classmethod
     def item_ok(cls, v):
-        from game_config import COMPONENT_COST
-        if v not in COMPONENT_COST:
+        from game_balance import live
+        if v not in live("component_cost"):
             raise ValueError("Неизвестный товар магазина")
         return v
 
@@ -999,8 +999,8 @@ async def gpu_shop_catalog(
     current_user: dict = Depends(get_current_user),
 ):
     """Товары магазина «Квантум GPU» и цена каждого в компонентах."""
-    from game_config import COMPONENT_COST
-    return {"items": [{"id": k, "components": v} for k, v in COMPONENT_COST.items()]}
+    from game_balance import live
+    return {"items": [{"id": k, "components": v} for k, v in live("component_cost").items()]}
 
 
 @router.post("/{unit_id}/shop-buy")
@@ -1011,7 +1011,8 @@ async def shop_buy_with_components(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Товар магазина «Квантум GPU» за компоненты: компоненты списываются со склада завода."""
-    from game_config import COMPONENT_COST
+    from game_balance import live
+    COMPONENT_COST = live("component_cost")
     user_id = str(current_user["_id"])
     unit = await _load_unit(db, user_id, unit_id)
     if not _is_recipe_output_factory(unit, "gpu"):
@@ -1081,8 +1082,8 @@ class WarehouseShopBody(BaseModel):
     @field_validator("item")
     @classmethod
     def item_ok(cls, v):
-        from game_config import COMPONENT_COST
-        if v not in COMPONENT_COST:
+        from game_balance import live
+        if v not in live("component_cost"):
             raise ValueError("Неизвестный товар магазина")
         return v
 
@@ -1103,7 +1104,8 @@ async def warehouse_shop_buy(
 ):
     """Со склада списываются компоненты, магазин (GPU Market / CoreTech / Неон-Хард)
     оформляет товар «Квантум GPU»."""
-    from game_config import COMPONENT_COST
+    from game_balance import live
+    COMPONENT_COST = live("component_cost")
     user_id = str(current_user["_id"])
     unit = await _load_unit(db, user_id, unit_id)
     if not _is_warehouse(unit):
@@ -1146,14 +1148,16 @@ def _gpu_shop_raw(unit: dict) -> dict:
 
 
 async def _gpu_item_cost(db: AsyncIOMotorDatabase, unit: dict, item: str) -> float:
-    from game_config import COMPONENT_COST
+    from game_balance import live
+    COMPONENT_COST = live("component_cost")
     pct = float((unit.get("prod") or {}).get("componentPricePct", 100.0))
     unit_price = _component_unit_price(pct, await get_econ(db))
     return round(COMPONENT_COST[item] * unit_price, 2)
 
 
 async def _gpu_shop_view(db: AsyncIOMotorDatabase, unit: dict) -> dict:
-    from game_config import COMPONENT_COST
+    from game_balance import live
+    COMPONENT_COST = live("component_cost")
     raw = _gpu_shop_raw(unit)
     pct = float((unit.get("prod") or {}).get("componentPricePct", 100.0))
     comp_price = _component_unit_price(pct, await get_econ(db))
@@ -1184,8 +1188,8 @@ class GpuShopPriceBody(BaseModel):
     @field_validator("item")
     @classmethod
     def item_ok(cls, v):
-        from game_config import COMPONENT_COST
-        if v not in COMPONENT_COST:
+        from game_balance import live
+        if v not in live("component_cost"):
             raise ValueError("Неизвестный товар магазина")
         return v
 
@@ -1294,7 +1298,8 @@ async def _gpu_unit_any_owner(db: AsyncIOMotorDatabase, unit_id: str) -> dict:
 
 def _gpu_cost_with(unit: dict, item: str, econ: dict) -> float:
     """Себестоимость товара по текущей componentPricePct юнита и экономике."""
-    from game_config import COMPONENT_COST
+    from game_balance import live
+    COMPONENT_COST = live("component_cost")
     pct = float((unit.get("prod") or {}).get("componentPricePct", 100.0))
     return round(COMPONENT_COST[item] * _component_unit_price(pct, econ), 2)
 
@@ -1307,7 +1312,8 @@ async def list_published_gpu_shops(
     """Опубликованные магазины «Квантум GPU» игроков. Товар с price <= себестоимости
     или без компонентов на складе помечен available=false. Остаток — число возможных
     покупок (availableQty), сырой склад владельца не отдаётся."""
-    from game_config import COMPONENT_COST
+    from game_balance import live
+    COMPONENT_COST = live("component_cost")
     me = str(current_user["_id"])
     econ = await get_econ(db)
     shops = []
@@ -1361,7 +1367,8 @@ async def buy_gpu_shop_item(
     (adjust_balance отказывает при нехватке средств; склад откатывается) → зачисление
     владельцу. Обе стороны пишутся в ledger через record_transaction.
     Ошибки: 400 (правила/средства), 404 (нет магазина), 409 (остаток/цена изменились)."""
-    from game_config import COMPONENT_COST
+    from game_balance import live
+    COMPONENT_COST = live("component_cost")
     buyer_id = str(current_user["_id"])
     unit = await _gpu_unit_any_owner(db, unit_id)
     owner_id = str(unit.get("userId") or "")

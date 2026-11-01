@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchEconomyAnalytics, fetchEconomyConfig, updateEconomyConfig,
+  fetchEconomyAnalytics, fetchEconomyConfig, updateEconomyConfig, fetchGameBalance, updateGameBalance,
 } from '../services/api'
 import { formatCompact } from './TransactionsPanel'
 import { toast } from './Toast'
@@ -35,18 +35,22 @@ function EconomyAdmin({ canEditConfig = true }) {
   const { t } = useTranslation()
   const [analytics, setAnalytics] = useState(null)
   const [config, setConfig] = useState(null)
+  const [balanceText, setBalanceText] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingBalance, setSavingBalance] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [a, c] = await Promise.all([
+      const [a, c, b] = await Promise.all([
         fetchEconomyAnalytics(),
         canEditConfig ? fetchEconomyConfig() : Promise.resolve(null),
+        canEditConfig ? fetchGameBalance() : Promise.resolve(null),
       ])
       setAnalytics(a)
       setConfig(c)
+      if (b) setBalanceText(JSON.stringify(b, null, 2))
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -78,6 +82,26 @@ function EconomyAdmin({ canEditConfig = true }) {
     window.addEventListener('tv:realtime', onRealtime)
     return () => window.removeEventListener('tv:realtime', onRealtime)
   }, [])
+
+  const saveBalance = async () => {
+    let patch
+    try {
+      patch = JSON.parse(balanceText)
+    } catch {
+      toast('Некорректный JSON баланса', 'error')
+      return
+    }
+    setSavingBalance(true)
+    try {
+      const updated = await updateGameBalance(patch)
+      setBalanceText(JSON.stringify(updated, null, 2))
+      toast(t('econ.saved'))
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setSavingBalance(false)
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -150,6 +174,18 @@ function EconomyAdmin({ canEditConfig = true }) {
       </div>
           <button className="admin-btn admin-btn-primary" onClick={save} disabled={saving}>
             <Save size={15} /> {saving ? t('bank.processing') : t('econ.save')}
+          </button>
+
+          <h3 className="econ-title"><Save size={16} /> Игровой баланс и каталоги</h3>
+          <textarea
+            className="admin-input econ-balance-json"
+            rows={24}
+            spellCheck={false}
+            value={balanceText}
+            onChange={e => setBalanceText(e.target.value)}
+          />
+          <button className="admin-btn admin-btn-primary" onClick={saveBalance} disabled={savingBalance}>
+            <Save size={15} /> {savingBalance ? t('bank.processing') : t('econ.save')}
           </button>
         </>
       )}

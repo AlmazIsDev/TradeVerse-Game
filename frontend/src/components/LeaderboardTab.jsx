@@ -6,7 +6,7 @@ import PlayerProfileModal from './PlayerProfileModal'
 import { flagUrl } from '../utils/countries'
 import { Trophy, AlertTriangle, Crown, Medal, Building2 } from 'lucide-react'
 
-const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company']
+const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'donated']
 // Разбивка капитала под именем игрока — какие поля показывать чипами и какой
 // sort их подсвечивает (чтобы было очевидно, что делает каждый фильтр).
 const BREAKDOWN = [
@@ -15,6 +15,7 @@ const BREAKDOWN = [
   { key: 'crypto', sort: 'crypto' },
   { key: 'assets', sort: 'assets' },
   { key: 'company', sort: 'company' },
+  { key: 'donated', sort: 'donated' },
 ]
 
 function RankBadge({ rank }) {

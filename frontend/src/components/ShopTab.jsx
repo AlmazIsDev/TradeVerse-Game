@@ -132,6 +132,13 @@ async function loadShopItems(category) {
     return [...r].sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price)
   }, [items, search, sortOrder])
 
+  // id самого дешёвого товара в текущем списке — для подсветки шага обучения.
+  const cheapestId = useMemo(() => {
+    let best = null
+    for (const i of view) if (best == null || i.price < best.price) best = i
+    return best ? best.id : null
+  }, [view])
+
   return (
     <div className="shop-tab">
       <div className="leaderboard-title-row">
@@ -181,6 +188,8 @@ async function loadShopItems(category) {
             const color = item.color || CAT_COLOR[item.category] || '#0071e3'
             const CatIcon = (CATEGORIES.find(c => c.id === item.category) || {}).icon || Cpu
             const affordable = balance >= item.price
+            // Обучение (шаг «самое дешёвое»): подсвечиваем кнопку самого дешёвого товара.
+            const isCheapest = cheapestId != null && item.id === cheapestId
             return (
               <div key={item.id} className="gpu-card gpu-card-compact" style={{ borderColor: `${color}55` }}>
                 <div className="gpu-card-head">
@@ -195,6 +204,7 @@ async function loadShopItems(category) {
                   <div className="gpu-card-price"><DollarSign size={12} style={{ color }} /> ${formatMoney(item.price)}</div>
                 </div>
                 <button
+                  data-tour={isCheapest ? 'tour-cheapest' : undefined}
                   className="gpu-card-buy"
                   style={{ background: affordable ? color : undefined }}
                   disabled={!affordable}

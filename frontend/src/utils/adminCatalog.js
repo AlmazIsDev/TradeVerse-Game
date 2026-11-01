@@ -378,10 +378,19 @@ export const ADMIN_SOURCES_CATALOG = [
     },
     employees: 10,
     price: 4800000,
-  },
-]
+   },
+ ]
 
-// ── BUSINESS: бизнесы из админ-справочника (PriceEditorTab) ───────────────────
+ // Временно запрещённые к покупке активы (Поле, Шахта, Лесопилка, Завод видеокарт, Пекарня).
+ export const TEMP_DISABLED_SLUGS = new Set([
+   "admin-src-mine-1",   // Шахта
+   "admin-src-field-1",  // Поле
+   "admin-src-sawmill-1",// Лесопилка
+   "admin-fac-gpu-1",    // Завод видеокарт
+   "admin-fac-bakery-1", // Пекарня
+ ]);
+
+ // ── BUSINESS: бизнесы из админ-справочника (PriceEditorTab) ───────────────────
 // 12 моделей, сгруппированы по category (retail/tech/service/office).
 // Эти позиции тоже витрина: покупка/продажа отключены до того, как бэкенд будет
 // дописан. Базовые цены — оценка по category; админ может их переопределить.

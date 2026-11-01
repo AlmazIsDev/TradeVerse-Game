@@ -1820,11 +1820,16 @@ async def tick_all(db: AsyncIOMotorDatabase):
 
     # запускаем, как только она собрана, прибыльна И у игрока есть кэш на тик
     # расходов. Проверка баланса обязательна: выручка идёт в монеты, а
+    # если на ферме есть долг по электричеству (electricity_owed > 0) — не
+    # перезапускаем: иначе ферма будет включаться на один тик, снова отключаться
+    # из-за долга и слать уведомление «Ферма перезапущена» каждый тик планировщика.
     async for farm in db.mining_farms.find({"status": "off", "manager.type": "ai"}):
         try:
             if _missing_required(farm):
                 continue
             if not (farm.get("manager") or {}).get("settings", {}).get("autoRestart", True):
+                continue
+            if round(farm.get("electricity_owed", 0.0), 2) > 0:
                 continue
             city = await _city_bonus(db, farm["userId"])
             stats = _compute(farm, market, ec, em, city)

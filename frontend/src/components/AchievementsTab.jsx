@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Award, Lock } from 'lucide-react'
 import { getUserAchievements } from '../services/api'
+
+const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic']
 
 function AchievementsTab() {
   const { t } = useTranslation()
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [rarityFilter, setRarityFilter] = useState('all')
 
   useEffect(() => {
     let cancelled = false
@@ -17,6 +21,16 @@ function AchievementsTab() {
   }, [])
 
   const unlockedCount = items ? items.filter((a) => a.unlocked).length : 0
+
+  const visibleItems = useMemo(() => {
+    if (!items) return []
+    return items.filter((a) => {
+      if (statusFilter === 'unlocked' && !a.unlocked) return false
+      if (statusFilter === 'locked' && a.unlocked) return false
+      if (rarityFilter !== 'all' && a.rarity !== rarityFilter) return false
+      return true
+    })
+  }, [items, statusFilter, rarityFilter])
 
   return (
     <div className="achievements-tab">
@@ -30,8 +44,30 @@ function AchievementsTab() {
       {items && (
         <>
           <p className="settings-hint">{t('achievements.received', 'Получено: {{unlocked}} из {{total}}', { unlocked: unlockedCount, total: items.length })}</p>
+          <div className="achievements-filters">
+            <label>
+              {t('achievements.filterStatus', 'Статус')}{' '}
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">{t('achievements.filterAll', 'Все')}</option>
+                <option value="unlocked">{t('achievements.filterUnlocked', 'Получено')}</option>
+                <option value="locked">{t('achievements.filterLocked', 'Не получено')}</option>
+              </select>
+            </label>{' '}
+            <label>
+              {t('achievements.filterRarity', 'Редкость')}{' '}
+              <select value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value)}>
+                <option value="all">{t('achievements.filterAll', 'Все')}</option>
+                {RARITY_ORDER.map((r) => (
+                  <option key={r} value={r}>{t(`achievementCatalog.rarity.${r}`, r)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {visibleItems.length === 0 && (
+            <p className="settings-hint">{t('achievements.noMatch', 'Нет достижений по выбранным фильтрам')}</p>
+          )}
           <div className="achievements-grid">
-            {items.map((a) => (
+            {visibleItems.map((a) => (
               <div
                 key={a.id}
                 className={`achievement-card rarity-${a.rarity} ${a.unlocked ? 'unlocked' : 'locked'}`}

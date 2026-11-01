@@ -5,14 +5,16 @@
 Уникальный индекс user_achievements (userId, achievementId) не даёт выдать дважды
 даже при параллельных сделках.
 
-Капитал (metric=capital) читается из users.networth_cache — поле должно
-обновляться планировщиком при пересчёте капитала (networth.py), иначе не откроется.
+Капитал и уровень вычисляются при каждой проверке из актуальных данных
+(compute_net_worth и XP), а не из кэшированных полей users.
 """
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 
 from timeutil import now_utc
+from levels import level_from_xp
+from networth import compute_net_worth
 
 # Награда за редкость по умолчанию: (деньги, XP). Явная награда в записи важнее.
 RARITY_REWARD = {
@@ -156,11 +158,6 @@ _RARITY_TOTAL = {}
 for _a_item in ACHIEVEMENTS:
     _RARITY_TOTAL[_a_item["rarity"]] = _RARITY_TOTAL.get(_a_item["rarity"], 0) + 1
 
-# Реальные метрики, которые читаются из users; остальные (realestate_owned, …) считаются из коллекций.
-_USER_FIELDS = {"trade_count", "trade_volume", "level", "networth_cache", "trade_max",
-                "small_trades", "crypto_trades", "crypto_volume", "login_streak", "referrals"}
-
-
 async def _count_owned(db: AsyncIOMotorDatabase, user_id: str, atype: str) -> int:
     return await db.user_assets.count_documents({"userId": user_id, "type": atype})
 
@@ -173,8 +170,8 @@ async def _metric_values(db: AsyncIOMotorDatabase, user_id: str, user: dict, own
     values = {
         "trades": int(user.get("trade_count", 0)),
         "volume": float(user.get("trade_volume", 0.0)),
-        "level": int(user.get("level", 1)),
-        "capital": float(user.get("networth_cache", 0.0)),
+        "level": level_from_xp(int(user.get("xp", 0))),
+        "capital": await compute_net_worth(db, user_id),
         "trade_max": float(user.get("trade_max", 0.0)),
         "small_trades": int(user.get("small_trades", 0)),
         "crypto_trades": int(user.get("crypto_trades", 0)),

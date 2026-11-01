@@ -23,7 +23,7 @@ from ledger import (
     record_transaction,
     weekly_analytics,
 )
-from utility_account import get_utility_balance, top_up as utility_top_up
+from utility_account import UTILITY_CATEGORIES, get_utility_balance, top_up as utility_top_up
 
 router = APIRouter(prefix="/api", tags=["economy"])
 logger = logging.getLogger("tradeverse.economy")
@@ -160,6 +160,14 @@ async def create_transfer(
 
 class UtilityTopUp(BaseModel):
     amount: float
+    category: str = "other"
+
+    @field_validator("category")
+    @classmethod
+    def category_known(cls, v):
+        if v not in UTILITY_CATEGORIES:
+            raise ValueError("Неизвестная категория пополнения")
+        return v
 
     @field_validator("amount")
     @classmethod
@@ -191,7 +199,7 @@ async def topup_utility_account(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Пополнение счёта «Электричество» переводом с основного счёта."""
-    result = await utility_top_up(db, str(current_user["_id"]), payload.amount)
+    result = await utility_top_up(db, str(current_user["_id"]), payload.amount, payload.category)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

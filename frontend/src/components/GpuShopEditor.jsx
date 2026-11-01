@@ -56,6 +56,9 @@ function GpuShopEditor({ unitId, onClose }) {
     try {
       await setGpuShopPrice(unitId, it.id, price)
       toast(price === null ? t('gpuShop.removed') : t('gpuShop.saved'), 'success')
+      // Список нарушений относился к прошлой неудачной публикации — после
+      // успешного сохранения цены он устарел и не должен висеть под таблицей.
+      setViolations([])
       await load()
     } catch (e) {
       toast(e?.message || t('gpuShop.error'), 'error')
@@ -126,7 +129,10 @@ function GpuShopEditor({ unitId, onClose }) {
                         value={drafts[it.id] ?? ''}
                         placeholder={t('gpuShop.notPriced')}
                         disabled={busyItem === it.id}
-                        onChange={e => setDrafts({ ...drafts, [it.id]: e.target.value })}
+                        onChange={e => {
+                          const next = e.target.value
+                          setDrafts(prev => ({ ...prev, [it.id]: next }))
+                        }}
                       />
                     </td>
                     <td className={it.priced && it.profit <= 0 ? 'gpu-shop-closed' : ''}>

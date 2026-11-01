@@ -103,6 +103,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  flex-wrap: wrap;
 }
 
 /* ── Eyebrow / section headers ───────────────────────────── */
@@ -388,5 +389,6 @@
   .lp-stats { grid-template-columns: repeat(2, 1fr); }
   .lp-features-grid { grid-template-columns: 1fr; }
   .lp-nav-actions .lp-btn-ghost { display: none; }
+  .lp-nav-actions .language-switcher { display: none; }
   .lp-footer-inner { flex-direction: column; gap: var(--spacing-lg); }
 }

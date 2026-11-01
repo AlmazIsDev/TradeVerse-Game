@@ -71,6 +71,7 @@ function Sidebar({ activeTab, onTabChange }) {
               return (
                 <button
                   key={item.id}
+                  data-tour={item.id}
                   className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
                   onClick={() => onTabChange(item.id)}
                 >
@@ -91,6 +92,7 @@ function Sidebar({ activeTab, onTabChange }) {
           <span className="sidebar-item-label">{t('tutorial.open')}</span>
         </button>
         <button
+          data-tour="achievements"
           className={`sidebar-item ${activeTab === 'achievements' ? 'active' : ''}`}
           onClick={() => onTabChange('achievements')}
         >

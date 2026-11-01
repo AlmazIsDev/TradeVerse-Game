@@ -338,6 +338,43 @@
 .tutorial-complete h4 { margin: 0; font-size: 15px; color: var(--color-text-primary); }
 .tutorial-complete p { margin: 2px 0 0; font-size: 13px; color: var(--color-text-secondary); }
 
+/* ---------- Выборочное обучение ---------- */
+
+.tutorial-optional-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-lg);
+  border-radius: var(--tut-radius);
+  border: 1px dashed var(--color-border-strong);
+  background: var(--tut-soft);
+}
+
+.tutorial-optional-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.tutorial-optional-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  background: var(--fill-soft);
+}
+
+.tutorial-topic--realestate { --tut-topic-color: #14b8a6; }
+.tutorial-topic--banking { --tut-topic-color: #6366f1; }
+.tutorial-topic--inventory { --tut-topic-color: #f43f5e; }
+
 /* ---------- Справочник ---------- */
 
 .tutorial-reference {

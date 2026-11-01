@@ -1,4 +1,5 @@
 """Крыша города: еженедельное PvP-событие за бизнесы на карте и WarCoin."""
+import math
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -13,7 +14,8 @@ from admin_perms import get_current_user, require_admin, require_allowed
 from database import get_db, find_config_by_key, upsert_config
 from ledger import INCOME, EXPENSE, CAT_CITYROOF, adjust_balance, record_transaction
 from notifications import push_notification
-from game_config import ITSTUDIO_CONFIG
+from game_balance import live
+ITSTUDIO_CONFIG = live("itstudio")
 from timeutil import now_utc, to_aware
 from networth import compute_net_worth
 
@@ -27,8 +29,20 @@ WINNER_REWARD_WC = 500
 # Фиксированная стоимость WarCoin: 1 WC = 50$ (настраивается админом).
 WARCOIN_PRICE_DEFAULT = 50.0
 
-# Стоимость уровней защиты (WC).
+# Стоимость уровней защиты (WC) — база лиги novice. Внутри лиги WarCoin стоят
+# одинаково для всех, но доллар-цена WC растёт с лигой, поэтому защиту
+# масштабируем вместе с ней (см. _protection_costs): иначе в алмазе полный щит
+# стоил бы ~500$ и не отбивал даже одну 5-минутку дохода.
 PROTECTION_COSTS = {1: 1000, 2: 3000, 3: 4000, 4: 6500, 5: 10000}
+
+# ── Двойной щит премиальной IT-студии ────────────────────────────────────────
+# Эксклюзив актива itstudio_premium (assets.py): владелец покупает щит у своей
+# студии за фиксированные доллары (не WC — это услуга студии, как её заказы
+# атаки/защиты). Пока щит активен, верная комбинация НЕ захватывает бизнес:
+# первое попадание лишь сбивает щит, и атакующему нужно отгадать новую
+# комбинацию заново — то есть защита требует двойного угадывания.
+DUAL_SHIELD_PRICE_USD = 5_000_000.0
+DUAL_SHIELD_HOURS = 24.0
 
 # ── IT-студия: атака/защита силами собственного актива-студии ────────────────
 # Игрок должен ВЛАДЕТЬ бизнесом «IT-студия» (assets.py, slug itstudio_*, 4
@@ -58,9 +72,13 @@ DAILY_TO_INTERVAL_DIVISOR = 288  # 24ч·60/5мин — делим дневну�
 # КД дохода — персональный у каждого бизнеса (last_collected на документе, а
 # не на пользователе): захват одного здания не блокирует доход с остальных, а
 # при смене владельца недособранный КД переходит по наследству.
-# Баланс: WarCoin стоит 50$/шт, защита топ-объекта — до 10 000 WC (500 000$),
-# поэтому крупные объекты приносят ≈100 000$/сутки, чтобы борьба за них и
-# вложения в WarCoin окупались. Мелкие объекты — пропорционально меньше.
+# База лиги novice. Доход лиги = daily × LEAGUE_INCOME_MULTIPLIERS, а WarCoin
+# там же дорожает ×LEAGUE_MULTIPLIERS. Одинаковый рост обоих множителей
+# обесценивал бы удержание в топе: капитал растёт ×20000, доход должен был бы
+# тоже, но это ломало экономику. Поэтому доля капитала, которую бизнесы
+# приносят в сутки, падает с рангом (см. LEAGUE_YIELD_TARGET): 9.5% → 7.2% →
+# 4.3% → 2.6% → 1.5% → 0.75%, окупаемость набора 10.5 сут → 133 сут. Сумма же
+# в долларах растёт от лиги к лиге — иначе в топе не за что воевать.
 BUSINESS_BONUS = {
     "market":   {"daily": 55000,  "effect": "asset_income",     "mult": 0.05},
     "bank":     {"daily": 85000,  "effect": "company_income",   "mult": 0.05},
@@ -110,17 +128,76 @@ LEAGUE_MULTIPLIERS = {
     "novice": 1, "bronze": 25, "silver": 250,
     "gold": 1_000, "platinum": 5_000, "diamond": 20_000,
 }
+# Доход зданий в лиге. Подобрано под LEAGUE_YIELD_TARGET ниже: множитель
+# задаёт сумму в долларах, а доля капитала выводится из неё.
 LEAGUE_INCOME_MULTIPLIERS = {
-    "novice": 1, "bronze": 10, "silver": 50,
-    "gold": 250, "platinum": 1_000, "diamond": 6_100,
+    "novice": 1, "bronze": 18, "silver": 80,
+    "gold": 250, "platinum": 700, "diamond": 1_600,
+}
+# Целевая доля доходности набора бизнесов в сутках по лигам: чем выше ранг,
+# тем меньше бизнесы дают относительно капитала (окупаемость 10.5 → 133 сут).
+# Характерный капитал лиги (LEAGUE_YIELD_ANCHOR) выводится из неё и множителя
+# дохода — правка любого из двух сама пересчитывает окупаемость в лиге.
+LEAGUE_YIELD_TARGET = {
+    "novice": 0.095, "bronze": 0.072, "silver": 0.043,
+    "gold": 0.026, "platinum": 0.015, "diamond": 0.0075,
 }
 LEAGUE_WARCOIN_PRICES = {name: WARCOIN_PRICE_DEFAULT * multiplier for name, multiplier in LEAGUE_MULTIPLIERS.items()}
 LEAGUE_ATTACK_COSTS = {name: 10 for name in LEAGUE_MULTIPLIERS}
+
+# ── Дивизионы внутри лиги ────────────────────────────────────────────────────
+# Лига — это только капитал. Игрок, который вкачался до 5 млрд и прыгнул в
+# алмаз, не должен оказываться в одной комнате с тем, кто там с капиталом
+# 5.1 млрд, но играет месяц. Комната = лига × дивизион, где дивизион — это
+# пересечение «сколько капитала» и «как активно играет».
+#
+# Капитал: делим разрыв между порогами соседних лиг на CAPITAL_TIERS равных
+# ступеней. Внутри лиги новичок и её «потолок» (граница следующей лиги) больше
+# никогда не встречаются. Ступени считаются в логарифме капитала: 1→25 млн и
+# 25→250 млн — оба диапазона дают по 3 ступени, а не 24 при линейном делении.
+CAPITAL_TIERS = 3
+# Активность: сколько транзакций игрок совершил за ACTIVITY_WINDOW_DAYS.
+# Порог — нижняя граница ступени; всё выше последней ступени — топ.
+ACTIVITY_WINDOW_DAYS = 7
+# 5 ступеней: молчун / редкий / обычный / активный / задрот. Порог — нижняя
+# граница ступени, число транзакций за окно (одна транзакция ≈ одно действие).
+ACTIVITY_TIERS = (0, 5, 25, 75, 200)
+# Игрок без транзакций всё равно должен попасть в комнату: новичков собираем
+# отдельно от «молчунов» с историей, иначе первая же комната пугает.
+ACTIVITY_LABELS = ("idle", "casual", "regular", "active", "legend")
 WARCOIN_MIGRATION_KEY = "cityroof_warcoin_migration_v2"
+# Конфиг правился без миграции: у части игроков в app_config лежит старая
+# таблица лиг (incomeMultiplier до 6100 без параметров защиты), и она
+# перекрывала бы новые дефолты. Версия 3 — только для лиг с protectionCosts.
+WARCOIN_CONFIG_VERSION = 3
+
+_TOTAL_BASE_DAILY = sum(item["daily"] for item in BUSINESS_BONUS.values())
 
 
 def _migrate_warcoin_amount(amount: int, league: str) -> int:
     return max(0, int(int(amount or 0) / LEAGUE_MULTIPLIERS[league]))
+
+
+def _league_capital(league: str) -> float:
+    """Характерный капитал лиги для расчёта доходности удержания."""
+    return LEAGUE_YIELD_ANCHOR.get(league, LEAGUE_YIELD_ANCHOR["novice"])
+
+
+LEAGUE_YIELD_ANCHOR = {
+    league: round(_TOTAL_BASE_DAILY * LEAGUE_INCOME_MULTIPLIERS[league] / LEAGUE_YIELD_TARGET[league], 2)
+    for league in LEAGUE_MULTIPLIERS
+}
+
+
+def _league_yield_factor(league: str) -> float:
+    """Доля капитала лиги, которую набор всех бизнесов приносит в сутки."""
+    multiplier = LEAGUE_INCOME_MULTIPLIERS.get(league, 1)
+    return round(_TOTAL_BASE_DAILY * multiplier / _league_capital(league), 8)
+
+
+def _league_daily_budget(league: str) -> float:
+    """Сколько долларов в сутки приносит вся карта комнаты в этой лиге."""
+    return round(_TOTAL_BASE_DAILY * LEAGUE_INCOME_MULTIPLIERS.get(league, 1), 2)
 
 
 def _business_bonus_view(slug: str, league: str) -> dict:
@@ -130,6 +207,8 @@ def _business_bonus_view(slug: str, league: str) -> dict:
         "daily": round(bonus.get("daily", 0) * multiplier, 2),
         "effect": bonus.get("effect"), "mult": bonus.get("mult", 0),
         "leagueMultiplier": multiplier,
+        "yieldShare": _league_yield_factor(league),
+        "dailyBudget": _league_daily_budget(league),
     }
 
 
@@ -146,14 +225,21 @@ async def _migrate_warcoin_balances(db):
     await upsert_config(db, WARCOIN_MIGRATION_KEY, json.dumps({"done": True, "version": 2}))
 
 
-# Цены и награды масштабируются одинаково: долларовая стоимость PvP не меняется по лигам.
+# Внутри лиги цена WC и стоимость атаки одинаковы для всех, чтобы долларовая
+# цена попытки захвата не зависела от разрыва в капитале игроков. Защита и
+# награда сезона в WC тоже не масштабируются — в долларах они дорожают вместе
+# с ценой WarCoin, которая растёт ×LEAGUE_MULTIPLIERS.
 DEFAULT_WARCOIN_CONFIG = {
+    "version": WARCOIN_CONFIG_VERSION,
     "price": WARCOIN_PRICE_DEFAULT,
     "leagues": [
         {"name": name, "minNetWorth": minimum,
          "warcoinPrice": LEAGUE_WARCOIN_PRICES[name],
          "attackCost": LEAGUE_ATTACK_COSTS[name],
-         "incomeMultiplier": LEAGUE_INCOME_MULTIPLIERS[name]}
+         "incomeMultiplier": LEAGUE_INCOME_MULTIPLIERS[name],
+         "protectionCosts": {str(level): cost for level, cost in PROTECTION_COSTS.items()},
+         "winnerReward": WINNER_REWARD_WC,
+         "yieldShare": LEAGUE_YIELD_TARGET[name]}
         for name, minimum in CITYROOF_LEAGUES
     ],
 }
@@ -169,6 +255,75 @@ def _league_for_net_worth(net_worth: float) -> str:
 
 def _cityroof_capital(net_worth_without_cityroof_wc: float, warcoin: int, warcoin_price: float) -> float:
     return round(float(net_worth_without_cityroof_wc or 0) + int(warcoin or 0) * float(warcoin_price), 2)
+
+
+# Нижняя граница капитала для novice: порог лиги — ноль, логарифм нуля не
+# существует, поэтому деление начинаем с 10 тысяч (стартовый капитал новичка).
+NOVICE_CAPITAL_FLOOR = 10_000
+
+
+def _league_bounds(league: str) -> tuple[float, float]:
+    """Нижняя и верхняя граница капитала лиги (верх — порог следующей лиги)."""
+    names = [name for name, _ in CITYROOF_LEAGUES]
+    index = names.index(league) if league in names else 0
+    low = max(CITYROOF_LEAGUES[index][1], NOVICE_CAPITAL_FLOOR)
+    high = CITYROOF_LEAGUES[index + 1][1] if index + 1 < len(CITYROOF_LEAGUES) else low * 20
+    return float(low), float(high)
+
+
+def _capital_tier(league: str, capital: float) -> int:
+    """Ступень капитала внутри лиги, 0..CAPITAL_TIERS-1.
+
+    Логарифмическая шкала: разрывы лиг растут в 3–25 раз, и линейное деление
+    собирало бы новичков у нижней границы в один дивизион с «потолком» лиги.
+    """
+    low, high = _league_bounds(league)
+    if capital <= low:
+        return 0
+    if capital >= high:
+        return CAPITAL_TIERS - 1
+    span = math.log(high / low) if low > 0 else 0.0
+    position = math.log(capital / low) / span if span > 0 else 1.0
+    return min(CAPITAL_TIERS - 1, max(0, int(position * CAPITAL_TIERS)))
+
+
+def _activity_tier(transactions: int) -> int:
+    """Ступень активности по числу транзакций за ACTIVITY_WINDOW_DAYS."""
+    level = 0
+    for index, threshold in enumerate(ACTIVITY_TIERS):
+        if transactions >= threshold:
+            level = index
+    return level
+
+
+def _activity_label(tier: int) -> str:
+    return ACTIVITY_LABELS[min(tier, len(ACTIVITY_LABELS) - 1)]
+
+
+def _division_key(league: str, capital_tier: int, activity_tier: int) -> str:
+    return f"{league}-c{capital_tier}-a{activity_tier}"
+
+
+async def _player_activity(db, user_id: str) -> int:
+    """Число транзакций игрока за окно активности (драйвер дивизиона)."""
+    since = _now() - timedelta(days=ACTIVITY_WINDOW_DAYS)
+    try:
+        return int(await db.transactions.count_documents({"userId": user_id, "timestamp": {"$gte": since}}))
+    except Exception:
+        return 0
+
+
+async def _player_division(db, user_id: str, league: str, capital: float) -> dict:
+    activity = await _player_activity(db, user_id)
+    capital_tier = _capital_tier(league, capital)
+    activity_tier = _activity_tier(activity)
+    return {
+        "key": _division_key(league, capital_tier, activity_tier),
+        "capitalTier": capital_tier,
+        "activityTier": activity_tier,
+        "activity": activity,
+        "activityLabel": _activity_label(activity_tier),
+    }
 
 
 def _league_transition(league: str, capital: float) -> str:
@@ -188,16 +343,38 @@ async def _cityroof_player_capital(db, user_id: str, league: str) -> float:
     return _cityroof_capital(total - global_wc_value, user.get("warcoin", 0), price)
 
 
-def _room_code(league: str, room_number: int) -> str:
-    return f"{league[:3].upper()}-{room_number:02d}"
+def _room_code(league: str, room_number: int, division: str | None = None) -> str:
+    """Код комнаты: «SIL-c1-a2-03».
+
+    Номера уникальны внутри дивизиона, поэтому без дивизиона в коде две
+    комнаты разных дивизионов одной лиги получили бы одинаковый код и упали
+    на уникальном индексе (season, league, room_code).
+    """
+    prefix = f"{league[:3].upper()}-{room_number:02d}"
+    return f"{prefix}·{division.split('-', 1)[1]}" if division else prefix
 
 
-async def ensure_player_room(db, user_id: str, season: int, net_worth: float, league_override: str | None = None) -> dict:
+async def ensure_player_room(
+    db, user_id: str, season: int, net_worth: float,
+    league_override: str | None = None, division_override: dict | None = None,
+    allow_merge: bool = True,
+) -> dict:
+    """Комната игрока: лига × дивизион (капитал × активность).
+
+    allow_merge=False — комната закрепляется за дивизионом навсегда в рамках
+    сезона: игрок, набравший активность, переселяется в свою ступень, а не
+    подсаживается в чужую комнату «где есть место».
+    """
     league = league_override or _league_for_net_worth(net_worth)
     existing = await db.cityroof_rooms.find_one({"season": season, "member_ids": user_id})
     if existing:
         return existing
-    query = {"season": season, "league": league, "$expr": {"$lt": [{"$size": "$member_ids"}, ROOM_CAPACITY]}}
+    if division_override is None:
+        division_override = await _player_division(db, user_id, league, net_worth)
+    division_key = division_override["key"]
+
+    query = {"season": season, "league": league, "division": division_key,
+             "$expr": {"$lt": [{"$size": "$member_ids"}, ROOM_CAPACITY]}}
     room = await db.cityroof_rooms.find_one(query)
     if room and user_id not in room.get("member_ids", []):
         result = await db.cityroof_rooms.update_one(
@@ -210,15 +387,28 @@ async def ensure_player_room(db, user_id: str, season: int, net_worth: float, le
         if result.modified_count:
             room["member_ids"] = [*room.get("member_ids", []), user_id]
             return room
-        return await ensure_player_room(db, user_id, season, net_worth)
-    if room:
-        return room
-    count = await db.cityroof_rooms.count_documents({"season": season, "league": league})
-    room = {"season": season, "league": league, "room_code": _room_code(league, count + 1), "member_ids": [user_id]}
+        if allow_merge:
+            # Гонка за последнее место: пробуем ещё раз, запрос заново найдёт
+            # свободную комнату дивизиона либо создаст новую.
+            return await ensure_player_room(
+                db, user_id, season, net_worth, league, division_override, allow_merge,
+            )
+    # Свободной комнаты в дивизионе нет (или мы отказались подсаживаться) —
+    # создаём новую: дивизион важнее заполненности.
+    count = await db.cityroof_rooms.count_documents({"season": season, "league": league, "division": division_key})
+    room = {
+        "season": season, "league": league, "division": division_key,
+        "capitalTier": division_override["capitalTier"],
+        "activityTier": division_override["activityTier"],
+        "room_code": _room_code(league, count + 1, division_key),
+        "member_ids": [user_id],
+    }
     try:
         await db.cityroof_rooms.insert_one(room)
     except DuplicateKeyError:
-        return await ensure_player_room(db, user_id, season, net_worth)
+        return await ensure_player_room(
+            db, user_id, season, net_worth, league, division_override, allow_merge,
+        )
     return room
 
 
@@ -227,6 +417,32 @@ async def _league_config(config: dict, league: str) -> dict:
         if item.get("name") == league:
             return item
     return next(item for item in DEFAULT_WARCOIN_CONFIG["leagues"] if item["name"] == league)
+
+
+def _protection_costs(league: str) -> dict:
+    """Стоимость уровней защиты в WC одинакова во всех лигах.
+
+    В долларах щит дорожает вместе с ценой WarCoin (она растёт ×LEAGUE_MULTIPLIERS),
+    поэтому стоимость в WC не масштабируется второй раз: иначе в алмазе щит
+    стоил бы 200 000 000 WC ≈ капитал всей карты.
+    """
+    return dict(PROTECTION_COSTS)
+
+
+def _config_protection_costs(league_cfg: dict, league: str) -> dict:
+    """Стоимость защиты из конфига лиги; ключи в app_config строковые (JSON)."""
+    stored = league_cfg.get("protectionCosts") or {}
+    scaled = _protection_costs(league)
+    return {level: int(stored.get(str(level), scaled[level])) for level in PROTECTION_COSTS}
+
+
+def _winner_reward(league: str) -> int:
+    """Награда победителю сезона в WC — одинаковая по лигам.
+
+    В долларах она растёт с ценой WarCoin, как и стоимость защиты: награда
+    остаётся ощутимой в топе, не превращаясь в копейки на фоне капитала.
+    """
+    return WINNER_REWARD_WC
 
 
 def _league_income_multiplier(config: dict, league: str) -> float:
@@ -242,7 +458,11 @@ async def _warcoin_config(db) -> dict:
             stored = json.loads(cfg["value"])
         except Exception:
             stored = None
-        if stored and all("minNetWorth" in item for item in stored.get("leagues", [])):
+        if (
+            stored
+            and int(stored.get("version", 2)) >= WARCOIN_CONFIG_VERSION
+            and all("minNetWorth" in item and "protectionCosts" in item for item in stored.get("leagues", []))
+        ):
             return stored
     return DEFAULT_WARCOIN_CONFIG
 
@@ -353,44 +573,105 @@ def _current_week() -> str:
     return f"{iso[0]}-W{iso[1]:02d}"
 
 
+async def _release_room_holdings(db, user_id: str, season: int, room: dict, reason: str):
+    """Снимает игрока с комнаты: бизнесы освобождаются, сессии атак сгорают."""
+    await db.cityroof_rooms.update_one({"_id": room["_id"]}, {"$pull": {"member_ids": user_id}})
+    await db.cityroof_businesses.update_many(
+        {"season": season, "room_code": room["room_code"], "ownerId": user_id},
+        {"$set": {"ownerId": None, "ownerName": None, "ownerColor": None,
+                  "protection_level": 0, "last_captured": None, "last_collected": None},
+         "$unset": {"dual_shield": ""}},
+    )
+    await db.cityroof_sessions.delete_many({"attackerId": user_id, "season": season})
+    return reason
+
+
 async def _player_room(db, user_id: str, season: int) -> dict:
     user = await db.users.find_one({"_id": ObjectId(user_id)}, {"warcoin": 1}) or {}
     existing = await db.cityroof_rooms.find_one({"season": season, "member_ids": user_id})
     if existing:
         capital = await _cityroof_player_capital(db, user_id, existing["league"])
         target = _league_transition(existing["league"], capital)
-        if target != existing["league"]:
-            old_price = LEAGUE_WARCOIN_PRICES[existing["league"]]
-            new_price = LEAGUE_WARCOIN_PRICES[target]
-            new_wc = max(0, int(int(user.get("warcoin", 0) or 0) * old_price / new_price))
-            await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"warcoin": new_wc}})
-            await db.cityroof_rooms.update_one({"_id": existing["_id"]}, {"$pull": {"member_ids": user_id}})
-            await db.cityroof_businesses.update_many(
-                {"season": season, "room_code": existing["room_code"], "ownerId": user_id},
-                {"$set": {"ownerId": None, "ownerName": None, "ownerColor": None, "protection_level": 0, "last_captured": None, "last_collected": None}},
-            )
-            await db.cityroof_sessions.delete_many({"attackerId": user_id, "season": season})
-            await push_notification(
-                db, user_id, "cityroof", "Лига изменена",
-                f"Вы перешли в лигу {target}. Бизнесы освобождены, баланс WarCoin пересчитан.",
-                {"league": target, "roomCode": None},
-            )
-            room = await ensure_player_room(db, user_id, season, capital, target)
-        else:
+        division = await _player_division(db, user_id, target, capital)
+        stays_in_division = (
+            target == existing["league"]
+            and (existing.get("division") or _division_key(target, 0, 0)) == division["key"]
+        )
+        if stays_in_division:
             room = existing
+        else:
+            # Смена лиги пересчитывает WarCoin (цена WC у лиг разная), смена
+            # дивизиона — нет: валюта одна на лигу.
+            if target != existing["league"]:
+                old_price = LEAGUE_WARCOIN_PRICES[existing["league"]]
+                new_price = LEAGUE_WARCOIN_PRICES[target]
+                new_wc = max(0, int(int(user.get("warcoin", 0) or 0) * old_price / new_price))
+                await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"warcoin": new_wc}})
+            await _release_room_holdings(db, user_id, season, existing, reason=target)
+            await push_notification(
+                db, user_id, "cityroof", "Комната изменена",
+                (
+                    f"Вы перешли в лигу {target}. Бизнесы освобождены, баланс WarCoin пересчитан."
+                    if target != existing["league"]
+                    else "Ваш дивизион изменился. Бизнесы освобождены — соперники теперь другого уровня."
+                ),
+                {"league": target, "roomCode": None, "division": division["key"]},
+            )
+            # allow_merge=False: закрепляемся именно в своей ступени, а не в
+            # первой свободной комнате лиги (иначе переселение бессмысленно).
+            room = await ensure_player_room(db, user_id, season, capital, target, division, allow_merge=False)
     else:
-        room = await ensure_player_room(db, user_id, season, await compute_net_worth(db, user_id))
+        net_worth = await compute_net_worth(db, user_id)
+        room = await ensure_player_room(db, user_id, season, net_worth)
     await _ensure_room_businesses(db, season, room["league"], room["room_code"])
     return room
 
 
-async def _room_members_view(db, room: dict, season: int) -> list[dict]:
-    owners = {b.get("ownerId") async for b in db.cityroof_businesses.find({"season": season, "room_code": room["room_code"], "ownerId": {"$ne": None}}, {"ownerId": 1})}
+async def _room_members_view(db, room: dict, season: int, viewer_id: str | None = None) -> list[dict]:
+    """Участники комнаты: ник, WarCoin, завоёванные бизнесы, капитал, активность.
+
+    Один пользователь = одна строка, числа по бизнесам считаются из документов
+    самой комнаты, поэтому не зависит от текущей лиги игрока.
+    """
+    owners: dict[str, int] = {}
+    async for b in db.cityroof_businesses.find(
+        {"season": season, "room_code": room["room_code"], "ownerId": {"$ne": None}},
+        {"ownerId": 1},
+    ):
+        owners[b["ownerId"]] = owners.get(b["ownerId"], 0) + 1
+
+    league = room.get("league", "novice")
     members = []
     for user_id in room.get("member_ids", []):
-        user = await db.users.find_one({"_id": ObjectId(user_id)}, {"username": 1})
-        members.append({"id": user_id, "name": (user or {}).get("username", "Игрок"), "active": user_id in owners})
+        user = await db.users.find_one({"_id": ObjectId(user_id)}, {"username": 1, "warcoin": 1}) or {}
+        capital = await _cityroof_player_capital(db, user_id, league)
+        division = await _player_division(db, user_id, league, capital)
+        members.append({
+            "id": user_id,
+            "name": user.get("username", "Игрок"),
+            "warcoin": int(user.get("warcoin", 0) or 0),
+            "active": user_id in owners,
+            "businesses": owners.get(user_id, 0),
+            "capital": capital,
+            "capitalTier": division["capitalTier"],
+            "activity": division["activity"],
+            "activityTier": division["activityTier"],
+            "activityLabel": division["activityLabel"],
+            "isMe": user_id == viewer_id,
+        })
+    # Сначала по завоёванным бизнесам, затем по WarCoin: это и есть «сила» в комнате.
+    members.sort(key=lambda m: (-m["businesses"], -m["warcoin"]))
     return members
+
+
+async def _league_leaderboard(db, season: int, league: str, viewer_id: str | None = None, limit: int = 50) -> list[dict]:
+    """Ники всех игроков лиги (все дивизионы) — для панели справа."""
+    rows = []
+    async for room in db.cityroof_rooms.find({"season": season, "league": league}).sort("room_code", 1):
+        for member in await _room_members_view(db, room, season, viewer_id):
+            rows.append({**member, "roomCode": room["room_code"], "division": room.get("division")})
+    rows.sort(key=lambda m: (-m["businesses"], -m["capital"]))
+    return rows[:limit]
 
 
 async def _ensure_room_businesses(db, season: int, league: str, room_code: str):
@@ -497,6 +778,11 @@ async def ensure_seeded(db: AsyncIOMotorDatabase):
     await db.cityroof_rooms.create_index(
         [("season", 1), ("league", 1), ("room_code", 1)], unique=True,
     )
+    # Комната больше не «просто лига»: поиск свободной комнаты идёт по
+    # дивизиону, иначе запрос сканирует все комнаты лиги на каждый /map.
+    await db.cityroof_rooms.create_index(
+        [("season", 1), ("league", 1), ("division", 1)], name="cityroof_division_lookup",
+    )
     await db.cityroof_rooms.create_index(
         [("season", 1), ("member_ids", 1)], unique=True,
     )
@@ -525,41 +811,57 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
     if claim.modified_count == 0:
         return  # переход уже выполнен параллельным запросом
 
-    # Определяем победителя прошлого сезона — у кого больше всего бизнесов.
-    counts: dict[str, dict] = {}
+    # Победитель определяется в каждой лиге отдельно: держатель бизнесов в
+    # алмазе не должен забирать недельную награду новачков. Внутри лиги —
+    # у кого больше бизнесов.
+    config = await _warcoin_config(db)
+    counts: dict[tuple[str, str], dict] = {}
     async for b in db.cityroof_businesses.find({"ownerId": {"$ne": None}}):
-        oid = b["ownerId"]
-        counts.setdefault(oid, {"userId": oid, "name": b.get("ownerName"), "count": 0})
-        counts[oid]["count"] += 1
-    standings = sorted(counts.values(), key=lambda x: x["count"], reverse=True)
+        oid, league = b["ownerId"], b.get("league") or "novice"
+        key = (league, oid)
+        counts.setdefault(key, {"userId": oid, "name": b.get("ownerName"), "league": league, "count": 0})
+        counts[key]["count"] += 1
+    league_order = {name: index for index, (name, _) in enumerate(CITYROOF_LEAGUES)}
+    standings = sorted(
+        counts.values(),
+        key=lambda x: (league_order.get(x["league"], len(league_order)), -x["count"]),
+    )
+    # Первый в отсортированном списке из каждой лиги — её победитель.
+    seen_leagues: set[str] = set()
+    winners = [x for x in standings if x["league"] not in seen_leagues
+               and not seen_leagues.add(x["league"])]
     winner = standings[0] if standings else None
 
+    winners_view = [
+        {**x, "reward": int((await _league_config(config, x["league"])).get(
+            "winnerReward", _winner_reward(x["league"])))}
+        for x in winners
+    ]
     await db.cityroof_seasons.insert_one({
         "season": season_no,
         "week": state.get("week"),
         "closed_at": _now(),
         "winner": winner,
+        "winners": winners_view,
         "standings": standings,
     })
 
-    # Награда победителю (WarCoin).
-    if winner:
+    # Награда в WarCoin — каждому победителю в его лиге. Одинаковые доллары:
+    # в старших лигах WC дороже, поэтому учитывается множитель цены лиги.
+    for item in winners_view:
         await db.users.update_one(
-            {"_id": ObjectId(winner["userId"])},
-            {"$inc": {"warcoin": WINNER_REWARD_WC}},
+            {"_id": ObjectId(item["userId"])},
+            {"$inc": {"warcoin": item["reward"]}},
         )
 
-    # Обнуляем карту: снимаем владельцев и защиту, новые секреты.
-    async for b in db.cityroof_businesses.find({}):
-        secret = _make_secret(0)
-        await db.cityroof_businesses.update_one(
-            {"_id": b["_id"]},
-            {"$set": {
-                "ownerId": None, "ownerName": None, "ownerColor": None,
-                "protection_level": 0, "last_captured": None, "last_collected": None,
-                **secret,
-            }},
-        )
+    # Комнаты — сущность сезона: состав и дивизионы фиксируются на неделю.
+    # Без удаления игроки навсегда остались бы в комнатах прошлого сезона
+    # (поиск идёт по season), а сами записи копились бы в базе.
+    await db.cityroof_rooms.delete_many({"season": {"$ne": season_no + 1}})
+
+    # Старая карта прошлого сезона тоже больше не нужна: бизнесы текущего
+    # сезона создаются заново под каждую новую комнату (_ensure_room_businesses).
+    await db.cityroof_businesses.delete_many({"season": season_no})
     await db.cityroof_sessions.delete_many({})
 
 
@@ -579,19 +881,44 @@ def _shield_view(b: dict) -> Optional[dict]:
     return {"value": shield.get("value", 0.0), "expiresAt": expires.isoformat()}
 
 
+def _dual_shield_view(b: dict) -> Optional[dict]:
+    """Активный двойной щит премиальной IT-студии — None, если его нет или истёк."""
+    shield = b.get("dual_shield")
+    if not shield:
+        return None
+    expires = to_aware(shield.get("expires_at"))
+    if not isinstance(expires, datetime) or _now() >= expires:
+        return None
+    return {
+        "expiresAt": expires.isoformat(),
+        "paid": float(shield.get("paid", 0.0) or 0.0),
+        "studioAssetId": shield.get("studioAssetId"),
+    }
+
+
+async def _player_premium_studio(db, user_id: str):
+    """Актив itstudio_premium игрока (владелец) или None — право на двойной щит."""
+    async for asset in db.user_assets.find({"userId": user_id, "slug": "itstudio_premium"}):
+        return asset
+    return None
+
+
 def _scaled_protection_costs(league: str) -> dict:
-    return dict(PROTECTION_COSTS)
+    return _protection_costs(league)
 
 
 def _serialize_business(b: dict, user_id: str) -> dict:
     shield = _shield_view(b)
-    multiplier = LEAGUE_INCOME_MULTIPLIERS.get(b.get("league", "novice"), 1)
+    dual = _dual_shield_view(b)
+    league = b.get("league") or "novice"
+    multiplier = LEAGUE_INCOME_MULTIPLIERS.get(league, 1)
     return {
         "id": str(b["_id"]),
         "slug": b.get("slug"),
         "name": b.get("name"),
         "x": b.get("x"),
         "y": b.get("y"),
+        "league": league,
         "reward": (b.get("reward") or 0) * multiplier,
         "dailyIncome": round(BUSINESS_BONUS.get(b.get("slug"), {}).get("daily", 0) * multiplier, 2),
         "effect": BUSINESS_BONUS.get(b.get("slug"), {}).get("effect"),
@@ -607,6 +934,9 @@ def _serialize_business(b: dict, user_id: str) -> dict:
         "shieldActive": shield is not None,
         "shieldValue": shield.get("value") if shield else None,
         "shieldExpiresAt": shield.get("expiresAt") if shield else None,
+        "dualShieldActive": dual is not None,
+        "dualShieldExpiresAt": dual.get("expiresAt") if dual else None,
+        "dualShieldPaid": dual.get("paid") if dual else None,
     }
 
 
@@ -746,10 +1076,14 @@ async def get_map(
             room_businesses.sort(key=lambda b: (b["y"], b["x"]))
             rooms.append({
                 "league": room_doc["league"], "roomCode": room_doc["room_code"],
+                "division": room_doc.get("division"),
+                "capitalTier": room_doc.get("capitalTier", 0),
+                "activityTier": room_doc.get("activityTier", 0),
                 "roomMembers": len(room_doc.get("member_ids", [])), "roomCapacity": ROOM_CAPACITY,
-                "members": await _room_members_view(db, room_doc, season),
+                "members": await _room_members_view(db, room_doc, season, user_id),
                 "businesses": room_businesses,
                 "incomeMultiplier": _league_income_multiplier(config, room_doc["league"]),
+                "yieldShare": _league_yield_factor(room_doc["league"]),
             })
     return {
         "businesses": businesses,
@@ -759,14 +1093,27 @@ async def get_map(
         "week": state.get("week") if state else _current_week(),
         "league": league,
         "roomCode": view_room["room_code"],
+        "division": view_room.get("division"),
+        "capitalTier": view_room.get("capitalTier", 0),
+        "activityTier": view_room.get("activityTier", 0),
+        "divisionRules": {
+            "capitalTiers": CAPITAL_TIERS,
+            "activityTiers": list(ACTIVITY_TIERS),
+            "activityLabels": list(ACTIVITY_LABELS),
+            "activityWindowDays": ACTIVITY_WINDOW_DAYS,
+        },
         "roomMembers": len(view_room.get("member_ids", [])),
         "roomCapacity": ROOM_CAPACITY,
-        "members": await _room_members_view(db, view_room, season),
+        "members": await _room_members_view(db, view_room, season, user_id),
+        # Панель справа: все игроки лиги (все дивизионы), топ по бизнесам.
+        "leaguePlayers": await _league_leaderboard(db, season, league, user_id),
         "incomeMultiplier": _league_income_multiplier(config, league),
         "readOnly": read_only,
         "attackCost": int(league_cfg.get("attackCost", ATTACK_COST_WC)),
         "maxAttempts": MAX_ATTEMPTS,
-        "protectionCosts": league_cfg.get("protectionCosts", _scaled_protection_costs(league)),
+        "protectionCosts": _config_protection_costs(league_cfg, league),
+        "winnerReward": int(league_cfg.get("winnerReward", _winner_reward(league))),
+        "yieldShare": _league_yield_factor(league),
         "itstudio": {
             "costBase": ITSTUDIO_CONFIG["cost_base"],
             "costPerProtection": ITSTUDIO_CONFIG["cost_per_protection"],
@@ -852,7 +1199,9 @@ async def get_bonuses(
         items.append({
             "slug": b.get("slug"), "name": b.get("name"),
             "daily": daily, "effect": bonus["effect"], "mult": bonus["mult"],
-            "amount": _interval_amount(daily),
+            # daily уже с множителем лиги (строка выше), поэтому здесь "novice":
+            # иначе множитель применился бы дважды.
+            "amount": _interval_amount(daily, "novice"),
             "readyInSec": round(ready_in),
         })
     return {
@@ -1319,6 +1668,37 @@ async def submit_guess(
     attempts = session.get("attempts", 0) + 1
     solved = exact == len(secret)
 
+    if solved and _dual_shield_view(business):
+        # Двойной щит: верная комбинация его только сбивает. Бизнес остаётся
+        # у владельца, секрет меняется — атакующему нужна вторая, новая
+        # комбинация (двойное угадывание). Сессия закрывается: захват начнётся
+        # заново, с оплатой новой атаки.
+        await db.cityroof_businesses.update_one(
+            {"_id": business["_id"]},
+            {"$unset": {"dual_shield": ""},
+             "$set": {**_make_secret(business.get("protection_level", 0))}},
+        )
+        await db.cityroof_sessions.delete_one({"_id": session["_id"]})
+        updated_doc = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+        from ws import broadcast
+        await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated_doc, "")})
+        if business.get("ownerId"):
+            await push_notification(
+                db, business["ownerId"], "cityroof_dual_shield",
+                "Двойной щит поглотил захват",
+                f"Кто-то отгадал комбинацию «{business.get('name')}», но щит выдержал. Бизнес ваш.",
+                data={"businessId": str(business["_id"])},
+            )
+        return {
+            "solved": False,
+            "dualShieldBroken": True,
+            "exact": exact,
+            "present": present,
+            "feedback": feedback,
+            "attempts": attempts,
+            "business": _serialize_business(updated_doc, user_id),
+        }
+
     if solved:
         # Захват: бизнес переходит атакующему, защита сбрасывается, новый секрет.
         new_secret = _make_secret(0)
@@ -1341,7 +1721,12 @@ async def submit_guess(
             captured_income = _interval_amount(bonus["daily"], business.get("league", "novice"), await _warcoin_config(db))
             update_fields["last_collected"] = _now()
 
-        await db.cityroof_businesses.update_one({"_id": business["_id"]}, {"$set": update_fields})
+        # Двойной щит принадлежит владельцу, а не бизнесу: при захвате он
+        # сгорает, иначе новый владелец получил бы оплаченную чужую защиту.
+        await db.cityroof_businesses.update_one(
+            {"_id": business["_id"]},
+            {"$set": update_fields, "$unset": {"dual_shield": "", "shield": ""}},
+        )
         if captured_income > 0:
             new_balance = await adjust_balance(db, user_id, captured_income)
             if new_balance is not None:
@@ -1407,14 +1792,19 @@ async def protect_business(
     if business.get("ownerId") != user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Вы не владелец бизнеса")
 
-    cost = _scaled_protection_costs(room["league"]).get(payload.level, payload.level * 1000)
+    config = await _warcoin_config(db)
+    league_cfg = await _league_config(config, room["league"])
+    costs = _config_protection_costs(league_cfg, room["league"])
+    cost = costs.get(payload.level, payload.level * 1000)
     if not await _spend_wc(db, user_id, cost):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно WarCoin")
 
     new_secret = _make_secret(payload.level)
+    # Щиты взаимоисключающие: покупка уровней 1–5 снимает двойной щит, иначе
+    # один перекрывал бы другой и игрок платил за то, что не работает.
     await db.cityroof_businesses.update_one(
         {"_id": business["_id"]},
-        {"$set": {"protection_level": payload.level, **new_secret}},
+        {"$set": {"protection_level": payload.level, **new_secret}, "$unset": {"dual_shield": ""}},
     )
     # Все текущие попытки по этому бизнесу аннулируются.
     await db.cityroof_sessions.delete_many({"businessId": business_id})
@@ -1426,6 +1816,79 @@ async def protect_business(
         "cost": cost,
         "warcoin": await _get_wc(db, user_id),
         "business": _serialize_business(updated_doc, user_id),
+    }
+
+
+class DualShieldBody(BaseModel):
+    assetId: str
+
+
+@router.post("/dualshield/{business_id}")
+async def buy_dual_shield(
+    business_id: str,
+    payload: DualShieldBody,
+    current_user: dict = Depends(require_allowed("cityroof_protect")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Купить двойной щит (эксклюзив премиальной IT-студии).
+
+    Щит делает захват двухступенчатым: верная комбинация лишь сбивает щит,
+    и следующий захват требует новой комбинации. Оплата — доллары через
+    LEDGER, чтобы трата попала в историю операций игрока.
+    """
+    if not ObjectId.is_valid(business_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
+    user_id = str(current_user["_id"])
+    state = await db.cityroof_state.find_one({"key": "current"})
+    season = state.get("season", 1) if state else 1
+    room = await _player_room(db, user_id, season)
+    business = await db.cityroof_businesses.find_one({
+        "_id": ObjectId(business_id), "season": season,
+        "league": room["league"], "room_code": room["room_code"],
+    })
+    if not business:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Бизнес не найден в вашей комнате")
+    if business.get("ownerId") != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Вы не владелец бизнеса")
+
+    studio = await _load_owned_studio(db, user_id, payload.assetId)
+    asset, tier = studio
+    if tier != "premium":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Двойной щит ставит только премиальная IT-студия")
+    if _dual_shield_view(business):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Двойной щит уже активен")
+
+    cost = DUAL_SHIELD_PRICE_USD
+    new_balance = await adjust_balance(db, user_id, -cost)
+    if new_balance is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
+
+    shield = {
+        "paid": cost,
+        "studioAssetId": str(asset["_id"]),
+        "expires_at": _now() + timedelta(hours=DUAL_SHIELD_HOURS),
+    }
+    # Щиты взаимоисключающие: двойной щит заменяет обычную защиту (уровни
+    # 1–5), иначе оба активны одновременно и атакующий не понимает, что
+    # именно его остановило. Обычная защита сгорает без возврата.
+    await db.cityroof_businesses.update_one(
+        {"_id": business["_id"]},
+        {"$set": {"dual_shield": shield, "protection_level": 0, **_make_secret(0)}},
+    )
+    await db.cityroof_sessions.delete_many({"businessId": business_id})
+    await record_transaction(
+        db, user_id, EXPENSE, cost, CAT_CITYROOF,
+        f"Двойной щит для «{business.get('name')}»", balance_after=new_balance,
+        meta={"businessId": business_id, "assetId": str(asset["_id"]), "hours": DUAL_SHIELD_HOURS},
+    )
+    updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})
+    from ws import broadcast
+    await broadcast({"type": "cityroof_protected", "business": _serialize_business(updated, "")})
+    return {
+        "cost": cost,
+        "balance": new_balance,
+        "hours": DUAL_SHIELD_HOURS,
+        "business": _serialize_business(updated, user_id),
     }
 
 
@@ -1478,6 +1941,49 @@ async def _load_any_business(db: AsyncIOMotorDatabase, business_id: str) -> dict
     return business
 
 
+@router.get("/admin/rooms")
+async def admin_list_rooms(
+    _admin=Depends(require_admin("users_view")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Все комнаты сезона с составом: WC и завоёванные бизнесы по каждому игроку.
+
+    Игровой клиент этого не видит: чужие комнаты доступны только админу.
+    """
+    await ensure_seeded(db)
+    state = await db.cityroof_state.find_one({"key": "current"})
+    season = state.get("season", 1) if state else 1
+    config = await _warcoin_config(db)
+
+    rooms = []
+    async for room_doc in db.cityroof_rooms.find({"season": season}).sort([("league", 1), ("room_code", 1)]):
+        league = room_doc.get("league", "novice")
+        league_cfg = await _league_config(config, league)
+        members = await _room_members_view(db, room_doc, season)
+        captured = sum(m["businesses"] for m in members)
+        rooms.append({
+            "roomCode": room_doc["room_code"],
+            "league": league,
+            "division": room_doc.get("division"),
+            "capitalTier": room_doc.get("capitalTier", 0),
+            "activityTier": room_doc.get("activityTier", 0),
+            "members": members,
+            "memberCount": len(members),
+            "capacity": ROOM_CAPACITY,
+            "warcoinTotal": sum(m["warcoin"] for m in members),
+            "capturedBusinesses": captured,
+            "freeBusinesses": max(0, len(DEFAULT_BUSINESSES) - captured),
+            "warcoinPrice": float(league_cfg.get("warcoinPrice", WARCOIN_PRICE_DEFAULT)),
+            "incomeMultiplier": _league_income_multiplier(config, league),
+        })
+    return {
+        "season": season,
+        "week": state.get("week") if state else _current_week(),
+        "leagueNames": [name for name, _ in CITYROOF_LEAGUES],
+        "rooms": rooms,
+    }
+
+
 @router.patch("/admin/businesses/{business_id}")
 async def admin_update_business(
     business_id: str,
@@ -1515,7 +2021,8 @@ async def admin_vacate_business(
             "ownerId": None, "ownerName": None, "ownerColor": None,
             "protection_level": 0, "last_captured": None, "last_collected": None,
             **new_secret,
-        }},
+        },
+         "$unset": {"dual_shield": ""}},
     )
     await db.cityroof_sessions.delete_many({"businessId": business_id})
     updated = await db.cityroof_businesses.find_one({"_id": business["_id"]})

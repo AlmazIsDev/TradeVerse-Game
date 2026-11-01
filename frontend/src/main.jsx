@@ -7,9 +7,11 @@ import './settings.css'
 import './farm.css'
 import App from './App.jsx'
 import { watchSystemTheme } from './utils/theme'
+import { installClickFeedback } from './utils/clickFeedback'
 
 // Подписка на смену системной темы (активна только без ручного выбора).
 watchSystemTheme()
+installClickFeedback()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

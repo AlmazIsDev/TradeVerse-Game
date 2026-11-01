@@ -364,7 +364,7 @@
   padding: 13px 24px;
   background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
   border: none; border-radius: var(--radius-md);
-  color: var(--on-accent); font-weight: 700; font-size: 15px; cursor: pointer;
+  color: var(--on-accent); font-weight: 700; font-size: 14px; cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .crypto-open-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0, 113, 227, 0.35); }
@@ -844,7 +844,7 @@
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 9px 10px; border: 1px solid rgba(0, 113, 227, 0.3);
   border-radius: var(--radius-md); background: rgba(0, 113, 227, 0.1);
-  color: var(--color-accent-hover); font-size: 13px; font-weight: 600;
+  color: var(--color-accent-hover); font-size: 14px; font-weight: 600;
   cursor: pointer; transition: all 0.15s ease;
 }
 .asset-interact-btn:hover:not(:disabled) { transform: translateY(-1px); }
@@ -1090,16 +1090,248 @@ select.company-name-input option {
 .cityroom-businesses span { display: flex; justify-content: space-between; gap: 8px; color: var(--color-text-primary); }
 .cityroom-businesses span b { font-weight: 600; color: var(--color-text-secondary); }
 
+/* Карта + панель рангов: на широких экранах панель справа от карты,
+   на узких — уходит под неё, чтобы карта не сжималась до нечитаемой. */
+.cityroof-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--spacing-md);
+  align-items: start;
+  max-width: 1900px;
+  margin: 0 auto;
+}
+@media (max-width: 1280px) {
+  .cityroof-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Карта «Крыши города» — фото города 4×3 с интерактивными плитками поверх. */
 .cityroof-map {
   position: relative;
-  max-width: 1612px;      /* ограничиваем масштаб фото ~как в прежней сетке */
   margin: 0 auto;        /* центрируем карту */
   border-radius: var(--radius-lg);
   overflow: hidden;      /* скругляет все 4 угла, включая боковые */
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-md);
   line-height: 0;
+}
+
+/* ── Панель рангов лиги ─────────────────────────────────────────────────── */
+.cityroof-ranks {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--fill-soft);
+  overflow: hidden;
+  position: sticky;
+  top: var(--spacing-md);
+}
+.cityroof-ranks-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 13px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--hairline);
+}
+.cityroof-ranks-league {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cityroof-division {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 13px;
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+  background: var(--fill-strong, rgba(255, 255, 255, 0.04));
+  border-bottom: 1px solid var(--hairline);
+}
+.cityroof-division b { color: var(--color-text-primary); font-weight: 700; }
+.cityroof-ranks-list {
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cityroof-ranks-empty {
+  margin: 0;
+  padding: 14px 8px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+.cityroof-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+.cityroof-rank-row + .cityroof-rank-row { border-top: 1px solid var(--hairline); }
+.cityroof-rank-row.active { background: rgba(34, 197, 94, 0.07); }
+.cityroof-rank-row.me { border-color: var(--color-accent); background: rgba(0, 113, 227, 0.12); }
+.cityroof-rank-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cityroof-rank-name:hover { color: var(--color-accent); text-decoration: underline; }
+.cityroof-rank-you {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-accent);
+  background: rgba(0, 113, 227, 0.16);
+}
+.cityroof-rank-stats {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cityroof-rank-wc { display: inline-flex; align-items: center; gap: 3px; color: #fcd34d; }
+.cityroof-rank-biz { display: inline-flex; align-items: center; gap: 3px; color: var(--color-text-secondary); }
+.cityroof-rank-biz.has { color: #86efac; }
+/* Классы дивизиона/активности остались в админке и подсказке — держим их. */
+.cityroof-rank-activity { padding: 1px 6px; border-radius: 999px; font-weight: 700; }
+.cityroof-rank-activity.a0 { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; }
+.cityroof-rank-activity.a1 { background: rgba(234, 179, 8, 0.14); color: #fde68a; }
+.cityroof-rank-activity.a2 { background: rgba(59, 130, 246, 0.16); color: #93c5fd; }
+.cityroof-rank-activity.a3 { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+.cityroof-rank-activity.a4 { background: rgba(249, 115, 22, 0.18); color: #fdba74; }
+
+/* ── Двойной щит премиальной IT-студии ──────────────────────────────────── */
+.cityroof-dualshield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+.dualshield-btn {
+  border-color: rgba(168, 85, 247, 0.5) !important;
+  color: #d8b4fe !important;
+}
+.dualshield-btn:hover:not(:disabled) { background: rgba(168, 85, 247, 0.14); }
+.dualshield-active {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  background: rgba(168, 85, 247, 0.12);
+  color: #d8b4fe;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.dualshield-active small { font-weight: 400; color: var(--color-text-secondary); }
+.dualshield-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+  opacity: 0.8;
+}
+/* Метка «×2» на плитке карты: щит виден до открытия бизнеса. */
+.city-tile-dual {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #d8b4fe;
+  background: rgba(88, 28, 135, 0.82);
+  border: 1px solid rgba(168, 85, 247, 0.6);
+}
+
+/* ── Админка: все комнаты «Крыши города» ─────────────────────────────────── */
+.cityroof-admin-rooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+.cityroof-admin-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+.cityroof-admin-free { font-weight: 400; color: var(--color-text-secondary); }
+.cityroof-admin-members {
+  margin-top: 8px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cityroof-admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 44px 64px 72px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+.cityroof-admin-row.head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+}
+.cityroof-admin-name {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cityroof-admin-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: var(--spacing-md);
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
 }
 .cityroof-map-img {
   display: block;
@@ -1995,6 +2227,56 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 }
 .admin-nav-item:hover { background: var(--fill-soft); color: var(--color-text-primary); }
 .admin-nav-item.active { background: rgba(0, 113, 227, 0.15); color: var(--color-accent-hover); }
+
+/* Выравнивание под стиль игры: стеклянный сайдбар/шапка, активный пункт как в .sidebar-item */
+.admin-panel-modern { background: var(--color-bg-primary); }
+.admin-panel-modern .admin-header {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border-bottom: 1px solid var(--glass-border);
+  padding: var(--spacing-sm) var(--spacing-xl);
+}
+.admin-panel-modern .admin-header h2 { font-size: 18px; font-weight: 700; }
+.admin-sidebar {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border-right: 1px solid var(--glass-border);
+  padding: var(--spacing-lg) var(--spacing-md);
+}
+.admin-nav-item {
+  border-radius: var(--radius-sm); padding: 10px 14px; font-size: 14px; font-weight: 500;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.admin-nav-item:active { transform: scale(0.98); }
+.admin-nav-item.active {
+  background: var(--color-accent); color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 113, 227, 0.28);
+}
+.admin-nav-item.active:hover { background: var(--color-accent-hover); color: var(--on-accent); }
+.admin-panel-modern .admin-content { padding: var(--spacing-xl); }
+.admin-panel-modern .admin-add-form,
+.admin-panel-modern .admin-stock-item,
+.admin-panel-modern .admin-user-item,
+.admin-panel-modern .admin-tx-item,
+.admin-panel-modern .admin-config-item {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.admin-panel-modern .admin-btn {
+  border-radius: var(--radius-sm); font-weight: 600;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.admin-panel-modern .admin-btn:active { transform: scale(0.98); }
+.admin-panel-modern .admin-btn-primary {
+  background: var(--color-accent); color: var(--on-accent);
+  box-shadow: 0 4px 12px rgba(0, 113, 227, 0.28);
+}
+.admin-panel-modern .admin-btn-primary:hover { background: var(--color-accent-hover); color: var(--on-accent); }
+.admin-panel-modern .admin-input { border-radius: var(--radius-sm); }
+.admin-panel-modern .admin-section-divider h3 { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
 .admin-panel-modern .admin-content { flex: 1; min-width: 0; }
 
 .admin-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); margin-bottom: var(--spacing-md); flex-wrap: wrap; }
@@ -2756,7 +3038,7 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .tv-confirm-buttons { display: flex; gap: 10px; }
 .tv-confirm-btn {
   flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 11px 16px; border: none; border-radius: 10px;
+  padding: 11px 16px; border: none; border-radius: var(--radius-md);
   font-size: 14px; font-weight: 600; cursor: pointer;
   transition: transform .12s ease, filter .18s ease;
 }
@@ -3399,21 +3681,48 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .mining-house-rename-btn:hover { color: var(--color-text, #fff); background: rgba(255, 255, 255, 0.08); }
 .mining-house-rename { min-width: 0; flex: 1; height: 26px; padding: 2px 8px; font-size: 14px; }
 
-/* ===================== GPU FACTORY SHOP (витрина и редактор) ===================== */
-.gpu-shop-card { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
-.gpu-shop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.gpu-shop-own { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(99, 102, 241, 0.2); }
-.gpu-shop-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.gpu-shop-table th, .gpu-shop-table td { padding: 6px 8px; text-align: left; vertical-align: middle; }
-.gpu-shop-table th { font-size: 12px; color: var(--color-text-dim, #9ca3af); font-weight: 500; }
+/* ===================== GPU FACTORY SHOP (витрина и редактор) =====================
+   Цвета — из токенов index.css: правила работают и в светлой теме (раньше
+   белая граница rgba(255,255,255,.08) на белом была невидима), и в dark/tradeverse. */
+.gpu-shop-card {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.gpu-shop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; color: var(--color-text-secondary); }
+.gpu-shop-head b { color: var(--color-text-primary); }
+.gpu-shop-own {
+  font-size: 12px; padding: 2px 8px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--color-accent);
+}
+/* Горизонтальная прокрутка: в редакторе 5 колонок и они не влезают в модалку на мобильном. */
+.gpu-shop-table { width: 100%; border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
+.gpu-shop-table thead, .gpu-shop-table tbody { display: table; width: 100%; }
+.gpu-shop-table th, .gpu-shop-table td { padding: 6px 8px; text-align: left; vertical-align: middle; color: var(--color-text-primary); white-space: nowrap; }
+.gpu-shop-table th { font-size: 12px; color: var(--color-text-tertiary); font-weight: 500; }
 .gpu-shop-name { font-weight: 600; }
 .gpu-shop-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.gpu-shop-qty-input, .gpu-shop-price-input { width: 96px; height: 28px; padding: 2px 6px; }
-.gpu-shop-open { color: #22c55e; }
-.gpu-shop-closed { color: #ef4444; }
-.gpu-shop-status { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.gpu-shop-qty-input, .gpu-shop-price-input {
+  width: 96px; height: 28px; padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+.gpu-shop-open { color: var(--color-success); }
+.gpu-shop-closed { color: var(--color-danger); }
+.gpu-shop-status { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; color: var(--color-text-secondary); }
 .gpu-shop-hint { margin: 8px 0; }
-.gpu-shop-error { color: #ef4444; }
-.gpu-shop-violations { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); color: #fca5a5; font-size: 13px; }
+.gpu-shop-error { color: var(--color-danger); }
+/* Было #fca5a5 на белом — контраст ~1.8:1. Теперь семантический цвет темы. */
+.gpu-shop-violations {
+  margin-top: 10px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+  color: var(--color-danger); font-size: 13px;
+}
 .gpu-shop-violations ul { margin: 6px 0 0 18px; padding: 0; }
 .gpu-shop-editor { max-width: 720px; width: 100%; }

@@ -62,8 +62,10 @@ from cityroof import router as cityroof_router
 from notifications import router as notifications_router
 from market_data import router as market_router
 from econ import router as econ_router
+from game_balance import router as game_balance_router
 from market_events import router as events_router
 from market_lots import router as market_lots_router
+from player_auctions import router as player_auctions_router
 from shop import router as shop_router, admin_router as shop_admin_router, alias_admin_router as shop_admin_alias_router
 from mining import router as mining_router
 from admin_db import router as admin_db_router
@@ -180,6 +182,8 @@ async def lifespan(app: FastAPI):
     await db.refresh_tokens.create_index("token_hash", unique=True)
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
     await init_db()
+    from game_balance import warm_cache
+    await warm_cache(db)   # баланс из app_config до первых запросов и тиков планировщика
     await mining_module.soft_reset_farms(db)   # разовая миграция под новую экономику майнинга
     await mining_module.dismantle_orphan_farms(db)   # разбор ферм без дома (не видны в новой системе)
     await fix_missing_card_numbers(db.users)   # дозаполнить только ОТСУТСТВУЮЩие номера карт
@@ -249,9 +253,11 @@ app.include_router(cityroof_router)
 app.include_router(notifications_router)
 app.include_router(market_router)
 app.include_router(econ_router)
+app.include_router(game_balance_router)
 app.include_router(events_router)
 # Центральный рынок: лоты игроков (p2p торговля имуществом и железом).
 app.include_router(market_lots_router)
+app.include_router(player_auctions_router)
 app.include_router(shop_router)
 # Админские цены магазина (редактор цен / PriceEditorTab).
 app.include_router(shop_admin_router)
@@ -623,6 +629,7 @@ STARTING_BALANCE = 15000.0
 _LEADERBOARD_SORT_FIELD = {
     "networth": "netWorth", "profit": "profit", "cash": "cash",
     "stocks": "stocks", "crypto": "crypto", "assets": "assets", "company": "company",
+    "donated": "donated",
 }
 
 
@@ -718,6 +725,7 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             "assets": assets_value,
             "company": company_value,
             "warcoin": warcoin_value,
+            "donated": round(float(u.get("donated_total", 0.0) or 0.0), 2),
             "netWorth": net_worth,
             # profit = реализованная прибыль за 7 дней (см. period_net выше).
             # profitAllTime сохранён для профиля/ачивок как «рост с регистрации».
@@ -778,7 +786,7 @@ async def get_leaderboard(
     """Живой рейтинг игроков по чистой стоимости активов.
 
     net worth = наличные + акции + крипта + активы + компания + WarCoin.
-    Сортировки: networth | profit | cash | stocks | crypto | assets | company.
+    Сортировки: networth | profit | cash | stocks | crypto | assets | company | donated.
     profit — реализованная прибыль за 7 дней (не «с регистрации»).
     Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
     """

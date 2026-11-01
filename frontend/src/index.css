@@ -1,4 +1,40 @@
 /* ============================================================
+   Обратная связь на клик: волна в точке нажатия и мягкое сжатие.
+   Логика подключения — utils/clickFeedback.js.
+   ============================================================ */
+.tv-ripple-host { overflow: hidden; }
+.tv-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 113, 227, 0.35) 0%, rgba(0, 113, 227, 0.15) 45%, transparent 70%);
+  transform: scale(0);
+  opacity: 0.9;
+  pointer-events: none;
+  animation: tv-ripple-out 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  z-index: 0;
+}
+@keyframes tv-ripple-out {
+  to { transform: scale(1); opacity: 0; }
+}
+button.tv-pressed,
+a.tv-pressed,
+[role="button"].tv-pressed,
+[role="tab"].tv-pressed,
+.tx-pill.tv-pressed,
+.tv-clickable.tv-pressed {
+  transform: scale(0.96);
+  filter: brightness(0.93);
+  transition: transform 0.08s ease, filter 0.08s ease;
+}
+button, [role="button"], [role="tab"], .tx-pill {
+  transition: transform 0.15s ease, filter 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-ripple { animation: none; display: none; }
+  button.tv-pressed, .tx-pill.tv-pressed { transform: none; }
+}
+
+/* ============================================================
    TradeVerse — Design System Tokens
    Apple-inspired light system (SF Pro, system blues, soft depth)
    ============================================================ */
@@ -53,12 +89,56 @@
   --color-danger-strong: #d70015;
   --color-warning: #ff9500;
 
+  /* Translucent warning fill — used by the tour highlight ring.
+     Kept as a token so it tracks the theme's system orange. */
+  --color-warning-soft: rgba(255, 149, 0, 0.35);
+
+  /* Scrim behind the tour overlay. Lighter in light mode: 0.72 over the
+     white canvas read as a black screen. */
+  --tour-dim: rgba(0, 0, 0, 0.55);
+
   /* Card decorative token — set inline per-card by ShopCard; the
      .shop-card rules carry light fallbacks so no global default is needed. */
+
+  /* iOS switch off-state track (light). Dark themes override it below. */
+  --switch-off: rgba(120, 120, 128, 0.24);
+
+  /* Scrollbar thumb — flips in dark themes so it stays visible on black. */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.30);
 
   /* legacy aliases used in a few places */
   --danger: var(--color-danger);
   --text-secondary: var(--color-text-secondary);
+
+  /* --- Legacy names kept alive as aliases -------------------------------
+     tour.css, support.css and the settings country-select were written
+     before the token layer existed and read these names directly. Mapping
+     them here (instead of leaving each rule on a hardcoded dark fallback)
+     makes every one of those surfaces follow the active theme and accent. */
+  --border: var(--color-border);
+  --border-color: var(--color-border);
+  --surface: var(--color-bg-secondary);
+  --surface-solid: var(--color-bg-elevated);
+  --surface-1: var(--color-bg-elevated);
+  --surface-2: var(--color-bg-tertiary);
+  --input-bg: var(--color-bg-tertiary);
+  --card-bg: var(--color-bg-elevated);
+  --text: var(--color-text-primary);
+  --accent: var(--color-accent);
+  --color-surface-2: var(--color-bg-tertiary);
+  --color-text-dim: var(--color-text-tertiary);
+
+  /* --- Layering scale ---------------------------------------------------
+     One source of truth for stacking so an overlay never ties with a
+     modal by accident (tour and support both sat on 1000). */
+  --z-sidebar: 20;
+  --z-dropdown: 100;
+  --z-overlay: 1000;
+  --z-modal: 1100;
+  --z-tour: 1200;
+  --z-tour-highlight: 1250;
+  --z-toast: 2000;
 
   /* ---- Spacing scale ---- */
   --spacing-xs: 4px;
@@ -123,6 +203,10 @@
   /* iOS dark off-state track */
   --switch-off: rgba(120, 120, 128, 0.36);
 
+  /* Scrollbar thumb — light-on-dark so it reads against true black */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.22);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
+
   /* Accent — brighter blue reads better on black */
   --color-accent: #0a84ff;
   --color-accent-hover: #409cff;
@@ -136,6 +220,9 @@
   --color-danger: #ff453a;
   --color-danger-strong: #ff453a;
   --color-warning: #ff9f0a;
+
+  --color-warning-soft: rgba(255, 159, 10, 0.35);
+  --tour-dim: rgba(0, 0, 0, 0.72);
 
   /* Shadows — deeper, since soft light shadows vanish on black */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
@@ -170,6 +257,9 @@
   --fill-soft: rgba(255, 255, 255, 0.07);
   --switch-off: rgba(148, 163, 184, 0.30);
 
+  --scrollbar-thumb: rgba(255, 255, 255, 0.20);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.34);
+
   --color-accent: #6366f1;
   --color-accent-hover: #818cf8;
   --color-accent-active: #4f46e5;
@@ -181,6 +271,9 @@
   --color-danger: #ef4444;
   --color-danger-strong: #dc2626;
   --color-warning: #f59e0b;
+
+  --color-warning-soft: rgba(245, 158, 11, 0.35);
+  --tour-dim: rgba(0, 0, 0, 0.68);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.46), 0 2px 6px rgba(0, 0, 0, 0.34);
@@ -222,27 +315,30 @@ body {
   min-height: 100vh;
 }
 
-/* Refined scrollbars */
+/* Refined scrollbars — colors come from tokens so the thumb stays visible
+   on the black dark canvas instead of blending into it. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--scrollbar-thumb);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
 }
 
+/* Selected text: accent tint with the theme's primary label color. Using
+   --color-accent-active here made dark-on-dark and blue-on-blue selection. */
 ::selection {
   background: var(--accent-soft-hover);
-  color: var(--color-accent-active);
+  color: var(--color-text-primary);
 }

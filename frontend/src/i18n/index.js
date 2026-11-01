@@ -40,4 +40,13 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
+// <html lang> в index.html статически равен "ru". Держим атрибут в актуальном
+// состоянии: от него зависят переносы слов, подстановка шрифтов и скринридеры.
+// Событие languageChanged срабатывает и на старте, и на смену языка в настройках.
+if (typeof document !== 'undefined') {
+  i18n.on('languageChanged', (lng) => {
+    document.documentElement.setAttribute('lang', lng);
+  });
+}
+
 export default i18n;

@@ -15,6 +15,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from ledger import EXPENSE, adjust_balance, record_transaction
 
 CAT_UTILITY = "utility"
+UTILITY_CATEGORIES = ("communal", "tax", "rent", "other")
 
 
 async def get_utility_balance(db: AsyncIOMotorDatabase, user_id: str) -> float:
@@ -22,10 +23,10 @@ async def get_utility_balance(db: AsyncIOMotorDatabase, user_id: str) -> float:
     return round(float((doc or {}).get("balance", 0.0)), 2)
 
 
-async def top_up(db: AsyncIOMotorDatabase, user_id: str, amount: float) -> Optional[dict]:
+async def top_up(db: AsyncIOMotorDatabase, user_id: str, amount: float, category: str = "other") -> Optional[dict]:
     """Перевод с основного счёта на «Электричество». None — если на основном счёте не хватает."""
     amount = round(float(amount), 2)
-    if amount <= 0:
+    if amount <= 0 or category not in UTILITY_CATEGORIES:
         return None
     main_balance = await adjust_balance(db, user_id, -amount)
     if main_balance is None:
@@ -37,7 +38,7 @@ async def top_up(db: AsyncIOMotorDatabase, user_id: str, amount: float) -> Optio
     )
     await record_transaction(
         db, user_id, EXPENSE, amount, CAT_UTILITY, "Пополнение счёта «Электричество»",
-        balance_after=main_balance, meta={"account": "utility", "kind": "topup"},
+        balance_after=main_balance, meta={"account": "utility", "kind": "topup", "category": category},
     )
     return {"balance": main_balance, "utilityBalance": await get_utility_balance(db, user_id)}
 

@@ -322,6 +322,10 @@ async def donate_to_bank(
         {"_id": current_user["_id"]},
         {"$inc": {"donated_total": amount, "donation_count": 1}},
     )
+    await db.bank_donations.insert_one({
+        "userId": me, "username": current_user.get("username"),
+        "amount": amount, "createdAt": _now(),
+    })
     await record_transaction(db, me, EXPENSE, amount, "donation", "Пожертвование банку",
                              balance_after=new_balance)
     try:
@@ -329,6 +333,26 @@ async def donate_to_bank(
     except Exception:
         pass
     return {"balance": new_balance, "donated": amount}
+
+
+@router.get("/donations")
+async def list_donations(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Топ доноров банка и личная история пожертвований текущего игрока."""
+    me = str(current_user["_id"])
+    totals: dict[str, dict] = {}
+    async for d in db.bank_donations.find({}, {"userId": 1, "username": 1, "amount": 1}):
+        entry = totals.setdefault(d["userId"], {"userId": d["userId"], "username": d.get("username"), "total": 0.0, "count": 0})
+        entry["total"] = round(entry["total"] + float(d.get("amount", 0.0)), 2)
+        entry["count"] += 1
+    top = sorted(totals.values(), key=lambda x: x["total"], reverse=True)[:20]
+    mine = [
+        {"amount": d["amount"], "createdAt": d["createdAt"].isoformat()}
+        async for d in db.bank_donations.find({"userId": me}).sort("createdAt", -1).limit(50)
+    ]
+    return {"top": top, "mine": mine}
 
 
 @router.post("/auctions/{auction_id}/bid")

@@ -5,7 +5,7 @@ import {
   Wallet, TrendingUp, Coins, Cpu, Building, Building2, Boxes, Award, Trophy, LifeBuoy,
   Settings as SettingsIcon,
 } from 'lucide-react'
-import { fetchPortfolio, fetchMyFarm, fetchCryptoAccount, fetchCompany } from '../services/api'
+import { fetchPortfolio, fetchMyFarm, fetchCryptoAccount, fetchCompany, fetchMyAssets, fetchFarms, fetchHardwareInventory } from '../services/api'
 import { toast } from './Toast'
 import '../tutorial.css'
 
@@ -13,11 +13,20 @@ import '../tutorial.css'
 export const TUTORIAL_STORAGE_KEY = 'tradeverse.tutorial.progress'
 
 // Темы обучения: иконка, цвет акцента и раздел теории (ключ в tutorial.theory.sections).
+// Проходят по порядку — это базовый курс.
 const TOPICS = [
   { id: 'mining', icon: Cpu, theory: 'mining' },
   { id: 'stocks', icon: TrendingUp, theory: 'market' },
   { id: 'crypto', icon: Coins, theory: 'crypto' },
   { id: 'business', icon: Building, theory: 'business' },
+]
+
+// Выборочные темы: открываются после базового курса, проходятся в любом порядке
+// и так же подробно, пошагово. Показываются отдельным блоком ниже.
+const OPTIONAL_TOPICS = [
+  { id: 'realestate', icon: Building2, theory: 'realestate' },
+  { id: 'banking', icon: Wallet, theory: 'bank' },
+  { id: 'inventory', icon: Boxes, theory: 'inventory' },
 ]
 
 // Остальные разделы теории — справочник в конце страницы.
@@ -34,11 +43,12 @@ const REFERENCE_SECTIONS = [
 // Автоматическая проверка для отдельных шагов: { тема: { индекс шага: имя проверки } }.
 // Если проверки нет — шаг подтверждается кнопкой «Готово».
 const STEP_CHECKS = {
-  mining: { 2: 'miningRunning' },
-  stocks: { 1: 'hasStock' },
-  crypto: { 2: 'hasCrypto' },
-  business: { 1: 'hasCompany' },
-}
+  // mining: 0 — просто открыть вкладку, 1 — дом, 3 — ферма, 5 — железо, 8 — запуск
+  mining: { 1: 'hasBasementHouse', 3: 'hasFarm', 5: 'hasAllRoles', 8: 'farmRunning' },
+  stocks: { 2: 'hasStock' },
+  crypto: { 2: 'hasCryptoAccount', 3: 'hasCrypto' },
+  business: { 2: 'hasCompany' },
+};
 
 // Непустой ли список в ответе API (поддерживаем несколько возможных имён поля).
 function hasItems(data, keys) {
@@ -53,6 +63,10 @@ const CHECK_FNS = {
   async hasStock() {
     return hasItems(await fetchPortfolio(), ['positions', 'items', 'holdings'])
   },
+  async hasCryptoAccount() {
+    const data = await fetchCryptoAccount()
+    return !!(data && (data.address || data.wallet || data.account || data.id))
+  },
   async hasCrypto() {
     return hasItems(await fetchCryptoAccount(), ['holdings', 'balances', 'positions', 'items'])
   },
@@ -65,6 +79,22 @@ const CHECK_FNS = {
     const farm = data?.farm ?? data
     if (farm?.running === true || farm?.isRunning === true) return true
     return farm?.status === 'running' || farm?.status === 'mining'
+  },
+  async hasBasementHouse() {
+    const data = await fetchMyAssets('realestate')
+    const list = Array.isArray(data) ? data : (data?.assets ?? data?.items ?? [])
+    return list.some(a => (a.basement ?? 0) > 0)
+  },
+  async hasFarm() {
+    const data = await fetchFarms()
+    const farms = Array.isArray(data) ? data : (data?.farms ?? data?.items ?? [])
+    return farms.length > 0
+  },
+  async hasAllRoles() {
+    const inv = await fetchHardwareInventory()
+    const items = Array.isArray(inv) ? inv : (inv?.items ?? [])
+    const roles = ['motherboard', 'cpu', 'ram', 'psu', 'cooling', 'case']
+    return roles.every(role => items.some(i => i.category === role && !i.farmId))
   },
 }
 
@@ -95,7 +125,7 @@ function useList() {
 }
 
 // Одна тема: шапка с прогрессом, сворачиваемая теория и шаги миссии.
-function TopicSection({ topic, done, onProgress }) {
+function TopicSection({ topic, done, onProgress, gated = false }) {
   const { t } = useTranslation()
   const list = useList()
   const [checking, setChecking] = useState(false)
@@ -107,6 +137,8 @@ function TopicSection({ topic, done, onProgress }) {
   const pct = total ? Math.round((doneCount / total) * 100) : 0
   const completed = total > 0 && doneCount >= total
   const base = `tutorial.theory.sections.${theory}`
+  // Выборочная тема до прохождения базового курса — все шаги заблокированы.
+  const gateLocked = gated
 
   const completeStep = (index) => {
     onProgress(id, Math.max(doneCount, index + 1))
@@ -170,9 +202,9 @@ function TopicSection({ topic, done, onProgress }) {
 
       <ol className="tutorial-steps">
         {steps.map((step, i) => {
-          const isDone = i < doneCount
-          const isCurrent = i === doneCount && !completed
-          const isLocked = i > doneCount
+          const isDone = !gateLocked && i < doneCount
+          const isCurrent = !gateLocked && i === doneCount && !completed
+          const isLocked = gateLocked || i > doneCount
           const checkName = STEP_CHECKS[id]?.[i]
           const state = isDone ? 'done' : isCurrent ? 'current' : 'locked'
           return (
@@ -212,7 +244,11 @@ function TopicSection({ topic, done, onProgress }) {
                     )}
                   </div>
                 )}
-                {isLocked && <span className="tutorial-task-locked">{t('tutorial.locked')}</span>}
+                {isLocked && (
+                  <span className="tutorial-task-locked">
+                    {gateLocked ? t('tutorial.optional.locked') : t('tutorial.locked')}
+                  </span>
+                )}
               </div>
             </li>
           )
@@ -233,7 +269,7 @@ function TopicSection({ topic, done, onProgress }) {
 }
 
 // Вкладка «Обучение»: прогресс, миссии с теорией по темам и справочник на одной странице.
-function TutorialTab() {
+function TutorialTab({ onStartTour }) {
   const { t } = useTranslation()
   const list = useList()
   const [progress, setProgress] = useState(loadProgress)
@@ -260,6 +296,18 @@ function TutorialTab() {
   const allDone = totals.reduce((s, x) => s + x.done, 0)
   const allPct = allTotal ? Math.round((allDone / allTotal) * 100) : 0
 
+  // Базовый курс пройден — открываем выборочные темы.
+  const baseCompleted = allTotal > 0 && allDone >= allTotal
+
+  const optTotals = OPTIONAL_TOPICS.map(topic => {
+    const total = list(`tutorial.topics.${topic.id}.steps`).length
+    const done = Math.min(progress[topic.id] || 0, total)
+    return { ...topic, total, done }
+  })
+  const optTotal = optTotals.reduce((s, x) => s + x.total, 0)
+  const optDone = optTotals.reduce((s, x) => s + x.done, 0)
+  const optPct = optTotal ? Math.round((optDone / optTotal) * 100) : 0
+
   return (
     <div className="tutorial-tab">
       <div className="leaderboard-title-row">
@@ -267,6 +315,37 @@ function TutorialTab() {
         <h2 className="tab-title">{t('tutorial.open')}</h2>
       </div>
       <p className="tutorial-subtitle">{t('tutorial.subtitle')}</p>
+      <button type="button" className="submit-btn" onClick={() => onStartTour('main')}>
+        Пройти интерактивный тур
+      </button>
+      <div className="tutorial-overview">
+        <div className="tutorial-overview-top">
+          <span className="tutorial-overview-title">Интерактивное изучение отраслей</span>
+        </div>
+        <div className="tutorial-overview-chips">
+          {[
+            { key: 'mining', label: 'Майнинг' },
+            { key: 'stocks', label: 'Акции' },
+            { key: 'crypto', label: 'Криптовалюта' },
+            { key: 'realestate', label: 'Недвижимость' },
+            { key: 'business', label: 'Бизнес' },
+          ].map(({ key, label }) => (
+            <button key={key} type="button" className="tutorial-chip" onClick={() => onStartTour(key)}>
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="tutorial-overview">
+        <div className="tutorial-overview-top">
+          <span className="tutorial-overview-title">Как растёт уровень</span>
+        </div>
+        <p className="tutorial-hint">
+          Уровень зависит от опыта (XP). Каждые 50 единиц оборота сделок на бирже или в крипте дают 1 XP,
+          а достижения добавляют XP сверх этого. Переход с уровня N на N+1 требует N × 400 XP.
+          Уровень открывает переводы (отправка с 2 уровня, получение с 5) и лимит недвижимости.
+        </p>
+      </div>
 
       <div className="tutorial-overview">
         <div className="tutorial-overview-top">
@@ -300,6 +379,33 @@ function TutorialTab() {
             />
           </div>
         ))}
+      </div>
+
+      <div className="tutorial-optional-block">
+        <div className="tutorial-optional-head">
+          <h3 className="tutorial-reference-title">{t('tutorial.optional.title')}</h3>
+          {!baseCompleted && (
+            <span className="tutorial-optional-lock">
+              <Lock size={13} /> {t('tutorial.optional.locked')}
+            </span>
+          )}
+        </div>
+        <p className="tutorial-hint">{t('tutorial.optional.desc')}</p>
+        <div className="tutorial-progress tutorial-progress--lg" aria-hidden="true">
+          <span className="tutorial-progress-bar" style={{ width: `${optPct}%` }} />
+        </div>
+        <div className="tutorial-topics-list">
+          {OPTIONAL_TOPICS.map(topic => (
+            <div key={topic.id} id={`tutorial-${topic.id}`} className="tutorial-anchor">
+              <TopicSection
+                topic={topic}
+                done={progress[topic.id] || 0}
+                onProgress={updateProgress}
+                gated={!baseCompleted}
+              />
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="tutorial-reference">

@@ -10,6 +10,7 @@ import ShopTab from './ShopTab'
 import LeaderboardTab from './LeaderboardTab'
 import AchievementsTab from './AchievementsTab'
 import TutorialTab from './TutorialTab'
+import TourOverlay from './TourOverlay'
 import MarketTab from './MarketTab'
 import CentralMarketTab from './CentralMarketTab'
 import MyAssetsTab from './MyAssetsTab'
@@ -42,6 +43,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('account')
   const [showAdmin, setShowAdmin] = useState(false)
+  const [tourOpen, setTourOpen] = useState(null)
   const [balance, setBalance] = useState(user?.balance ?? 0)
 
   const isAdmin = user?.role === 'admin'
@@ -186,7 +188,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'achievements':
         return <AchievementsTab />
       case 'tutorial':
-        return <TutorialTab />
+        return <TutorialTab onStartTour={(key) => setTourOpen(key ?? 'main')} />
       case 'settings':
         return <SettingsPage user={user} onUserUpdate={onUserUpdate} />
       case 'support':
@@ -222,6 +224,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
           <Shield size={22} />
         </button>
       )}
+      {tourOpen && <TourOverlay startKey={tourOpen} onTabChange={setActiveTab} onClose={() => setTourOpen(null)} />}
       {showAdmin && <AdminPanel user={user} onClose={() => setShowAdmin(false)} />}
     </div>
   )

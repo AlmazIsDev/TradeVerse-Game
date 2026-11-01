@@ -5,7 +5,7 @@ import {
   fetchUtilityAccount, utilityTopUp,
   fetchCreditOverview, takeLoan, repayLoan, openDeposit, closeDeposit,
   fetchP2POffers, fetchMyP2PLoans, createP2POffer, acceptP2POffer, repayP2PLoan,
-  fetchBankAuctions, bidBankAuction, donateToBank,
+  fetchBankAuctions, bidBankAuction, donateToBank, fetchDonations,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatCompact } from './TransactionsPanel'
 import AnalyticsChart from './AnalyticsChart'
@@ -48,6 +48,16 @@ function BankTab({ balance = 0, onBalanceChange }) {
   const [bidInputs, setBidInputs] = useState({})
   const [donateAmount, setDonateAmount] = useState('')
   const [utilityAmount, setUtilityAmount] = useState('')
+  const [donors, setDonors] = useState(null)
+  const [utilityCategory, setUtilityCategory] = useState('communal')
+  useEffect(() => {
+    if (modal !== 'donate') return
+    let cancelled = false
+    fetchDonations()
+      .then(d => { if (!cancelled) setDonors(d) })
+      .catch(() => { if (!cancelled) setDonors({ top: [], mine: [] }) })
+    return () => { cancelled = true }
+  }, [modal])
   const [loanAmount, setLoanAmount] = useState('')
   const [depositAmount, setDepositAmount] = useState('')
   const [offerForm, setOfferForm] = useState(EMPTY_OFFER)
@@ -260,11 +270,20 @@ function BankTab({ balance = 0, onBalanceChange }) {
           e.preventDefault()
           const amt = parseFloat(utilityAmount)
           if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-          const res = await runBankAction(() => utilityTopUp(amt), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
+          const res = await runBankAction(() => utilityTopUp(amt, utilityCategory), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
           if (res) setUtilityAmount('')
         }}>
           <h3 className="transfer-form-title">{t('bank.utilityTopUpTitle', 'Пополнить с основного счёта')}</h3>
           <div className="bank-stack-form">
+            <label className="transfer-field">
+              <span>{t('bank.utilityCategory', 'Категория')}</span>
+              <select value={utilityCategory} onChange={e => setUtilityCategory(e.target.value)}>
+                <option value="communal">{t('bank.utilityCat.communal', 'Коммунальные счета')}</option>
+                <option value="tax">{t('bank.utilityCat.tax', 'Налоги')}</option>
+                <option value="rent">{t('bank.utilityCat.rent', 'Аренда')}</option>
+                <option value="other">{t('bank.utilityCat.other', 'Прочее')}</option>
+              </select>
+            </label>
             <label className="transfer-field">
               <span><DollarSign size={14} /> {t('bank.amount')}</span>
               <input type="number" min="0.01" step="0.01" value={utilityAmount} onChange={e => setUtilityAmount(e.target.value)} placeholder="0.00" />
@@ -436,6 +455,19 @@ function BankTab({ balance = 0, onBalanceChange }) {
       {modal === 'donate' && (
         <BankModal title={t('bank.donateTitle', 'Пожертвовать банку')} onClose={() => setModal(null)}>
           <p className="bank-empty">{t('bank.donateHint', 'Деньги пойдут на счёт банка государства и откроют достижения.')}</p>
+          <h4>{t('bank.topDonors', 'Топ доноров')}</h4>
+          {donors === null && <p className="bank-empty">{t('bank.loading', 'Загрузка…')}</p>}
+          {donors && donors.top.length === 0 && <p className="bank-empty">{t('bank.noDonors', 'Пожертвований пока нет')}</p>}
+          {donors && donors.top.length > 0 && (
+            <ol className="bank-donors-list">
+              {donors.top.map((d, i) => (
+                <li key={d.userId}>
+                  <span>{i + 1}. {d.username || '—'}</span>
+                  <b>{formatMoney(d.total)} $</b>
+                </li>
+              ))}
+            </ol>
+          )}
           <form className="transfer-form" onSubmit={async e => {
             e.preventDefault()
             const amt = parseFloat(donateAmount)

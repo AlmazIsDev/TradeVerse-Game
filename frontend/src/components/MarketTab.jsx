@@ -13,12 +13,13 @@ import {
   ADMIN_FACTORIES_CATALOG,
   ADMIN_SOURCES_CATALOG,
   ADMIN_WAREHOUSES_CATALOG,
+  TEMP_DISABLED_SLUGS,
 } from '../utils/adminCatalog'
 import {
   Home, Briefcase, Search, AlertTriangle,
   Coins, LayoutGrid, ShoppingCart,
   ArrowUpDown, ArrowUp, ArrowDown,
-  Factory, Mountain, Warehouse,
+  Factory, Mountain, Warehouse, Wrench,
 } from 'lucide-react'
 import { assetImage } from '../utils/assetImages'
 
@@ -28,10 +29,16 @@ const CATEGORIES = [
   { id: 'all', icon: LayoutGrid },
   { id: 'realestate', icon: Home },
   { id: 'business', icon: Briefcase },
-  { id: 'factory', icon: Factory },
-  { id: 'source', icon: Mountain },
   { id: 'warehouse', icon: Warehouse },
 ]
+
+// Разделы витрины, временно закрытые на доработку бэкенда. Вкладки скрыты из
+// тулбара, а прямой переход (старое сохранённое состояние/ссылка) показывает
+// заглушку «Раздел временно недоступен» вместо карточек.
+const TEMP_UNAVAILABLE_CATEGORIES = {
+  factory: Factory,
+  source: Mountain,
+}
 
 // Разрешённые slug-и вкладки «Рынок»: только admin-* из adminCatalog.js.
 // Остальные (старые базовые дома/бизнесы, itstudio_*, media_holding, машины)
@@ -183,6 +190,8 @@ const SRC_RESOURCE_EMOJI = {
 function MarketTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const [category, setCategory] = useState('all')
+  // Вкладка раздела, закрытого на доработку: заглушка вместо списка активов.
+  const tempUnavailable = !!TEMP_UNAVAILABLE_CATEGORIES[category]
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [error, setError] = useState(null)
@@ -213,6 +222,12 @@ function MarketTab({ balance = 0, onBalanceChange }) {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    // Закрытый раздел не грузим — данных на него всё равно нет.
+    if (TEMP_UNAVAILABLE_CATEGORIES[category]) {
+      setItems([])
+      setLoading(false)
+      return
+    }
     try {
       const type = category === 'all' ? undefined : category
       let data = []
@@ -257,14 +272,14 @@ function MarketTab({ balance = 0, onBalanceChange }) {
     } finally {
       setLoading(false)
     }
-  }, [category])
+  }, [category, t])
 
   useEffect(() => { load() }, [load])
 
   // Защитный пояс: не-admin позиции не проберутся на экран, даже если бэкенд
   // их вернёт. Внутри одной редкости (sortBy='rarity') — сортировка по цене.
   const view = useMemo(() => {
-    let r = items.filter(it => isAdminMarketSlug(it.slug))
+    let r = items.filter(it => isAdminMarketSlug(it.slug) && !TEMP_DISABLED_SLUGS.has(it.slug))
     if (search) {
       const q = search.toLowerCase()
       r = r.filter(it =>
@@ -302,6 +317,8 @@ function MarketTab({ balance = 0, onBalanceChange }) {
 
   const handleBuy = useCallback((item) => {
     if (!item?.slug) return
+    // Событие для обучения: шаг «Кнопка покупки» засчитывается автоматически.
+    window.dispatchEvent(new CustomEvent('tv:tour', { detail: { type: 'buy-open' } }))
     // emoji из cardEmoji — баннер модалки совпадает с карточкой.
     setPendingBuy({
       ...item,
@@ -329,6 +346,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         onBalanceChange(res.balance)
       }
       toast(t('market.bought', { defaultValue: 'Куплено' }) + `: ${item.name}`)
+      window.dispatchEvent(new CustomEvent('tv:tour', { detail: { type: 'buy-done' } }))
       setPendingBuy(null)
     } catch (err) {
       const detail = err?.status
@@ -359,8 +377,6 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                 <Icon size={14} /> {c.id === 'all' ? t('common.all')
                   : c.id === 'realestate' ? t('market.cat_realestate', 'Недвижимость')
                   : c.id === 'business' ? t('market.cat_business', 'Бизнесы')
-                  : c.id === 'factory' ? t('market.cat_factories', 'Заводы')
-                  : c.id === 'source' ? t('market.cat_sources', 'Источники')
                   : c.id === 'warehouse' ? t('market.cat_warehouses', 'Склады')
                   : c.id}
               </button>
@@ -402,14 +418,27 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-      {error && (
+      {tempUnavailable && (
+        <div className="market-temp-unavailable">
+          <Wrench size={34} className="market-temp-unavailable-icon" />
+          <p className="market-temp-unavailable-title">
+            {t('common.sectionTemporarilyUnavailable', 'Данный раздел временно недоступен')}
+          </p>
+          <p className="market-temp-unavailable-hint">
+            {t('common.sectionTemporarilyUnavailableHint',
+              'Мы дорабатываем функциональные возможности — раздел вернётся в ближайшее обновление.')}
+          </p>
+        </div>
+      )}
+
+      {!tempUnavailable && error && (
         <div className="error-state">
           <AlertTriangle size={24} className="error-icon" color="#fca5a5" />
           <p>{t('common.error')}: {error}</p>
         </div>
       )}
 
-      {loading && (
+      {!tempUnavailable && loading && (
         <div className="asset-grid">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="asset-card market-card skeleton" style={{ height: 220 }} />
@@ -417,11 +446,11 @@ function MarketTab({ balance = 0, onBalanceChange }) {
         </div>
       )}
 
-      {!loading && !error && view.length === 0 && (
+      {!tempUnavailable && !loading && !error && view.length === 0 && (
         <div className="empty-state"><p>{t('market.noItems')}</p></div>
       )}
 
-      {!loading && !error && view.length > 0 && (
+      {!tempUnavailable && !loading && !error && view.length > 0 && (
         <div className="asset-grid">
           {view.map(item => {
             const rc = RARITY_COLOR[item.rarity] || 'var(--color-accent)'
@@ -523,6 +552,7 @@ function MarketTab({ balance = 0, onBalanceChange }) {
                   <span className="mcp-value"><Coins size={16} /> ${formatMoney(item.price)}</span>
                 </div>
                 <button
+                  data-tour="tour-buy"
                   className="asset-buy-btn"
                   style={{ background: canBuy ? rc : undefined }}
                   disabled={!canBuy}

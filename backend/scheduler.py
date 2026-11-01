@@ -80,6 +80,12 @@ async def _tick():
         await accrue_p2p_loans(db)
     except Exception as exc:
         logger.warning("p2p loan accrual failed: %s", exc, exc_info=True)
+    # 5e) Аукцион бизнесов игроков: закрытие просроченных лотов (см. player_auctions.py).
+    try:
+        from player_auctions import process_player_auctions
+        await process_player_auctions(db)
+    except Exception as exc:
+        logger.warning("player auction sweep failed: %s", exc, exc_info=True)
     # 6) Аналитика экономики — только админам (не всем игрокам), для живого
     #    обновления вкладки EconomyAdmin без ручного релоада.
     try:

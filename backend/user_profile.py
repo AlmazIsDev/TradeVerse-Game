@@ -28,8 +28,10 @@ router = APIRouter(prefix="/api/user", tags=["profile"])
 @router.get("/achievements")
 async def get_achievements(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
     """Список достижений игрока: открытые и закрытые."""
-    from achievements import list_user_achievements
-    return {"achievements": await list_user_achievements(db, str(current_user["_id"]))}
+    from achievements import check_achievements, list_user_achievements
+    user_id = str(current_user["_id"])
+    await check_achievements(db, user_id)
+    return {"achievements": await list_user_achievements(db, user_id)}
 
 
 @router.get("/level")

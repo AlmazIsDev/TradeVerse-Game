@@ -1899,6 +1899,67 @@ body {
 
 /* Свечение по редкости: цвет задаёт --glow, выполненные светятся ярче */
 .achievement-card { --glow: #8e9aaf; }
+
+.achievements-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-top: var(--spacing-sm);
+}
+
+.achievements-filters select {
+  min-height: 36px;
+  padding: 0 var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bank-donors-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bank-donors-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  min-width: 0;
+}
+
+.bank-donors-list li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .achievements-grid {
+    grid-template-columns: 1fr;
+  }
+  .achievements-filters label {
+    flex: 1 1 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .achievements-filters select {
+    width: 100%;
+    min-height: 44px;
+  }
+}
 .achievement-card.rarity-common { --glow: #9aa4b2; }
 .achievement-card.rarity-uncommon { --glow: #3ddc84; }
 .achievement-card.rarity-rare { --glow: #4da3ff; }
@@ -1968,6 +2029,17 @@ body {
   margin-top: 4px;
   font-size: 11px;
   color: #4da3ff;
+}
+
+/* Средние экраны (≈601–760px): карта профиля и полоса XP не помещаются рядом
+   с балансом и наезжают на него — оставляем баланс и числовой уровень. */
+@media (max-width: 760px) {
+  .profile-card { display: none; }
+  .header-level-bar,
+  .header-level-left { display: none; }
+  .header-level { min-width: 0; }
+  .header-balance { min-width: 0; flex-shrink: 1; }
+  .header-balance-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 
 @media (max-width: 600px) {
@@ -2083,6 +2155,41 @@ body {
   color: var(--color-text-secondary);
   font-size: 15px;
   text-align: center;
+}
+
+/* Заглушка закрытого на доработку раздела («Рынок» → Заводы/Источники,
+   «Бизнесы игроков»). Нейтральный стиль, чтобы не читалось как ошибка. */
+.market-temp-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: calc(var(--spacing-xl) * 2) var(--spacing-lg);
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-lg);
+  background: rgba(148, 163, 184, 0.06);
+  text-align: center;
+}
+
+.market-temp-unavailable-icon {
+  color: #f59e0b;
+  opacity: 0.9;
+}
+
+.market-temp-unavailable-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.market-temp-unavailable-hint {
+  margin: 0;
+  max-width: 460px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 /* ===================== ICON STYLES ===================== */
@@ -2721,7 +2828,7 @@ body {
   border: none;
   background: var(--fill-soft);
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   font-family: var(--font-primary);
   cursor: pointer;

@@ -52,6 +52,16 @@ _ASSET_CATEGORY = {
     TYPE_CAR: CAT_REALESTATE,
 }
 
+# Временно запрещённые к покупке активы (Поле, Шахта, Лесопилка, Завод видеокарт, Пекарня).
+# Ограничение временное — убирать этот список, когда покупку нужно будет вернуть.
+TEMP_DISABLED_SLUGS = {
+    "admin-src-mine-1",      # Шахта
+    "admin-src-field-1",     # Поле
+    "admin-src-sawmill-1",   # Лесопилка
+    "admin-fac-gpu-1",       # Завод видеокарт
+    "admin-fac-bakery-1",    # Пекарня
+}
+
 
 def _ledger_category(asset_or_type) -> str:
     """Категория реестра по типу актива/словарю. Не зависит от регистра."""
@@ -1246,6 +1256,12 @@ async def buy_asset(
             "чтобы подхватить новые позиции рынка.",
         )
 
+    if catalog["slug"] in TEMP_DISABLED_SLUGS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Покупка «{catalog['name']}» временно недоступна.",
+        )
+
     user_id = str(current_user["_id"])
     await check_type_limit(db, user_id, catalog["type"])
     # Цена: admin-override → база каталога, затем рыночный множитель.
@@ -1720,6 +1736,8 @@ async def sell_asset(
     if asset.get("frozen"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Актив заморожен: погасите займ, чтобы продать его")
+    if asset.get("onAuction"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Актив выставлен на аукцион")
     # Продажа умножает ту же стоимость, что покупка: иначе при mult<0.7 арбитраж.
     # Тюнинг и накопленный доход к рынку не привязаны.
     await _ensure_asset_market(db)
@@ -1754,6 +1772,8 @@ async def transfer_to_company(
     asset = await _load_owned(db, user_id, asset_id)
     if asset.get("companyId"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Актив уже принадлежит компании")
+    if asset.get("onAuction"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Актив выставлен на аукцион")
     company = await db.companies.find_one({"ownerId": user_id})
     if not company:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Сначала создайте компанию")
@@ -1778,6 +1798,8 @@ async def transfer_to_player(
     if asset.get("companyId"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Актив принадлежит компании — сначала верните его себе")
+    if asset.get("onAuction"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Актив выставлен на аукцион")
     if asset.get("category") == "truck":
         await db.user_assets.update_many({"hitchedTo": asset["_id"]}, {"$unset": {"hitchedTo": ""}})
     if asset.get("rental"):

@@ -765,6 +765,14 @@ export async function updateEconomyConfig(data) {
   return request('/api/admin/economy/config', { method: 'POST', body: JSON.stringify(data) })
 }
 
+export async function fetchGameBalance() {
+  return request('/api/admin/game-balance')
+}
+
+export async function updateGameBalance(patch) {
+  return request('/api/admin/game-balance', { method: 'PATCH', body: JSON.stringify({ patch }) })
+}
+
 // ── Crypto API ────────────────────────────────────────────────────────────────
 
 export async function openCryptoAccount() {
@@ -779,10 +787,10 @@ export async function fetchUtilityAccount() {
   return request('/api/account/utility')
 }
 
-export async function utilityTopUp(amount) {
+export async function utilityTopUp(amount, category = 'other') {
   return request('/api/account/utility/topup', {
     method: 'POST',
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, category }),
   })
 }
 
@@ -844,6 +852,10 @@ export async function donateToBank(amount) {
 
 export async function fetchBankAuctions() {
   return request('/api/bank/p2p/auctions')
+}
+
+export async function fetchDonations() {
+  return request('/api/bank/p2p/donations')
 }
 
 export async function bidBankAuction(auctionId, amount) {
@@ -1350,6 +1362,17 @@ export async function protectBusiness(id, level) {
 
 export async function fetchSeasons() {
   return request('/api/cityroof/seasons')
+}
+
+export async function adminFetchCityRooms() {
+  return request('/api/cityroof/admin/rooms')
+}
+
+export async function buyDualShield(businessId, assetId) {
+  return request(`/api/cityroof/dualshield/${encodeURIComponent(businessId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ assetId }),
+  })
 }
 
 export async function fetchCityBonuses() {

@@ -628,9 +628,9 @@ STARTING_BALANCE = 15000.0
 # ВАЖНО: 'networth' маппится на 'netWorth' — иначе e[sort_key] бросал KeyError,
 # что и было причиной «ошибки подключения» в разделе «По капиталу».
 _LEADERBOARD_SORT_FIELD = {
-    "networth": "netWorth", "profit": "profit", "cash": "cash",
-    "stocks": "stocks", "crypto": "crypto", "assets": "assets", "company": "company",
-    "donated": "donated",
+    "networth": "netWorth", "level": "level", "achievements": "achievements",
+    "profit": "profit", "cash": "cash", "stocks": "stocks", "crypto": "crypto",
+    "assets": "assets", "company": "company", "donated": "donated",
 }
 
 

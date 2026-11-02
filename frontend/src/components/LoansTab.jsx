@@ -66,21 +66,21 @@ function LoansTab() {
 
   return <div className="centralmarket-tab loans-page">
     <div className="centralmarket-header">
-      <div><h2 className="tab-title">{t('nav.loans', 'Займы')}</h2><p className="centralmarket-subtitle">{t('loans.subtitle', 'Займы между игроками на удобный срок')}</p></div>
-      <button type="button" className="centralmarket-create-btn" onClick={() => setCreateOpen(true)}><Plus size={16} /> {t('loans.create', 'Выставить своё предложение')}</button>
+      <div><h2 className="tab-title">{t('nav.loans')}</h2><p className="centralmarket-subtitle">{t('loans.subtitle')}</p></div>
+      <button type="button" className="centralmarket-create-btn" onClick={() => setCreateOpen(true)}><Plus size={16} /> {t('loans.create')}</button>
     </div>
     <div className="centralmarket-toolbar">
       <div className="centralmarket-toolbar-left">
-        <button type="button" className={`centralmarket-filters-toggle ${filtersOpen ? 'is-open' : ''}`} onClick={() => setFiltersOpen(v => !v)}><Filter size={14} /><ChevronDown size={14} className={filtersOpen ? 'rot' : ''} /></button>
+        <button type="button" aria-label={t('loans.filters')} className={`centralmarket-filters-toggle ${filtersOpen ? 'is-open' : ''}`} onClick={() => setFiltersOpen(v => !v)}><Filter size={14} /><ChevronDown size={14} className={filtersOpen ? 'rot' : ''} /></button>
         <button type="button" className={`centralmarket-sort-btn sort-${sort}`} onClick={() => setSort(v => v === 'default' ? 'amount_asc' : v === 'amount_asc' ? 'amount_desc' : 'default')}>
-          {sort === 'default' ? <><ArrowUpDown size={14} /><span>{t('common.sort', 'Сортировка')}</span></> : sort === 'amount_asc' ? <><ArrowUp size={14} /><span>{t('loans.sortAsc', 'Сумма ↑')}</span></> : <><ArrowDown size={14} /><span>{t('loans.sortDesc', 'Сумма ↓')}</span></>}
+          {sort === 'default' ? <><ArrowUpDown size={14} /><span>{t('loans.sort')}</span></> : sort === 'amount_asc' ? <><ArrowUp size={14} /><span>{t('loans.sortAsc')}</span></> : <><ArrowDown size={14} /><span>{t('loans.sortDesc')}</span></>}
         </button>
       </div>
-      <div className="centralmarket-toolbar-right"><div className="tx-search centralmarket-search"><Search size={16} className="tx-search-icon" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('loans.search', 'Поиск по имени')} /></div></div>
+      <div className="centralmarket-toolbar-right"><div className="tx-search centralmarket-search"><Search size={16} className="tx-search-icon" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('loans.search')} /></div></div>
     </div>
     {filtersOpen && <div className="centralmarket-filters"><div className="centralmarket-filters-body">
-      <div className="centralmarket-filter"><span className="centralmarket-filter-label"><Filter size={12} /> {t('loans.type', 'Тип предложения')}</span><div className="centralmarket-cat-pills">
-        {[['all', 'Все'], ['lend', 'Дать в займ'], ['borrow', 'Взять в займ']].map(([id, label]) => <button key={id} type="button" className={`tx-pill ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>)}
+      <div className="centralmarket-filter"><span className="centralmarket-filter-label"><Filter size={12} /> {t('loans.type')}</span><div className="centralmarket-cat-pills">
+        {[['all', t('loans.all')], ['lend', t('loans.lend')], ['borrow', t('loans.borrow')]].map(([id, label]) => <button key={id} type="button" className={`tx-pill ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>)}
       </div></div>
       <div className="centralmarket-filter centralmarket-filter--numeric"><span className="centralmarket-filter-label"><DollarSign size={12} /> Цена, от–до</span><div className="centralmarket-num-pair"><input type="number" min="0" value={minAmount} onChange={e => setMinAmount(e.target.value)} placeholder="От" className="centralmarket-num-input" /><span className="centralmarket-num-dash">—</span><input type="number" min="0" value={maxAmount} onChange={e => setMaxAmount(e.target.value)} placeholder="До" className="centralmarket-num-input" /></div></div>
       <div className="centralmarket-filter centralmarket-filter--numeric"><span className="centralmarket-filter-label">Процент, от–до</span><div className="centralmarket-num-pair"><input type="number" min="0" value={minRate} onChange={e => setMinRate(e.target.value)} placeholder="От" className="centralmarket-num-input" /><span className="centralmarket-num-dash">—</span><input type="number" min="0" value={maxRate} onChange={e => setMaxRate(e.target.value)} placeholder="До" className="centralmarket-num-input" /></div></div>

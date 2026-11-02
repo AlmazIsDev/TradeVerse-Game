@@ -606,6 +606,7 @@
     "stocks": "Acciones",
     "mining": "Minería",
     "bank": "Banco",
+    "loans": "Préstamos",
     "account": "Cuenta",
     "dashboard": "Panel",
     "settings": "Ajustes",
@@ -866,6 +867,21 @@
     "operations": "Operaciones",
     "vsPrevDay": "vs día anterior",
     "viewAll": "Historial completo"
+  },
+  "loans": {
+    "subtitle": "Préstamos entre jugadores con plazos flexibles",
+    "create": "Publicar mi oferta",
+    "filters": "Filtros",
+    "sort": "Ordenar",
+    "sortAsc": "Importe ↑",
+    "sortDesc": "Importe ↓",
+    "search": "Buscar por nombre",
+    "type": "Tipo de oferta",
+    "all": "Todos",
+    "lend": "Prestar",
+    "borrow": "Pedir prestado",
+    "offersCount": "Ofertas: {{count}}",
+    "amountRange": "Importe, de–a"
   },
   "bank": {
     "title": "Banco",

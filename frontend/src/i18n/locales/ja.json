@@ -606,6 +606,7 @@
     "stocks": "株式",
     "mining": "マイニング",
     "bank": "銀行",
+    "loans": "ローン",
     "account": "口座",
     "dashboard": "ダッシュボード",
     "settings": "設定",
@@ -866,6 +867,21 @@
     "operations": "操作",
     "vsPrevDay": "前日比",
     "viewAll": "取引履歴をすべて表示"
+  },
+  "loans": {
+    "subtitle": "柔軟な条件でプレイヤー同士が融資",
+    "create": "自分のオファーを掲載",
+    "filters": "フィルター",
+    "sort": "並べ替え",
+    "sortAsc": "金額 ↑",
+    "sortDesc": "金額 ↓",
+    "search": "名前で検索",
+    "type": "オファーの種類",
+    "all": "すべて",
+    "lend": "貸す",
+    "borrow": "借りる",
+    "offersCount": "オファー: {{count}}",
+    "amountRange": "金額、最小–最大"
   },
   "bank": {
     "title": "銀行",

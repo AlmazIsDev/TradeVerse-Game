@@ -606,6 +606,7 @@
     "stocks": "Stocks",
     "mining": "Mining",
     "bank": "Bank",
+    "loans": "Loans",
     "account": "Account",
     "dashboard": "Dashboard",
     "settings": "Settings",
@@ -866,6 +867,21 @@
     "operations": "Operations",
     "vsPrevDay": "vs prev. day",
     "viewAll": "Full history"
+  },
+  "loans": {
+    "subtitle": "Player-to-player loans on flexible terms",
+    "create": "Post your offer",
+    "filters": "Filters",
+    "sort": "Sort",
+    "sortAsc": "Amount ↑",
+    "sortDesc": "Amount ↓",
+    "search": "Search by name",
+    "type": "Offer type",
+    "all": "All",
+    "lend": "Lend",
+    "borrow": "Borrow",
+    "offersCount": "Offers: {{count}}",
+    "amountRange": "Amount, from–to"
   },
   "bank": {
     "title": "Bank",

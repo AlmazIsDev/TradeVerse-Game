@@ -14,7 +14,7 @@
 .settings-country-chevron { transition: transform 0.15s; }
 .settings-country-chevron.open { transform: rotate(180deg); }
 .settings-country-panel {
-  position: absolute; z-index: var(--z-dropdown, 100); top: calc(100% + 6px); left: 0; right: 0;
+  position: absolute; z-index: 1000; top: calc(100% + 6px); left: 0; right: 0;
   max-height: 480px; overflow-y: auto; padding: 6px; border-radius: var(--radius-sm);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
@@ -678,3 +678,11 @@
   padding: 6px 10px; color: inherit; cursor: pointer;
 }
 .tutorial-ghost-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .settings-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .settings-card { min-width: 0; padding: 14px; }
+  .settings-country-panel { max-height: 42vh; }
+  .settings-country-option { min-height: 42px; }
+  .settings-card input, .settings-card textarea, .settings-card select { max-width: 100%; }
+}

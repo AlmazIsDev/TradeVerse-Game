@@ -5,6 +5,7 @@ import { Wallet, Building2, ShoppingCart, Castle, Coins, TrendingUp, Home, Build
 const ICON_MAP = {
   account: Wallet,
   bank: Building2,
+  loans: Handshake,
   shop: ShoppingCart,
   cityroof: Castle,
   crypto: Coins,
@@ -29,6 +30,7 @@ function Sidebar({ activeTab, onTabChange }) {
     { title: t('nav.groupFinance'), items: [
       { id: 'account', label: t('nav.account') },
       { id: 'bank', label: t('nav.bank') },
+      { id: 'loans', label: t('nav.loans', 'Займы') },
     ] },
     { title: t('nav.groupMarkets'), items: [
       { id: 'centralmarket', label: t('nav.centralMarket') },

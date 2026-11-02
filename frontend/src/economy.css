@@ -1818,6 +1818,14 @@ select.company-name-input option {
 
 /* Карточки долгов (P2P) и кредитов/депозитов */
 .bank-debt-list { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+/* Займы используют ту же визуальную систему, что и лоты центрального рынка. */
+.loans-page .bank-debt-card,
+.loans-page .bank-offer-form {
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--color-bg-secondary, var(--color-bg-tertiary));
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0, 0, 0, .08));
+}
 .bank-debt-card {
   display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); flex-wrap: wrap;
   padding: var(--spacing-md); background: var(--color-bg-tertiary);
@@ -3477,10 +3485,13 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .mbt-row .mslot-pick:focus { border-color: rgba(0, 113, 227, 0.55); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15); outline: none; }
 .mbt-row .mslot-pick:disabled { opacity: 0.55; cursor: not-allowed; }
 .mining-bulk-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: 8px;
   font-size: 12px; color: var(--color-text-secondary); cursor: pointer; user-select: none;
 }
-.mining-bulk-toggle input { width: 15px; height: 15px; accent-color: var(--color-accent-hover); cursor: pointer; }
+.mining-bulk-toggle input { appearance: none; width: 17px; height: 17px; margin: 0; border: 1px solid var(--hairline); border-radius: 5px; background: var(--color-bg-secondary); cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.mining-bulk-toggle input:hover { border-color: var(--color-accent); }
+.mining-bulk-toggle input:checked { background: var(--color-accent, #0071e3); border-color: var(--color-accent, #0071e3); box-shadow: 0 0 0 3px rgba(0, 113, 227, .14); }
+.mining-bulk-toggle input:checked::after { content: '✓'; display: block; color: #fff; font-size: 13px; font-weight: 800; line-height: 15px; text-align: center; }
 /* Шапка списка ферм: «Все» + счётчик */
 .mining-bulk-listhead { display: flex; align-items: center; gap: 14px; padding: 4px 4px 8px; }
 .mining-bulk-listhead .mining-bulk-selectall { margin-left: 0; }
@@ -3500,13 +3511,13 @@ b.ok { color: var(--color-success); } b.warn { color: #ff9f0a; } b.crit { color:
 .market-cats .mslot-pick:disabled { opacity: 0.55; cursor: not-allowed; }
 /* Чекбоксы (выбрать все, переключатели ИИ) */
 .mining-bulk-selectall {
+  display: inline-flex; align-items: center; gap: 8px;
   font-size: 12px; font-weight: 600; color: var(--color-text-secondary);
   cursor: pointer; user-select: none; align-self: center;
 }
-.mining-bulk-selectall input {
-  width: 15px; height: 15px; cursor: pointer;
-  accent-color: var(--color-accent-hover);
-}
+.mining-bulk-selectall input { appearance: none; width: 17px; height: 17px; margin: 0; border: 1px solid var(--hairline); border-radius: 5px; background: var(--color-bg-secondary); cursor: pointer; }
+.mining-bulk-selectall input:checked { background: var(--color-accent, #0071e3); border-color: var(--color-accent, #0071e3); box-shadow: 0 0 0 3px rgba(0, 113, 227, .14); }
+.mining-bulk-selectall input:checked::after { content: '✓'; display: block; color: #fff; font-size: 13px; font-weight: 800; line-height: 15px; text-align: center; }
 .mining-bulk-selectall input:disabled { cursor: not-allowed; }
 .mining-bulk-create-row { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
 .mining-house-group { width: 110px; padding: 3px 8px; font-size: 12px; }

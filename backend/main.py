@@ -790,11 +790,13 @@ async def get_leaderboard(
     """Живой рейтинг игроков по чистой стоимости активов.
 
     net worth = наличные + акции + крипта + активы + компания + WarCoin.
-    Сортировки: networth | profit | cash | stocks | crypto | assets | company | donated.
+    Сортировки: networth | level | achievements | profit | cash | stocks | crypto | assets | company | donated.
     profit — реализованная прибыль за 7 дней (не «с регистрации»).
     Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
     """
-    sort_field = _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
+    sort_field = {"level": "level", "achievements": "achievements"}.get(
+        sort, _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
+    )
     # Скрытые игроки живут в том же кэше (админке нужны все), но в публичный
     # срез не попадают.
     entries = [e for e in await _leaderboard_entries(db) if not e.get("hidden")]

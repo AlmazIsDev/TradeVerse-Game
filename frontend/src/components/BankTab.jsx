@@ -49,7 +49,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
   const [donateAmount, setDonateAmount] = useState('')
   const [utilityAmount, setUtilityAmount] = useState('')
   const [donors, setDonors] = useState(null)
-  const [utilityCategory, setUtilityCategory] = useState('communal')
   useEffect(() => {
     if (modal !== 'donate') return
     let cancelled = false
@@ -270,20 +269,11 @@ function BankTab({ balance = 0, onBalanceChange }) {
           e.preventDefault()
           const amt = parseFloat(utilityAmount)
           if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-          const res = await runBankAction(() => utilityTopUp(amt, utilityCategory), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
+          const res = await runBankAction(() => utilityTopUp(amt, 'electricity'), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
           if (res) setUtilityAmount('')
         }}>
           <h3 className="transfer-form-title">{t('bank.utilityTopUpTitle', 'Пополнить с основного счёта')}</h3>
           <div className="bank-stack-form">
-            <label className="transfer-field">
-              <span>{t('bank.utilityCategory', 'Категория')}</span>
-              <select value={utilityCategory} onChange={e => setUtilityCategory(e.target.value)}>
-                <option value="communal">{t('bank.utilityCat.communal', 'Коммунальные счета')}</option>
-                <option value="tax">{t('bank.utilityCat.tax', 'Налоги')}</option>
-                <option value="rent">{t('bank.utilityCat.rent', 'Аренда')}</option>
-                <option value="other">{t('bank.utilityCat.other', 'Прочее')}</option>
-              </select>
-            </label>
             <label className="transfer-field">
               <span><DollarSign size={14} /> {t('bank.amount')}</span>
               <input type="number" min="0.01" step="0.01" value={utilityAmount} onChange={e => setUtilityAmount(e.target.value)} placeholder="0.00" />

@@ -38,6 +38,7 @@ from auth import (
     username_taken,
     username_pattern,
 )
+from levels import level_from_xp
 from admin_perms import (
     require_admin,
     get_admin_levels,
@@ -719,6 +720,9 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             "userId": uid,
             "username": u.get("username", "—"),
             "avatar": u.get("avatar"),
+            "level": int(u.get("level") or level_from_xp(int(u.get("xp", 0)))),
+            "xp": int(u.get("xp", 0)),
+            "achievements": int(u.get("achievements_count", 0)),
             "cash": round(cash, 2),
             "stocks": stocks_value,
             "crypto": crypto_value,

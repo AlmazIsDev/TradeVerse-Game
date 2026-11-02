@@ -8,7 +8,10 @@ XP_PER_LEVEL_STEP = 400
 TRADE_VOLUME_PER_XP = 50.0
 # Сделки меньше этого порога считаются «мелкими» (отдельное достижение).
 SMALL_TRADE_LIMIT = 100.0
-MAX_LEVEL = 100
+# Уровни не имеют верхнего потолка: после 100-го XP продолжает переводить
+# игрока на следующие уровни. Ограничения владения активами отдельно имеют
+# собственные hard cap'ы.
+MAX_LEVEL = None
 # Переводы: отправлять можно со 2 уровня, получать — с 5.
 TRANSFER_SEND_MIN_LEVEL = 2
 TRANSFER_RECEIVE_MIN_LEVEL = 5
@@ -24,9 +27,15 @@ def xp_for_level(level: int) -> int:
 
 
 def level_from_xp(xp: int) -> int:
-    level = 1
-    while level < MAX_LEVEL and xp >= xp_for_level(level + 1):
+    """Возвращает уровень для XP без искусственного ограничения после 100."""
+    xp = max(0, int(xp))
+    # Решаем квадратное неравенство cumulative XP = 400*n*(n-1)/2.
+    # Формула даёт близкую оценку, затем корректируем границы из-за округления.
+    level = max(1, int((1 + (1 + 8 * xp / XP_PER_LEVEL_STEP) ** 0.5) / 2))
+    while xp >= xp_for_level(level + 1):
         level += 1
+    while level > 1 and xp < xp_for_level(level):
+        level -= 1
     return level
 
 

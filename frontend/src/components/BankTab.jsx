@@ -219,7 +219,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
         </button>
         <button type="button" className="bank-quick-btn" onClick={() => setModal('debt')}>
           <span className="bank-quick-icon"><Handshake size={18} /></span>
-          <span>{t('bank.quickDebt', 'Долг')}</span>
+          <span>{t('bank.quickDebt', 'Займы')}</span>
         </button>
         <button type="button" className="bank-quick-btn" onClick={() => setModal('donate')}>
           <span className="bank-quick-icon"><Heart size={18} /></span>
@@ -323,7 +323,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-      {/* ── Долги игроков: 3 случайных объявления ── */}
+      {/* ── Займы игроков: отдельная вкладка предложения ── */}
       <div className="bank-chart-card bank-section">
         <div className="bank-section-head">
           <h3>{t('bank.debtsTitle', 'Долги игроков')}</h3>

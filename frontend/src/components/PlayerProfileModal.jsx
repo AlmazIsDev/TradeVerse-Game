@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchPlayerProfile } from '../services/api'
 import StatusBadge from './StatusBadge'
-import { countryFlag } from '../utils/countryFlag'
-import { X, Award, Check, BarChart3 } from 'lucide-react'
+import { flagUrl } from '../utils/countries'
+import { X, Award, BarChart3 } from 'lucide-react'
 
 /**
  * Публичная карточка игрока (в стиле Telegram): аватар, никнейм, «о себе»,
@@ -53,7 +53,7 @@ function PlayerProfileModal({ userId, onClose }) {
                 {data.avatar ? <img src={data.avatar} alt={data.username} /> : <span>{initials}</span>}
               </div>
               <h3 className="pp-name">
-                {data.country && <span className="player-flag" title={data.country}>{countryFlag(data.country)} </span>}
+                {data.country && <img className="player-flag" src={flagUrl(data.country)} alt={data.country} title={data.country} />}
                 {data.username}
                 <StatusBadge user={data} size={14} className="pp-status-badges" />
               </h3>
@@ -81,20 +81,24 @@ function PlayerProfileModal({ userId, onClose }) {
               </div>
             </div>
 
-            {(data.achievements || []).length > 0 && (
-              <div className="pp-section">
-                <div className="pp-section-title"><Award size={15} /> {t('settings.achievementsTitle')}</div>
-                <div className="pp-achievements">
-                  {data.achievements.map(a => (
-                    <div className={`pp-achievement ${a.reached ? 'reached' : ''}`} key={a.id}>
-                      <Award size={14} />
-                      <span>{t(`achievementCatalog.items.${a.id}.name`, { defaultValue: t(`settings.achievement.${a.id}`) })}</span>
-                      {a.reached && <Check size={13} className="pp-achievement-check" />}
-                    </div>
-                  ))}
-                </div>
+            <div className="pp-section">
+              <div className="pp-section-title"><Award size={15} /> {t('settings.achievementsTitle')}</div>
+              <p className="pp-achievements-progress">
+                {t('achievements.received', 'Получено: {{unlocked}} из {{total}}', {
+                  unlocked: data.achievementsUnlocked ?? (data.achievements || []).filter(a => a.unlocked).length,
+                  total: data.achievementsTotal ?? (data.achievements || []).length,
+                })}
+              </p>
+              <div className="pp-achievements">
+                {(data.achievements || []).map(a => (
+                  <div className={`pp-achievement ${a.unlocked ? 'reached' : ''}`} key={a.id}>
+                    <Award size={14} />
+                    <span>{t(`achievementCatalog.items.${a.id}.name`, a.name)}</span>
+                    {a.unlocked && <span className="pp-achievement-status">{t('achievements.unlocked', 'Получено')}</span>}
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
           </>
         )}
       </div>

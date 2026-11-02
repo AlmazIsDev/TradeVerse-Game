@@ -891,12 +891,9 @@ async def get_public_profile(
         "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
         "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
     }
-    achievements = [
-        {"id": "networth_1m", "reached": stats["netWorth"] >= 1_000_000},
-        {"id": "in_profit", "reached": stats["profit"] > 0},
-        {"id": "diversified", "reached": sum(1 for k in ("stocks", "crypto", "assets", "company") if stats.get(k, 0) > 0) >= 3},
-        {"id": "company_owner", "reached": stats.get("company", 0) > 0},
-    ]
+    from achievements import check_achievements, list_user_achievements, ACHIEVEMENTS
+    await check_achievements(db, user_id)
+    achievements = await list_user_achievements(db, user_id)
     return {
         "userId": str(user["_id"]),
         "username": user.get("username", "—"),
@@ -910,6 +907,8 @@ async def get_public_profile(
         "createdAt": user.get("created_at"),
         "stats": stats,
         "achievements": achievements,
+        "achievementsUnlocked": sum(1 for a in achievements if a.get("unlocked")),
+        "achievementsTotal": len(ACHIEVEMENTS),
     }
 
 

@@ -557,7 +557,8 @@
 .pp-stat-value { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
 .pp-stat-value.neg { color: var(--color-danger, #ff3b30); }
 
-.pp-achievements { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+.pp-achievements-progress { margin: -4px 0 var(--spacing-sm); color: var(--color-text-muted); font-size: 0.85rem; }
+.pp-achievements { display: flex; flex-direction: column; gap: var(--spacing-sm); max-height: 260px; overflow-y: auto; }
 
 .pp-achievement {
   display: flex;
@@ -576,7 +577,8 @@
   border-color: var(--color-accent);
   background: rgba(0, 113, 227, 0.08);
 }
-.pp-achievement-check { margin-left: auto; color: var(--color-accent); }
+.pp-achievement-status { margin-left: auto; color: var(--color-accent); font-size: 0.75rem; }
+.player-flag { width: 24px; height: 16px; object-fit: cover; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
 
 /* Кликабельные ники, открывающие профиль (Telegram-стиль). */
 .player-link {

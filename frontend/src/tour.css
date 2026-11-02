@@ -13,12 +13,13 @@
   pointer-events: auto;
 }
 
-/* Модалки покупки и подтверждения должны быть выше тура, иначе их не нажать.
-   Модалки рендерятся внутри вкладок, а не рядом с .tour-root, поэтому правило глобальное. */
+/* Модалки покупки и подтверждения должны быть выше тура, иначе кнопка покупки
+   на интерактивном шаге может закрывать модалку вместо подтверждения покупки.
+   Модалки рендерятся внутри вкладок, поэтому правило глобальное. */
 .modal-overlay,
 .tv-confirm-overlay,
 .market-buy-modal-overlay {
-  z-index: var(--z-modal, 1100);
+  z-index: 1300;
 }
 
 .tour-blocker {
@@ -80,6 +81,20 @@
 .tour-counter {
   font-size: 12px;
   color: var(--color-text-tertiary);
+}
+
+.tour-drag-handle {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.tour-drag-handle:active {
+  cursor: grabbing;
+}
+
+.tour-card--dragged {
+  transform: none;
 }
 
 .tour-progress {

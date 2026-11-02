@@ -12,7 +12,7 @@ import PlayerProfileModal from './PlayerProfileModal'
 import { toast } from './Toast'
 import {
   Castle, Coins, Shield, Swords, X, Lock, PlusCircle,
-  Gift, Zap, ShieldPlus, Clock, Trophy,
+  Gift, Zap, ShieldPlus, Clock, Trophy, DoorOpen, Users, Eye,
   DollarSign,
 } from 'lucide-react'
 
@@ -79,10 +79,14 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
   const [orderModal, setOrderModal] = useState(null)   // { mode, businessId }
   const [orderBusy, setOrderBusy] = useState(false)
 
-  const load = useCallback(async () => {
+  const [selectedRoom, setSelectedRoom] = useState(null)
+  const [showRooms, setShowRooms] = useState(false)
+  const [highlightedPlayer, setHighlightedPlayer] = useState(null)
+
+  const load = useCallback(async (roomCode = null) => {
     try {
       const [data, b, jobs, myStudios] = await Promise.all([
-        fetchCityMap(), fetchCityBonuses().catch(() => null), fetchItStudioJobs().catch(() => []),
+        fetchCityMap({ allRooms: true, roomCode }), fetchCityBonuses().catch(() => null), fetchItStudioJobs().catch(() => []),
         fetchMyStudios().catch(() => []),
       ])
       setMap(data)
@@ -98,7 +102,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(selectedRoom) }, [load, selectedRoom])
 
   // Доход зачисляется автоматически на сервере (Scheduler). Периодически
   // подтягиваем актуальное состояние КД по каждому зданию. Посекундный отсчёт
@@ -351,6 +355,9 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
           {t('cityroof.season')} {map?.season} · {map?.isActive ? t('cityroof.eventActive') : t('cityroof.eventClosed')}
         </div>
         <div className="cityroof-actions">
+          <button className="cityroof-rooms-btn" onClick={() => setShowRooms(true)}>
+            <DoorOpen size={14} /> {t('cityroof.roomList', 'Список комнат')}
+          </button>
           <button className="cityroof-help-btn" onClick={() => setShowHelp(v => !v)} aria-expanded={showHelp}>
             ? {t('cityroof.help', 'Как играть')}
           </button>
@@ -408,7 +415,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
           {map?.businesses?.map(b => (
             <button
               key={b.id}
-              className={`city-tile ${b.isMine ? 'mine' : ''} ${b.ownerId ? 'owned' : 'free'}`}
+              className={`city-tile ${b.isMine ? 'mine' : ''} ${b.ownerId ? 'owned' : 'free'} ${highlightedPlayer && b.ownerId === highlightedPlayer.id ? 'player-highlight' : ''} ${highlightedPlayer && b.ownerId !== highlightedPlayer.id ? 'player-dim' : ''}`}
               style={{
                 left: `${(b.x ?? 0) * 25}%`,
                 top: `${(b.y ?? 0) * (100 / 3)}%`,
@@ -436,8 +443,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       </div>
 
-      {/* Панель справа: простой список участников своей комнаты.
-          Чужие комнаты игроку недоступны — их смотрит админка (/admin/rooms). */}
+      {/* Панель справа: участники выбранной комнаты. */}
       <aside className="cityroof-ranks" aria-label={t('cityroof.roomPlayers')}>
         <div className="cityroof-ranks-head">
           <Trophy size={15} />
@@ -449,7 +455,8 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
             <p className="cityroof-ranks-empty">{t('cityroof.noPlayers')}</p>
           )}
           {(map?.members || []).map(p => (
-            <div key={p.id} className={`cityroof-rank-row ${p.isMe ? 'me' : ''} ${p.active ? 'active' : ''}`}>
+            <div key={p.id} className={`cityroof-rank-row ${p.isMe ? 'me' : ''} ${p.active ? 'active' : ''} ${highlightedPlayer?.id === p.id ? 'selected' : ''}`}
+              onMouseEnter={() => setHighlightedPlayer(p)} onMouseLeave={() => setHighlightedPlayer(null)}>
               <button className="cityroof-rank-name" onClick={() => setProfileId(p.id)}>{p.name}</button>
               {p.isMe && <span className="cityroof-rank-you">{t('cityroof.yours')}</span>}
               <span className="cityroof-rank-stats">
@@ -465,6 +472,32 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
         </div>
       </aside>
       </div>
+
+      {showRooms && (
+        <div className="modal-overlay" onClick={() => setShowRooms(false)}>
+          <div className="modal-content cityroof-rooms-modal" onClick={e => e.stopPropagation()}>
+            <button className="crypto-modal-close" onClick={() => setShowRooms(false)}><X size={18} /></button>
+            <div className="cityroof-modal-title"><DoorOpen size={18} /><h3>{t('cityroof.roomList', 'Список комнат')}</h3></div>
+            <p className="cityroof-modal-subtitle">{t('cityroof.roomListHint', 'Выберите комнату, чтобы посмотреть карту и владения игроков.')}</p>
+            <div className="cityroof-modal-room-list">
+              {(map?.rooms || []).map(room => (
+                <button key={room.roomCode} className={`cityroof-room-option ${room.roomCode === map.roomCode ? 'active' : ''}`}
+                  onClick={() => { setSelectedRoom(room.roomCode); setShowRooms(false); setHighlightedPlayer(null) }}>
+                  <span><b>{room.roomCode}</b><small>{t(`cityroof.leagues.${room.league}`, room.league)}</small></span>
+                  <span className="cityroof-room-online"><Users size={13} /> {room.roomMembers}/{room.roomCapacity}<Eye size={13} /></span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {highlightedPlayer && (
+        <div className="cityroof-owner-popover">
+          <b>{highlightedPlayer.name}</b><span>{t('cityroof.owns', 'Владеет')}</span>
+          <div>{(map?.businesses || []).filter(b => b.ownerId === highlightedPlayer.id).map(b => buildingName(t, b.slug, b.name)).join(' · ') || t('cityroof.noProperties', 'Нет объектов')}</div>
+        </div>
+      )}
 
       {selected && (
         <div className="modal-overlay" onClick={closeModal}>
@@ -487,7 +520,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               {selected.protectionLevel > 0 && <> · <Shield size={12} /> {selected.protectionLevel}</>}
             </p>
 
-            {selected.isMine && (
+            {!map?.readOnly && selected.isMine && (
               <div className="cityroof-protect">
                 <h4><Lock size={14} /> {t('cityroof.protection')}</h4>
                 {/* Щиты взаимоисключающие: при активном двойном обычные
@@ -552,7 +585,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
               </div>
             )}
 
-            {!selected.isMine && !session && (
+            {!map?.readOnly && !selected.isMine && !session && (
               <button className="cityroof-attack-btn" disabled={busy}
                 onClick={() => setConfirm({
                   danger: true,
@@ -563,7 +596,7 @@ function CityRoofTab({ balance = 0, onBalanceChange, currentUserId }) {
                 <Swords size={16} /> {busy ? t('bank.processing') : t('cityroof.attack', { cost: map?.attackCost ?? 10 })}
               </button>
             )}
-            {!selected.isMine && selected.ownerId && !session && renderStudioAction('attack')}
+            {!map?.readOnly && !selected.isMine && selected.ownerId && !session && renderStudioAction('attack')}
 
             {session && (
               <div className="cityroof-game">

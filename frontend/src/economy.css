@@ -1071,10 +1071,6 @@ select.company-name-input option {
 .cityroof-business-bonuses div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .cityroof-business-bonuses span { color: var(--color-success); font-weight: 700; text-align: right; }
 .cityroof-rooms-btn:hover { background: var(--fill-medium, var(--fill-soft)); }
-.cityroof-room-list {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--spacing-md); margin-bottom: var(--spacing-lg);
-}
 .cityroom-card {
   padding: var(--spacing-md); border-radius: var(--radius-lg);
   background: var(--color-bg-secondary); border: 1px solid var(--hairline);
@@ -1089,12 +1085,29 @@ select.company-name-input option {
 .cityroom-businesses { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .cityroom-businesses span { display: flex; justify-content: space-between; gap: 8px; color: var(--color-text-primary); }
 .cityroom-businesses span b { font-weight: 600; color: var(--color-text-secondary); }
+.cityroof-modal-title { display: flex; align-items: center; gap: 8px; }
+.cityroof-modal-title h3 { margin: 0; }
+.cityroof-modal-subtitle { margin: 4px 0 14px; color: var(--color-text-secondary); font-size: 13px; }
+.cityroof-modal-room-list { display: flex; flex-direction: column; gap: 7px; max-height: 55vh; overflow-y: auto; }
+.cityroof-room-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--fill-soft); color: var(--color-text-primary); text-align: left; cursor: pointer; font-family: var(--font-primary); }
+.cityroof-room-option:hover, .cityroof-room-option.active { border-color: var(--color-accent); background: rgba(0, 113, 227, .1); }
+.cityroof-room-option span:first-child { display: flex; flex-direction: column; gap: 3px; }
+.cityroof-room-option small { color: var(--color-text-secondary); }
+.cityroof-room-online { display: flex; align-items: center; gap: 5px; color: var(--color-text-secondary); font-size: 12px; }
+.cityroof-owner-popover { position: fixed; right: 24px; bottom: 24px; z-index: 20; max-width: 320px; padding: 12px 14px; border: 1px solid var(--color-accent); border-radius: var(--radius-md); background: var(--color-bg-secondary); box-shadow: var(--shadow-lg); color: var(--color-text-primary); font-size: 12px; }
+.cityroof-owner-popover b, .cityroof-owner-popover span { display: block; }
+.cityroof-owner-popover span { margin-top: 3px; color: var(--color-accent); font-weight: 700; }
+.cityroof-owner-popover div { margin-top: 6px; color: var(--color-text-secondary); line-height: 1.45; }
+.city-tile.player-highlight { z-index: 4; outline: 3px solid var(--color-accent); filter: brightness(1.18); transform: scale(1.03); }
+.city-tile.player-dim { opacity: .35; filter: grayscale(.5); }
+.cityroof-rank-row.selected { background: rgba(0, 113, 227, .16); border-color: var(--color-accent); }
 
 /* Карта + панель рангов: на широких экранах панель справа от карты,
    на узких — уходит под неё, чтобы карта не сжималась до нечитаемой. */
 .cityroof-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--spacing-md);
   align-items: start;
   max-width: 1900px;

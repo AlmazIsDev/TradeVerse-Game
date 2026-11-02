@@ -895,7 +895,12 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
 
 
 def _event_active() -> bool:
-    # ПН(0)–ПТ(4). Для MVP событие всегда доступно (см. описание модуля).
+    """Участие в «Крыше города» доступно весь сезон.
+
+    Смена сезона выполняется лениво при первом запросе новой недели, поэтому
+    нельзя закрывать атаки по календарному дню: это оставляло игроков без
+    возможности играть и показывало «Событие завершено» до rollover.
+    """
     return True
 
 
@@ -1621,8 +1626,8 @@ async def attack_business(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Оплатить попытку захвата (10 WC) и начать мини-игру."""
-    if not _event_active():
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Событие сейчас неактивно")
+    # Сезон активен до фактического rollover; календарные ограничения здесь
+    # намеренно не применяются.
     if not ObjectId.is_valid(business_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
     user_id = str(current_user["_id"])

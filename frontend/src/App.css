@@ -2035,9 +2035,9 @@ body {
    с балансом и наезжают на него — оставляем баланс и числовой уровень. */
 @media (max-width: 760px) {
   .profile-card { display: none; }
-  .header-level-bar,
-  .header-level-left { display: none; }
+  .header-level-bar { display: none; }
   .header-level { min-width: 0; }
+  .header-level-left { display: inline; font-size: 10px; white-space: nowrap; }
   .header-balance { min-width: 0; flex-shrink: 1; }
   .header-balance-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }

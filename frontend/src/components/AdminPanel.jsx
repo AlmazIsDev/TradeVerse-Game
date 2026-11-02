@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchStocks, fetchStocksV2, fetchConfig, request, adminUpdateUser, adminDeleteUser, updateStockConfig,
@@ -13,6 +13,7 @@ import {
 } from '../services/api'
 import TxFilters, { TX_FIELDS } from './TxFilters'
 import SupportTicketsAdmin from './SupportTicketsAdmin'
+import AdminBugs from './AdminBugs'
 import PromoCodesTab from './PromoCodesTab'
 import CityRoofAdmin from './CityRoofAdmin'
 import { formatCompact } from './TransactionsPanel'
@@ -23,7 +24,7 @@ import PriceHistoryEditor from './PriceHistoryEditor'
 import {
   Plus, Trash2, Edit3, Save, X, Settings, Users, ArrowLeftRight, Ticket,
   Package, ChevronDown, ChevronUp, ShieldAlert, Sliders, Activity, Search, DollarSign, RefreshCw, Briefcase, EyeOff,
-  Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, LogIn, Gavel, Megaphone, LifeBuoy,
+  Database, Coins, ChevronLeft, ChevronRight, Bot, KeyRound, LogOut, LogIn, Gavel, Megaphone, LifeBuoy, Bug,
   Building2,
 } from 'lucide-react'
 import Tooltip from './Tooltip'
@@ -1051,7 +1052,11 @@ function AdminPanel({ user, onClose }) {
     { id: 'users', perm: 'users_view', label: t('admin.users'), icon: Users },
     { id: 'audit', perm: 'users_view', label: t('admin.auditLog'), icon: Activity },
     { id: 'lots', perm: 'central_market', label: t('admin.lots.title'), icon: Gavel },
-    { id: 'support', perm: 'users_view', label: t('admin.supportTickets', 'Обращения игроков'), icon: LifeBuoy },
+    { id: 'support', perm: 'users_view', label: 'Все обращения', icon: LifeBuoy },
+    { id: 'support_bug', perm: 'users_view', label: 'Баги игроков', icon: Bug },
+    { id: 'support_loss', perm: 'users_view', label: 'Потеря имущества', icon: LifeBuoy },
+    { id: 'support_suggestion', perm: 'users_view', label: 'Предложения', icon: LifeBuoy },
+    { id: 'bugs', perm: 'users_view', label: 'Баг-трекер', icon: Bug },
     { id: 'transactions', perm: 'transactions_view', label: t('admin.transactions'), icon: ArrowLeftRight },
     { id: 'broadcast', perm: 'broadcast', label: t('admin.broadcast.title'), icon: Megaphone },
     { id: 'economy', perm: 'economy_view', label: t('econ.tab'), icon: Activity },
@@ -1074,15 +1079,18 @@ function AdminPanel({ user, onClose }) {
 
       <div className="admin-body">
         <aside className="admin-sidebar">
-          {sections.filter(s => can(s.perm)).map(s => (
-            <button
-              key={s.id}
-              className={`admin-nav-item ${activeSection === s.id ? 'active' : ''}`}
-              onClick={() => setActiveSection(s.id)}
-            >
-              <s.icon size={18} />
-              <span>{s.label}</span>
-            </button>
+          {sections.filter(s => can(s.perm)).map((s, index, availableSections) => (
+            <React.Fragment key={s.id}>
+              {s.id === 'support' && <div className="admin-nav-divider"><span>Техническая поддержка</span></div>}
+              {s.id === 'bugs' && <div className="admin-nav-divider"><span>Внутренние задачи</span></div>}
+              <button
+                className={`admin-nav-item ${activeSection === s.id ? 'active' : ''}`}
+                onClick={() => setActiveSection(s.id)}
+              >
+                <s.icon size={18} />
+                <span>{s.label}</span>
+              </button>
+            </React.Fragment>
           ))}
         </aside>
 
@@ -1964,8 +1972,14 @@ function AdminPanel({ user, onClose }) {
         )}
 
         {!loading && activeSection === 'support' && (
-          <SupportTicketsAdmin />
+          <SupportTicketsAdmin initialCategory="all" />
         )}
+
+        {!loading && activeSection === 'support_bug' && <SupportTicketsAdmin initialCategory="bug" />}
+        {!loading && activeSection === 'support_loss' && <SupportTicketsAdmin initialCategory="loss" />}
+        {!loading && activeSection === 'support_suggestion' && <SupportTicketsAdmin initialCategory="suggestion" />}
+
+        {!loading && activeSection === 'bugs' && <AdminBugs />}
 
         {!loading && activeSection === 'promos' && (
           <PromoCodesTab />

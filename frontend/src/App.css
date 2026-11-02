@@ -1,5 +1,8 @@
 /* ===================== GLOBAL RESETS ===================== */
 
+.admin-nav-divider { display: flex; align-items: center; gap: 8px; margin: 14px 10px 6px; color: var(--color-text-tertiary); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.admin-nav-divider::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
+
 * {
   margin: 0;
   padding: 0;

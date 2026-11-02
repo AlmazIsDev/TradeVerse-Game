@@ -74,7 +74,7 @@ from media import router as media_router
 from farm import router as farm_router
 from production import router as production_router
 from synthetic import router as synthetic_router
-from support import router as support_router, admin_router as support_admin_router
+from support import router as support_router, admin_router as support_admin_router, bug_router as support_bug_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
 
@@ -274,6 +274,7 @@ app.include_router(synthetic_router)
 # Техподдержка: обращения игроков и их обработка в админке.
 app.include_router(support_router)
 app.include_router(support_admin_router)
+app.include_router(support_bug_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────

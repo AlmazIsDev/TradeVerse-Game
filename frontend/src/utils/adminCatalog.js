@@ -380,7 +380,7 @@ export const ADMIN_SOURCES_CATALOG = [
     price: 4800000,
    },
  ]
- 
+
  // Временно запрещённые к покупке активы (Поле, Шахта, Лесопилка, Завод видеокарт, Пекарня).
  export const TEMP_DISABLED_SLUGS = new Set([
    "admin-src-mine-1",   // Шахта
@@ -389,7 +389,7 @@ export const ADMIN_SOURCES_CATALOG = [
    "admin-fac-gpu-1",    // Завод видеокарт
    "admin-fac-bakery-1", // Пекарня
  ]);
- 
+
  // ── BUSINESS: бизнесы из админ-справочника (PriceEditorTab) ───────────────────
 // 12 моделей, сгруппированы по category (retail/tech/service/office).
 // Эти позиции тоже витрина: покупка/продажа отключены до того, как бэкенд будет

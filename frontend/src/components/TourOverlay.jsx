@@ -107,6 +107,7 @@ const SCRIPTS = {
     { tab: 'shop', target: null, key: 'tour.miningTour.s195' },
     { tab: 'shop', target: null, key: 'tour.miningTour.s196' },
     { tab: 'shop', target: null, key: 'tour.miningTour.s197' },
+    { tab: 'shop', target: 'shop', key: 'tour.miningTour.s198' },
     { tab: 'shop', target: 'shop', key: 'tour.miningTour.s199', check: 'hasAllRoles' },
     { tab: 'mining', target: 'mining', key: 'tour.miningTour.s20' },
     { tab: 'mining', target: 'mining', key: 'tour.miningTour.s21', check: 'allRolesInstalled' },
@@ -170,6 +171,9 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
   useLayoutEffect(() => {
     let frame = 0
     let observer = null
+    // Не оставляем рамку предыдущего шага: иначе при смене вкладки она
+    // визуально «едет» за сайдбаром и создаёт вторую подсветку.
+    setRect(null)
 
     const apply = (el) => {
       const r = el.getBoundingClientRect()
@@ -177,15 +181,14 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
     }
 
     const measure = () => {
-      if (!step.target) { setRect(null); return true }
+      if (!step.target) return true
       const el = document.querySelector(`[data-tour="${step.target}"]`)
-      if (!el) { setRect(null); return false }
+      if (!el) return false
       apply(el)
       return true
     }
 
     if (!measure()) {
-      // Вкладка ещё монтируется — дожидаемся узла в следующем кадре.
       frame = requestAnimationFrame(() => {
         if (measure()) return
         observer = new MutationObserver(() => { if (measure()) observer?.disconnect() })
@@ -194,45 +197,18 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
     }
 
     const onResize = () => measure()
+    const onScroll = () => measure()
+    const resizeObserver = new ResizeObserver(() => measure())
+    const target = document.querySelector(`[data-tour="${step.target}"]`)
+    if (target) resizeObserver.observe(target)
     window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       cancelAnimationFrame(frame)
       observer?.disconnect()
+      resizeObserver.disconnect()
       window.removeEventListener('resize', onResize)
-    }
-  }, [step.target, step.tab, index])
-
-  // Подсветка самого элемента шага (например, кнопки «Купить» на шаге 7):
-  // добавляем класс tour-pulse, он снимается при смене шага или размонтировании.
-  // Целевой узел может появиться только после переключения вкладки, поэтому
-  // при отсутствии элемента ждём следующий кадр, а затем мутации DOM.
-  useEffect(() => {
-    if (!step.target) return undefined
-    let el = document.querySelector(`[data-tour="${step.target}"]`)
-    let observer = null
-    let frame = 0
-
-    const attach = () => {
-      el = document.querySelector(`[data-tour="${step.target}"]`)
-      if (!el) return false
-      el.classList.add('tour-pulse')
-      observer?.disconnect()
-      observer = null
-      return true
-    }
-
-    if (!attach()) {
-      frame = requestAnimationFrame(() => {
-        if (attach()) return
-        observer = new MutationObserver(() => { attach() })
-        observer.observe(document.body, { childList: true, subtree: true })
-      })
-    }
-
-    return () => {
-      cancelAnimationFrame(frame)
-      observer?.disconnect()
-      el?.classList.remove('tour-pulse')
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [step.target, step.tab, index])
 

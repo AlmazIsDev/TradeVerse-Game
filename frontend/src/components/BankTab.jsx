@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   createTransfer, fetchWeeklyAnalytics, fetchCryptoAccount,
@@ -31,8 +31,8 @@ function shuffled(arr) {
 function BankTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const transferRef = useRef(null)
-  const [modal, setModal] = useState(null) // null | 'credit' | 'deposit' | 'debt'
-  const [bankSection, setBankSection] = useState('overview') // overview | loans
+  const [modal, setModal] = useState(null) // null | 'credit' | 'deposit'
+  const [debtsOpen, setDebtsOpen] = useState(false)
   const [recipient, setRecipient] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -181,16 +181,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
   return (
     <div className="bank-page">
       <h2 className="tab-title">{t('bank.title')}</h2>
-      <div className="bank-quick bank-section-tabs" role="tablist">
-        <button type="button" className={`bank-quick-btn ${bankSection === 'overview' ? 'active' : ''}`} onClick={() => setBankSection('overview')}>
-          <span>{t('bank.overviewTab', 'Обзор')}</span>
-        </button>
-        <button type="button" className={`bank-quick-btn ${bankSection === 'loans' ? 'active' : ''}`} onClick={() => setBankSection('loans')}>
-          <span><Handshake size={16} /> {t('bank.loansTab', 'Займы')}</span>
-        </button>
-      </div>
-
-      {bankSection === 'overview' && <>
       {/* ── Верх: баланс, карта, быстрые действия ── */}
       <div className="bank-hero-card">
         <div className="bank-hero-top">
@@ -227,7 +217,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
           <span className="bank-quick-icon"><PiggyBank size={18} /></span>
           <span>{t('bank.quickDeposit', 'Депозит')}</span>
         </button>
-        <button type="button" className="bank-quick-btn" onClick={() => setModal('debt')}>
+        <button type="button" className="bank-quick-btn" onClick={() => setDebtsOpen(true)}>
           <span className="bank-quick-icon"><Handshake size={18} /></span>
           <span>{t('bank.quickDebt', 'Займы')}</span>
         </button>
@@ -333,11 +323,11 @@ function BankTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-      {/* ── Займы игроков: отдельная вкладка предложения ── */}
+      {/* ── Долги игроков ── */}
       <div className="bank-chart-card bank-section">
         <div className="bank-section-head">
           <h3>{t('bank.debtsTitle', 'Долги игроков')}</h3>
-          <button type="button" className="bank-link-btn" onClick={() => setModal('debt')}>
+          <button type="button" className="bank-link-btn" onClick={() => setDebtsOpen(true)}>
             {t('bank.showMore', 'Смотреть больше')} <ArrowRight size={13} />
           </button>
         </div>
@@ -346,6 +336,17 @@ function BankTab({ balance = 0, onBalanceChange }) {
           {featuredOffers.map(o => renderOffer(o, { compact: true }))}
         </div>
       </div>
+
+      {debtsOpen && (
+        <div className="bank-chart-card bank-section bank-debts-window">
+          <div className="bank-section-head">
+            <h3>{t('bank.debtsTitle', 'Долги игроков')}</h3>
+            <button type="button" className="bank-link-btn" onClick={() => setDebtsOpen(false)}>{t('common.close', 'Закрыть')}</button>
+          </div>
+          {featuredOffers.length === 0 && <p className="bank-empty">{t('bank.noOffers', 'Объявлений нет')}</p>}
+          <div className="bank-debt-list">{p2pOffers.map(o => renderOffer(o))}</div>
+        </div>
+      )}
 
       {/* ── Аналитика ── */}
       <div className="bank-chart-card bank-section">
@@ -357,34 +358,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
       <div className="bank-section">
         <TransactionsPanel refreshKey={refreshKey} />
       </div>
-
-      </>}
-
-      {bankSection === 'loans' && (
-        <div className="bank-chart-card bank-section bank-loans-page">
-          <div className="bank-section-head"><h3>{t('bank.loansTab', 'Займы')}</h3></div>
-          <div className="bank-stat-row">
-            <div className="bank-stat"><span>{t('bank.loanLimit', 'Лимит кредита')}</span><b>{formatMoney(credit?.loanLimit)} $</b></div>
-            <div className="bank-stat"><span>{t('bank.rate', 'Ставка')}</span><b>{((credit?.loanRate || 0) * 100).toFixed(2)}%</b></div>
-            <div className="bank-stat"><span>{t('bank.debt', 'Долг')}</span><b>{formatMoney(credit?.debt)} $</b></div>
-          </div>
-          <form className="transfer-form" onSubmit={async e => {
-            e.preventDefault(); const amt = parseFloat(loanAmount)
-            if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-            const res = await runBankAction(() => takeLoan(amt), t('bank.loanIssued', 'Кредит выдан'))
-            if (res) setLoanAmount('')
-          }}>
-            <h3 className="transfer-form-title">{t('bank.takeLoanTitle', 'Взять займ')}</h3>
-            <label className="transfer-field"><span><DollarSign size={14} /> {t('bank.amount')}</span><input type="number" min="0.01" step="0.01" value={loanAmount} onChange={e => setLoanAmount(e.target.value)} placeholder="0.00" /></label>
-            <button type="submit" className="transfer-submit"><Landmark size={16} /> {t('bank.takeLoan', 'Взять займ')}</button>
-          </form>
-          <h3 className="bank-subtitle">{t('bank.activeLoans', 'Мои активные займы')}</h3>
-          {(credit?.loans || []).map(l => <div key={l.id} className="bank-debt-card compact"><div className="bank-debt-info"><b>{formatMoney(l.amount)} $ + {formatMoney(l.interest)} $</b></div><button type="button" className="transfer-submit" onClick={() => runBankAction(() => repayLoan(l.id), t('bank.loanRepaid', 'Займ погашен'))}>{t('bank.repay', 'Погасить')}</button></div>)}
-          <h3 className="bank-subtitle">{t('bank.debtsTitle', 'Займы игроков')}</h3>
-          {featuredOffers.length === 0 && <p className="bank-empty">{t('bank.noOffers', 'Объявлений нет')}</p>}
-          <div className="bank-debt-list">{featuredOffers.map(o => renderOffer(o, { compact: true }))}</div>
-        </div>
-      )}
 
       {/* ── Модалка: Кредит ── */}
       {modal === 'credit' && (
@@ -512,8 +485,8 @@ function BankTab({ balance = 0, onBalanceChange }) {
         </BankModal>
       )}
 
-      {/* ── Модалка: Долги игроков (P2P) ── */}
-      {modal === 'debt' && (
+      {/* ── Окно: Долги игроков (P2P) ── */}
+      {false && (
         <BankModal title={t('bank.debtsTitle', 'Долги игроков')} wide onClose={() => setModal(null)}>
           <h3 className="bank-subtitle">{t('bank.openOffers', 'Открытые объявления')}</h3>
           {p2pOffers.length === 0 && <p className="bank-empty">{t('bank.noOffers', 'Объявлений нет')}</p>}
@@ -569,3 +542,4 @@ function BankTab({ balance = 0, onBalanceChange }) {
 }
 
 export default BankTab
+

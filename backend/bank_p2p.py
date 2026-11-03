@@ -227,7 +227,10 @@ async def accept_offer(
         {"$set": {"status": "active", "lenderId": lender_id, "borrowerId": borrower_id,
                   "startedAt": now,
                   "dueAt": now + timedelta(days=offer["termDays"]),
-                  "owed": 0.0, "recovered": 0.0}},
+                  # Проценты фиксируются при заключении займа, но списываются
+                  # одной суммой в конце срока (или при досрочном погашении).
+                  "owed": round(offer["amount"] * offer["dailyRate"] * offer["termDays"], 2),
+                  "recovered": 0.0}},
         return_document=True,
     )
     if not claimed:
@@ -445,20 +448,9 @@ async def accrue_p2p_loans(db: AsyncIOMotorDatabase) -> None:
             continue
         if loan["status"] != "active":
             continue
-        interest = round(loan["amount"] * loan["dailyRate"], 2)
-        if interest <= 0:
-            continue
-        borrower, lender = loan["borrowerId"], loan["lenderId"]
-        paid = await adjust_balance(db, borrower, -interest)
-        if paid is None:
-            # Проценты не списались — копятся в задолженность, заморозка будет по сроку.
-            await db.bank_p2p.update_one({"_id": loan["_id"]}, {"$inc": {"owed": interest}})
-            continue
-        await adjust_balance(db, lender, interest)
-        await record_transaction(db, borrower, EXPENSE, interest, CAT_P2P, "Проценты по займу",
-                                 balance_after=paid, meta={"loanId": str(loan["_id"])})
-        await record_transaction(db, lender, INCOME, interest, CAT_P2P, "Проценты по займу",
-                                 meta={"loanId": str(loan["_id"])})
+        # Проценты списываются одной суммой в конце срока, а не ежедневными
+        # платежами. Сумма процентов фиксируется при выдаче в поле owed.
+        continue
     await _process_seizures(db, now)
     await _process_auctions(db, now)
 

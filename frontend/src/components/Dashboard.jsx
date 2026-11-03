@@ -161,7 +161,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'stocks':
         return <StocksTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'bank':
-        return <BankTab balance={balance} onBalanceChange={handleBalanceChange} />
+        return <BankTab balance={balance} onBalanceChange={handleBalanceChange} onTabChange={setActiveTab} />
       case 'loans':
         return <LoansTab />
       case 'shop':

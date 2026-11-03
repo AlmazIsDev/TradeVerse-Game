@@ -1182,7 +1182,9 @@ async def install_component(farm_id: str, payload: InstallBody, current_user: di
     """Установить в ферму свободное оборудование выбранной категории."""
     user_id = str(current_user["_id"])
     farm = await _load_farm(db, user_id, farm_id)
-    await _install_one(db, user_id, farm, payload.category, payload.hwId)
+    # Передаём itemId: UI отправляет выбранную модель, иначе _install_one
+    # выбирал первую свободную деталь этой категории.
+    await _install_one(db, user_id, farm, payload.category, payload.hwId, payload.itemId)
     updated = await db.mining_farms.find_one({"_id": farm["_id"]})
     return await _serialize_with_stats(db, updated, user_id)
 

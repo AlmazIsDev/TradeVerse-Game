@@ -107,7 +107,7 @@ const SCRIPTS = {
     { tab: 'shop', target: null, key: 'tour.miningTour.s195' },
     { tab: 'shop', target: null, key: 'tour.miningTour.s196' },
     { tab: 'shop', target: null, key: 'tour.miningTour.s197' },
-    { tab: 'shop', target: 'tour-cheapest', key: 'tour.miningTour.s198' },
+    { tab: 'shop', target: 'shop', key: 'tour.miningTour.s198' },
     { tab: 'shop', target: 'shop', key: 'tour.miningTour.s199', check: 'hasAllRoles' },
     { tab: 'mining', target: 'mining', key: 'tour.miningTour.s20' },
     { tab: 'mining', target: 'mining', key: 'tour.miningTour.s21', check: 'allRolesInstalled' },
@@ -171,6 +171,9 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
   useLayoutEffect(() => {
     let frame = 0
     let observer = null
+    // Не оставляем рамку предыдущего шага: иначе при смене вкладки она
+    // визуально «едет» за сайдбаром и создаёт вторую подсветку.
+    setRect(null)
 
     const apply = (el) => {
       const r = el.getBoundingClientRect()
@@ -178,15 +181,14 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
     }
 
     const measure = () => {
-      if (!step.target) { setRect(null); return true }
+      if (!step.target) return true
       const el = document.querySelector(`[data-tour="${step.target}"]`)
-      if (!el) { setRect(null); return false }
+      if (!el) return false
       apply(el)
       return true
     }
 
     if (!measure()) {
-      // Вкладка ещё монтируется — дожидаемся узла в следующем кадре.
       frame = requestAnimationFrame(() => {
         if (measure()) return
         observer = new MutationObserver(() => { if (measure()) observer?.disconnect() })
@@ -195,45 +197,18 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
     }
 
     const onResize = () => measure()
+    const onScroll = () => measure()
+    const resizeObserver = new ResizeObserver(() => measure())
+    const target = document.querySelector(`[data-tour="${step.target}"]`)
+    if (target) resizeObserver.observe(target)
     window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       cancelAnimationFrame(frame)
       observer?.disconnect()
+      resizeObserver.disconnect()
       window.removeEventListener('resize', onResize)
-    }
-  }, [step.target, step.tab, index])
-
-  // Подсветка самого элемента шага (например, кнопки «Купить» на шаге 7):
-  // добавляем класс tour-pulse, он снимается при смене шага или размонтировании.
-  // Целевой узел может появиться только после переключения вкладки, поэтому
-  // при отсутствии элемента ждём следующий кадр, а затем мутации DOM.
-  useEffect(() => {
-    if (!step.target) return undefined
-    let el = document.querySelector(`[data-tour="${step.target}"]`)
-    let observer = null
-    let frame = 0
-
-    const attach = () => {
-      el = document.querySelector(`[data-tour="${step.target}"]`)
-      if (!el) return false
-      el.classList.add('tour-pulse')
-      observer?.disconnect()
-      observer = null
-      return true
-    }
-
-    if (!attach()) {
-      frame = requestAnimationFrame(() => {
-        if (attach()) return
-        observer = new MutationObserver(() => { attach() })
-        observer.observe(document.body, { childList: true, subtree: true })
-      })
-    }
-
-    return () => {
-      cancelAnimationFrame(frame)
-      observer?.disconnect()
-      el?.classList.remove('tour-pulse')
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [step.target, step.tab, index])
 
@@ -309,20 +284,45 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
   }, [index, step, next])
 
   const cardRef = useRef(null)
+  const dragRef = useRef(null)
+  const [cardPosition, setCardPosition] = useState(null)
+
+  const onDragStart = useCallback((event) => {
+    if (event.button !== 0 || !cardRef.current) return
+    const rect = cardRef.current.getBoundingClientRect()
+    dragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    event.preventDefault()
+  }, [])
+
+  const onDragMove = useCallback((event) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const card = cardRef.current
+    if (!card) return
+    const width = card.offsetWidth
+    const height = card.offsetHeight
+    setCardPosition({
+      left: Math.max(8, Math.min(window.innerWidth - width - 8, event.clientX - drag.offsetX)),
+      top: Math.max(8, Math.min(window.innerHeight - height - 8, event.clientY - drag.offsetY)),
+    })
+  }, [])
+
+  const onDragEnd = useCallback((event) => {
+    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null
+  }, [])
 
   // Карточка с подсветкой уходит в правый нижний угол: прикреплённая к элементу,
   // она закрывала рабочую область (кнопки установки комплектующих на шаге 20).
-  const cardStyle = rect
-    ? {
-        top: 'auto',
-        left: 'auto',
-        bottom: 16,
-        right: 16,
-        width: CARD_WIDTH,
-        maxHeight: 'calc(100vh - 32px)',
-        overflowY: 'auto',
-      }
-    : undefined
+  const cardStyle = cardPosition
+    ? { top: cardPosition.top, left: cardPosition.left, width: CARD_WIDTH, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }
+    : rect
+      ? { top: 'auto', left: 'auto', bottom: 16, right: 16, width: CARD_WIDTH, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }
+      : undefined
 
   return (
     <div className="tour-root" role="dialog" aria-modal="true" aria-label={t('tour.ariaLabel')}>
@@ -333,8 +333,15 @@ function TourOverlay({ startKey = 'main', onTabChange, onClose }) {
           style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
         />
       )}
-      <div ref={cardRef} className={`tour-card ${rect ? 'tour-card--anchored' : 'tour-card--center'}`} style={cardStyle}>
-        <div className="tour-counter">
+      <div ref={cardRef} className={`tour-card ${rect ? 'tour-card--anchored' : 'tour-card--center'} ${cardPosition ? 'tour-card--dragged' : ''}`} style={cardStyle}>
+        <div
+          className="tour-counter tour-drag-handle"
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+          title="Перетащить окно обучения"
+        >
           {t('tour.progress', { current: index + 1, total: steps.length })}
         </div>
         <h3>{stepTitle}</h3>

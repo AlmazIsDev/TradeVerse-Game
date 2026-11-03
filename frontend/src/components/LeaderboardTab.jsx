@@ -6,7 +6,7 @@ import PlayerProfileModal from './PlayerProfileModal'
 import { flagUrl } from '../utils/countries'
 import { Trophy, AlertTriangle, Crown, Medal, Building2 } from 'lucide-react'
 
-const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'donated']
+const SORTS = ['networth', 'level', 'achievements', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'donated']
 // Разбивка капитала под именем игрока — какие поля показывать чипами и какой
 // sort их подсвечивает (чтобы было очевидно, что делает каждый фильтр).
 const BREAKDOWN = [
@@ -119,7 +119,8 @@ function LeaderboardTab({ currentUserId }) {
           <div className="leaderboard-row leaderboard-head">
             <span className="lb-rank">#</span>
             <span className="lb-player">{t('leaderboard.player')}</span>
-            <span className="lb-networth">{t('leaderboard.netWorth')}</span>
+            <span className="lb-networth">{t('leaderboard.level', 'Уровень')}</span>
+            <span className="lb-profit">{t('leaderboard.netWorth')}</span>
             <span className="lb-profit">{t('leaderboard.profit7d')}</span>
           </div>
           {entries.map(entry => {
@@ -152,7 +153,10 @@ function LeaderboardTab({ currentUserId }) {
                     </span>
                   </span>
                 </span>
-                <span className="lb-networth" title={`$${formatMoney(entry.netWorth)}`}>${formatCompact(entry.netWorth)}</span>
+                <span className="lb-networth" title={`${t('leaderboard.level', 'Уровень')}: ${entry.level || 1}`}>
+                  {entry.level || 1} · {entry.achievements || 0} <small>{t('leaderboard.achievements', 'ачив.')}</small>
+                </span>
+                <span className="lb-profit" title={`$${formatMoney(entry.netWorth)}`}>${formatCompact(entry.netWorth)}</span>
                 <span className={`lb-profit ${up ? 'up' : 'down'}`} title={`${t('leaderboard.profitLifetime')}: ${formatMoney(entry.profitAllTime)} $`}>
                   {up ? '+' : '−'}{formatCompact(Math.abs(entry.profit))} $
                   {entry.profitAllTime != null && (

@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/bank/p2p", tags=["bank-p2p"])
 
 CAT_P2P = "p2p_loan"
 MAX_P2P_AMOUNT = 1_000_000_000.0
-MIN_P2P_TERM_DAYS = 7
+MIN_P2P_TERM_DAYS = 2
 MAX_P2P_TERM_DAYS = 21
 MAX_P2P_DAILY_RATE = 0.5
 

@@ -38,6 +38,7 @@ from auth import (
     username_taken,
     username_pattern,
 )
+from levels import level_from_xp
 from admin_perms import (
     require_admin,
     get_admin_levels,
@@ -73,7 +74,7 @@ from media import router as media_router
 from farm import router as farm_router
 from production import router as production_router
 from synthetic import router as synthetic_router
-from support import router as support_router, admin_router as support_admin_router
+from support import router as support_router, admin_router as support_admin_router, bug_router as support_bug_router
 from ws import router as ws_router
 from scheduler import start_scheduler, stop_scheduler
 
@@ -273,6 +274,7 @@ app.include_router(synthetic_router)
 # Техподдержка: обращения игроков и их обработка в админке.
 app.include_router(support_router)
 app.include_router(support_admin_router)
+app.include_router(support_bug_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────
@@ -627,9 +629,9 @@ STARTING_BALANCE = 15000.0
 # ВАЖНО: 'networth' маппится на 'netWorth' — иначе e[sort_key] бросал KeyError,
 # что и было причиной «ошибки подключения» в разделе «По капиталу».
 _LEADERBOARD_SORT_FIELD = {
-    "networth": "netWorth", "profit": "profit", "cash": "cash",
-    "stocks": "stocks", "crypto": "crypto", "assets": "assets", "company": "company",
-    "donated": "donated",
+    "networth": "netWorth", "level": "level", "achievements": "achievements",
+    "profit": "profit", "cash": "cash", "stocks": "stocks", "crypto": "crypto",
+    "assets": "assets", "company": "company", "donated": "donated",
 }
 
 
@@ -719,6 +721,9 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             "userId": uid,
             "username": u.get("username", "—"),
             "avatar": u.get("avatar"),
+            "level": int(u.get("level") or level_from_xp(int(u.get("xp", 0)))),
+            "xp": int(u.get("xp", 0)),
+            "achievements": int(u.get("achievements_count", 0)),
             "cash": round(cash, 2),
             "stocks": stocks_value,
             "crypto": crypto_value,
@@ -786,11 +791,13 @@ async def get_leaderboard(
     """Живой рейтинг игроков по чистой стоимости активов.
 
     net worth = наличные + акции + крипта + активы + компания + WarCoin.
-    Сортировки: networth | profit | cash | stocks | crypto | assets | company | donated.
+    Сортировки: networth | level | achievements | profit | cash | stocks | crypto | assets | company | donated.
     profit — реализованная прибыль за 7 дней (не «с регистрации»).
     Результат кэшируется на короткое время (см. _LB_CACHE_TTL_S).
     """
-    sort_field = _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
+    sort_field = {"level": "level", "achievements": "achievements"}.get(
+        sort, _LEADERBOARD_SORT_FIELD.get(sort, "netWorth")
+    )
     # Скрытые игроки живут в том же кэше (админке нужны все), но в публичный
     # срез не попадают.
     entries = [e for e in await _leaderboard_entries(db) if not e.get("hidden")]
@@ -885,12 +892,9 @@ async def get_public_profile(
         "cash": 0.0, "stocks": 0.0, "crypto": 0.0, "assets": 0.0,
         "company": 0.0, "warcoin": 0.0, "netWorth": 0.0, "profit": 0.0,
     }
-    achievements = [
-        {"id": "networth_1m", "reached": stats["netWorth"] >= 1_000_000},
-        {"id": "in_profit", "reached": stats["profit"] > 0},
-        {"id": "diversified", "reached": sum(1 for k in ("stocks", "crypto", "assets", "company") if stats.get(k, 0) > 0) >= 3},
-        {"id": "company_owner", "reached": stats.get("company", 0) > 0},
-    ]
+    from achievements import check_achievements, list_user_achievements, ACHIEVEMENTS
+    await check_achievements(db, user_id)
+    achievements = await list_user_achievements(db, user_id)
     return {
         "userId": str(user["_id"]),
         "username": user.get("username", "—"),
@@ -904,6 +908,8 @@ async def get_public_profile(
         "createdAt": user.get("created_at"),
         "stats": stats,
         "achievements": achievements,
+        "achievementsUnlocked": sum(1 for a in achievements if a.get("unlocked")),
+        "achievementsTotal": len(ACHIEVEMENTS),
     }
 
 

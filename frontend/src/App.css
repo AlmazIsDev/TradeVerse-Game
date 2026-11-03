@@ -1,5 +1,8 @@
 /* ===================== GLOBAL RESETS ===================== */
 
+.admin-nav-divider { display: flex; align-items: center; gap: 8px; margin: 14px 10px 6px; color: var(--color-text-tertiary); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.admin-nav-divider::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
+
 * {
   margin: 0;
   padding: 0;
@@ -2035,9 +2038,9 @@ body {
    с балансом и наезжают на него — оставляем баланс и числовой уровень. */
 @media (max-width: 760px) {
   .profile-card { display: none; }
-  .header-level-bar,
-  .header-level-left { display: none; }
+  .header-level-bar { display: none; }
   .header-level { min-width: 0; }
+  .header-level-left { display: inline; font-size: 10px; white-space: nowrap; }
   .header-balance { min-width: 0; flex-shrink: 1; }
   .header-balance-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
@@ -2433,20 +2436,23 @@ body {
 
 .notification-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: -6px;
+  right: -7px;
   min-width: 18px;
   height: 18px;
+  box-sizing: border-box;
   background: var(--color-danger);
   color: white;
   font-size: 10px;
   font-weight: 700;
+  white-space: nowrap;
   border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  padding: 0 5px;
   line-height: 1;
+  z-index: 1;
 }
 
 .notification-dropdown {
@@ -2582,15 +2588,19 @@ body {
 }
 
 .notification-tab-badge {
+  flex: 0 0 auto;
   min-width: 16px;
   height: 16px;
+  box-sizing: border-box;
   padding: 0 4px;
   background: var(--color-danger);
+  color: white;
   border-radius: 8px;
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
   text-align: center;
+  white-space: nowrap;
 }
 
 /* Категории заметны даже без чтения текста */
@@ -5195,14 +5205,14 @@ textarea:focus {
 .centralmarket-create-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 9px 16px;
+  gap: 5px;
+  padding: 6px 11px;
   border-radius: 10px;
   background: var(--color-accent, #0071e3);
   color: #fff;
   border: 1px solid transparent;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   transition: background var(--dur-fast, 120ms) ease, transform var(--dur-fast, 120ms) ease,
     box-shadow var(--dur-fast, 120ms) ease;
@@ -5434,6 +5444,79 @@ textarea:focus {
 .centralmarket-lot.is-own {
   border-color: rgba(0, 113, 227, 0.35);
   background: linear-gradient(135deg, rgba(0, 113, 227, 0.06), rgba(0, 113, 227, 0.02));
+}
+
+/* Карточки займов: визуально выделяем сумму, срок и действие. */
+.loans-page .centralmarket-header { margin-bottom: 18px; }
+.loans-page .centralmarket-lots { margin-top: 18px; }
+.loans-page .centralmarket-lots-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 10px; border-bottom: 1px solid var(--hairline);
+  font-weight: 700; color: var(--color-text-primary);
+}
+.loans-page .centralmarket-lot {
+  grid-template-columns: 54px 1fr;
+  padding: 14px;
+  border-top: 3px solid var(--color-accent, #0071e3);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .06);
+}
+.loans-page .centralmarket-lot-icon {
+  color: var(--color-accent, #0071e3);
+  background: rgba(0, 113, 227, .1);
+}
+.loans-page .centralmarket-create-btn,
+.loans-page .centralmarket-modal-form .centralmarket-create-btn {
+  background: #0071e3 !important;
+  color: #fff !important;
+  border: 1px solid #0071e3 !important;
+  box-shadow: 0 4px 14px rgba(0, 113, 227, .25) !important;
+}
+.loans-page .centralmarket-modal-form .centralmarket-field {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.35fr);
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.loans-page .centralmarket-modal-form .centralmarket-field > span {
+  font-size: 15px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-text-primary);
+}
+.loans-page .centralmarket-modal-form .centralmarket-field input,
+.loans-page .centralmarket-modal-form .centralmarket-field select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 6px 9px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary, #f2f2f7) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: 9px;
+}
+.loans-page .centralmarket-modal-form .centralmarket-create-btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.loans-page .centralmarket-create-btn:hover,
+.loans-page .centralmarket-modal-form .centralmarket-create-btn:hover {
+  background: #005bb5 !important;
+  color: #fff !important;
+  border-color: #005bb5 !important;
+}
+.loans-page .centralmarket-lot-name { font-size: 18px; color: var(--color-accent, #0071e3); }
+.loans-page .centralmarket-lot-meta { line-height: 1.5; }
+.loans-page .centralmarket-lot-btn--buy { margin-top: 6px; min-height: 36px; font-weight: 700; }
+.loans-page .centralmarket-create-btn { white-space: nowrap; }
+@media (max-width: 640px) {
+  .loans-page .centralmarket-header { align-items: flex-start; }
+  .loans-page .centralmarket-create-btn { font-size: 11px; padding: 6px 8px; }
 }
 
 .centralmarket-lot-icon {

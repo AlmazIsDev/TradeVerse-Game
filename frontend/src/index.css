@@ -41,8 +41,7 @@ button, [role="button"], [role="tab"], .tx-pill {
 
 :root {
   /* ---- Typography ---- */
-  --font-primary: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-    'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-primary: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
   /* ---- Surfaces (light) ---- */
   --color-bg-primary: #f5f5f7;      /* app canvas — Apple light gray */

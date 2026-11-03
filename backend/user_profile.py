@@ -40,7 +40,8 @@ async def get_level(current_user: dict = Depends(get_current_user)):
     xp = int(current_user.get("xp", 0))
     level = level_from_xp(xp)
     current_floor = xp_for_level(level)
-    next_floor = xp_for_level(level + 1) if level < MAX_LEVEL else current_floor
+    # Потолка уровня нет: всегда показываем XP до следующего уровня.
+    next_floor = xp_for_level(level + 1)
     return {
         "level": level,
         "xp": xp,

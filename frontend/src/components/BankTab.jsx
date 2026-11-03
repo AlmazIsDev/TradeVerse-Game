@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   createTransfer, fetchWeeklyAnalytics, fetchCryptoAccount,
@@ -31,7 +31,8 @@ function shuffled(arr) {
 function BankTab({ balance = 0, onBalanceChange }) {
   const { t } = useTranslation()
   const transferRef = useRef(null)
-  const [modal, setModal] = useState(null) // null | 'credit' | 'deposit' | 'debt'
+  const [modal, setModal] = useState(null) // null | 'credit' | 'deposit'
+  const [debtsOpen, setDebtsOpen] = useState(false)
   const [recipient, setRecipient] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -49,7 +50,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
   const [donateAmount, setDonateAmount] = useState('')
   const [utilityAmount, setUtilityAmount] = useState('')
   const [donors, setDonors] = useState(null)
-  const [utilityCategory, setUtilityCategory] = useState('communal')
   useEffect(() => {
     if (modal !== 'donate') return
     let cancelled = false
@@ -156,7 +156,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
     const termDays = parseInt(offerForm.termDays, 10)
     const dailyRate = parseFloat(offerForm.dailyRate) / 100
     if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-    if (!Number.isFinite(termDays) || termDays < 7 || termDays > 21) { toast(t('bank.termRange', 'Срок от 7 до 21 суток'), 'error'); return }
+    if (!Number.isFinite(termDays) || termDays < 2 || termDays > 21) { toast(t('bank.termRange', 'Срок от 2 до 21 суток'), 'error'); return }
     if (!Number.isFinite(dailyRate) || dailyRate < 0) { toast(t('bank.invalidRate', 'Некорректный процент'), 'error'); return }
     const res = await runBankAction(
       () => createP2POffer({ side: offerForm.side, amount: amt, termDays, dailyRate }),
@@ -181,7 +181,6 @@ function BankTab({ balance = 0, onBalanceChange }) {
   return (
     <div className="bank-page">
       <h2 className="tab-title">{t('bank.title')}</h2>
-
       {/* ── Верх: баланс, карта, быстрые действия ── */}
       <div className="bank-hero-card">
         <div className="bank-hero-top">
@@ -218,9 +217,9 @@ function BankTab({ balance = 0, onBalanceChange }) {
           <span className="bank-quick-icon"><PiggyBank size={18} /></span>
           <span>{t('bank.quickDeposit', 'Депозит')}</span>
         </button>
-        <button type="button" className="bank-quick-btn" onClick={() => setModal('debt')}>
+        <button type="button" className="bank-quick-btn" onClick={() => setDebtsOpen(true)}>
           <span className="bank-quick-icon"><Handshake size={18} /></span>
-          <span>{t('bank.quickDebt', 'Долг')}</span>
+          <span>{t('bank.quickDebt', 'Займы')}</span>
         </button>
         <button type="button" className="bank-quick-btn" onClick={() => setModal('donate')}>
           <span className="bank-quick-icon"><Heart size={18} /></span>
@@ -270,20 +269,11 @@ function BankTab({ balance = 0, onBalanceChange }) {
           e.preventDefault()
           const amt = parseFloat(utilityAmount)
           if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-          const res = await runBankAction(() => utilityTopUp(amt, utilityCategory), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
+          const res = await runBankAction(() => utilityTopUp(amt, 'electricity'), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
           if (res) setUtilityAmount('')
         }}>
           <h3 className="transfer-form-title">{t('bank.utilityTopUpTitle', 'Пополнить с основного счёта')}</h3>
           <div className="bank-stack-form">
-            <label className="transfer-field">
-              <span>{t('bank.utilityCategory', 'Категория')}</span>
-              <select value={utilityCategory} onChange={e => setUtilityCategory(e.target.value)}>
-                <option value="communal">{t('bank.utilityCat.communal', 'Коммунальные счета')}</option>
-                <option value="tax">{t('bank.utilityCat.tax', 'Налоги')}</option>
-                <option value="rent">{t('bank.utilityCat.rent', 'Аренда')}</option>
-                <option value="other">{t('bank.utilityCat.other', 'Прочее')}</option>
-              </select>
-            </label>
             <label className="transfer-field">
               <span><DollarSign size={14} /> {t('bank.amount')}</span>
               <input type="number" min="0.01" step="0.01" value={utilityAmount} onChange={e => setUtilityAmount(e.target.value)} placeholder="0.00" />
@@ -333,11 +323,11 @@ function BankTab({ balance = 0, onBalanceChange }) {
         </div>
       </div>
 
-      {/* ── Долги игроков: 3 случайных объявления ── */}
+      {/* ── Долги игроков ── */}
       <div className="bank-chart-card bank-section">
         <div className="bank-section-head">
           <h3>{t('bank.debtsTitle', 'Долги игроков')}</h3>
-          <button type="button" className="bank-link-btn" onClick={() => setModal('debt')}>
+          <button type="button" className="bank-link-btn" onClick={() => setDebtsOpen(true)}>
             {t('bank.showMore', 'Смотреть больше')} <ArrowRight size={13} />
           </button>
         </div>
@@ -346,6 +336,17 @@ function BankTab({ balance = 0, onBalanceChange }) {
           {featuredOffers.map(o => renderOffer(o, { compact: true }))}
         </div>
       </div>
+
+      {debtsOpen && (
+        <div className="bank-chart-card bank-section bank-debts-window">
+          <div className="bank-section-head">
+            <h3>{t('bank.debtsTitle', 'Долги игроков')}</h3>
+            <button type="button" className="bank-link-btn" onClick={() => setDebtsOpen(false)}>{t('common.close', 'Закрыть')}</button>
+          </div>
+          {featuredOffers.length === 0 && <p className="bank-empty">{t('bank.noOffers', 'Объявлений нет')}</p>}
+          <div className="bank-debt-list">{p2pOffers.map(o => renderOffer(o))}</div>
+        </div>
+      )}
 
       {/* ── Аналитика ── */}
       <div className="bank-chart-card bank-section">
@@ -484,8 +485,8 @@ function BankTab({ balance = 0, onBalanceChange }) {
         </BankModal>
       )}
 
-      {/* ── Модалка: Долги игроков (P2P) ── */}
-      {modal === 'debt' && (
+      {/* ── Окно: Долги игроков (P2P) ── */}
+      {false && (
         <BankModal title={t('bank.debtsTitle', 'Долги игроков')} wide onClose={() => setModal(null)}>
           <h3 className="bank-subtitle">{t('bank.openOffers', 'Открытые объявления')}</h3>
           {p2pOffers.length === 0 && <p className="bank-empty">{t('bank.noOffers', 'Объявлений нет')}</p>}
@@ -525,8 +526,8 @@ function BankTab({ balance = 0, onBalanceChange }) {
               <input type="number" min="0.01" step="0.01" value={offerForm.amount} onChange={e => setOfferForm({ ...offerForm, amount: e.target.value })} />
             </label>
             <label className="transfer-field">
-              <span>{t('bank.termLabel', 'Срок, суток (7–21)')}</span>
-              <input type="number" min="7" max="21" value={offerForm.termDays} onChange={e => setOfferForm({ ...offerForm, termDays: e.target.value })} />
+              <span>{t('bank.termLabel', 'Срок, суток (2–21)')}</span>
+              <input type="number" min="2" max="21" value={offerForm.termDays} onChange={e => setOfferForm({ ...offerForm, termDays: e.target.value })} />
             </label>
             <label className="transfer-field">
               <span>{t('bank.rateLabel', 'Процент в сутки, %')}</span>
@@ -541,3 +542,4 @@ function BankTab({ balance = 0, onBalanceChange }) {
 }
 
 export default BankTab
+

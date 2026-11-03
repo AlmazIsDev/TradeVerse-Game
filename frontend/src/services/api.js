@@ -530,7 +530,15 @@ export async function adminListSupportTickets() {
   return request('/api/admin/support/tickets')
 }
 
-/** Админ: изменить статус (pending|rejected|resolved) и/или ответ. */
+/** Добавить сообщение игрока в открытый тикет. */
+export async function addSupportMessage(ticketId, payload) {
+  return request(`/api/support/tickets/${encodeURIComponent(ticketId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** Админ: добавить сообщение и/или изменить статус тикета. */
 export async function adminUpdateSupportTicket(ticketId, payload) {
   return request(`/api/admin/support/tickets/${encodeURIComponent(ticketId)}`, {
     method: 'PATCH',

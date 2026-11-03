@@ -327,6 +327,7 @@ async def _player_division(db, user_id: str, league: str, capital: float) -> dic
 
 
 def _league_transition(league: str, capital: float) -> str:
+    """Рассчитать переход по капиталу (legacy helper; в сезоне не вызывается)."""
     index = next(i for i, (name, _) in enumerate(CITYROOF_LEAGUES) if name == league)
     if index < len(CITYROOF_LEAGUES) - 1 and capital >= CITYROOF_LEAGUES[index + 1][1] * 1.25:
         return CITYROOF_LEAGUES[index + 1][0]
@@ -591,7 +592,7 @@ async def _player_room(db, user_id: str, season: int) -> dict:
     existing = await db.cityroof_rooms.find_one({"season": season, "member_ids": user_id})
     if existing:
         capital = await _cityroof_player_capital(db, user_id, existing["league"])
-        target = _league_transition(existing["league"], capital)
+        target = existing["league"]
         division = await _player_division(db, user_id, target, capital)
         stays_in_division = (
             target == existing["league"]
@@ -622,7 +623,9 @@ async def _player_room(db, user_id: str, season: int) -> dict:
             room = await ensure_player_room(db, user_id, season, capital, target, division, allow_merge=False)
     else:
         net_worth = await compute_net_worth(db, user_id)
-        room = await ensure_player_room(db, user_id, season, net_worth)
+        placement = await db.cityroof_placements.find_one({"season": season, "userId": user_id})
+        league = placement.get("league") if placement else _league_for_net_worth(net_worth)
+        room = await ensure_player_room(db, user_id, season, net_worth, league_override=league)
     await _ensure_room_businesses(db, season, room["league"], room["room_code"])
     return room
 
@@ -670,7 +673,7 @@ async def _league_leaderboard(db, season: int, league: str, viewer_id: str | Non
     async for room in db.cityroof_rooms.find({"season": season, "league": league}).sort("room_code", 1):
         for member in await _room_members_view(db, room, season, viewer_id):
             rows.append({**member, "roomCode": room["room_code"], "division": room.get("division")})
-    rows.sort(key=lambda m: (-m["businesses"], -m["capital"]))
+    rows.sort(key=lambda m: (-m["businesses"], -m["warcoin"], -m["capital"]))
     return rows[:limit]
 
 
@@ -786,6 +789,7 @@ async def ensure_seeded(db: AsyncIOMotorDatabase):
     await db.cityroof_rooms.create_index(
         [("season", 1), ("member_ids", 1)], unique=True,
     )
+    await db.cityroof_placements.create_index([("season", 1), ("userId", 1)], unique=True)
     await _migrate_warcoin_balances(db)
 
 
@@ -812,19 +816,25 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
         return  # переход уже выполнен параллельным запросом
 
     # Победитель определяется в каждой лиге отдельно: держатель бизнесов в
-    # алмазе не должен забирать недельную награду новачков. Внутри лиги —
+    # алмазе не должен забирать недельную награду новичков. Внутри лиги —
     # у кого больше бизнесов.
     config = await _warcoin_config(db)
+    # В рейтинг попадают все участники, включая игроков без территорий.
+    # Территории — основной критерий, WarCoin — тай-брейкер.
     counts: dict[tuple[str, str], dict] = {}
-    async for b in db.cityroof_businesses.find({"ownerId": {"$ne": None}}):
-        oid, league = b["ownerId"], b.get("league") or "novice"
-        key = (league, oid)
-        counts.setdefault(key, {"userId": oid, "name": b.get("ownerName"), "league": league, "count": 0})
-        counts[key]["count"] += 1
+    async for room_doc in db.cityroof_rooms.find({"season": season_no}):
+        for member in await _room_members_view(db, room_doc, season_no):
+            key = (room_doc.get("league", "novice"), member["id"])
+            counts[key] = {
+                "userId": member["id"], "name": member.get("name"),
+                "league": room_doc.get("league", "novice"),
+                "count": int(member.get("businesses", 0)),
+                "warcoin": int(member.get("warcoin", 0)),
+            }
     league_order = {name: index for index, (name, _) in enumerate(CITYROOF_LEAGUES)}
     standings = sorted(
         counts.values(),
-        key=lambda x: (league_order.get(x["league"], len(league_order)), -x["count"]),
+        key=lambda x: (league_order.get(x["league"], len(league_order)), -x["count"], -int(x.get("warcoin", 0))),
     )
     # Первый в отсортированном списке из каждой лиги — её победитель.
     seen_leagues: set[str] = set()
@@ -837,6 +847,25 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
             "winnerReward", _winner_reward(x["league"])))}
         for x in winners
     ]
+    # Переформировка выполняется только здесь, между сезонами. Топ-3 повышаются,
+    # 7-8 места понижаются; равенство территорий решает вложенный WarCoin.
+    placements = []
+    league_index = {name: i for i, (name, _) in enumerate(CITYROOF_LEAGUES)}
+    async for room_doc in db.cityroof_rooms.find({"season": season_no}):
+        members = await _room_members_view(db, room_doc, season_no)
+        for rank, member in enumerate(members, 1):
+            current = room_doc.get("league", "novice")
+            target = current
+            index = league_index[current]
+            if rank <= 3 and index < len(CITYROOF_LEAGUES) - 1:
+                target = CITYROOF_LEAGUES[index + 1][0]
+            elif rank >= 7 and index > 0:
+                target = CITYROOF_LEAGUES[index - 1][0]
+            placements.append({"season": season_no + 1, "userId": member["id"], "league": target, "rank": rank})
+    if placements:
+        await db.cityroof_placements.delete_many({"season": season_no + 1})
+        await db.cityroof_placements.insert_many(placements)
+
     await db.cityroof_seasons.insert_one({
         "season": season_no,
         "week": state.get("week"),
@@ -866,7 +895,12 @@ async def _ensure_season(db: AsyncIOMotorDatabase):
 
 
 def _event_active() -> bool:
-    # ПН(0)–ПТ(4). Для MVP событие всегда доступно (см. описание модуля).
+    """Участие в «Крыше города» доступно весь сезон.
+
+    Смена сезона выполняется лениво при первом запросе новой недели, поэтому
+    нельзя закрывать атаки по календарному дню: это оставляло игроков без
+    возможности играть и показывало «Событие завершено» до rollover.
+    """
     return True
 
 
@@ -1070,6 +1104,8 @@ async def get_map(
     businesses = [_serialize_business(b, user_id) async for b in db.cityroof_businesses.find({"season": season, "room_code": view_room["room_code"]})]
     businesses.sort(key=lambda b: (b["y"], b["x"]))
     rooms = []
+    # Обычный игрок может просматривать все комнаты; действия остаются
+    # защищены серверными проверками принадлежности комнате.
     if allRooms:
         async for room_doc in db.cityroof_rooms.find({"season": season}):
             room_businesses = [_serialize_business(b, user_id) async for b in db.cityroof_businesses.find({"season": season, "room_code": room_doc["room_code"]})]
@@ -1590,8 +1626,8 @@ async def attack_business(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Оплатить попытку захвата (10 WC) и начать мини-игру."""
-    if not _event_active():
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Событие сейчас неактивно")
+    # Сезон активен до фактического rollover; календарные ограничения здесь
+    # намеренно не применяются.
     if not ObjectId.is_valid(business_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Некорректный ID")
     user_id = str(current_user["_id"])

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LifeBuoy, Plus, X } from 'lucide-react'
-import { createSupportTicket, fetchMySupportTickets } from '../services/api'
+import { createSupportTicket, fetchMySupportTickets, addSupportMessage } from '../services/api'
 import { toast } from './Toast'
 import '../support.css'
 
@@ -32,6 +32,8 @@ const EMPTY_VALUE = '—'
 // Любое отсутствующее поле подменяется прочерком: сервер может вернуть тип, о
 // котором фронтенд ещё не знает, и пустая карточка выглядит как баг вёрстки.
 function ticketPreview(ticket) {
+  const firstMessage = ticket.messages?.[0]?.text
+  if (firstMessage) return firstMessage
   if (ticket.type === 'loss') {
     return [ticket.lost_item, ticket.method].filter(Boolean).join(' — ') || EMPTY_VALUE
   }
@@ -83,12 +85,22 @@ function SupportPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [chatMessage, setChatMessage] = useState('')
+  const [chatFile, setChatFile] = useState(null)
   // Ref, а не state: второй submit в том же тике (двойной Enter) читает ещё
   // не обновлённое значение and успевает создать дубликат обращения.
   const submitLock = useRef(false)
 
   useEffect(() => {
-    fetchMySupportTickets().then(setTickets).catch(err => toast(err.message, 'error'))
+    let active = true
+    const refresh = () => fetchMySupportTickets().then(items => {
+      if (!active) return
+      setTickets(items)
+      setSelected(current => current ? (items.find(item => item.id === current.id) || current) : current)
+    }).catch(err => { if (active) toast(err.message, 'error') })
+    refresh()
+    const timer = setInterval(refresh, 4000)
+    return () => { active = false; clearInterval(timer) }
   }, [])
 
   const setField = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
@@ -113,6 +125,16 @@ function SupportPage() {
       submitLock.current = false
       setSubmitting(false)
     }
+  }
+
+  const sendMessage = async () => {
+    if (!selected || !chatMessage.trim()) return
+    try {
+      const attachments = chatFile ? [{ name: chatFile.name, type: chatFile.type, data: await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(chatFile) }) }] : []
+      const updated = await addSupportMessage(selected.id, { message: chatMessage.trim(), attachments })
+      setTickets(prev => prev.map(item => item.id === updated.id ? updated : item))
+      setSelected(updated); setChatMessage(''); setChatFile(null)
+    } catch (err) { toast(err.message, 'error') }
   }
 
   // Неизвестный тип приходит, если бэкенд добавил категорию раньше фронтенда:
@@ -147,7 +169,7 @@ function SupportPage() {
           {tickets.map(ticket => (
             <div className="support-card" key={ticket.id}>
               <div className="support-card-top">
-                <span className="support-reason">{typeLabel(ticket.type)}</span>
+                <span className="support-reason">№{ticket.number} · {typeLabel(ticket.type)}</span>
                 <span className={`support-status support-status--${ticket.status}`}>{statusLabel(ticket.status)}</span>
               </div>
               <p className="support-card-text">{ticketPreview(ticket)}</p>
@@ -226,19 +248,20 @@ function SupportPage() {
         <div className="support-overlay" onClick={() => setSelected(null)}>
           <div className="support-modal" onClick={e => e.stopPropagation()}>
             <div className="support-modal-head">
-              <h2>{typeLabel(selected.type)}</h2>
+              <h2>№{selected.number} — {typeLabel(selected.type)}</h2>
               <button type="button" className="support-icon-btn" onClick={() => setSelected(null)}><X size={18} /></button>
             </div>
             <div className="support-card-top">
               <span className="support-status">{statusLabel(selected.status)}</span>
               <span className="support-date">{formatDate(selected.created_at)}</span>
             </div>
-            {ticketFields(selected, t).map(field => (
-              <div className="support-field" key={field.label}>
-                <span className="support-field-label">{field.label}</span>
-                <p className="support-field-value">{field.value}</p>
-              </div>
-            ))}
+            <div className="support-chat">
+              {(selected.messages || []).map((item, index) => <div className={`support-message support-message--${item.author}`} key={`${item.created_at}-${index}`}>
+                <b>{item.author === 'admin' ? `${item.username || 'Администратор'} 🛡️` : (item.username || 'Игрок')}</b><span>{item.text}</span>
+                {(item.attachments || []).map(file => <a key={file.name} href={file.data} download={file.name}>{file.name}</a>)}
+              </div>)}
+            </div>
+            {selected.status === 'pending' && <div className="support-chat-compose"><textarea className="support-input" rows={3} value={chatMessage} onChange={e => setChatMessage(e.target.value)} placeholder="Ваше сообщение..." /><input type="file" onChange={e => setChatFile(e.target.files?.[0] || null)} /><button type="button" className="support-open-btn" onClick={sendMessage}>Отправить</button></div>}
             {selected.reply && (
               <div className="support-field">
                 <span className="support-field-label">{t('support.adminReply', 'Ответ администрации')}</span>

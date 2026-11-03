@@ -5,6 +5,7 @@ import Header from './Header'
 import AccountTab from './AccountTab'
 import StocksTab from './StocksTab'
 import BankTab from './BankTab'
+import LoansTab from './LoansTab'
 import CryptoTab from './CryptoTab'
 import ShopTab from './ShopTab'
 import LeaderboardTab from './LeaderboardTab'
@@ -161,6 +162,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <StocksTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'bank':
         return <BankTab balance={balance} onBalanceChange={handleBalanceChange} />
+      case 'loans':
+        return <LoansTab />
       case 'shop':
         return <ShopTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cityroof':

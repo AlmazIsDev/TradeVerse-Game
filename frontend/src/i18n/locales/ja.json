@@ -913,7 +913,7 @@
     "cryptoAccount": "暗号資産口座",
     "cryptoClosed": "暗号資産口座が未開設です。暗号資産セクションで開設してください",
     "errorDefault": "エラー",
-    "termRange": "期間は 7 日から 21 日の間で指定してください",
+    "termRange": "期間は 2 日から 21 日の間で指定してください",
     "invalidRate": "無効なパーセンテージです",
     "offerCreated": "オファーを作成しました",
     "sideLend": "貸し出し",
@@ -979,7 +979,7 @@
     "type": "種類",
     "offerLend": "貸し出す",
     "offerBorrow": "借り入れる",
-    "termLabel": "期間、日数（7–21）",
+    "termLabel": "期間、日数（2–21）",
     "rateLabel": "日利、%",
     "place": "掲載する"
   },

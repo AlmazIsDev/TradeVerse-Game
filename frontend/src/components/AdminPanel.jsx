@@ -168,12 +168,6 @@ const SYNTH_FIELDS = {
 
 function AdminPanel({ user, onClose }) {
   const { t } = useTranslation()
-
-  // Разрешения текущего админа (из get_me → user.adminFunctions). Пока данных
-  // нет (старый localStorage) — не режем UI, бэкенд всё равно проверит.
-  const can = (func) => !func || !user?.adminFunctions || user.adminFunctions.includes(func)
-  const canEditAdmins = (user?.adminLevel || 0) >= 4
-
   if (user?.role !== 'admin') {
     return (
       <div className="admin-panel">
@@ -191,6 +185,17 @@ function AdminPanel({ user, onClose }) {
       </div>
     )
   }
+  return <AdminPanelContent user={user} onClose={onClose} />
+}
+
+function AdminPanelContent({ user, onClose }) {
+  const { t } = useTranslation()
+
+  // Разрешения текущего админа (из get_me → user.adminFunctions). Пока данных
+  // нет (старый localStorage) — не режем UI, бэкенд всё равно проверит.
+  const can = (func) => !func || !user?.adminFunctions || user.adminFunctions.includes(func)
+  const canEditAdmins = (user?.adminLevel || 0) >= 4
+
   const [activeSection, setActiveSection] = useState(() => localStorage.getItem('tradeverse_admin_section') || 'users')
   const [stocks, setStocks] = useState([])
   const [stocksV2, setStocksV2] = useState([])

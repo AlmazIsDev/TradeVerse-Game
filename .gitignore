@@ -15,3 +15,6 @@ docs/superpowers/
 backend/.env
 frontend/.env
 tools
+
+# Повреждённый пустой файл из старой ветки
+/m\[2\]\).join\(

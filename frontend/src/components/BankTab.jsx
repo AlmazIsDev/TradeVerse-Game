@@ -156,7 +156,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
     const termDays = parseInt(offerForm.termDays, 10)
     const dailyRate = parseFloat(offerForm.dailyRate) / 100
     if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-    if (!Number.isFinite(termDays) || termDays < 7 || termDays > 21) { toast(t('bank.termRange', 'Срок от 7 до 21 суток'), 'error'); return }
+    if (!Number.isFinite(termDays) || termDays < 2 || termDays > 21) { toast(t('bank.termRange', 'Срок от 2 до 21 суток'), 'error'); return }
     if (!Number.isFinite(dailyRate) || dailyRate < 0) { toast(t('bank.invalidRate', 'Некорректный процент'), 'error'); return }
     const res = await runBankAction(
       () => createP2POffer({ side: offerForm.side, amount: amt, termDays, dailyRate }),
@@ -526,8 +526,8 @@ function BankTab({ balance = 0, onBalanceChange }) {
               <input type="number" min="0.01" step="0.01" value={offerForm.amount} onChange={e => setOfferForm({ ...offerForm, amount: e.target.value })} />
             </label>
             <label className="transfer-field">
-              <span>{t('bank.termLabel', 'Срок, суток (7–21)')}</span>
-              <input type="number" min="7" max="21" value={offerForm.termDays} onChange={e => setOfferForm({ ...offerForm, termDays: e.target.value })} />
+              <span>{t('bank.termLabel', 'Срок, суток (2–21)')}</span>
+              <input type="number" min="2" max="21" value={offerForm.termDays} onChange={e => setOfferForm({ ...offerForm, termDays: e.target.value })} />
             </label>
             <label className="transfer-field">
               <span>{t('bank.rateLabel', 'Процент в сутки, %')}</span>

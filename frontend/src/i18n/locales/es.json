@@ -913,7 +913,7 @@
     "cryptoAccount": "Cuenta cripto",
     "cryptoClosed": "La cuenta cripto no está abierta: ábrela en la sección de Criptomonedas",
     "errorDefault": "Error",
-    "termRange": "El plazo debe ser de 7 a 21 días",
+    "termRange": "El plazo debe ser de 2 a 21 días",
     "invalidRate": "Porcentaje no válido",
     "offerCreated": "Anuncio creado",
     "sideLend": "Presta",
@@ -979,7 +979,7 @@
     "type": "Tipo",
     "offerLend": "Prestar",
     "offerBorrow": "Pedir prestado",
-    "termLabel": "Plazo, días (7–21)",
+    "termLabel": "Plazo, días (2–21)",
     "rateLabel": "Tasa diaria, %",
     "place": "Publicar"
   },

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCryptoAccount, fetchCryptoMarket, openCryptoAccount, tradeCrypto,
-  transferCrypto, fetchCryptoTransfers, fetchFavorites,
+  transferCrypto, fetchCryptoTransfers, fetchFavorites, fetchCurrentUser,
 } from '../services/api'
 import TransactionsPanel, { formatMoney, formatQty, formatCompact } from './TransactionsPanel'
 import TradeBreakdown from './TradeBreakdown'
@@ -134,6 +134,12 @@ function CryptoTab({ balance = 0, onBalanceChange, currentUserId }) {
       toast(t('crypto.tradeSuccess'))
       setRefreshKey(k => k + 1)
       await load(true)
+      // WS обычно обновляет баланс мгновенно, но для CLICKS/локального fallback
+      // явно синхронизируем профиль после продажи.
+      if (trade.symbol === 'CLICKS' && trade.action === 'sell') {
+        const fresh = await fetchCurrentUser()
+        if (fresh?.balance != null) onBalanceChange?.(fresh.balance)
+      }
       setTimeout(() => setTrade(null), 700)
     } catch (err) {
       const msg = err.message || ''

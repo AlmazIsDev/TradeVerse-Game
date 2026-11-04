@@ -72,6 +72,7 @@ DEFAULT_COINS = [
     {"symbol": "RUBY", "name": "RubyChain", "price": 340.0, "volatility": 0.03, "color": "#dc2626", "supply": 3_000_000, "description": "Премиальный редкий токен с ограниченной эмиссией."},
     {"symbol": "FLUX", "name": "FluxNet", "price": 9.3, "volatility": 0.09, "color": "#0ea5e9", "supply": 400_000_000, "description": "Токен распределённых вычислений и облака."},
     {"symbol": "GEM", "name": "GemStone", "price": 155.0, "volatility": 0.04, "color": "#14b8a6", "supply": 12_000_000, "description": "Коллекционный токен с NFT-механиками."},
+    {"symbol": "CLICKS", "name": "CLICKS", "price": 0.01, "volatility": 0.0, "color": "#8b5cf6", "supply": 0, "description": "Токен кликов TradeVerse. Добывается в кликере."},
 ]
 
 
@@ -136,6 +137,15 @@ async def ensure_coins_seeded(db: AsyncIOMotorDatabase):
                 "updated_at": now_utc(),
             })
             await MarketDataService.ensure_backfill(db, "crypto", c["symbol"], c["price"], c.get("volatility", 0.05))
+
+
+    # Добавляем системный токен и в уже существующие базы.
+    clicks = next(c for c in DEFAULT_COINS if c["symbol"] == "CLICKS")
+    await db.crypto_assets.update_one(
+        {"symbol": "CLICKS"},
+        {"$setOnInsert": {**clicks, "volatilityHour": 0.0, "base_price": clicks["price"], "change24h": 0.0, "ath": clicks["price"], "atl": clicks["price"], "volume24h": 0.0, "updated_at": now_utc()}},
+        upsert=True,
+    )
 
 
 WALK_REVERSION = 0.1      # доля разрыва с базовой ценой, закрываемая за тик
@@ -343,6 +353,9 @@ async def _apply_trade_impact(
     coin = await db.crypto_assets.find_one({"symbol": symbol})
     if not coin:
         return None
+    # CLICKS добывается игровыми бизнесами и не должен влиять на рыночный спрос.
+    if symbol.upper() == "CLICKS":
+        return float(coin.get("price") or coin.get("market_price") or 0)
     market_price = float(coin.get("market_price") or coin.get("price") or 1)
     vol = float(coin.get("volume24h") or 0) or (market_price * float(coin.get("supply", 0) or 1) * 0.04) or 1.0
     frac = min(IMPACT_CAP, IMPACT_K * (float(total_usd) / max(vol, 1.0)))
@@ -423,6 +436,10 @@ async def get_crypto_account(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+    # Пассивные бизнесы кликера начисляют CLICKS при каждом открытии
+    # криптокошелька, поэтому пользователю не нужно перезаходить в аккаунт.
+    from clicker import collect_passive_clicks
+    await collect_passive_clicks(db, str(current_user["_id"]))
     """Состояние криптосчёта: открыт ли, кошелёк, холдинги и их оценка."""
     user_id = str(current_user["_id"])
     opened = bool(current_user.get("crypto_account_opened"))
@@ -642,6 +659,8 @@ async def trade_crypto(
 
     user_id = str(current_user["_id"])
     symbol = payload.symbol.upper()
+    if symbol == "CLICKS" and payload.action == "buy":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "CLICKS можно только добывать и продавать")
     qty = payload.quantity
 
     coin = await db.crypto_assets.find_one({"symbol": symbol})
@@ -759,6 +778,10 @@ async def trade_crypto(
     # две параллельные продажи не продали одни и те же монеты дважды. $inc
     # дробных чисел оставляет пыль (5e-15), которую потом не продать, поэтому
     # остаток клампится в 0 и округляется до 8 знаков в том же обновлении.
+    if symbol == "CLICKS":
+        # Миграция со старой версии кликера: единым источником остатка
+        # остаётся crypto_holdings, а clicker_progress больше не является кошельком.
+        pass
     sold = await db.crypto_holdings.find_one_and_update(
         {"userId": user_id, "symbol": symbol, "quantity": {"$gte": qty}},
         [{"$set": {"quantity": {"$round": [
@@ -791,6 +814,14 @@ async def trade_crypto(
     # Продавец получает стоимость за вычетом комиссии.
     proceeds = round(total - fee, 2)
     new_balance = await adjust_balance(db, user_id, proceeds)
+    if new_balance is None:
+        # Холдинг уже списан, поэтому возвращаем токены, если баланс не удалось зачислить.
+        await db.crypto_holdings.update_one(
+            {"userId": user_id, "symbol": symbol},
+            {"$inc": {"quantity": qty}, "$setOnInsert": {"userId": user_id, "symbol": symbol, "avg_price": price}},
+            upsert=True,
+        )
+        raise HTTPException(status.HTTP_409_CONFLICT, "Не удалось зачислить выручку")
     await record_transaction(
         db, user_id, INCOME, proceeds, CAT_CRYPTO,
         f"Продажа {qty:g} {symbol}", symbol=symbol, price=price,

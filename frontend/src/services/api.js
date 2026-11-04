@@ -281,6 +281,16 @@ async function request(endpoint, options = {}) {
   }
 }
 
+export async function fetchClicker() { return request('/api/clicker') }
+export async function clickClicker() { return request('/api/clicker/click', { method: 'POST' }) }
+export async function upgradeClicker(id) { return request(`/api/clicker/upgrade/${encodeURIComponent(id)}`, { method: 'POST' }) }
+export async function buyClickerMultiplier() { return request('/api/clicker/multiplier', { method: 'POST' }) }
+export async function fetchClickerCases() { return request('/api/clicker/cases') }
+export async function openClickerCase(caseId) { return request('/api/clicker/cases/open', { method: 'POST', body: JSON.stringify({ case_id: caseId }) }) }
+export async function fetchClickerComponentCases() { return request('/api/clicker/component-cases') }
+export async function sellClicker(amount) { return request('/api/clicker/sell', { method: 'POST', body: JSON.stringify({ amount }) }) }
+export async function fetchClickerLeaderboard() { return request('/api/clicker/leaderboard') }
+
 export async function fetchStocks() {
   return request('/api/stocks')
 }

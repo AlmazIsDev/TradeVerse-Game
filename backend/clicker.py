@@ -141,7 +141,7 @@ async def open_case(payload: CasePurchase, current_user=Depends(get_current_user
         if not pool: raise HTTPException(status.HTTP_400_BAD_REQUEST, "Для этого кейса нет доступных комплектующих")
         item = random.choice(pool)
         await db.user_hardware.insert_one({"userId": str(current_user["_id"]), "itemId": item["id"], "category": item["category"], "name": item["name"], "specs": item.get("specs", {}), "farmId": None, "purchase_price": 0})
-        return {"case": payload.case_id, "reward": {"type": "component", "title": item["name"], "itemId": item["id"]}, **view(spent, await config(db))}
+        return {"case": payload.case_id, "reward": {"type": "component", "title": item["name"], "itemId": item["id"]}, **view(await db.clicker_progress.find_one({"userId": str(current_user["_id"])}), await config(db), await _wallet_clicks(db, str(current_user["_id"]))) }
     if payload.case_id not in CASE_CONFIG:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Кейс не найден")
     uid = str(current_user["_id"]); price = CASE_CONFIG[payload.case_id]["price"]
@@ -163,7 +163,7 @@ async def open_case(payload: CasePurchase, current_user=Depends(get_current_user
     elif roll == "sunny_cottage":
         reward.update(slug="sunny_cottage", amount=1)
     await record_transaction(db, uid, EXPENSE, price, CAT_SYSTEM, f"Открытие кейса: {CASE_CONFIG[payload.case_id]['name']}", meta={"case": payload.case_id})
-    return {"case": payload.case_id, "reward": reward, **view(spent, await config(db), await _wallet_clicks(db, uid))}
+    return {"case": payload.case_id, "reward": reward, **view(await db.clicker_progress.find_one({"userId": uid}), await config(db), await _wallet_clicks(db, uid))}
 
 # CLICKS продаётся только через стандартный раздел криптовалют.
 

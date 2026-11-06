@@ -74,7 +74,9 @@ def _ledger_category(asset_or_type) -> str:
 SELL_RATE = 0.7          # возврат при продаже — 70% текущей стоимости
 MAX_ACCRUAL_HOURS = 24   # максимум накопленного дохода за один сбор
 
-UPGRADE_COST_PCT = 0.32  # доля базовой цены за уровень (см. _upgrade_cost)
+UPGRADE_COST_PCT = 0.32  # базовая доля цены для улучшения (см. _upgrade_cost)
+UPGRADE_COST_GROWTH = 0.08  # постепенное удорожание каждого следующего уровня
+MAX_UPGRADE_LEVEL = 10      # имущество улучшается максимум до 10-го уровня включительно
 # Прирост дохода ЗА УРОВЕНЬ. Содержание бизнесов растёт тем же шагом (см.
 # _upkeep_per_hour) — единая константа на оба, чтобы маржа не могла уехать.
 LEVEL_INCOME_STEP = 0.25
@@ -820,20 +822,26 @@ def _upkeep_per_hour(asset: dict) -> float:
 
 
 def _upgrade_cost(asset: dict) -> float:
-    """Фиксированная доля базы, не растёт с уровнем: при плоском +25% дохода/уровень
-    окупаемость апгрейда (2.9–4.0 суток) совпадает с покупкой нового актива (3.3–4.2)."""
+    """Стоимость следующего уровня.
+
+    Стоимость плавно растёт с текущим уровнем: ранние улучшения доступны новым
+    игрокам, а прокачка высоких уровней не превращается в бесконечный источник
+    дешёвого пассивного дохода.
+    """
     base = asset.get("price", 0)
-    # Цена улучшения тоже масштабируется _price_mult — как доход экземпляра.
-    return round(base * UPGRADE_COST_PCT * _price_mult(asset), 2)
+    level = max(1, int(asset.get("level", 1)))
+    growth = 1 + UPGRADE_COST_GROWTH * (level - 1)
+    return round(base * UPGRADE_COST_PCT * growth * _price_mult(asset), 2)
 
 
-UPGRADE_PREVIEW_LEVELS = 10   # сколько будущих уровней показывать в модалке «Улучшения»
+UPGRADE_PREVIEW_LEVELS = MAX_UPGRADE_LEVEL  # максимум будущих уровней в модалке
 
 
 def _upgrade_plan(asset: dict, steps: int) -> list[dict]:
     """Предпросмотр следующих уровней теми же формулами, что и списание, — чтобы
     клиент не дублировал расчёт."""
-    level = asset.get("level", 1)
+    level = max(1, int(asset.get("level", 1)))
+    steps = min(int(steps), max(0, MAX_UPGRADE_LEVEL - level))
     cumulative = 0.0
     plan = []
     for i in range(1, steps + 1):
@@ -1529,8 +1537,14 @@ async def upgrade_asset(
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Магазин не улучшается — доход формируется продажами товаров")
     steps = payload.levels
-    seen_level = asset.get("level", 1)
-    cost = _upgrade_plan(asset, steps)[-1]["totalCost"]
+    seen_level = max(1, int(asset.get("level", 1)))
+    if seen_level >= MAX_UPGRADE_LEVEL or seen_level + steps > MAX_UPGRADE_LEVEL:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Максимальный уровень имущества — {MAX_UPGRADE_LEVEL}",
+        )
+    plan = _upgrade_plan(asset, steps)
+    cost = plan[-1]["totalCost"]
     new_balance = await adjust_balance(db, user_id, -cost)
     if new_balance is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")

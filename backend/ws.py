@@ -4,9 +4,28 @@
 (уведомления, заявки в компанию, изменение баланса) и широковещательно
 (рынок, лидерборд). Polling на фронтенде остаётся резервным механизмом.
 """
+import asyncio
 import logging
 
 from bson import ObjectId
+
+from database import get_db
+
+
+async def _clicker_snapshot(user_id: str):
+    from clicker import collect_passive_clicks
+
+    db = get_db()
+    await collect_passive_clicks(db, user_id)
+    progress = await db.clicker_progress.find_one({"userId": user_id}, {"multiplier": 1}) or {}
+    holding = await db.crypto_holdings.find_one({"userId": user_id, "symbol": "CLICKS"}, {"quantity": 1}) or {}
+    return {"type": "clicker_balance", "clicks": int(float(holding.get("quantity", 0) or 0)),
+            "clickPower": int(progress.get("multiplier", 1) or 1)}
+
+
+MAX_WS_RECEIVE_WAIT_S = 1
+
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from auth import decode_access_token
@@ -99,8 +118,14 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
     try:
         await websocket.send_json({"type": "connected"})
         while True:
-            # Держим соединение; клиент шлёт ping-строки.
-            await websocket.receive_text()
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=MAX_WS_RECEIVE_WAIT_S)
+            except asyncio.TimeoutError:
+                try:
+                    await websocket.send_json(await _clicker_snapshot(user_id))
+                except Exception:
+                    manager.disconnect(user_id, websocket)
+                    break
     except WebSocketDisconnect:
         manager.disconnect(user_id, websocket)
     except Exception:

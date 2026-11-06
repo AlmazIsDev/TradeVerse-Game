@@ -282,7 +282,7 @@ async function request(endpoint, options = {}) {
 }
 
 export async function fetchClicker() { return request('/api/clicker') }
-export async function clickClicker() { return request('/api/clicker/click', { method: 'POST' }) }
+export async function clickClicker(count = 1) { return request('/api/clicker/click', { method: 'POST', body: JSON.stringify({ count }) }) }
 export async function upgradeClicker(id) { return request(`/api/clicker/upgrade/${encodeURIComponent(id)}`, { method: 'POST' }) }
 export async function buyClickerMultiplier() { return request('/api/clicker/multiplier', { method: 'POST' }) }
 export async function fetchClickerCases() { return request('/api/clicker/cases') }

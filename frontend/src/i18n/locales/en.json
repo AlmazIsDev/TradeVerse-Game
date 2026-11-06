@@ -545,6 +545,9 @@
     "caseShopHint": "Case contents will be added later",
     "caseSoon": "Drops coming soon",
     "openCaseShop": "Open case shop",
+    "odds": "Odds",
+    "oddsTitle": "Drop odds",
+    "randomCrypto": "Random cryptocurrency",
     "cases": {
       "basic": "Economy case",
       "middle": "Medium case",

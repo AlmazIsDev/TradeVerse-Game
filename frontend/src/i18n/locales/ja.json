@@ -3441,6 +3441,9 @@
     "caseShop": "ケースショップ",
     "caseShopHint": "ケースを開けて報酬を獲得",
     "openCaseShop": "ケースを開く",
+    "odds": "確率",
+    "oddsTitle": "ドロップ確率",
+    "randomCrypto": "ランダム暗号資産",
     "opening": "開封中…",
     "win": "報酬！",
     "cases": {

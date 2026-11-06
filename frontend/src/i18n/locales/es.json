@@ -3769,6 +3769,9 @@
     "caseShop": "Tienda de cajas",
     "caseShopHint": "Abre una caja para ganar una recompensa",
     "openCaseShop": "Abrir cajas",
+    "odds": "Probabilidades",
+    "oddsTitle": "Probabilidades de botín",
+    "randomCrypto": "Criptomoneda aleatoria",
     "opening": "Abriendo…",
     "win": "¡Recompensa!",
     "cases": {

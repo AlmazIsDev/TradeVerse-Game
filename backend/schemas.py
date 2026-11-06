@@ -299,6 +299,7 @@ class AdminUserUpdate(BaseModel):
     # Список значков игрока (например, ["beta_tester"]); null не допускается.
     badges: Optional[list[str]] = None
     balance: Optional[float] = None
+    tokens: Optional[int] = None
     role: Optional[str] = None
     admin_level: Optional[int] = None
     card_number: Optional[str] = None
@@ -344,6 +345,13 @@ class AdminUserUpdate(BaseModel):
         if v is not None and v < 0:
             raise ValueError("Баланс не может быть отрицательным")
         return v
+
+    @field_validator("tokens")
+    @classmethod
+    def tokens_must_be_non_negative(cls, v):
+        if v is not None and (v < 0 or int(v) != v):
+            raise ValueError("Токены должны быть целым неотрицательным числом")
+        return int(v) if v is not None else v
 
 
 # ── Stock Schemas ────────────────────────────────────────────────────────────

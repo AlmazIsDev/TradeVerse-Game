@@ -961,7 +961,7 @@ async def admin_get_users(
     """
     by_uid = {e["userId"]: e for e in await _leaderboard_entries(db)}
     out = []
-    async for u in db.users.find({}, {"username": 1, "role": 1, "balance": 1, "created_at": 1,
+    async for u in db.users.find({}, {"username": 1, "role": 1, "balance": 1, "tokens": 1, "created_at": 1,
                                       "card_number": 1, "hidden_from_leaderboard": 1, "leaderboard_lock": 1,
                                       "login_ips": 1, "last_login": 1,
                                       "admin_level": 1, "bans": 1}):
@@ -979,6 +979,7 @@ async def admin_get_users(
             "admin_level": int(u.get("admin_level") or 4) if u.get("role") == "admin" else None,
             "bans": u.get("bans") or {},
             "balance": float(u.get("balance", 0.0) or 0.0),
+            "tokens": int(u.get("tokens", 0) or 0),
             "created_at": u.get("created_at").isoformat() if isinstance(u.get("created_at"), datetime) else u.get("created_at"),
             "last_login": u.get("last_login"),
             "ips": ips[:20],

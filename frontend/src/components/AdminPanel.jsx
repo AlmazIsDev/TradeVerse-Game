@@ -238,6 +238,7 @@ function AdminPanelContent({ user, onClose }) {
   const [editForm, setEditForm] = useState({
     username: '',
     balance: '',
+    tokens: '',
     role: 'user',
     card_number: '',
     hidden_from_leaderboard: false,
@@ -517,6 +518,10 @@ function AdminPanelContent({ user, onClose }) {
     if (isNaN(balance) || balance < 0) {
       errors.balance = t('admin.validationBalanceNegative')
     }
+    const tokens = Number(editForm.tokens)
+    if (!Number.isInteger(tokens) || tokens < 0) {
+      errors.tokens = 'Токены должны быть целым неотрицательным числом'
+    }
 
     if (editForm.role !== 'user' && editForm.role !== 'admin') {
       errors.role = t('admin.validationRoleInvalid')
@@ -535,6 +540,7 @@ function AdminPanelContent({ user, onClose }) {
     const form = {
       username: u.username || '',
       balance: u.balance != null ? String(u.balance) : '',
+      tokens: u.tokens != null ? String(u.tokens) : '0',
       role: u.role || 'user',
       admin_level: u.admin_level || 4,
       card_number: u.card_number || '',
@@ -619,6 +625,7 @@ function AdminPanelContent({ user, onClose }) {
     setEditForm({
       username: '',
       balance: '',
+      tokens: '',
       role: 'user',
       admin_level: 4,
       card_number: '',
@@ -633,7 +640,7 @@ function AdminPanelContent({ user, onClose }) {
   const handleSaveUser = async () => {
     if (!validateEditForm() || !originalEditForm) return
     const payload = {}
-    const normalized = { ...editForm, username: editForm.username.trim(), balance: parseFloat(editForm.balance), card_number: editForm.card_number.trim() }
+    const normalized = { ...editForm, username: editForm.username.trim(), balance: parseFloat(editForm.balance), tokens: Number(editForm.tokens), card_number: editForm.card_number.trim() }
     for (const key of Object.keys(normalized)) {
       if (normalized[key] !== originalEditForm[key]) payload[key] = normalized[key]
     }
@@ -1785,6 +1792,13 @@ function AdminPanelContent({ user, onClose }) {
                         onChange={e => setEditForm({ ...editForm, balance: e.target.value })}
                         className={`admin-input${editErrors.balance ? ' admin-input-error' : ''}`} />
                       {editErrors.balance && <span className="admin-field-error">{editErrors.balance}</span>}
+                    </div>
+                    <div className="admin-field-group">
+                      <label>Токены</label>
+                      <input type="number" step="1" min="0" value={editForm.tokens}
+                        onChange={e => setEditForm({ ...editForm, tokens: e.target.value })}
+                        className={`admin-input${editErrors.tokens ? ' admin-input-error' : ''}`} />
+                      {editErrors.tokens && <span className="admin-field-error">{editErrors.tokens}</span>}
                     </div>
                     <div className="admin-field-group">
                       <label>{t('admin.fieldRole')}</label>

@@ -269,7 +269,7 @@ function BankTab({ balance = 0, onBalanceChange, onTabChange }) {
           e.preventDefault()
           const amt = parseFloat(utilityAmount)
           if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-          const res = await runBankAction(() => utilityTopUp(amt, 'electricity'), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
+          const res = await runBankAction(() => utilityTopUp(amt, 'other'), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
           if (res) setUtilityAmount('')
         }}>
           <h3 className="transfer-form-title">{t('bank.utilityTopUpTitle', 'Пополнить с основного счёта')}</h3>

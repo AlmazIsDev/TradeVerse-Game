@@ -399,12 +399,15 @@ async def bid_auction(
 
     new_balance = await adjust_balance(db, me, -amount)
     if new_balance is None:
-        await db.bank_auctions.update_one(
-            {"_id": auction["_id"]},
+        restored = await db.bank_auctions.update_one(
+            {"_id": auction["_id"], "status": "open", "currentPrice": amount,
+             "topBidderId": me},
             {"$set": {"currentPrice": previous["currentPrice"],
                       "topBidderId": previous.get("topBidderId"),
                       "topBidderName": previous.get("topBidderName")}},
         )
+        if not restored.modified_count:
+            await adjust_balance(db, me, amount)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств для ставки")
 
     prev_bidder = previous.get("topBidderId")

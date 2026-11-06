@@ -712,6 +712,14 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             signed = row["sum"] if row["_id"]["d"] == "income" else -row["sum"]
             period_net[uid] = period_net.get(uid, 0.0) + signed
 
+    achievement_counts: dict[str, int] = {}
+    if uids:
+        async for row in db.user_achievements.aggregate([
+            {"$match": {"userId": {"$in": uids}}},
+            {"$group": {"_id": "$userId", "count": {"$sum": 1}}},
+        ]):
+            achievement_counts[str(row["_id"])] = int(row["count"])
+
     entries = []
     for u in users:
         uid = str(u["_id"])
@@ -726,9 +734,9 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             "userId": uid,
             "username": u.get("username", "—"),
             "avatar": u.get("avatar"),
-            "level": int(u.get("level") or level_from_xp(int(u.get("xp", 0)))),
+            "level": max(int(u.get("level") or 0), level_from_xp(int(u.get("xp", 0)))),
             "xp": int(u.get("xp", 0)),
-            "achievements": int(u.get("achievements_count", 0)),
+            "achievements": achievement_counts.get(uid, int(u.get("achievements_count", 0))),
             "cash": round(cash, 2),
             "stocks": stocks_value,
             "crypto": crypto_value,

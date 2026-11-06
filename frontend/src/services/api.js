@@ -288,7 +288,6 @@ export async function buyClickerMultiplier() { return request('/api/clicker/mult
 export async function fetchClickerCases() { return request('/api/clicker/cases') }
 export async function openClickerCase(caseId) { return request('/api/clicker/cases/open', { method: 'POST', body: JSON.stringify({ case_id: caseId }) }) }
 export async function fetchClickerComponentCases() { return request('/api/clicker/component-cases') }
-export async function sellClicker(amount) { return request('/api/clicker/sell', { method: 'POST', body: JSON.stringify({ amount }) }) }
 export async function fetchClickerLeaderboard() { return request('/api/clicker/leaderboard') }
 
 export async function fetchStocks() {
@@ -1150,8 +1149,11 @@ export async function buyMaterials(id, qty) {
 
 // ── Notifications API ───────────────────────────────────────────────────────────
 
-export async function fetchNotifications(limit = 30) {
-  return request(`/api/notifications?limit=${limit}`)
+export async function fetchNotifications(limit = 30, category = null, excludeCategory = null) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (category) params.set('category', category)
+  if (excludeCategory) params.set('exclude_category', excludeCategory)
+  return request(`/api/notifications?${params}`)
 }
 
 export async function markNotificationRead(id) {

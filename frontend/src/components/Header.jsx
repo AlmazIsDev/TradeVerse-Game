@@ -12,7 +12,7 @@ import { flagUrl } from '../utils/countries'
 import { formatCompact } from './TransactionsPanel'
 import {
   Bell, LogOut, X, Check, Wallet, Megaphone, Zap, Users, Store,
-  Cpu, Trophy, Settings2, Search, Undo2,
+  Cpu, Trophy, Settings2, Search, Undo2, Eye, EyeOff,
 } from 'lucide-react'
 
 function formatMoney(n) {
@@ -44,7 +44,10 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   }
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState([])
+  const [unreadTotal, setUnreadTotal] = useState(0)
+  const [unreadByCategory, setUnreadByCategory] = useState({})
   const [notifTab, setNotifTab] = useState('all')
+  const [hideAutoInAll, setHideAutoInAll] = useState(() => localStorage.getItem('notifHideAutoInAll') === '1')
   const [notifSearch, setNotifSearch] = useState('')
   const notifRef = useRef(null)
   const dropdownRef = useRef(null)
@@ -74,7 +77,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const displayName = user?.username || storedUser?.username || t('header.user')
   const avatar = user?.avatar || storedUser?.avatar || null
   const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'TV'
-  const unreadCount = notifications.filter(n => !n.read).length
+  const unreadCount = unreadTotal
 
   const isActionable = useCallback(
     (n) =>
@@ -97,8 +100,8 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     market: Store, mining: Cpu, event: Trophy, system: Settings2,
   }
 
-  // Панель не должна вылезать за экран: после открытия (и на resize) измеряем
-  // её и при нехватке места сужаем и/или сдвигаем обратно в вьюпорт.
+  // РџР°РЅРµР»СЊ РЅРµ РґРѕР»Р¶РЅР° РІС‹Р»РµР·Р°С‚СЊ Р·Р° СЌРєСЂР°РЅ: РїРѕСЃР»Рµ РѕС‚РєСЂС‹С‚РёСЏ (Рё РЅР° resize) РёР·РјРµСЂСЏРµРј
+  // РµС‘ Рё РїСЂРё РЅРµС…РІР°С‚РєРµ РјРµСЃС‚Р° СЃСѓР¶Р°РµРј Рё/РёР»Рё СЃРґРІРёРіР°РµРј РѕР±СЂР°С‚РЅРѕ РІ РІСЊСЋРїРѕСЂС‚.
   const clampDropdown = useCallback(() => {
     const el = dropdownRef.current
     if (!el) return
@@ -127,11 +130,10 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
   const tabCategory = { all: null, auto: 'automatic', announce: 'announcement', company: 'company', market: 'market', mining: 'mining', event: 'event' }
   const query = notifSearch.trim().toLocaleLowerCase()
   const visibleNotifications = notifications.filter((n) => {
-    const matchesTab = !tabCategory[notifTab] || categoryOf(n) === tabCategory[notifTab]
     const haystack = `${n.title || ''} ${n.body || ''}`.toLocaleLowerCase()
-    return matchesTab && (!query || haystack.includes(query))
+    return !query || haystack.includes(query)
   })
-  const tabUnread = (category) => notifications.filter((n) => !n.read && (!category || categoryOf(n) === category)).length
+  const tabUnread = (category) => (category ? unreadByCategory[category] || 0 : unreadTotal)
   const tabs = [
     ['all', 'tabAll'], ['auto', 'tabAuto'], ['announce', 'tabAnnounce'],
     ['company', 'tabCompany'], ['market', 'tabMarket'], ['mining', 'tabMining'], ['event', 'tabEvent'],
@@ -147,7 +149,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Синхронизация card_number с сервера при монтировании
+  // РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ card_number СЃ СЃРµСЂРІРµСЂР° РїСЂРё РјРѕРЅС‚РёСЂРѕРІР°РЅРёРё
   useEffect(() => {
     let cancelled = false
     async function syncCard() {
@@ -158,7 +160,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
         const newVisible = data?.card_visible !== undefined ? data.card_visible : true
         setCardNumber(newCard)
         setCardVisible(newVisible)
-        // Обновляем localStorage
+        // РћР±РЅРѕРІР»СЏРµРј localStorage
         const stored = getStoredUser()
         if (stored) {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -168,44 +170,51 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
           }))
         }
       } catch {
-        // ignore — используем данные из localStorage
+        // ignore вЂ” РёСЃРїРѕР»СЊР·СѓРµРј РґР°РЅРЅС‹Рµ РёР· localStorage
       }
     }
     syncCard()
     return () => { cancelled = true }
   }, [])
 
-  // Живая лента уведомлений с сервера (в т.ч. приглашения в компанию)
   const loadNotifs = useCallback(async () => {
     try {
-      const data = await fetchNotifications(30)
+      const exclude = notifTab === 'all' && hideAutoInAll ? 'automatic' : null
+      const data = await fetchNotifications(30, tabCategory[notifTab], exclude)
       setNotifications(data.items || [])
+      setUnreadTotal(data.unread || 0)
+      setUnreadByCategory(data.unreadByCategory || {})
     } catch { /* ignore */ }
-  }, [])
+  }, [notifTab, hideAutoInAll])
 
-  // 30с был основным источником обновлений до WS; tv:notif покрывает
-  // live-обновления, поэтому интервал — редкий резервный фолбэк.
   useEffect(() => {
     loadNotifs()
     const id = setInterval(loadNotifs, 120000)
     return () => clearInterval(id)
   }, [loadNotifs])
 
-  // Push-событие от NotificationCenter — обновляем ленту без задержки debounce.
   useEffect(() => {
     const onNotif = () => loadNotifs()
     window.addEventListener('tv:notif', onNotif)
     return () => window.removeEventListener('tv:notif', onNotif)
   }, [loadNotifs])
 
+  const toggleHideAuto = () => {
+    setHideAutoInAll(prev => {
+      const next = !prev
+      localStorage.setItem('notifHideAutoInAll', next ? '1' : '0')
+      return next
+    })
+  }
+
   const markAsRead = async (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     try { await markNotificationRead(id) } catch { /* ignore */ }
+    loadNotifs()
   }
 
   const markAllRead = async () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     try { await markAllNotificationsRead() } catch { /* ignore */ }
+    loadNotifs()
   }
 
   const handleInvite = async (notif, accept) => {
@@ -216,9 +225,9 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
       else await declineInvite(inviteId)
       await markNotificationRead(notif.id)
       await loadNotifs()
-      // Обновляем вкладку «Моя компания» — иначе после принятия приглашения
-      // здесь (в колокольчике, в отличие от всплывающего попапа) её состояние
-      // не перечитывалось, и игрок не видел себя в компании.
+      // РћР±РЅРѕРІР»СЏРµРј РІРєР»Р°РґРєСѓ В«РњРѕСЏ РєРѕРјРїР°РЅРёСЏВ» вЂ” РёРЅР°С‡Рµ РїРѕСЃР»Рµ РїСЂРёРЅСЏС‚РёСЏ РїСЂРёРіР»Р°С€РµРЅРёСЏ
+      // Р·РґРµСЃСЊ (РІ РєРѕР»РѕРєРѕР»СЊС‡РёРєРµ, РІ РѕС‚Р»РёС‡РёРµ РѕС‚ РІСЃРїР»С‹РІР°СЋС‰РµРіРѕ РїРѕРїР°РїР°) РµС‘ СЃРѕСЃС‚РѕСЏРЅРёРµ
+      // РЅРµ РїРµСЂРµС‡РёС‚С‹РІР°Р»РѕСЃСЊ, Рё РёРіСЂРѕРє РЅРµ РІРёРґРµР» СЃРµР±СЏ РІ РєРѕРјРїР°РЅРёРё.
       window.dispatchEvent(new CustomEvent('tv:company-refresh'))
     } catch { /* ignore */ }
   }
@@ -291,7 +300,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
         )}
         {levelInfo && (
           <div className="header-level" title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}>
-            <span>{t('header.levelShort', 'Ур.')} {levelInfo.level}</span>
+            <span>{t('header.levelShort', 'РЈСЂ.')} {levelInfo.level}</span>
             <div className="header-level-bar"><div style={{ width: `${levelProgress}%` }} /></div>
             <span className="header-level-left">{levelInfo.xpNextLevel - levelInfo.xp} XP</span>
           </div>
@@ -328,7 +337,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                   placeholder={t('notifications.searchPlaceholder')}
                   aria-label={t('notifications.searchPlaceholder')}
                 />
-                {notifSearch && <button type="button" title={t('common.clear', 'Очистить')} aria-label={t('common.clear', 'Очистить')} onClick={() => setNotifSearch('')}><X size={14} /></button>}
+                {notifSearch && <button type="button" title={t('common.clear', 'РћС‡РёСЃС‚РёС‚СЊ')} aria-label={t('common.clear', 'РћС‡РёСЃС‚РёС‚СЊ')} onClick={() => setNotifSearch('')}><X size={14} /></button>}
               </div>
               <div className="notification-tabs">
                 {tabs.map(([id, key]) => {
@@ -349,6 +358,17 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                   )
                 })}
               </div>
+              {notifTab === 'all' && (
+                <button
+                  type="button"
+                  className="notification-hide-auto"
+                  onClick={toggleHideAuto}
+                  title={t(hideAutoInAll ? 'notifications.showAuto' : 'notifications.hideAuto')}
+                >
+                  {hideAutoInAll ? <Eye size={13} /> : <EyeOff size={13} />}
+                  <span>{t(hideAutoInAll ? 'notifications.showAuto' : 'notifications.hideAuto')}</span>
+                </button>
+              )}
               <div className="notification-list">
                 {visibleNotifications.length === 0 && (
                   <div className="notification-empty">{t('notifications.noNotifications')}</div>

@@ -18,6 +18,25 @@ from auth import get_current_user
 from database import get_db
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+CATEGORY_PATTERN = "^(automatic|announcement|company|market|mining|event|system)$"
+
+
+def build_notification_query(user_id: str, category: str | None, exclude_category: str | None) -> dict:
+    query = {"userId": user_id}
+    if category:
+        query["category"] = category
+    elif exclude_category:
+        query["category"] = {"$ne": exclude_category}
+    return query
+
+
+def unread_categories(notifications: list[dict], exclude_category: str | None = None) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for item in notifications:
+        category = item.get("category") or _category(item.get("type", ""), item.get("title", ""))
+        if not item.get("read", False) and category != exclude_category:
+            result[category] = result.get(category, 0) + 1
+    return result
 
 
 _AUTO_TITLES = {
@@ -92,17 +111,29 @@ def _serialize(n: dict) -> dict:
 @router.get("")
 async def list_notifications(
     limit: int = Query(30, ge=1, le=100),
+    category: Optional[str] = Query(None, pattern=CATEGORY_PATTERN),
+    exclude_category: Optional[str] = Query(None, pattern=CATEGORY_PATTERN),
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Лента уведомлений текущего игрока (новые сверху) + счётчик непрочитанных."""
+    """Лента уведомлений игрока с фильтром категории + счётчики непрочитанных."""
     user_id = str(current_user["_id"])
+    query = build_notification_query(user_id, category, exclude_category)
     items = [
         _serialize(n)
-        async for n in db.notifications.find({"userId": user_id}).sort("created_at", -1).limit(limit)
+        async for n in db.notifications.find(query).sort("created_at", -1).limit(limit)
     ]
-    unread = await db.notifications.count_documents({"userId": user_id, "read": False})
-    return {"items": items, "unread": unread}
+    unread_docs = [
+        n async for n in db.notifications.find(
+            {"userId": user_id, "read": False}, {"type": 1, "title": 1, "category": 1},
+        )
+    ]
+    unread_by_category = unread_categories(unread_docs, exclude_category)
+    return {
+        "items": items,
+        "unread": sum(unread_by_category.values()),
+        "unreadByCategory": unread_by_category,
+    }
 
 
 @router.post("/{notif_id}/read")

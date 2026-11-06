@@ -517,7 +517,8 @@
     "groupCommunity": "コミュニティ",
     "inventory": "在庫",
     "achievements": "実績",
-    "support": "サポート"
+    "support": "サポート",
+    "clicker": "クリック"
   },
   "inventory": {
     "page_overview": "概要",
@@ -3420,5 +3421,52 @@
         ]
       }
     }
+  },
+  "clicker": {
+    "title": "CLICKS・クリッカー",
+    "subtitle": "クリック経済を築こう",
+    "token": "CLICKSトークン",
+    "tokenHint": "プレイして獲得",
+    "price": "価格",
+    "clickPower": "クリック力",
+    "passive": "自動収益",
+    "balance": "残高",
+    "click": "クリック",
+    "upgrades": "アップグレード",
+    "multiplier": "倍率",
+    "multiplierHint": "1クリックでx{{power}} CLICKS",
+    "leaderboard": "CLICKSランキング",
+    "caseShop": "ケースショップ",
+    "caseShopHint": "ケースを開けて報酬を獲得",
+    "openCaseShop": "ケースを開く",
+    "opening": "開封中…",
+    "win": "報酬！",
+    "cases": {
+      "basic": "ベーシックケース",
+      "middle": "ミドルケース",
+      "premium": "プレミアムケース",
+      "elite": "エリートケース"
+    },
+    "amount": "数量",
+    "sell": "売却",
+    "sellButton": "CLICKSを売却",
+    "sellHint": "CLICKSは暗号資産タブで売却できます"
+  },
+  "loans": {
+    "from": "最小",
+    "to": "最大",
+    "rateRange": "金利（最小〜最大）",
+    "daysRange": "期間（最小〜最大）",
+    "daysShort": "日",
+    "perDay": "/日",
+    "gives": "貸出",
+    "takes": "借入",
+    "yourDebt": "自分の債務",
+    "issued": "貸出済み",
+    "createOffer": "オファーを掲載",
+    "loanTypeLend": "貸し出す",
+    "loanTypeBorrow": "借りる",
+    "termLabel": "期間（日、2〜21）",
+    "rateLabel": "日利、%"
   }
 }

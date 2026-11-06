@@ -6,7 +6,77 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
 from bson import ObjectId
 from auth import get_current_user
+from assets import CATALOG as ASSET_CATALOG
+from shop import CATALOG as HARDWARE_CATALOG
 from database import get_db, upsert_config
+
+
+def build_case_pool(category: str | None, catalog: list[dict]) -> list[dict]:
+    return [item for item in catalog if category is None or item.get("category") == category]
+
+
+def reward_asset_catalog(reward_type: str, catalog: list[dict]) -> dict | None:
+    target_type = {"car": "car", "house": "realestate", "business": "business"}.get(reward_type)
+    return next((item for item in catalog if item.get("type") == target_type), None)
+
+
+def _asset_reward_doc(user_id: str, item: dict) -> dict:
+    now = datetime.now(timezone.utc)
+    return {
+        "userId": user_id, "slug": item["slug"], "type": item["type"], "name": item["name"],
+        "category": item.get("category"), "rarity": item.get("rarity"), "rooms": item.get("rooms"),
+        "basement": item.get("basement"), "employees": item.get("employees", 0),
+        "price": float(item.get("price", 0)), "price_mult": 1.0, "income_per_hour": item.get("income_per_hour", 0),
+        "upkeep_per_hour": item.get("upkeep_per_hour", 0), "level": 1, "mining": False,
+        "meta": item.get("meta", {}), "companyId": None, "rental": None,
+        "purchased_at": now, "last_collected": now, "source": "clicker_case",
+    }
+
+
+def _hardware_reward_doc(user_id: str, item: dict) -> dict:
+    return {"userId": user_id, "itemId": item["id"], "category": item["category"], "name": item["name"],
+            "specs": item.get("specs", {}), "farmId": None, "purchase_price": 0, "source": "clicker_case"}
+
+
+def _case_pool(category: str | None) -> list[dict]:
+    return build_case_pool(category, HARDWARE_CATALOG)
+
+
+def _reward_pool(reward_type: str) -> list[dict]:
+    target_type = {"car": "car", "house": "realestate", "business": "business"}.get(reward_type)
+    return [item for item in ASSET_CATALOG if item.get("type") == target_type]
+
+
+def _crypto_symbols() -> list[str]:
+    from crypto import DEFAULT_COINS
+    return [coin["symbol"] for coin in DEFAULT_COINS if coin["symbol"] != "CLICKS"]
+
+
+async def _grant_asset_reward(db, user_id: str, reward_type: str) -> dict:
+    item = reward_asset_catalog(reward_type, ASSET_CATALOG)
+    if item is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Для награды нет доступного актива")
+    result = await db.user_assets.insert_one(_asset_reward_doc(user_id, item))
+    return {"type": reward_type, "title": item["name"], "slug": item["slug"], "assetId": str(result.inserted_id)}
+
+
+async def _grant_component_reward(db, user_id: str, item: dict) -> dict:
+    await db.user_hardware.insert_one(_hardware_reward_doc(user_id, item))
+    return {"type": "component", "title": item["name"], "itemId": item["id"]}
+
+
+async def _spend_clicks_or_fail(db, user_id: str, amount: int):
+    spent = await _spend_clicks(db, user_id, amount)
+    if spent is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно CLICKS")
+    return spent
+
+
+async def _restore_clicks(db, user_id: str, amount: int):
+    await _ensure_crypto_holding(db, user_id, amount)
+    await db.clicker_progress.update_one({"userId": user_id}, {"$inc": {"clicks": amount}})
+
+
 from admin_perms import require_admin
 from ledger import INCOME, EXPENSE, CAT_SYSTEM, adjust_balance, record_transaction
 
@@ -131,49 +201,72 @@ async def cases(current_user=Depends(get_current_user)):
 @router.post("/cases/open")
 async def open_case(payload: CasePurchase, current_user=Depends(get_current_user), db: AsyncIOMotorDatabase=Depends(get_db)):
     import random
+
+    uid = str(current_user["_id"])
     if payload.case_id in COMPONENT_CASES:
-        price = COMPONENT_CASES[payload.case_id]["price"]
-        spent = await _spend_clicks(db, str(current_user["_id"]), price)
-        if spent is None: raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно CLICKS")
-        from shop import CATALOG
-        category = COMPONENT_CASES[payload.case_id]["category"]
-        pool = [item for item in CATALOG if category is None or item.get("category") == category]
-        if not pool: raise HTTPException(status.HTTP_400_BAD_REQUEST, "Для этого кейса нет доступных комплектующих")
-        item = random.choice(pool)
-        await db.user_hardware.insert_one({"userId": str(current_user["_id"]), "itemId": item["id"], "category": item["category"], "name": item["name"], "specs": item.get("specs", {}), "farmId": None, "purchase_price": 0})
-        return {"case": payload.case_id, "reward": {"type": "component", "title": item["name"], "itemId": item["id"]}, **view(await db.clicker_progress.find_one({"userId": str(current_user["_id"])}), await config(db), await _wallet_clicks(db, str(current_user["_id"]))) }
+        case = COMPONENT_CASES[payload.case_id]
+        pool = _case_pool(case["category"])
+        if not pool:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Для этого кейса нет доступных комплектующих")
+        await _spend_clicks_or_fail(db, uid, case["price"])
+        try:
+            reward = await _grant_component_reward(db, uid, random.choice(pool))
+        except Exception:
+            await _restore_clicks(db, uid, case["price"])
+            raise
+        return {"case": payload.case_id, "reward": reward, **view(await db.clicker_progress.find_one({"userId": uid}), await config(db), await _wallet_clicks(db, uid))}
+
     if payload.case_id not in CASE_CONFIG:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Кейс не найден")
-    uid = str(current_user["_id"]); price = CASE_CONFIG[payload.case_id]["price"]
-    spent = await _spend_clicks(db, uid, price)
-    if spent is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно CLICKS")
+    price = CASE_CONFIG[payload.case_id]["price"]
     if payload.case_id == "basic":
         roll = random.choices(["crypto", "coolant", "sunny_cottage"], weights=[4, 1, 1])[0]
     elif payload.case_id == "middle":
-        roll = random.choice(["car", "house", "bitcoin"])
+        roll = random.choice(["car", "house", "crypto"])
     else:
         roll = random.choice(["business", "crypto"])
-    reward = {"type": roll, "title": {"crypto": "Случайная криптовалюта", "coolant": "Охлаждающая жидкость", "sunny_cottage": "Коттедж «Солнечный»", "car": "Случайный автомобиль", "house": "Случайный дом", "bitcoin": "Bitcoin", "business": "Случайный бизнес"}[roll]}
-    if roll == "crypto":
-        symbol = random.choice(["WVC", "TVX", "NEON", "GLD", "MEME"]); amount = random.randint(1, 3 if payload.case_id == "basic" else 10)
-        await db.crypto_holdings.update_one({"userId": uid, "symbol": symbol}, {"$inc": {"quantity": amount}, "$setOnInsert": {"userId": uid, "symbol": symbol, "avg_price": 0}}, upsert=True); reward.update(symbol=symbol, amount=amount)
-    elif roll == "coolant":
-        await db.user_hardware.insert_one({"userId": uid, "itemId": "coolant", "name": "Охлаждающая жидкость", "category": "cooling", "farmId": None, "quantity": 1}); reward["amount"] = 1
-    elif roll == "sunny_cottage":
-        reward.update(slug="sunny_cottage", amount=1)
-    await record_transaction(db, uid, EXPENSE, price, CAT_SYSTEM, f"Открытие кейса: {CASE_CONFIG[payload.case_id]['name']}", meta={"case": payload.case_id})
+
+    asset_pool = _reward_pool(roll)
+    if roll in {"car", "house", "business"} and not asset_pool:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Для награды нет доступного актива")
+    await _spend_clicks_or_fail(db, uid, price)
+    try:
+        if roll in {"car", "house", "business"}:
+            reward = await _grant_asset_reward(db, uid, roll)
+        elif roll == "crypto":
+            symbol = random.choice(_crypto_symbols())
+            amount = random.randint(1, 3 if payload.case_id == "basic" else 10)
+            await db.crypto_holdings.update_one(
+                {"userId": uid, "symbol": symbol},
+                {"$inc": {"quantity": amount}, "$setOnInsert": {"userId": uid, "symbol": symbol, "avg_price": 0}},
+                upsert=True,
+            )
+            reward = {"type": "crypto", "title": "Случайная криптовалюта", "symbol": symbol, "amount": amount}
+        elif roll == "coolant":
+            await db.user_hardware.insert_one({"userId": uid, "itemId": "coolant", "name": "Охлаждающая жидкость", "category": "cooling", "farmId": None, "quantity": 1, "source": "clicker_case"})
+            reward = {"type": "coolant", "title": "Охлаждающая жидкость", "amount": 1}
+        else:
+            reward = await _grant_asset_reward(db, uid, "house")
+        await record_transaction(db, uid, EXPENSE, price, CAT_SYSTEM, f"Открытие кейса: {CASE_CONFIG[payload.case_id]['name']}", meta={"case": payload.case_id})
+    except Exception:
+        await _restore_clicks(db, uid, price)
+        raise
     return {"case": payload.case_id, "reward": reward, **view(await db.clicker_progress.find_one({"userId": uid}), await config(db), await _wallet_clicks(db, uid))}
 
 # CLICKS продаётся только через стандартный раздел криптовалют.
 
 @router.get("/leaderboard")
-async def leaderboard(db: AsyncIOMotorDatabase=Depends(get_db)):
-    rows=[]
-    async for doc in db.clicker_progress.find().sort("clicks", -1).limit(20):
-        user = await db.users.find_one({"_id": ObjectId(doc["userId"])}, {"username": 1})
-        rows.append({"username": (user or {}).get("username", "—"), "clicks": int(doc.get("clicks", 0))})
-    return rows
+async def leaderboard(db: AsyncIOMotorDatabase = Depends(get_db)):
+    docs = [doc async for doc in db.clicker_progress.find().sort("clicks", -1).limit(20)]
+    ids = [ObjectId(doc["userId"]) for doc in docs if ObjectId.is_valid(doc.get("userId", ""))]
+    users = {
+        str(user["_id"]): user.get("username", "—")
+        async for user in db.users.find({"_id": {"$in": ids}}, {"username": 1})
+    }
+    return [
+        {"username": users.get(doc.get("userId"), "—"), "clicks": int(doc.get("clicks", 0))}
+        for doc in docs
+    ]
 
 @admin_router.get("")
 async def admin_get(current_user=Depends(require_admin("economy_view")), db: AsyncIOMotorDatabase=Depends(get_db)): return await config(db)

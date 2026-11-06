@@ -37,8 +37,8 @@ function LoansTab() {
   useEffect(() => { load() }, [load])
 
   const action = async (fn, message) => {
-    try { await fn(); toast(message, 'success'); load() }
-    catch (err) { toast(err.message || t('bank.errorDefault', 'Ошибка'), 'error') }
+    try { await fn(); toast(message, 'success'); load(); return true }
+    catch (err) { toast(err.message || t('bank.errorDefault', 'Ошибка'), 'error'); return false }
   }
 
   const filtered = useMemo(() => {
@@ -60,8 +60,9 @@ function LoansTab() {
     e.preventDefault()
     const amount = Number(form.amount); const termDays = Number(form.termDays); const dailyRate = Number(form.dailyRate) / 100
     if (!(amount > 0) || !(termDays >= 2 && termDays <= 21) || !(dailyRate >= 0)) { toast(t('bank.invalidAmount', 'Проверьте параметры займа'), 'error'); return }
-    await action(() => createP2POffer({ side: form.side, amount, termDays, dailyRate }), t('bank.offerCreated', 'Объявление создано'))
-    setForm(EMPTY); setCreateOpen(false)
+    if (await action(() => createP2POffer({ side: form.side, amount, termDays, dailyRate }), t('bank.offerCreated', 'Объявление создано'))) {
+      setForm(EMPTY); setCreateOpen(false)
+    }
   }
 
   return <div className="centralmarket-tab loans-page">
@@ -91,7 +92,7 @@ function LoansTab() {
       {loading || filtered.length === 0 ? <div className="centralmarket-empty"><div className="centralmarket-empty-icon">🤝</div><h3 className="centralmarket-empty-title">{loading ? t('bank.loading') : t('bank.noOffers')}</h3></div> : <div className="centralmarket-lots-grid">{filtered.map(o => <div key={o.id} className="centralmarket-lot"><div className="centralmarket-lot-icon"><Handshake size={28} /></div><div className="centralmarket-lot-main"><b className="centralmarket-lot-name">{formatMoney(o.amount)} $</b><span className="centralmarket-lot-meta">{o.side === 'lend' ? t('loans.gives') : t('loans.takes')} · {o.termDays} {t('loans.daysShort')} · {(o.dailyRate * 100).toFixed(2)}%{t('loans.perDay')} · {o.ownerName}</span><button type="button" className="centralmarket-lot-btn centralmarket-lot-btn--buy" onClick={() => action(() => acceptP2POffer(o.id), t('bank.loanAccepted'))}>{t('bank.accept')}</button></div></div>)}</div>}
     </div>
     <div className="centralmarket-lots"><div className="centralmarket-lots-header"><span>{t('bank.myLoans')}</span></div><div className="centralmarket-lots-grid">{mine.map(l => <div key={l.id} className="centralmarket-lot"><div className="centralmarket-lot-icon"><Handshake size={28} /></div><div className="centralmarket-lot-main"><b className="centralmarket-lot-name">{formatMoney(l.amount)} $</b><span className="centralmarket-lot-meta">{l.myRole === 'borrower' ? t('loans.yourDebt') : t('loans.issued')} · {t(`bank.status${l.status[0].toUpperCase()}${l.status.slice(1)}`, l.status)}</span>{l.myRole === 'borrower' && <button type="button" className="centralmarket-lot-btn centralmarket-lot-btn--buy" onClick={() => action(() => repayP2PLoan(l.id), t('bank.loanRepaidEarly'))}>{t('bank.repayEarly')}</button>}</div></div>)}</div></div>
-    {createOpen && <BankModal title={t('loans.create', 'Выставить своё предложение')} onClose={() => setCreateOpen(false)}><form className="centralmarket-modal-form" onSubmit={submit}><label className="centralmarket-field"><span>{t('bank.type', 'Тип')}</span><select value={form.side} onChange={e => setForm({ ...form, side: e.target.value })}><option value="lend">Дать в займ</option><option value="borrow">Взять в займ</option></select></label><label className="centralmarket-field"><span>{t('bank.amount', 'Сумма')}</span><input type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></label><label className="centralmarket-field"><span>Срок, суток (2–21)</span><input type="number" min="2" max="21" value={form.termDays} onChange={e => setForm({ ...form, termDays: e.target.value })} /></label><label className="centralmarket-field"><span>Процент в сутки, %</span><input type="number" min="0" max="50" step="0.01" value={form.dailyRate} onChange={e => setForm({ ...form, dailyRate: e.target.value })} /></label><button type="submit" className="centralmarket-create-btn"><Plus size={16} /> Разместить</button></form></BankModal>}
+    {createOpen && <BankModal title={t('loans.create', 'Выставить своё предложение')} onClose={() => setCreateOpen(false)}><form className="centralmarket-modal-form" onSubmit={submit}><label className="centralmarket-field"><span>{t('bank.type', 'Тип')}</span><select value={form.side} onChange={e => setForm({ ...form, side: e.target.value })}><option value="lend">{t('loans.loanTypeLend')}</option><option value="borrow">{t('loans.loanTypeBorrow')}</option></select></label><label className="centralmarket-field"><span>{t('bank.amount', 'Сумма')}</span><input type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></label><label className="centralmarket-field"><span>{t('loans.termLabel')}</span><input type="number" min="2" max="21" value={form.termDays} onChange={e => setForm({ ...form, termDays: e.target.value })} /></label><label className="centralmarket-field"><span>{t('loans.rateLabel')}</span><input type="number" min="0" max="50" step="0.01" value={form.dailyRate} onChange={e => setForm({ ...form, dailyRate: e.target.value })} /></label><button type="submit" className="centralmarket-create-btn"><Plus size={16} /> {t('loans.createOffer')}</button></form></BankModal>}
   </div>
 }
 export default LoansTab

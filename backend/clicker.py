@@ -23,14 +23,22 @@ admin_router = APIRouter(prefix="/api/admin/clicker", tags=["clicker-admin"])
 
 
 def build_case_pool(category, catalog): return [item for item in catalog if category is None or item.get("category") == category]
-def reward_asset_catalog(reward_type, catalog): return next((item for item in catalog if item.get("type") == {"car": "car", "house": "realestate", "business": "business"}.get(reward_type)), None)
+def reward_asset_catalog(reward_type, catalog, max_price=None):
+    asset_type = {"car": "car", "house": "realestate", "business": "business"}.get(reward_type)
+    pool = [item for item in catalog if item.get("type") == asset_type and (max_price is None or float(item.get("price", 0) or 0) <= max_price)]
+    if not pool:
+        return None
+    # Дешёвые предметы чаще выпадают, дорогие остаются редким выигрышем.
+    weights = [1 / max(1.0, float(item.get("price", 0) or 0)) ** 0.35 for item in pool]
+    import random
+    return random.choices(pool, weights=weights, k=1)[0]
 def clicker_event(state): return {"type": "clicker_balance", "clicks": int(state.get("clicks", 0)), "clickPower": int(state.get("clickPower", 1))}
 def crypto_reward(coin, amount): return {"type": "crypto", "title": coin["name"], "symbol": coin["symbol"], "amount": amount}
 def _percentages(items):
     total = sum(weight for _, weight in items)
     return [{"type": key, "chance": round(weight / total * 100, 2)} for key, weight in items]
 def case_odds(case_id):
-    return {"basic": _percentages([("crypto", 4), ("coolant", 1), ("sunny_cottage", 1)]), "middle": _percentages([("car", 1), ("house", 1), ("crypto", 1)]), "premium": _percentages([("business", 1), ("crypto", 1)])}.get(case_id, [])
+    return {"basic": _percentages([("crypto", 94), ("coolant", 5), ("sunny_cottage", 1)]), "middle": _percentages([("car", 40), ("house", 35), ("crypto", 25)]), "premium": _percentages([("business", 2), ("crypto", 98)])}.get(case_id, [])
 def component_case_odds(category, catalog):
     pool = build_case_pool(category, catalog); chance = round(100 / len(pool), 2) if pool else 0
     return [{"type": "component", "itemId": item["id"], "name": item["name"], "chance": chance} for item in pool]
@@ -94,7 +102,10 @@ async def component_cases(current_user=Depends(get_current_user)): return [{"id"
 async def cases(current_user=Depends(get_current_user)): return [{"id": k, **v, "odds": case_odds(k)} for k, v in CASE_CONFIG.items()]
 
 async def _grant_asset_reward(db, user_id, reward_type):
-    item = reward_asset_catalog(reward_type, ASSET_CATALOG)
+    # Ограничения дропа не дают премиум-кейсу печатать активы на миллионы:
+    # business <= $100k, car <= $20k, house <= $30k.
+    cap = {"business": 100_000, "car": 20_000, "house": 30_000}.get(reward_type)
+    item = reward_asset_catalog(reward_type, ASSET_CATALOG, cap)
     if item is None: raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Для награды нет доступного актива")
     result = await db.user_assets.insert_one(_asset_reward_doc(user_id, item)); return {"type": reward_type, "title": item["name"], "slug": item["slug"], "assetId": str(result.inserted_id)}
 @router.post("/cases/open")
@@ -114,11 +125,27 @@ async def open_case(payload: CasePurchase, current_user=Depends(get_current_user
         reward = {"type": "component", "title": item["name"], "itemId": item["id"]}
     else:
         if payload.case_id not in CASE_CONFIG: raise HTTPException(status.HTTP_404_NOT_FOUND, "Кейс не найден")
-        price = CASE_CONFIG[payload.case_id]["price"]; roll = random.choices(["crypto", "coolant", "sunny_cottage"], weights=[4, 1, 1])[0] if payload.case_id == "basic" else random.choice(["car", "house", "crypto"] if payload.case_id == "middle" else ["business", "crypto"])
+        price = CASE_CONFIG[payload.case_id]["price"]
+        if payload.case_id == "basic":
+            roll = random.choices(["crypto", "coolant", "sunny_cottage"], weights=[93, 5, 2])[0]
+        elif payload.case_id == "middle":
+            roll = random.choices(["car", "house", "crypto", "coolant", "hardware"], weights=[30, 25, 30, 8, 7])[0]
+        else:
+            roll = random.choices(["business", "crypto", "car", "house", "hardware", "coolant"], weights=[2, 65, 8, 8, 10, 7])[0]
         if await _spend_clicks(db, uid, price) is None: raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно CLICKS")
         if roll == "crypto":
             from crypto import DEFAULT_COINS
             coin = random.choice([c for c in DEFAULT_COINS if c["symbol"] != "CLICKS"]); amount = random.randint(1, 3 if payload.case_id == "basic" else 10); await db.crypto_holdings.update_one({"userId": uid, "symbol": coin["symbol"]}, {"$inc": {"quantity": amount}, "$setOnInsert": {"userId": uid, "symbol": coin["symbol"], "avg_price": 0}}, upsert=True); reward = crypto_reward(coin, amount)
+        elif roll == "coolant":
+            item_names = {"coolant": "Охлаждающая жидкость"}
+            item_id = "coolant"
+            await db.user_hardware.insert_one({"userId": uid, "itemId": item_id, "name": item_names[roll], "category": "supplies", "farmId": None, "quantity": 1, "source": "clicker_case"})
+            reward = {"type": roll, "title": item_names[roll], "amount": 1}
+        elif roll == "hardware":
+            pool = HARDWARE_CATALOG
+            item = random.choice(pool)
+            await db.user_hardware.insert_one(_hardware_reward_doc(uid, item))
+            reward = {"type": "component", "title": item["name"], "itemId": item["id"]}
         elif roll == "coolant":
             await db.user_hardware.insert_one({"userId": uid, "itemId": "coolant", "name": "Охлаждающая жидкость", "category": "cooling", "farmId": None, "quantity": 1, "source": "clicker_case"})
             reward = {"type": "coolant", "title": "Охлаждающая жидкость", "amount": 1}

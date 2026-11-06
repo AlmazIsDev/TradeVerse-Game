@@ -15,7 +15,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from ledger import EXPENSE, adjust_balance, record_transaction
 
 CAT_UTILITY = "utility"
-UTILITY_CATEGORIES = ("communal", "tax", "rent", "other")
+# «electricity» используется UI при пополнении отдельного счёта электроэнергии.
+# Остальные значения сохраняются для совместимости с общими коммунальными платежами.
+UTILITY_CATEGORIES = ("electricity", "communal", "tax", "rent", "other")
 
 
 async def get_utility_balance(db: AsyncIOMotorDatabase, user_id: str) -> float:

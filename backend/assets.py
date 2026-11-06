@@ -1360,6 +1360,27 @@ async def _load_owned(db, user_id, asset_id):
     return asset
 
 
+TOKEN_DROP_PER_DOLLARS = 1_000_000.0  # $1M дохода = 1% шанс получить 1 токен
+
+
+async def _try_business_token_drop(db, user_id: str, asset: dict, amount: float) -> int:
+    """С шансом amount / 100M выдаёт ровно один донатный токен.
+
+    Награда не зависит от количества запросов и появляется только при сборе
+    дохода бизнеса. Поле tokens создаётся лениво для старых пользователей.
+    """
+    if asset.get("type") != TYPE_BUSINESS or amount <= 0:
+        return 0
+    chance = min(1.0, float(amount) / (TOKEN_DROP_PER_DOLLARS * 100.0))
+    if random.random() >= chance:
+        return 0
+    result = await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$inc": {"tokens": 1}},
+    )
+    return 1 if result.modified_count else 0
+
+
 @router.post("/{asset_id}/collect")
 async def collect_income(
     asset_id: str,
@@ -1381,13 +1402,14 @@ async def collect_income(
     if amount <= 0:
         return {"collected": 0.0, "balance": current_user.get("balance", 0.0)}
     new_balance = await adjust_balance(db, user_id, amount)
+    token_reward = await _try_business_token_drop(db, user_id, asset, amount)
     cat = _ledger_category(asset)
     await record_transaction(
         db, user_id, INCOME, amount, cat,
         f"Доход: {asset['name']}", balance_after=new_balance,
         meta={"slug": asset.get("slug"), "assetId": asset_id},
     )
-    return {"collected": amount, "balance": new_balance}
+    return {"collected": amount, "balance": new_balance, "tokensAwarded": token_reward}
 
 
 async def _city_asset_bonus(db, user_id: str) -> float:
@@ -1455,6 +1477,7 @@ async def collect_all_income(
 
     total = 0.0
     count = 0
+    tokens_awarded = 0
     async for asset in db.user_assets.find({"userId": user_id, "companyId": None}):
         if asset.get("income_per_hour", 0) <= 0:
             # Заводы/источники зарабатывают динамически (income_per_hour=0 в сиде) —
@@ -1465,6 +1488,7 @@ async def collect_all_income(
         if amount <= 0:
             continue
         new_balance = await adjust_balance(db, user_id, amount)
+        tokens_awarded += await _try_business_token_drop(db, user_id, asset, amount)
         cat = _ledger_category(asset)
         await record_transaction(
             db, user_id, INCOME, amount, cat,
@@ -1478,7 +1502,7 @@ async def collect_all_income(
     if count:
         u = await db.users.find_one({"_id": ObjectId(user_id)}, {"balance": 1})
         balance = (u or {}).get("balance", balance)
-    return {"collected": round(total, 2), "count": count, "balance": balance}
+    return {"collected": round(total, 2), "count": count, "balance": balance, "tokensAwarded": tokens_awarded}
 
 
 class UpgradeBody(BaseModel):

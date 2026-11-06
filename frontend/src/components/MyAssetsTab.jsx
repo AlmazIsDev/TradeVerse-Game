@@ -71,7 +71,7 @@ const RARITY_GRAD = {
   legendary: 'linear-gradient(135deg,#b45309,#78350f)',
 }
 
-function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange }) {
+function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange, onTokensChange }) {
   const { t } = useTranslation()
   const [activeType, setActiveType] = useState(defaultType)
   const [assets, setAssets] = useState([])
@@ -173,6 +173,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await fn(id)
       if (res?.balance != null) onBalanceChange?.(res.balance)
+      if (res?.tokensAwarded) onTokensChange?.(res.tokensAwarded)
       toast(t(okKey))
       await load()
     } catch (err) {
@@ -207,6 +208,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange 
     try {
       const res = await collectAllAssets()
       if (res?.balance != null) onBalanceChange?.(res.balance)
+      if (res?.tokensAwarded) onTokensChange?.(res.tokensAwarded)
       toast(res?.count > 0
         ? t('myassets.collectedAll', { amount: formatMoney(res.collected), count: res.count })
         : t('myassets.nothingToCollect'))

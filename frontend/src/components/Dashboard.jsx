@@ -183,7 +183,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'centralmarket':
         return <CentralMarketTab />
       case 'myhomes':
-        return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} />
+        return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} onTokensChange={(amount) => setTokens(v => v + amount)} />
       case 'inventory':
         return <InventoryTab balance={balance} onBalanceChange={handleBalanceChange} onTabChange={setActiveTab} />
       case 'mycompany':

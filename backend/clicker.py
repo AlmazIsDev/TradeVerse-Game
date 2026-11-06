@@ -47,7 +47,7 @@ def _reward_pool(reward_type): return [item for item in ASSET_CATALOG if item.ge
 def _asset_reward_doc(user_id, item):
     now = datetime.now(timezone.utc)
     return {"userId": user_id, "slug": item["slug"], "type": item["type"], "name": item["name"], "category": item.get("category"), "rarity": item.get("rarity"), "rooms": item.get("rooms"), "basement": item.get("basement"), "employees": item.get("employees", 0), "price": float(item.get("price", 0)), "price_mult": 1.0, "income_per_hour": item.get("income_per_hour", 0), "upkeep_per_hour": item.get("upkeep_per_hour", 0), "level": 1, "mining": False, "meta": item.get("meta", {}), "companyId": None, "rental": None, "purchased_at": now, "last_collected": now, "source": "clicker_case"}
-def _hardware_reward_doc(user_id, item): return {"userId": user_id, "itemId": item["id"], "category": item["category"], "name": item["name"], "specs": item.get("specs", {}), "farmId": None, "purchase_price": float(item.get("base_price", 0)), "source": "clicker_case"}
+def _hardware_reward_doc(user_id, item): return {"userId": user_id, "itemId": item["id"], "category": item["category"], "name": item["name"], "specs": item.get("specs", {}), "farmId": None, "purchase_price": float(item.get("base_price") or item.get("price") or 1), "source": "clicker_case"}
 async def config(db):
     doc = await db.app_config.find_one({"key": "clicker"}); return {**DEFAULT_CONFIG, **(doc or {})}
 async def _wallet_clicks(db, user_id):

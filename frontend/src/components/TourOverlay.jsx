@@ -107,7 +107,7 @@ const SCRIPTS = {
     { tab: 'shop', target: null, key: 'tour.miningTour.s195' },
     { tab: 'shop', target: null, key: 'tour.miningTour.s196' },
     { tab: 'shop', target: null, key: 'tour.miningTour.s197' },
-    { tab: 'shop', target: 'shop', key: 'tour.miningTour.s198' },
+    { tab: 'shop', target: 'tour-cheapest', key: 'tour.miningTour.s198' },
     { tab: 'shop', target: 'shop', key: 'tour.miningTour.s199', check: 'hasAllRoles' },
     { tab: 'mining', target: 'mining', key: 'tour.miningTour.s20' },
     { tab: 'mining', target: 'mining', key: 'tour.miningTour.s21', check: 'allRolesInstalled' },

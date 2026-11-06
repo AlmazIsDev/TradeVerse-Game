@@ -22,6 +22,7 @@ import MiningTab from './MiningTab'
 import CarsTab from './CarsTab'
 import PlayerBusinessesTab from './PlayerBusinessesTab'
 import SettingsPage from './SettingsPage'
+import ClickerTab from './ClickerTab'
 import SupportPage from './SupportPage'
 import AdminPanel from './AdminPanel'
 import NotificationCenter from './NotificationCenter'
@@ -161,7 +162,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'stocks':
         return <StocksTab balance={balance} onBalanceChange={handleBalanceChange} currentUserId={user?.id} />
       case 'bank':
-        return <BankTab balance={balance} onBalanceChange={handleBalanceChange} />
+        return <BankTab balance={balance} onBalanceChange={handleBalanceChange} onTabChange={setActiveTab} />
       case 'loans':
         return <LoansTab />
       case 'shop':
@@ -186,6 +187,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         return <CarsTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'playerbusinesses':
         return <PlayerBusinessesTab />
+      case 'clicker':
+        return <ClickerTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'leaderboard':
         return <LeaderboardTab currentUserId={user?.id} />
       case 'achievements':

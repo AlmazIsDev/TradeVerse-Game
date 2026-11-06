@@ -100,8 +100,8 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     market: Store, mining: Cpu, event: Trophy, system: Settings2,
   }
 
-  // Панель не должна вылезать за экран: после открытия (и на resize) измеряем
-  // её и при нехватке места сужаем и/или сдвигаем обратно в вьюпорт.
+  // РџР°РЅРµР»СЊ РЅРµ РґРѕР»Р¶РЅР° РІС‹Р»РµР·Р°С‚СЊ Р·Р° СЌРєСЂР°РЅ: РїРѕСЃР»Рµ РѕС‚РєСЂС‹С‚РёСЏ (Рё РЅР° resize) РёР·РјРµСЂСЏРµРј
+  // РµС‘ Рё РїСЂРё РЅРµС…РІР°С‚РєРµ РјРµСЃС‚Р° СЃСѓР¶Р°РµРј Рё/РёР»Рё СЃРґРІРёРіР°РµРј РѕР±СЂР°С‚РЅРѕ РІ РІСЊСЋРїРѕСЂС‚.
   const clampDropdown = useCallback(() => {
     const el = dropdownRef.current
     if (!el) return
@@ -149,7 +149,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Синхронизация card_number с сервера при монтировании
+  // РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ card_number СЃ СЃРµСЂРІРµСЂР° РїСЂРё РјРѕРЅС‚РёСЂРѕРІР°РЅРёРё
   useEffect(() => {
     let cancelled = false
     async function syncCard() {
@@ -160,7 +160,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
         const newVisible = data?.card_visible !== undefined ? data.card_visible : true
         setCardNumber(newCard)
         setCardVisible(newVisible)
-        // Обновляем localStorage
+        // РћР±РЅРѕРІР»СЏРµРј localStorage
         const stored = getStoredUser()
         if (stored) {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -170,7 +170,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
           }))
         }
       } catch {
-        // ignore — используем данные из localStorage
+        // ignore вЂ” РёСЃРїРѕР»СЊР·СѓРµРј РґР°РЅРЅС‹Рµ РёР· localStorage
       }
     }
     syncCard()
@@ -225,9 +225,9 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
       else await declineInvite(inviteId)
       await markNotificationRead(notif.id)
       await loadNotifs()
-      // Обновляем вкладку «Моя компания» — иначе после принятия приглашения
-      // здесь (в колокольчике, в отличие от всплывающего попапа) её состояние
-      // не перечитывалось, и игрок не видел себя в компании.
+      // РћР±РЅРѕРІР»СЏРµРј РІРєР»Р°РґРєСѓ В«РњРѕСЏ РєРѕРјРїР°РЅРёСЏВ» вЂ” РёРЅР°С‡Рµ РїРѕСЃР»Рµ РїСЂРёРЅСЏС‚РёСЏ РїСЂРёРіР»Р°С€РµРЅРёСЏ
+      // Р·РґРµСЃСЊ (РІ РєРѕР»РѕРєРѕР»СЊС‡РёРєРµ, РІ РѕС‚Р»РёС‡РёРµ РѕС‚ РІСЃРїР»С‹РІР°СЋС‰РµРіРѕ РїРѕРїР°РїР°) РµС‘ СЃРѕСЃС‚РѕСЏРЅРёРµ
+      // РЅРµ РїРµСЂРµС‡РёС‚С‹РІР°Р»РѕСЃСЊ, Рё РёРіСЂРѕРє РЅРµ РІРёРґРµР» СЃРµР±СЏ РІ РєРѕРјРїР°РЅРёРё.
       window.dispatchEvent(new CustomEvent('tv:company-refresh'))
     } catch { /* ignore */ }
   }
@@ -300,7 +300,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
         )}
         {levelInfo && (
           <div className="header-level" title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}>
-            <span>{t('header.levelShort', 'Ур.')} {levelInfo.level}</span>
+            <span>{t('header.levelShort', 'РЈСЂ.')} {levelInfo.level}</span>
             <div className="header-level-bar"><div style={{ width: `${levelProgress}%` }} /></div>
             <span className="header-level-left">{levelInfo.xpNextLevel - levelInfo.xp} XP</span>
           </div>
@@ -337,7 +337,7 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
                   placeholder={t('notifications.searchPlaceholder')}
                   aria-label={t('notifications.searchPlaceholder')}
                 />
-                {notifSearch && <button type="button" title={t('common.clear', 'Очистить')} aria-label={t('common.clear', 'Очистить')} onClick={() => setNotifSearch('')}><X size={14} /></button>}
+                {notifSearch && <button type="button" title={t('common.clear', 'РћС‡РёСЃС‚РёС‚СЊ')} aria-label={t('common.clear', 'РћС‡РёСЃС‚РёС‚СЊ')} onClick={() => setNotifSearch('')}><X size={14} /></button>}
               </div>
               <div className="notification-tabs">
                 {tabs.map(([id, key]) => {

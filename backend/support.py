@@ -24,6 +24,7 @@ BugStatus = Literal["new", "in_progress", "fixed"]
 TicketStatus = Literal["pending", "resolved", "rejected"]
 MAX_TEXT = 10000
 MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_ATTACHMENTS_BYTES = 8 * 1024 * 1024
 
 class Attachment(BaseModel):
     name: str = Field(..., max_length=255)
@@ -60,10 +61,14 @@ class TicketAdminUpdate(BaseModel):
 def _now(): return datetime.now(timezone.utc)
 def _clean(v): return (v or "").strip()
 def _check_files(files):
+    total = 0
     for f in files:
         try: size = len(base64.b64decode(f.data.split(",", 1)[-1], validate=False))
         except Exception: raise HTTPException(400, "Некорректное вложение")
         if size > MAX_FILE_BYTES: raise HTTPException(400, "Размер файла не должен превышать 10 МБ")
+        total += size
+    if total > MAX_ATTACHMENTS_BYTES:
+        raise HTTPException(400, "Общий размер вложений не должен превышать 8 МБ")
 
 def _initial(payload):
     if payload.type == "bug":
@@ -79,11 +84,19 @@ def _initial(payload):
     return text
 
 def _serialize(doc):
+    messages = list(doc.get("messages", []))
+    if not messages:
+        legacy_text = _clean(doc.get("description") or doc.get("suggestion") or doc.get("lost_item"))
+        legacy_reply = _clean(doc.get("reply"))
+        if legacy_text:
+            messages.append({"author": "player", "username": doc.get("username", ""), "text": legacy_text, "attachments": [], "created_at": doc.get("created_at") or _now()})
+        if legacy_reply:
+            messages.append({"author": "admin", "username": "Администратор", "text": legacy_reply, "attachments": [], "created_at": doc.get("updated_at") or doc.get("created_at") or _now()})
     return {"id": str(doc["_id"]), "number": doc.get("number"), "user_id": str(doc.get("user_id", "")),
             "username": doc.get("username", ""), "type": doc.get("type"), "status": doc.get("status", "pending"),
             "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,
             "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else None,
-            "messages": [{**m, "username": m.get("username") or (doc.get("username", "") if m.get("author") == "player" else "Администратор"), "created_at": m["created_at"].isoformat()} for m in doc.get("messages", [])]}
+            "messages": [{**m, "username": m.get("username") or (doc.get("username", "") if m.get("author") == "player" else "Администратор"), "created_at": m["created_at"].isoformat()} for m in messages]}
 
 async def _next_number(db):
     result = await db.support_counters.find_one_and_update({"_id": "ticket"}, {"$inc": {"value": 1}}, upsert=True, return_document=True)

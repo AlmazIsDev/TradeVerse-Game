@@ -76,6 +76,7 @@ from production import router as production_router
 from synthetic import router as synthetic_router
 from support import router as support_router, admin_router as support_admin_router, bug_router as support_bug_router
 from ws import router as ws_router
+from clicker import router as clicker_router
 from scheduler import start_scheduler, stop_scheduler
 
 import assets as assets_module
@@ -182,6 +183,7 @@ async def lifespan(app: FastAPI):
     # Refresh-токены: уникальный индекс по хешу + TTL для авто-очистки истёкших.
     await db.refresh_tokens.create_index("token_hash", unique=True)
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.clicker_progress.create_index("userId", unique=True)
     await init_db()
     from game_balance import warm_cache
     await warm_cache(db)   # баланс из app_config до первых запросов и тиков планировщика
@@ -275,6 +277,9 @@ app.include_router(synthetic_router)
 app.include_router(support_router)
 app.include_router(support_admin_router)
 app.include_router(support_bug_router)
+app.include_router(clicker_router)
+from clicker import admin_router as clicker_admin_router
+app.include_router(clicker_admin_router)
 
 
 # ── App-specific helpers ─────────────────────────────────────────────────────
@@ -707,6 +712,14 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             signed = row["sum"] if row["_id"]["d"] == "income" else -row["sum"]
             period_net[uid] = period_net.get(uid, 0.0) + signed
 
+    achievement_counts: dict[str, int] = {}
+    if uids:
+        async for row in db.user_achievements.aggregate([
+            {"$match": {"userId": {"$in": uids}}},
+            {"$group": {"_id": "$userId", "count": {"$sum": 1}}},
+        ]):
+            achievement_counts[str(row["_id"])] = int(row["count"])
+
     entries = []
     for u in users:
         uid = str(u["_id"])
@@ -721,9 +734,9 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             "userId": uid,
             "username": u.get("username", "—"),
             "avatar": u.get("avatar"),
-            "level": int(u.get("level") or level_from_xp(int(u.get("xp", 0)))),
+            "level": max(int(u.get("level") or 0), level_from_xp(int(u.get("xp", 0)))),
             "xp": int(u.get("xp", 0)),
-            "achievements": int(u.get("achievements_count", 0)),
+            "achievements": achievement_counts.get(uid, int(u.get("achievements_count", 0))),
             "cash": round(cash, 2),
             "stocks": stocks_value,
             "crypto": crypto_value,

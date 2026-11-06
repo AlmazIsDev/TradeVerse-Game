@@ -28,7 +28,7 @@ function shuffled(arr) {
   return a
 }
 
-function BankTab({ balance = 0, onBalanceChange }) {
+function BankTab({ balance = 0, onBalanceChange, onTabChange }) {
   const { t } = useTranslation()
   const transferRef = useRef(null)
   const [modal, setModal] = useState(null) // null | 'credit' | 'deposit'
@@ -217,7 +217,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
           <span className="bank-quick-icon"><PiggyBank size={18} /></span>
           <span>{t('bank.quickDeposit', 'Депозит')}</span>
         </button>
-        <button type="button" className="bank-quick-btn" onClick={() => setDebtsOpen(true)}>
+        <button type="button" className="bank-quick-btn" onClick={() => onTabChange?.('loans')}>
           <span className="bank-quick-icon"><Handshake size={18} /></span>
           <span>{t('bank.quickDebt', 'Займы')}</span>
         </button>
@@ -269,7 +269,7 @@ function BankTab({ balance = 0, onBalanceChange }) {
           e.preventDefault()
           const amt = parseFloat(utilityAmount)
           if (!Number.isFinite(amt) || amt <= 0) { toast(t('bank.invalidAmount'), 'error'); return }
-          const res = await runBankAction(() => utilityTopUp(amt, 'electricity'), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
+          const res = await runBankAction(() => utilityTopUp(amt, 'other'), t('bank.utilityToppedUp', 'Счёт «Электричество» пополнен'))
           if (res) setUtilityAmount('')
         }}>
           <h3 className="transfer-form-title">{t('bank.utilityTopUpTitle', 'Пополнить с основного счёта')}</h3>

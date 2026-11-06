@@ -6,7 +6,7 @@ import PlayerProfileModal from './PlayerProfileModal'
 import { flagUrl } from '../utils/countries'
 import { Trophy, AlertTriangle, Crown, Medal, Building2 } from 'lucide-react'
 
-const SORTS = ['networth', 'level', 'achievements', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'donated']
+const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'donated', 'level', 'achievements']
 // Разбивка капитала под именем игрока — какие поля показывать чипами и какой
 // sort их подсвечивает (чтобы было очевидно, что делает каждый фильтр).
 const BREAKDOWN = [
@@ -16,6 +16,11 @@ const BREAKDOWN = [
   { key: 'assets', sort: 'assets' },
   { key: 'company', sort: 'company' },
   { key: 'donated', sort: 'donated' },
+]
+
+const PLAYER_PROGRESS = [
+  { key: 'level', label: 'level', sort: 'level' },
+  { key: 'achievements', label: 'achievements', sort: 'achievements' },
 ]
 
 function RankBadge({ rank }) {
@@ -119,7 +124,6 @@ function LeaderboardTab({ currentUserId }) {
           <div className="leaderboard-row leaderboard-head">
             <span className="lb-rank">#</span>
             <span className="lb-player">{t('leaderboard.player')}</span>
-            <span className="lb-networth">{t('leaderboard.level', 'Уровень')}</span>
             <span className="lb-profit">{t('leaderboard.netWorth')}</span>
             <span className="lb-profit">{t('leaderboard.profit7d')}</span>
           </div>
@@ -150,11 +154,13 @@ function LeaderboardTab({ currentUserId }) {
                           {t(`leaderboard.col_${b.key}`)} <b>${formatCompact(entry[b.key] || 0)}</b>
                         </span>
                       ))}
+                      {PLAYER_PROGRESS.map(b => (
+                        <span key={b.key} className={`lb-chip ${sort === b.sort ? 'active' : ''}`}>
+                          {t(`leaderboard.${b.label}`)} <b>{entry[b.key] || 0}</b>
+                        </span>
+                      ))}
                     </span>
                   </span>
-                </span>
-                <span className="lb-networth" title={`${t('leaderboard.level', 'Уровень')}: ${entry.level || 1}`}>
-                  {entry.level || 1} · {entry.achievements || 0} <small>{t('leaderboard.achievements', 'ачив.')}</small>
                 </span>
                 <span className="lb-profit" title={`$${formatMoney(entry.netWorth)}`}>${formatCompact(entry.netWorth)}</span>
                 <span className={`lb-profit ${up ? 'up' : 'down'}`} title={`${t('leaderboard.profitLifetime')}: ${formatMoney(entry.profitAllTime)} $`}>

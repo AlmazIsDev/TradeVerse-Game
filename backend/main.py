@@ -747,6 +747,7 @@ async def _compute_leaderboard_entries(db: AsyncIOMotorDatabase, user_query: Opt
             "assets": assets_value,
             "company": company_value,
             "warcoin": warcoin_value,
+            "tokens": int(u.get("tokens", 0) or 0),
             "donated": round(float(u.get("donated_total", 0.0) or 0.0), 2),
             "netWorth": net_worth,
             # profit = реализованная прибыль за 7 дней (см. period_net выше).

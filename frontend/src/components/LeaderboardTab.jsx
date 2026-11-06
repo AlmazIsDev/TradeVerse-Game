@@ -6,7 +6,7 @@ import PlayerProfileModal from './PlayerProfileModal'
 import { flagUrl } from '../utils/countries'
 import { Trophy, AlertTriangle, Crown, Medal, Building2 } from 'lucide-react'
 
-const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'donated', 'level', 'achievements']
+const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'tokens', 'donated', 'level', 'achievements']
 // Разбивка капитала под именем игрока — какие поля показывать чипами и какой
 // sort их подсвечивает (чтобы было очевидно, что делает каждый фильтр).
 const BREAKDOWN = [
@@ -16,6 +16,7 @@ const BREAKDOWN = [
   { key: 'assets', sort: 'assets' },
   { key: 'company', sort: 'company' },
   { key: 'donated', sort: 'donated' },
+  { key: 'tokens', sort: 'tokens' },
 ]
 
 const PLAYER_PROGRESS = [
@@ -150,8 +151,8 @@ function LeaderboardTab({ currentUserId }) {
                     </span>
                     <span className="lb-breakdown">
                       {BREAKDOWN.map(b => (
-                        <span key={b.key} className={`lb-chip ${sort === b.sort ? 'active' : ''}`} title={`$${formatMoney(entry[b.key] || 0)}`}>
-                          {t(`leaderboard.col_${b.key}`)} <b>${formatCompact(entry[b.key] || 0)}</b>
+                        <span key={b.key} className={`lb-chip ${sort === b.sort ? 'active' : ''}`} title={b.key === 'tokens' ? `${entry[b.key] || 0} Токенов` : `$${formatMoney(entry[b.key] || 0)}`}>
+                          {t(`leaderboard.col_${b.key}`)} <b>{b.key === 'tokens' ? `${formatCompact(entry[b.key] || 0)} ✦` : `$${formatCompact(entry[b.key] || 0)}`}</b>
                         </span>
                       ))}
                       {PLAYER_PROGRESS.map(b => (

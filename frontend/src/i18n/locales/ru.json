@@ -1073,6 +1073,8 @@
     "you": "вы",
     "sort_donated": "По пожертвованиям",
     "col_donated": "Пожертвования",
+    "sort_tokens": "По токенам",
+    "col_tokens": "Токены",
     "noData": "Пока нет игроков в рейтинге",
     "sort_networth": "По капиталу",
     "sort_level": "По уровню",

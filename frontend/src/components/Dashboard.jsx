@@ -47,6 +47,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
   const [showAdmin, setShowAdmin] = useState(false)
   const [tourOpen, setTourOpen] = useState(null)
   const [balance, setBalance] = useState(user?.balance ?? 0)
+  const [tokens, setTokens] = useState(user?.tokens ?? 0)
 
   const isAdmin = user?.role === 'admin'
 
@@ -67,7 +68,10 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       if (debounce) return
       debounce = setTimeout(() => {
         debounce = null
-        fetchCurrentUser().then(d => { if (d?.balance != null) setBalance(d.balance) }).catch(() => {})
+        fetchCurrentUser().then(d => {
+          if (d?.balance != null) setBalance(d.balance)
+          if (d?.tokens != null) setTokens(d.tokens)
+        }).catch(() => {})
       }, 1200)
     }
     const connect = async () => {
@@ -135,8 +139,9 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       .then(data => {
         if (cancelled || !data) return
         if (data.balance != null) setBalance(data.balance)
+        if (data.tokens != null) setTokens(data.tokens)
         onUserUpdate?.({
-          balance: data.balance, username: data.username,
+          balance: data.balance, tokens: data.tokens, username: data.username,
           avatar: data.avatar, banner: data.banner, badges: data.badges,
           created_at: data.created_at,
           role: data.role, adminLevel: data.adminLevel,
@@ -211,6 +216,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
         <Header
           user={user}
           balance={balance}
+          tokens={tokens}
           onLogout={onLogout}
           onOpenSettings={() => setActiveTab('settings')}
         />

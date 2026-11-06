@@ -29,7 +29,7 @@ function getStoredUser() {
   return null
 }
 
-function Header({ user, balance, onLogout, onOpenSettings }) {
+function Header({ user, balance, tokens = 0, onLogout, onOpenSettings }) {
   const { t } = useTranslation()
   const returnFromImpersonation = () => {
     const token = localStorage.getItem('admin_return_token')
@@ -298,6 +298,10 @@ function Header({ user, balance, onLogout, onOpenSettings }) {
             <span className="header-balance-value">{formatCompact(balance)} $</span>
           </div>
         )}
+        <div className="header-balance header-tokens" title="Токены — донатная валюта">
+          <span aria-hidden="true">✦</span>
+          <span className="header-balance-value">{formatCompact(tokens)} Токенов</span>
+        </div>
         {levelInfo && (
           <div className="header-level" title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}>
             <span>{t('header.levelShort', 'РЈСЂ.')} {levelInfo.level}</span>

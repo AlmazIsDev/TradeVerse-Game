@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  fetchMyAssets, collectAsset, sellAsset, fetchCompany,
+  fetchMyAssets, collectAsset, sellAsset, sellAssetsBulk, fetchCompany,
   transferAssetToCompany, transferAssetToPlayer, listPropertyForRent, cancelRent, tuneCar,
   fetchMaterialsPrice, buyMaterials, renameAsset, hitchTrailer, unhitchTrailer,
   fetchMyStudios, buyStudioMaterials, orderStudioJob, fetchCityMap,
@@ -85,6 +85,7 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange,
   const [gpuModal, setGpuModal] = useState(null)          // завод видеокарт — модалка «Управление заводом»
   const [shopModal, setShopModal] = useState(null)        // завод видеокарт — редактор магазина (цены, публикация)
   const [confirm, setConfirm] = useState(null)       // { title, message, danger, onConfirm }
+  const [bulkSellSlug, setBulkSellSlug] = useState('')
   const [isCompanyOwner, setIsCompanyOwner] = useState(false)
   const [materialsModal, setMaterialsModal] = useState(null)   // business asset
   const [materialsInfo, setMaterialsInfo] = useState(null)     // { unitPrice, boostPerUnit, boostCap }
@@ -404,6 +405,33 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange,
   }
 
   const list = activeType === 'all' ? assets : assets.filter(a => a.type === activeType)
+  const bulkCandidates = Object.values(list.reduce((groups, asset) => {
+    if (!asset.companyId && !asset.rental && !asset.onAuction && !asset.frozen) {
+      const key = asset.slug || asset.type
+      if (!groups[key]) groups[key] = { ...asset, count: 0, total: 0 }
+      groups[key].count += 1
+      groups[key].total += asset.value || 0
+    }
+    return groups
+  }, {})).filter(group => group.count > 1)
+
+  const submitBulkSell = async () => {
+    const group = bulkCandidates.find(x => x.slug === bulkSellSlug)
+    if (!group) return
+    setBusyId('bulk-sell')
+    try {
+      const res = await sellAssetsBulk(group.slug)
+      if (res?.balance != null) onBalanceChange?.(res.balance)
+      toast(t('myassets.soldBulk', { count: res.count, amount: formatMoney(res.sold) }))
+      setBulkSellSlug('')
+      await load()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const totalValue = list.reduce((s, a) => s + (a.value || 0), 0)
   const totalProfit = list.reduce((s, a) => s + (a.profitPerHour || 0), 0)
   const totalAccrued = list.reduce((s, a) => s + (a.accrued || 0), 0)
@@ -665,6 +693,25 @@ function MyAssetsTab({ defaultType = 'realestate', balance = 0, onBalanceChange,
         <div className="empty-state">
           <span className="placeholder-icon">{TYPE_EMOJI[activeType] || '📦'}</span>
           <p>{t('myassets.empty')}</p>
+        </div>
+      )}
+
+      {!loading && !error && bulkCandidates.length > 0 && (
+        <div className="bulk-sell-panel">
+          <div className="bulk-sell-copy">
+            <span className="bulk-sell-title">{t('myassets.bulkSell', 'Продать весь вид имущества')}</span>
+            <span className="bulk-sell-hint">{t('myassets.bulkSellHint', 'Выберите тип, чтобы продать все его объекты одной операцией')}</span>
+          </div>
+          <div className="bulk-sell-controls">
+            <select className="bulk-sell-select" value={bulkSellSlug} onChange={e => setBulkSellSlug(e.target.value)} disabled={busyId === 'bulk-sell'}>
+              <option value="">{t('myassets.selectAssetType', 'Выберите вид')}</option>
+              {bulkCandidates.map(group => <option key={group.slug} value={group.slug}>{nameOf(group)} ×{group.count}</option>)}
+            </select>
+            <button className="asset-act sell bulk-sell-button" disabled={!bulkSellSlug || busyId === 'bulk-sell'} onClick={() => {
+              const group = bulkCandidates.find(x => x.slug === bulkSellSlug)
+              setConfirm({ danger: true, title: t('myassets.bulkSell', 'Продать весь вид имущества'), message: t('confirm.sellBulk', { name: nameOf(group), count: group.count, value: formatMoney(group.total) }), onConfirm: submitBulkSell })
+            }}>{t('myassets.sellAll', 'Продать всё')}</button>
+          </div>
         </div>
       )}
 

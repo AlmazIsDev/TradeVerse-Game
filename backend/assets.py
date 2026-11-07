@@ -1799,6 +1799,54 @@ async def sell_asset(
     return {"sold": payout, "balance": new_balance}
 
 
+@router.post("/sell-bulk")
+async def sell_assets_bulk(
+    payload: dict,
+    current_user: dict = Depends(require_allowed("assets_sell")),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Продать сразу все личные активы одного вида (одного slug)."""
+    user_id = str(current_user["_id"])
+    slug = str(payload.get("slug") or "").strip()
+    if not slug:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Не указан вид имущества")
+
+    assets = [a async for a in db.user_assets.find({
+        "userId": user_id, "slug": slug, "companyId": None,
+    })]
+    if not assets:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Имущество этого вида не найдено")
+    if any(a.get("frozen") for a in assets):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Один из активов заморожен: погасите займ")
+    if any(a.get("onAuction") for a in assets):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Один из активов выставлен на аукцион")
+
+    await _ensure_asset_market(db)
+    mult = await _asset_mult(db, slug)
+    payout = 0.0
+    for asset in assets:
+        base_value = round(_current_value(asset) - asset.get("tuning_value", 0.0), 2)
+        market_value = round(base_value * mult + asset.get("tuning_value", 0.0), 2)
+        payout += round(market_value * SELL_RATE + _accrued(asset), 2)
+
+    result = await db.user_assets.delete_many({
+        "userId": user_id, "slug": slug, "companyId": None,
+        "frozen": {"$ne": True}, "onAuction": {"$ne": True},
+    })
+    count = result.deleted_count
+    if count <= 0:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Имущество уже изменилось, повторите")
+    new_balance = await adjust_balance(db, user_id, round(payout, 2))
+    cat = _ledger_category(assets[0])
+    await record_transaction(
+        db, user_id, INCOME, round(payout, 2), cat,
+        f"Продажа имущества: {assets[0].get('name', slug)} ×{count}",
+        balance_after=new_balance, meta={"slug": slug, "count": count, "bulk": True},
+    )
+    await _bump_demand(db, slug, -DEMAND_SELL * count)
+    return {"sold": round(payout, 2), "balance": new_balance, "count": count}
+
+
 @router.post("/{asset_id}/transfer-to-company")
 async def transfer_to_company(
     asset_id: str,

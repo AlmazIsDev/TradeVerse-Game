@@ -1103,6 +1103,13 @@ export async function sellAsset(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/sell`, { method: 'POST' })
 }
 
+export async function sellAssetsBulk(slug) {
+  return request('/api/assets/sell-bulk', {
+    method: 'POST',
+    body: JSON.stringify({ slug }),
+  })
+}
+
 export async function transferAssetToCompany(id) {
   return request(`/api/assets/${encodeURIComponent(id)}/transfer-to-company`, { method: 'POST' })
 }

@@ -795,6 +795,30 @@
 .media-feed-date { font-size: 11px; color: var(--color-text-tertiary); }
 
 .asset-summary { display: flex; gap: var(--spacing-md); flex-wrap: wrap; margin-bottom: var(--spacing-lg); }
+.bulk-sell-panel {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg); padding: 14px 16px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-surface); box-shadow: var(--shadow-sm);
+}
+.bulk-sell-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bulk-sell-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.bulk-sell-hint { font-size: 11px; color: var(--color-text-secondary); }
+.bulk-sell-controls { display: flex; align-items: center; gap: var(--spacing-sm); flex: 0 0 auto; }
+.bulk-sell-select {
+  min-width: 210px; max-width: 280px; height: 36px; padding: 0 10px;
+  background: var(--color-bg-tertiary); border: 1px solid var(--hairline);
+  border-radius: var(--radius-md); color: var(--color-text-primary); font: inherit;
+  cursor: pointer; appearance: none; outline: none;
+}
+.bulk-sell-select:focus { border-color: var(--color-accent, #0071e3); box-shadow: none; }
+.bulk-sell-select option { background: var(--color-bg-tertiary); color: var(--color-text-primary); }
+.bulk-sell-button { flex: 0 0 auto; min-width: 110px; height: 36px; }
+@media (max-width: 640px) {
+  .bulk-sell-panel { align-items: stretch; flex-direction: column; }
+  .bulk-sell-controls { width: 100%; }
+  .bulk-sell-select, .bulk-sell-button { flex: 1; min-width: 0; max-width: none; }
+}
 .asset-summary-card {
   flex: 1; min-width: 150px;
   background: var(--color-bg-secondary);

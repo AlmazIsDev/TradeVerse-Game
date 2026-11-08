@@ -553,7 +553,13 @@
       "middle": "Средний кейс",
       "premium": "Премиум кейс",
       "elite": "Премиум кейс"
-    }
+    },
+    "case": "Кейс",
+    "level": "ур.",
+    "noLeaders": "Лидерборд пуст",
+    "noOddsData": "Данные о шансах недоступны",
+    "upgrade": "Улучшение",
+    "viewOdds": "Показать шансы"
   },
   "inventory": {
     "page_overview": "Обзор",
@@ -721,7 +727,9 @@
     "name": "Название",
     "confirmTitle": "Подтвердите действие",
     "edit": "Редактировать",
-    "delete": "Удалить"
+    "delete": "Удалить",
+    "anonymous": "Аноним",
+    "unknown": "Неизвестно"
   },
   "stocks": {
     "title": "Акции",
@@ -1073,7 +1081,7 @@
     "you": "вы",
     "sort_donated": "По пожертвованиям",
     "col_donated": "Пожертвования",
-    "sort_tokens": "По токенам",
+    "sort_tokens": "Токены",
     "col_tokens": "Токены",
     "noData": "Пока нет игроков в рейтинге",
     "sort_networth": "По капиталу",
@@ -2021,7 +2029,9 @@
     "hideCard": "Скрыть карту",
     "showCard": "Показать карту",
     "cardCopied": "Номер карты скопирован",
-    "levelShort": "Ур."
+    "levelShort": "Ур.",
+    "tokens": "Токены — донатная валюта",
+    "tokensShort": "Токенов"
   },
   "profile": {
     "name": "Имя",
@@ -2524,7 +2534,9 @@
       "colQty": "Объём",
       "colPrice": "Цена",
       "colTime": "Время"
-    }
+    },
+    "fieldTokens": "Токены",
+    "validationTokens": "Токены должны быть целым неотрицательным числом"
   },
   "econ": {
     "tab": "Экономика",

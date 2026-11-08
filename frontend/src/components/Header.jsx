@@ -298,9 +298,9 @@ function Header({ user, balance, tokens = 0, onLogout, onOpenSettings }) {
             <span className="header-balance-value">{formatCompact(balance)} $</span>
           </div>
         )}
-        <div className="header-balance header-tokens" title="Токены — донатная валюта">
+        <div className="header-balance header-tokens" title={t('header.tokens')}>
           <span aria-hidden="true">✦</span>
-          <span className="header-balance-value">{formatCompact(tokens)} Токенов</span>
+          <span className="header-balance-value">{formatCompact(tokens)} {t('header.tokensShort')}</span>
         </div>
         {levelInfo && (
           <div className="header-level" title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}>

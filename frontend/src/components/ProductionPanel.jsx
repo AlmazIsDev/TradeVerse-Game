@@ -377,7 +377,15 @@ function ProductionPanel({ unitId, onBack, balance = 0, onBalanceChange }) {
             </span>
             <span className="farm-storage-qty">{qty}</span>
             <span className="farm-storage-actions">
-              <SellRow res={res} />
+              <ProductionSellRow unitId={unitId} res={res} price={prices[res] || 0}
+                        value={sellQty[`${unitId}:${res}`] ?? ''} busy={busy} t={t}
+                        onChange={e => setSellQty(s => ({ ...s, [`${unitId}:${res}`]: e.target.value }))}
+                        onSell={() => {
+                          const qty = Number(sellQty[`${unitId}:${res}`]) || 0
+                          if (qty <= 0) return
+                          runAction(() => sellProductionResource(unitId, res, qty), t('prod.sell', 'Продано'))
+                          setSellQty(s => ({ ...s, [`${unitId}:${res}`]: '' }))
+                        }} />
             </span>
           </div>
         ))}

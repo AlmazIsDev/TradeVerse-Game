@@ -6,6 +6,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from bank_p2p import _total_due
 from clicker import build_case_pool, reward_asset_catalog
+from main import _LEADERBOARD_SORT_FIELD
 from notifications import build_notification_query, unread_categories
 
 
@@ -38,6 +39,10 @@ def test_unread_categories_counts_all_categories():
         {"read": True, "category": "market"},
     ]
     assert unread_categories(notifications) == {"market": 2, "automatic": 1}
+
+
+def test_leaderboard_registers_token_sort():
+    assert _LEADERBOARD_SORT_FIELD["tokens"] == "tokens"
 
 
 def test_loan_due_amount_is_fixed_once_for_full_term():

@@ -553,7 +553,13 @@
       "middle": "Medium case",
       "premium": "Premium case",
       "elite": "Premium case"
-    }
+    },
+    "case": "Case",
+    "level": "Lv.",
+    "noLeaders": "No leaderboard entries",
+    "noOddsData": "Odds are unavailable",
+    "upgrade": "Upgrade",
+    "viewOdds": "View odds"
   },
   "inventory": {
     "page_overview": "Overview",
@@ -721,7 +727,9 @@
     "name": "Name",
     "confirmTitle": "Confirm action",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "anonymous": "Anonymous",
+    "unknown": "Unknown"
   },
   "stocks": {
     "title": "Stocks",
@@ -1118,7 +1126,9 @@
     "value": "Value",
     "budget": "Budget",
     "assets": "Assets",
-    "noCompanies": "No companies ranked yet"
+    "noCompanies": "No companies ranked yet",
+    "sort_tokens": "Tokens",
+    "col_tokens": "Tokens"
   },
   "market": {
     "cat_realestate": "Real estate",
@@ -2041,7 +2051,9 @@
     "hideCard": "Hide card",
     "showCard": "Show card",
     "cardCopied": "Card number copied",
-    "levelShort": "Lvl"
+    "levelShort": "Lvl",
+    "tokens": "Tokens — donation currency",
+    "tokensShort": "Tokens"
   },
   "profile": {
     "name": "Name",
@@ -2544,7 +2556,9 @@
       "colQty": "Volume",
       "colPrice": "Price",
       "colTime": "Time"
-    }
+    },
+    "fieldTokens": "Tokens",
+    "validationTokens": "Tokens must be a non-negative integer"
   },
   "econ": {
     "tab": "Economy",

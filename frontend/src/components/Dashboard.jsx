@@ -185,7 +185,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'myhomes':
         return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} onTokensChange={(amount) => setTokens(v => v + amount)} />
       case 'inventory':
-        return <InventoryTab balance={balance} onBalanceChange={handleBalanceChange} onTabChange={setActiveTab} />
+        return <InventoryTab balance={balance} onBalanceChange={handleBalanceChange} onTokensChange={(amount) => setTokens(v => v + amount)} onTabChange={setActiveTab} />
       case 'mycompany':
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cars':

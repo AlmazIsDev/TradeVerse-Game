@@ -640,7 +640,7 @@ STARTING_BALANCE = 15000.0
 _LEADERBOARD_SORT_FIELD = {
     "networth": "netWorth", "level": "level", "achievements": "achievements",
     "profit": "profit", "cash": "cash", "stocks": "stocks", "crypto": "crypto",
-    "assets": "assets", "company": "company", "donated": "donated",
+    "assets": "assets", "company": "company", "tokens": "tokens", "donated": "donated",
 }
 
 

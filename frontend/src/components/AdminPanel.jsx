@@ -520,7 +520,7 @@ function AdminPanelContent({ user, onClose }) {
     }
     const tokens = Number(editForm.tokens)
     if (!Number.isInteger(tokens) || tokens < 0) {
-      errors.tokens = 'Токены должны быть целым неотрицательным числом'
+      errors.tokens = t('admin.validationTokens')
     }
 
     if (editForm.role !== 'user' && editForm.role !== 'admin') {
@@ -1794,7 +1794,7 @@ function AdminPanelContent({ user, onClose }) {
                       {editErrors.balance && <span className="admin-field-error">{editErrors.balance}</span>}
                     </div>
                     <div className="admin-field-group">
-                      <label>Токены</label>
+                      <label>{t('admin.fieldTokens')}</label>
                       <input type="number" step="1" min="0" value={editForm.tokens}
                         onChange={e => setEditForm({ ...editForm, tokens: e.target.value })}
                         className={`admin-input${editErrors.tokens ? ' admin-input-error' : ''}`} />

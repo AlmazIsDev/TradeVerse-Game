@@ -6,6 +6,7 @@
 """
 import asyncio
 import logging
+import time
 
 from bson import ObjectId
 
@@ -24,6 +25,7 @@ async def _clicker_snapshot(user_id: str):
 
 
 MAX_WS_RECEIVE_WAIT_S = 1
+CLICKER_SNAPSHOT_INTERVAL_S = 5
 
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
@@ -115,14 +117,18 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
         return
 
     await manager.connect(user_id, websocket)
+    last_clicker_snapshot = 0.0
     try:
         await websocket.send_json({"type": "connected"})
         while True:
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=MAX_WS_RECEIVE_WAIT_S)
             except asyncio.TimeoutError:
+                if time.monotonic() - last_clicker_snapshot < CLICKER_SNAPSHOT_INTERVAL_S:
+                    continue
                 try:
                     await websocket.send_json(await _clicker_snapshot(user_id))
+                    last_clicker_snapshot = time.monotonic()
                 except Exception:
                     manager.disconnect(user_id, websocket)
                     break

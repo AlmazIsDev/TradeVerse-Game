@@ -99,6 +99,8 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
           // панель обновляется сразу при любом изменении баланса.
           if (data?.type === 'balance' && data.balance != null) {
             handleBalanceChange(data.balance)
+          } else if (data?.type === 'clicker_balance') {
+            // ClickerTab consumes the snapshot directly; it is not a profile sync trigger.
           } else if (data && !GLOBAL_BROADCAST_TYPES.has(data.type)) {
             // Бродкасты не меняют баланс этого игрока — вкладки обновляются сами
             // через tv:realtime (см. GLOBAL_BROADCAST_TYPES выше).
@@ -185,7 +187,7 @@ function Dashboard({ user, onLogout, onUserUpdate }) {
       case 'myhomes':
         return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={handleBalanceChange} onTokensChange={(amount) => setTokens(v => v + amount)} />
       case 'inventory':
-        return <InventoryTab balance={balance} onBalanceChange={handleBalanceChange} onTabChange={setActiveTab} />
+        return <InventoryTab balance={balance} onBalanceChange={handleBalanceChange} onTokensChange={(amount) => setTokens(v => v + amount)} onTabChange={setActiveTab} />
       case 'mycompany':
         return <MyCompanyTab balance={balance} onBalanceChange={handleBalanceChange} />
       case 'cars':

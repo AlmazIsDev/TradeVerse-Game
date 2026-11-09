@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   MousePointerClick,
@@ -46,6 +46,9 @@ export default function ClickerTab({ balance, onBalanceChange }) {
   const [loadingError, setLoadingError] = useState('')
   const [caseBusy, setCaseBusy] = useState(null)
   const [reward, setReward] = useState(null)
+  const pendingClicks = useRef(0)
+  const flushTimer = useRef(null)
+  const inFlight = useRef(false)
 
   // Load all clicker data
   const load = useCallback(async () => {
@@ -70,18 +73,42 @@ export default function ClickerTab({ balance, onBalanceChange }) {
     load()
   }, [load])
 
-  // Click handler
-  const click = useCallback(async () => {
-    try {
-      const result = await clickClicker()
-      setData(result)
-      if (result.balance !== undefined && onBalanceChange) {
-        onBalanceChange(result.balance)
-      }
-    } catch (e) {
-      toast(e.message || t('common.error'), 'error')
+  useEffect(() => {
+    const onRealtime = event => {
+      const snapshot = event.detail
+      if (snapshot?.type !== 'clicker_balance') return
+      setData(previous => previous && { ...previous, clicks: snapshot.clicks, clickPower: snapshot.clickPower })
     }
-  }, [onBalanceChange, t])
+    window.addEventListener('tv:realtime', onRealtime)
+    return () => window.removeEventListener('tv:realtime', onRealtime)
+  }, [])
+
+  const flushClicks = useCallback(async () => {
+    if (inFlight.current || pendingClicks.current < 1) return
+    const count = pendingClicks.current
+    pendingClicks.current = 0
+    inFlight.current = true
+    try {
+      setData(await clickClicker(count))
+    } catch (e) {
+      pendingClicks.current += count
+      toast(e.message || t('common.error'), 'error')
+    } finally {
+      inFlight.current = false
+      if (pendingClicks.current > 0) flushTimer.current = setTimeout(() => { flushTimer.current = null; flushClicks() }, 100)
+    }
+  }, [t])
+
+  useEffect(() => () => {
+    if (flushTimer.current) clearTimeout(flushTimer.current)
+    if (pendingClicks.current > 0) flushClicks()
+  }, [flushClicks])
+
+  // Click handler
+  const click = useCallback(() => {
+    pendingClicks.current += 1
+    if (!flushTimer.current) flushTimer.current = setTimeout(() => { flushTimer.current = null; flushClicks() }, 100)
+  }, [flushClicks])
 
   // Upgrade handler
   const upgrade = useCallback(async (id) => {
@@ -127,8 +154,8 @@ export default function ClickerTab({ balance, onBalanceChange }) {
       toast(`${t('clicker.win')}: ${winner}`, 'success')
       setCaseBusy(null)
     } catch (e) {
-      setRoulette(null)
       setCaseBusy(null)
+      setReward(null)
       toast(e.message || t('common.error'), 'error')
     }
   }, [caseBusy, t])
@@ -136,7 +163,6 @@ export default function ClickerTab({ balance, onBalanceChange }) {
   // The result is already confirmed by the server, so the modal must always
   // be closable. Closing only hides the animation; it does not roll back the reward.
   const closeRoulette = useCallback(() => {
-    setRoulette(null)
     setReward(null)
     setCaseBusy(null)
     setCaseShopOpen(false)
@@ -167,7 +193,7 @@ export default function ClickerTab({ balance, onBalanceChange }) {
   const CaseCard = ({ item }) => (
     <article className="clicker-case-card" key={item.id}>
       <div className="clicker-case-icon">🎁</div>
-      <h4>{item.name || t('clicker.case')}</h4>
+      <h4>{item.id && cases.some(caseItem => caseItem.id === item.id) ? t(`clicker.cases.${item.id}`, item.name) : (item.name || t('clicker.case'))}</h4>
       <div className="clicker-case-actions">
         <button
           className="clicker-odds-button"
@@ -339,7 +365,7 @@ export default function ClickerTab({ balance, onBalanceChange }) {
                 <CaseCard key={item.id} item={item} />
               ))}
             </div>
-
+            {reward && <div className="clicker-reward"><span>🎉</span><b>{t('clicker.win')}</b><strong>{rewardLabel(reward)}</strong></div>}
           </div>
         </div>
       )}

@@ -687,7 +687,9 @@
     "name": "Nombre",
     "confirmTitle": "Confirmar acciГіn",
     "edit": "Editar",
-    "delete": "Eliminar"
+    "delete": "Eliminar",
+    "anonymous": "Anónimo",
+    "unknown": "Desconocido"
   },
   "stocks": {
     "title": "Acciones",
@@ -1084,7 +1086,9 @@
     "value": "Valor",
     "budget": "Presupuesto",
     "assets": "Activos",
-    "noCompanies": "AГєn no hay empresas clasificadas"
+    "noCompanies": "AГєn no hay empresas clasificadas",
+    "sort_tokens": "Tokens",
+    "col_tokens": "Tokens"
   },
   "market": {
     "cat_realestate": "Inmuebles",
@@ -2007,7 +2011,9 @@
     "hideCard": "Ocultar tarjeta",
     "showCard": "Mostrar tarjeta",
     "cardCopied": "NГєmero de tarjeta copiado",
-    "levelShort": "Nv."
+    "levelShort": "Nv.",
+    "tokens": "Tokens — moneda de donación",
+    "tokensShort": "Tokens"
   },
   "profile": {
     "name": "Nombre",
@@ -2500,7 +2506,9 @@
       "colQty": "Volumen",
       "colPrice": "Precio",
       "colTime": "Hora"
-    }
+    },
+    "fieldTokens": "Tokens",
+    "validationTokens": "Los tokens deben ser un entero no negativo"
   },
   "econ": {
     "tab": "EconomГ­a",
@@ -3783,6 +3791,12 @@
     "amount": "Cantidad",
     "sell": "Vender",
     "sellButton": "Vender CLICKS",
-    "sellHint": "Vende CLICKS en la sección de criptomonedas"
+    "sellHint": "Vende CLICKS en la sección de criptomonedas",
+    "case": "Caja",
+    "level": "Nv.",
+    "noLeaders": "Sin entradas",
+    "noOddsData": "Probabilidades no disponibles",
+    "upgrade": "Mejora",
+    "viewOdds": "Ver probabilidades"
   }
 }

@@ -684,7 +684,9 @@
     "name": "名前",
     "confirmTitle": "操作の確認",
     "edit": "編集",
-    "delete": "削除"
+    "delete": "削除",
+    "anonymous": "匿名",
+    "unknown": "不明"
   },
   "stocks": {
     "title": "株式",
@@ -1045,7 +1047,9 @@
     "value": "評価額",
     "budget": "予算",
     "assets": "資産",
-    "noCompanies": "まだランキングされた会社がありません"
+    "noCompanies": "まだランキングされた会社がありません",
+    "sort_tokens": "トークン",
+    "col_tokens": "トークン"
   },
   "market": {
     "cat_realestate": "不動産",
@@ -1942,7 +1946,9 @@
     "hideCard": "カードを非表示",
     "showCard": "カードを表示",
     "cardCopied": "カード番号をコピーしました",
-    "levelShort": "Lv"
+    "levelShort": "Lv",
+    "tokens": "トークン — 寄付通貨",
+    "tokensShort": "トークン"
   },
   "profile": {
     "name": "名前",
@@ -2418,7 +2424,9 @@
       "colQty": "数量",
       "colPrice": "価格",
       "colTime": "時刻"
-    }
+    },
+    "fieldTokens": "トークン",
+    "validationTokens": "トークンは0以上の整数で入力してください"
   },
   "econ": {
     "tab": "経済",
@@ -3455,7 +3463,13 @@
     "amount": "数量",
     "sell": "売却",
     "sellButton": "CLICKSを売却",
-    "sellHint": "CLICKSは暗号資産タブで売却できます"
+    "sellHint": "CLICKSは暗号資産タブで売却できます",
+    "case": "ケース",
+    "level": "Lv.",
+    "noLeaders": "ランキングは空です",
+    "noOddsData": "確率データはありません",
+    "upgrade": "アップグレード",
+    "viewOdds": "確率を見る"
   },
   "loans": {
     "from": "最小",

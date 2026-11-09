@@ -23,7 +23,7 @@ const PAGES = [
  *  - «Железо» — единицы оборудования (HardwareInventory): свободное и
  *    установленное, состояние, категории, поиск.
  */
-function InventoryTab({ balance = 0, onBalanceChange, onTabChange }) {
+function InventoryTab({ balance = 0, onBalanceChange, onTokensChange, onTabChange }) {
   const { t } = useTranslation()
   const [page, setPage] = useState('overview')
   const [summary, setSummary] = useState(null)
@@ -81,7 +81,7 @@ function InventoryTab({ balance = 0, onBalanceChange, onTabChange }) {
   }, [page, hwItems])
 
   if (page === 'assets') {
-    return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={onBalanceChange} />
+    return <MyAssetsTab defaultType="all" balance={balance} onBalanceChange={onBalanceChange} onTokensChange={onTokensChange} />
   }
 
   const s = summary

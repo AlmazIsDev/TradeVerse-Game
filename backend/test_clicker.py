@@ -4,11 +4,13 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from clicker import (
+    CASE_REWARD_WEIGHTS,
     DEFAULT_CONFIG,
     case_odds,
     component_case_odds,
     crypto_reward,
     _hardware_reward_doc,
+    reward_asset_catalog,
     view,
 )
 
@@ -18,13 +20,30 @@ def test_view_uses_wallet_clicks_instead_of_historical_progress():
     assert result["clicks"] == 17
 
 
-def test_case_odds_are_exposed_as_percentages():
-    odds = case_odds("basic")
-    assert odds == [
-        {"type": "crypto", "chance": 66.67},
-        {"type": "coolant", "chance": 16.67},
-        {"type": "sunny_cottage", "chance": 16.67},
+def test_case_odds_match_all_reward_weights():
+    for case_id, weights in CASE_REWARD_WEIGHTS.items():
+        assert case_odds(case_id) == [
+            {"type": reward_type, "chance": round(weight / sum(weights.values()) * 100, 2)}
+            for reward_type, weight in weights.items()
+        ]
+
+
+def test_asset_reward_cap_keeps_catalog_rewards_available():
+    catalog = [
+        {"type": "business", "slug": "coffee", "price": 6_000_000},
+        {"type": "business", "slug": "cheap", "price": 60_000},
     ]
+    assert reward_asset_catalog("business", catalog, 100_000)["slug"] == "cheap"
+    assert reward_asset_catalog("business", catalog, 100_000) is not None
+
+
+def test_asset_reward_without_cap_can_select_expensive_item():
+    item = reward_asset_catalog("house", [{"type": "realestate", "slug": "villa", "price": 1_000_000}])
+    assert item["slug"] == "villa"
+
+
+# Existing catalog prices are intentionally scaled; the reward cap is applied
+# to a reward budget, not to the displayed purchase price.
 
 
 def test_component_case_odds_are_uniform_for_actual_pool():

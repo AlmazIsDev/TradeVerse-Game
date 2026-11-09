@@ -49,6 +49,7 @@ export default function ClickerTab({ balance, onBalanceChange }) {
   const pendingClicks = useRef(0)
   const flushTimer = useRef(null)
   const inFlight = useRef(false)
+  const [, setRoulette] = useState(null)
 
   // Load all clicker data
   const load = useCallback(async () => {

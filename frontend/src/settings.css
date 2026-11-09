@@ -101,6 +101,18 @@
 .promo-admin-grid label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
 .promo-admin-form .admin-input { width: 100%; box-sizing: border-box; }
 .promo-admin-form .submit-btn { margin-top: 14px; }
+.promo-admin { display: flex; flex-direction: column; gap: 16px; }
+.promo-admin-title { margin: 0; font-size: 1.05rem; }
+.promo-admin-form label { color: var(--color-text-secondary); font-size: .86rem; }
+.promo-admin-form input:not([type='checkbox']), .promo-admin-form select { min-height: 40px; }
+.promo-admin-active { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 8px !important; margin-top: 14px; }
+.promo-admin-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: 14px; }
+.promo-admin-table { width: 100%; min-width: 720px; border-collapse: collapse; background: var(--color-bg-secondary); }
+.promo-admin-table th, .promo-admin-table td { padding: 11px 12px; border-bottom: 1px solid var(--color-border); text-align: left; white-space: nowrap; }
+.promo-admin-table th { color: var(--color-text-secondary); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; background: var(--color-bg-tertiary); }
+.promo-admin-table tr:last-child td { border-bottom: 0; }
+.promo-admin-table td { color: var(--color-text-primary); font-size: .88rem; }
+.promo-admin-empty { padding: 24px; margin: 0; text-align: center; border: 1px dashed var(--color-border); border-radius: 14px; color: var(--color-text-secondary); }
 @media (max-width: 640px) { .promo-admin-grid { grid-template-columns: 1fr; } }
 
 .settings-card-header h3 {

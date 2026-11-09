@@ -138,6 +138,7 @@ function PromoCodesTab() {
       ) : promos.length === 0 ? (
         <p className="promo-admin-empty">Промокодов пока нет</p>
       ) : (
+        <div className="promo-admin-table-wrap">
         <table className="promo-admin-table">
           <thead>
             <tr>
@@ -164,6 +165,7 @@ function PromoCodesTab() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <ConfirmDialog

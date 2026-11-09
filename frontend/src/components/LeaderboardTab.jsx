@@ -6,6 +6,10 @@ import PlayerProfileModal from './PlayerProfileModal'
 import { flagUrl } from '../utils/countries'
 import { Trophy, AlertTriangle, Crown, Medal, Building2 } from 'lucide-react'
 
+function formatTokens(value) {
+  return Math.max(0, Math.trunc(Number(value) || 0)).toLocaleString()
+}
+
 const SORTS = ['networth', 'profit', 'cash', 'stocks', 'crypto', 'assets', 'company', 'tokens', 'donated', 'level', 'achievements']
 // Разбивка капитала под именем игрока — какие поля показывать чипами и какой
 // sort их подсвечивает (чтобы было очевидно, что делает каждый фильтр).
@@ -152,7 +156,7 @@ function LeaderboardTab({ currentUserId }) {
                     <span className="lb-breakdown">
                       {BREAKDOWN.map(b => (
                         <span key={b.key} className={`lb-chip ${sort === b.sort ? 'active' : ''}`} title={b.key === 'tokens' ? `${entry[b.key] || 0} Токенов` : `$${formatMoney(entry[b.key] || 0)}`}>
-                          {t(`leaderboard.col_${b.key}`)} <b>{b.key === 'tokens' ? `${formatCompact(entry[b.key] || 0)} ✦` : `$${formatCompact(entry[b.key] || 0)}`}</b>
+                          {t(`leaderboard.col_${b.key}`)} <b>{b.key === 'tokens' ? `${formatTokens(entry[b.key] || 0)} ✦` : `$${formatCompact(entry[b.key] || 0)}`}</b>
                         </span>
                       ))}
                       {PLAYER_PROGRESS.map(b => (

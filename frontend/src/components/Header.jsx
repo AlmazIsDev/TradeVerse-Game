@@ -29,6 +29,10 @@ function getStoredUser() {
   return null
 }
 
+function formatTokens(value) {
+  return Math.max(0, Math.trunc(Number(value) || 0)).toLocaleString(i18n.language === 'es' ? 'es-ES' : i18n.language === 'en' ? 'en-US' : 'ru-RU')
+}
+
 function Header({ user, balance, tokens = 0, onLogout, onOpenSettings }) {
   const { t } = useTranslation()
   const returnFromImpersonation = () => {
@@ -300,7 +304,7 @@ function Header({ user, balance, tokens = 0, onLogout, onOpenSettings }) {
         )}
         <div className="header-balance header-tokens" title={t('header.tokens')}>
           <span aria-hidden="true">✦</span>
-          <span className="header-balance-value">{formatCompact(tokens)} {t('header.tokensShort')}</span>
+          <span className="header-balance-value">{formatTokens(tokens)} {t('header.tokensShort')}</span>
         </div>
         {levelInfo && (
           <div className="header-level" title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}>

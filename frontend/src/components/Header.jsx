@@ -47,6 +47,7 @@ function Header({ user, balance, tokens = 0, onLogout, onOpenSettings }) {
     window.location.reload()
   }
   const [showNotifications, setShowNotifications] = useState(false)
+  const [mobileStatIndex, setMobileStatIndex] = useState(0)
   const [notifications, setNotifications] = useState([])
   const [unreadTotal, setUnreadTotal] = useState(0)
   const [unreadByCategory, setUnreadByCategory] = useState({})
@@ -77,6 +78,43 @@ function Header({ user, balance, tokens = 0, onLogout, onOpenSettings }) {
         ((levelInfo.xp - levelInfo.xpCurrentLevel) /
           Math.max(1, levelInfo.xpNextLevel - levelInfo.xpCurrentLevel)) * 100))
     : 0
+
+  const mobileStats = [
+    balance != null && {
+      kind: 'is-balance',
+      title: `${t('account.balance')}: ${formatMoney(balance)}`,
+      content: (
+        <>
+          <Wallet size={16} />
+          <span>{formatMoney(balance)} $</span>
+        </>
+      ),
+    },
+    {
+      kind: 'is-tokens',
+      title: t('header.tokens'),
+      content: (
+        <>
+          <span aria-hidden="true">✦</span>
+          <span>{formatTokens(tokens)} {t('header.tokensShort')}</span>
+        </>
+      ),
+    },
+    levelInfo && {
+      kind: 'is-level',
+      title: `XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`,
+      content: (
+        <>
+          <span className="header-stat-carousel-row">
+            <span>{t('header.levelShort', 'Ур.')} {levelInfo.level}</span>
+            <span>{levelInfo.xp} / {levelInfo.xpNextLevel} XP</span>
+          </span>
+          <span className="header-stat-carousel-bar"><span style={{ width: `${levelProgress}%` }} /></span>
+        </>
+      ),
+    },
+  ].filter(Boolean)
+  const mobileIdx = mobileStats.length ? mobileStatIndex % mobileStats.length : 0
 
   const displayName = user?.username || storedUser?.username || t('header.user')
   const avatar = user?.avatar || storedUser?.avatar || null
@@ -297,21 +335,43 @@ function Header({ user, balance, tokens = 0, onLogout, onOpenSettings }) {
     <header className="header">
       <div className="header-right">
         {balance != null && (
-          <div className="header-balance" title={`${t('account.balance')}: ${formatMoney(balance)} $`}>
+          <button
+            type="button"
+            className="header-balance header-stat-desktop"
+            title={`${t('account.balance')}: ${formatMoney(balance)}`}
+          >
             <Wallet size={16} />
             <span className="header-balance-value">{formatCompact(balance)} $</span>
-          </div>
+          </button>
         )}
-        <div className="header-balance header-tokens" title={t('header.tokens')}>
+        <button
+          type="button"
+          className="header-balance header-tokens header-stat-desktop"
+          title={t('header.tokens')}
+        >
           <span aria-hidden="true">✦</span>
           <span className="header-balance-value">{formatTokens(tokens)} {t('header.tokensShort')}</span>
-        </div>
+        </button>
         {levelInfo && (
-          <div className="header-level" title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}>
-            <span>{t('header.levelShort', 'РЈСЂ.')} {levelInfo.level}</span>
+          <button
+            type="button"
+            className="header-level header-stat-desktop"
+            title={`XP: ${levelInfo.xp} / ${levelInfo.xpNextLevel}`}
+          >
+            <span>{t('header.levelShort', 'Ур.')} {levelInfo.level}</span>
             <div className="header-level-bar"><div style={{ width: `${levelProgress}%` }} /></div>
             <span className="header-level-left">{levelInfo.xpNextLevel - levelInfo.xp} XP</span>
-          </div>
+          </button>
+        )}
+        {mobileStats.length > 0 && (
+          <button
+            type="button"
+            className={`header-stat-carousel ${mobileStats[mobileIdx].kind}`}
+            title={mobileStats[mobileIdx].title}
+            onClick={() => setMobileStatIndex(i => (i + 1) % mobileStats.length)}
+          >
+            {mobileStats[mobileIdx].content}
+          </button>
         )}
         <div className="notification-wrapper" ref={notifRef}>
           <button

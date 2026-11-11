@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import './App.css'
+import './mobile.css'
 import './landing.css'
 import AuthPage from './components/AuthPage'
 import Dashboard from './components/Dashboard'

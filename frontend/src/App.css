@@ -585,6 +585,11 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: inherit;
   font-size: 12px;
   white-space: nowrap;
 }

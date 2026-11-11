@@ -145,6 +145,7 @@ const PLAYER_BAN_FUNCS = [
   'farm_sources', 'farm_sources_cells', 'farm_sources_plant', 'farm_sources_harvest', 'farm_sources_fuel', 'farm_sources_sell', 'farm_sources_vehicle',
   'company', 'company_edit', 'company_members', 'company_leave',
   'cityroof', 'cityroof_purchase', 'cityroof_attack', 'cityroof_capture', 'cityroof_protect',
+  'clicker', 'clicker_cases', 'promo', 'support',
 ]
 const BAN_GROUPS = [
   { id: 'transfer', actions: [] },
@@ -157,6 +158,9 @@ const BAN_GROUPS = [
   { id: 'farm_sources', actions: ['farm_sources_cells', 'farm_sources_plant', 'farm_sources_harvest', 'farm_sources_fuel', 'farm_sources_sell', 'farm_sources_vehicle'] },
   { id: 'company', actions: ['company_edit', 'company_members', 'company_leave'] },
   { id: 'cityroof', actions: ['cityroof_purchase', 'cityroof_attack', 'cityroof_capture', 'cityroof_protect'] },
+  { id: 'clicker', actions: ['clicker_cases'] },
+  { id: 'promo', actions: [] },
+  { id: 'support', actions: [] },
 ]
 const ADMIN_LEVELS = [1, 2, 3, 4]
 // Поля конфига ботов по рынкам (зеркало DEFAULT_SYNTHETIC бэкенда).
@@ -1065,9 +1069,6 @@ function AdminPanelContent({ user, onClose }) {
     { id: 'audit', perm: 'users_view', label: t('admin.auditLog'), icon: Activity },
     { id: 'lots', perm: 'central_market', label: t('admin.lots.title'), icon: Gavel },
     { id: 'support', perm: 'users_view', label: 'Все обращения', icon: LifeBuoy },
-    { id: 'support_bug', perm: 'users_view', label: 'Баги игроков', icon: Bug },
-    { id: 'support_loss', perm: 'users_view', label: 'Потеря имущества', icon: LifeBuoy },
-    { id: 'support_suggestion', perm: 'users_view', label: 'Предложения', icon: LifeBuoy },
     { id: 'bugs', perm: 'users_view', label: 'Баг-трекер', icon: Bug },
     { id: 'transactions', perm: 'transactions_view', label: t('admin.transactions'), icon: ArrowLeftRight },
     { id: 'broadcast', perm: 'broadcast', label: t('admin.broadcast.title'), icon: Megaphone },
@@ -1994,9 +1995,6 @@ function AdminPanelContent({ user, onClose }) {
           <SupportTicketsAdmin initialCategory="all" />
         )}
 
-        {!loading && activeSection === 'support_bug' && <SupportTicketsAdmin initialCategory="bug" />}
-        {!loading && activeSection === 'support_loss' && <SupportTicketsAdmin initialCategory="loss" />}
-        {!loading && activeSection === 'support_suggestion' && <SupportTicketsAdmin initialCategory="suggestion" />}
 
         {!loading && activeSection === 'bugs' && <AdminBugs />}
 

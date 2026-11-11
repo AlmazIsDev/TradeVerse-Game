@@ -9,11 +9,14 @@ from auth import get_current_user
 from assets import CATALOG as ASSET_CATALOG
 from shop import CATALOG as HARDWARE_CATALOG
 from database import get_db, upsert_config
-from admin_perms import require_admin
+from admin_perms import require_admin, require_allowed
 from ledger import EXPENSE, CAT_SYSTEM, adjust_balance, record_transaction
 
 MAX_CLICK_BATCH = 100
-DEFAULT_CONFIG = {"clicksPrice": 0.01, "multiplierBaseCost": 1000, "multiplierCostStep": 1500}
+# Фиксированное окно в 1 с: на стыке секунд допустим всплеск до 2× лимита.
+MAX_CLICKS_PER_SECOND = 10
+# Калибровка: при полной скорости кликов (10/с = $360/ч) второй уровень множителя окупается примерно за 140ч.
+DEFAULT_CONFIG = {"clicksPrice": 0.01, "multiplierBaseCost": 50000, "multiplierCostStep": 50000}
 CASE_CONFIG = {"basic": {"name": "Эконом кейс", "price": 100000}, "middle": {"name": "Средний кейс", "price": 800000}, "premium": {"name": "Премиум кейс", "price": 3500000}}
 CASE_REWARD_WEIGHTS = {
     "basic": {"crypto": 93, "coolant": 5, "sunny_cottage": 2},
@@ -21,8 +24,13 @@ CASE_REWARD_WEIGHTS = {
     "premium": {"business": 2, "crypto": 65, "car": 8, "house": 8, "hardware": 10, "coolant": 7},
 }
 COMPONENT_CASES = {"random_component": {"name": "Случайное комплектующее", "price": 500000, "category": None}, "gpu": {"name": "GPU кейс", "price": 1500000, "category": "gpu"}, "cpu": {"name": "CPU кейс", "price": 900000, "category": "cpu"}, "ram": {"name": "RAM кейс", "price": 300000, "category": "ram"}, "psu": {"name": "PSU кейс", "price": 350000, "category": "psu"}, "motherboard": {"name": "Motherboard кейс", "price": 700000, "category": "motherboard"}, "ssd": {"name": "Storage кейс", "price": 250000, "category": "ssd"}, "cooling": {"name": "Cooling кейс", "price": 400000, "category": "cooling"}, "rack": {"name": "Rack кейс", "price": 1200000, "category": "rack"}}
-UPGRADES = [("shawarma", "Шаурмечная", "Пассивно производит CLICKS", 100, 1), ("coffee", "Кофейня", "Кофе для бодрых кликов", 500, 5), ("carwash", "Автомойка", "Каждая машина приносит токены", 1500, 15), ("arcade", "Игровой клуб", "Игровые автоматы работают сами", 4000, 45), ("delivery", "Служба доставки", "Курьеры доставляют CLICKS", 10000, 120), ("factory", "Мини-фабрика", "Автоматическое производство", 25000, 300), ("media", "Медиахолдинг", "Реклама генерирует токены", 60000, 750), ("bank", "Микробанк", "Проценты с кликовых вкладов", 150000, 1800), ("space", "Космопорт", "Межпланетные перевозки", 400000, 4500), ("empire", "Империя", "Глобальная сеть бизнеса", 1000000, 12000)]
+# Калибровка: базовая цена ступени = окупаемость × доход/с; окупаемость ступеней 100–1000ч, иначе кликер становится генератором.
+UPGRADES = [("shawarma", "Шаурмечная", "Пассивно производит CLICKS", 360000, 1), ("coffee", "Кофейня", "Кофе для бодрых кликов", 3600000, 5), ("carwash", "Автомойка", "Каждая машина приносит токены", 16200000, 15), ("arcade", "Игровой клуб", "Игровые автоматы работают сами", 64800000, 45), ("delivery", "Служба доставки", "Курьеры доставляют CLICKS", 216000000, 120), ("factory", "Мини-фабрика", "Автоматическое производство", 648000000, 300), ("media", "Медиахолдинг", "Реклама генерирует токены", 1890000000, 750), ("bank", "Микробанк", "Проценты с кликовых вкладов", 5184000000, 1800), ("space", "Космопорт", "Межпланетные перевозки", 14580000000, 4500), ("empire", "Империя", "Глобальная сеть бизнеса", 43200000000, 12000)]
 UPGRADE_MAP = {item[0]: item for item in UPGRADES}
+# Квадратичная цена и потолок нужны вместе: линейная даёт одинаковую окупаемость на любом уровне.
+MAX_UPGRADE_LEVEL = 210
+def upgrade_cost(base, level): return base * (level + 1) ** 2
+def effective_level(doc, key): return min(MAX_UPGRADE_LEVEL, int(doc.get(key, 0) or 0))
 router = APIRouter(prefix="/api/clicker", tags=["clicker"])
 admin_router = APIRouter(prefix="/api/admin/clicker", tags=["clicker-admin"])
 
@@ -61,7 +69,7 @@ async def _spend_clicks(db, user_id, amount): return await db.crypto_holdings.fi
 async def _restore_clicks(db, user_id, amount): await _ensure_crypto_holding(db, user_id, amount)
 def view(doc, cfg, wallet_clicks=None):
     doc = doc or {}; mult = int(doc.get("multiplier", 1) or 1)
-    upgrades = {key: {"name": name, "description": description, "level": int(doc.get(key, 0) or 0), "cost": cost * (int(doc.get(key, 0) or 0) + 1), "income": income * int(doc.get(key, 0) or 0)} for key, name, description, cost, income in UPGRADES}
+    upgrades = {key: {"name": name, "description": description, "level": int(doc.get(key, 0) or 0), "cost": upgrade_cost(cost, effective_level(doc, key)), "income": income * effective_level(doc, key)} for key, name, description, cost, income in UPGRADES}
     return {"clicks": int(wallet_clicks if wallet_clicks is not None else doc.get("clicks", 0) or 0), "clickPower": mult, "passiveIncome": sum(x["income"] for x in upgrades.values()), "clicksPrice": float(cfg["clicksPrice"]), "multiplierLevel": max(0, mult - 1), "multiplierCost": float(cfg["multiplierBaseCost"]) + max(0, mult - 1) * float(cfg["multiplierCostStep"]), "upgrades": upgrades}
 async def _ensure_crypto_holding(db, user_id, amount): await db.crypto_holdings.update_one({"userId": user_id, "symbol": "CLICKS"}, {"$inc": {"quantity": amount}, "$setOnInsert": {"userId": user_id, "symbol": "CLICKS", "avg_price": 0.01}}, upsert=True)
 async def _push_clicker_state(user_id, state):
@@ -72,7 +80,7 @@ async def _collect_passive(db, user_id):
     if not doc: return
     now = datetime.now(timezone.utc); updated = doc.get("updatedAt") or doc.get("createdAt") or now
     if updated.tzinfo is None: updated = updated.replace(tzinfo=timezone.utc)
-    elapsed = max(0.0, min((now - updated).total_seconds(), 86400.0)); income = sum(int(doc.get(key, 0) or 0) * income for key, _, _, _, income in UPGRADES); amount = int(elapsed * income)
+    elapsed = max(0.0, min((now - updated).total_seconds(), 86400.0)); income = sum(effective_level(doc, key) * income for key, _, _, _, income in UPGRADES); amount = int(elapsed * income)
     if amount > 0: await db.clicker_progress.update_one({"userId": user_id}, {"$inc": {"clicks": amount}, "$set": {"updatedAt": now}}); await _ensure_crypto_holding(db, user_id, amount)
     else: await db.clicker_progress.update_one({"userId": user_id}, {"$set": {"updatedAt": now}})
 collect_passive_clicks = _collect_passive
@@ -81,23 +89,38 @@ collect_passive_clicks = _collect_passive
 async def get_clicker(current_user=Depends(get_current_user), db=Depends(get_db)):
     uid = str(current_user["_id"]); await _collect_passive(db, uid); return view(await db.clicker_progress.find_one({"userId": uid}), await config(db), await _wallet_clicks(db, uid))
 class ClickPayload(BaseModel): count: int = Field(default=1, ge=1, le=MAX_CLICK_BATCH)
+async def _reserve_clicks(db, user_id, requested):
+    now_s = int(datetime.now(timezone.utc).timestamp())
+    # Атомарно: pipeline-обновление и возврат pre-image дают ту же выборку, по которой считается allowed.
+    used = {"$cond": [{"$eq": [{"$ifNull": ["$clickWindow", -1]}, now_s]}, {"$ifNull": ["$clickWindowCount", 0]}, 0]}
+    new_count = {"$add": [used, {"$min": [requested, {"$max": [0, {"$subtract": [MAX_CLICKS_PER_SECOND, used]}]}]}]}
+    before = await db.clicker_progress.find_one_and_update({"userId": user_id}, [{"$set": {"clickWindow": now_s, "clickWindowCount": new_count}}], upsert=True)
+    used_before = int((before or {}).get("clickWindowCount", 0) or 0) if (before or {}).get("clickWindow") == now_s else 0
+    return max(0, min(requested, MAX_CLICKS_PER_SECOND - used_before))
+
 @router.post("/click")
-async def click(payload: ClickPayload = ClickPayload(), current_user=Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_db)):
-    uid = str(current_user["_id"]); await _collect_passive(db, uid); old = await db.clicker_progress.find_one({"userId": uid}, {"multiplier": 1}) or {}; amount = payload.count * int(old.get("multiplier", 1) or 1)
-    await db.clicker_progress.update_one({"userId": uid}, {"$inc": {"clicks": amount}, "$set": {"updatedAt": datetime.now(timezone.utc)}, "$setOnInsert": {"userId": uid, "multiplier": 1}}, upsert=True); await _ensure_crypto_holding(db, uid, amount)
-    state = view(await db.clicker_progress.find_one({"userId": uid}), await config(db), await _wallet_clicks(db, uid)); await _push_clicker_state(uid, state); return state
+async def click(payload: ClickPayload = ClickPayload(), current_user=Depends(require_allowed("clicker")), db: AsyncIOMotorDatabase = Depends(get_db)):
+    uid = str(current_user["_id"]); await _collect_passive(db, uid); allowed = await _reserve_clicks(db, uid, payload.count)
+    if allowed:
+        old = await db.clicker_progress.find_one({"userId": uid}, {"multiplier": 1}) or {}; amount = allowed * int(old.get("multiplier", 1) or 1)
+        await db.clicker_progress.update_one({"userId": uid}, {"$inc": {"clicks": amount}, "$set": {"updatedAt": datetime.now(timezone.utc)}, "$setOnInsert": {"userId": uid, "multiplier": 1}}, upsert=True); await _ensure_crypto_holding(db, uid, amount)
+    state = view(await db.clicker_progress.find_one({"userId": uid}), await config(db), await _wallet_clicks(db, uid))
+    if allowed: await _push_clicker_state(uid, state)
+    return state
 
 @router.post("/multiplier")
-async def multiplier(current_user=Depends(get_current_user), db=Depends(get_db)):
+async def multiplier(current_user=Depends(require_allowed("clicker")), db=Depends(get_db)):
     uid = str(current_user["_id"]); cfg = await config(db); doc = await db.clicker_progress.find_one({"userId": uid}) or {}; cost = float(cfg["multiplierBaseCost"]) + max(0, int(doc.get("multiplier", 1) or 1) - 1) * float(cfg["multiplierCostStep"]); balance = await adjust_balance(db, uid, -cost)
     if balance is None: raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно средств")
     result = await db.clicker_progress.find_one_and_update({"userId": uid}, {"$inc": {"multiplier": 1}, "$setOnInsert": {"userId": uid}}, upsert=True, return_document=True); await record_transaction(db, uid, EXPENSE, cost, CAT_SYSTEM, "Улучшение множителя CLICKS", balance_after=balance)
     state = {**view(result, cfg, await _wallet_clicks(db, uid)), "balance": balance}; await _push_clicker_state(uid, state); return state
 
 @router.post("/upgrade/{upgrade_id}")
-async def upgrade(upgrade_id, current_user=Depends(get_current_user), db=Depends(get_db)):
+async def upgrade(upgrade_id, current_user=Depends(require_allowed("clicker")), db=Depends(get_db)):
     if upgrade_id not in UPGRADE_MAP: raise HTTPException(status.HTTP_404_NOT_FOUND, "Улучшение не найдено")
-    uid = str(current_user["_id"]); await _collect_passive(db, uid); cfg = await config(db); doc = await db.clicker_progress.find_one({"userId": uid}) or {}; _, _, _, base, _ = UPGRADE_MAP[upgrade_id]; cost = base * (int(doc.get(upgrade_id, 0) or 0) + 1)
+    uid = str(current_user["_id"]); await _collect_passive(db, uid); cfg = await config(db); doc = await db.clicker_progress.find_one({"userId": uid}) or {}; _, _, _, base, _ = UPGRADE_MAP[upgrade_id]; level = int(doc.get(upgrade_id, 0) or 0)
+    if level >= MAX_UPGRADE_LEVEL: raise HTTPException(status.HTTP_400_BAD_REQUEST, "Достигнут максимальный уровень")
+    cost = upgrade_cost(base, level)
     if await _spend_clicks(db, uid, cost) is None: raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно CLICKS")
     result = await db.clicker_progress.find_one_and_update({"userId": uid}, {"$inc": {upgrade_id: 1}}, return_document=True); state = view(result, cfg, await _wallet_clicks(db, uid)); await _push_clicker_state(uid, state); return state
 
@@ -114,7 +137,7 @@ async def _grant_asset_reward(db, user_id, reward_type):
     if item is None: raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Для награды нет доступного актива")
     result = await db.user_assets.insert_one(_asset_reward_doc(user_id, item)); return {"type": reward_type, "title": item["name"], "slug": item["slug"], "assetId": str(result.inserted_id)}
 @router.post("/cases/open")
-async def open_case(payload: CasePurchase, current_user=Depends(get_current_user), db=Depends(get_db)):
+async def open_case(payload: CasePurchase, current_user=Depends(require_allowed("clicker_cases")), db=Depends(get_db)):
     import random
 
     uid = str(current_user["_id"])

@@ -484,7 +484,10 @@
     "typeSuggestion": "Предложение по улучшению",
     "statusPending": "На рассмотрении",
     "statusRejected": "Отказано",
-    "statusResolved": "Рассмотрено"
+    "statusResolved": "Рассмотрено",
+    "typeWrongBan": "Ошибочный бан",
+    "describeWrongBan": "Почему бан ошибочный?",
+    "wrongBanReason": "Почему бан ошибочный"
   },
   "errors": {
     "sessionExpired": "Сессия истекла. Войдите заново.",
@@ -2941,7 +2944,11 @@
     "company_members": "Управление сотрудниками",
     "company_leave": "Выход из компании",
     "cityroof": "Крыши города",
-    "media": "Объявления (СМИ)"
+    "media": "Объявления (СМИ)",
+    "clicker": "Кликер",
+    "clicker_cases": "Открытие кейсов кликера",
+    "promo": "Промокоды",
+    "support": "Техподдержка (обращения)"
   },
   "sourceUi": {
     "source": "Источник",
@@ -4030,5 +4037,10 @@
     "loanTypeBorrow": "Взять в займ",
     "termLabel": "Срок, суток (2–21)",
     "rateLabel": "Процент в сутки, %"
+  },
+  "banned": {
+    "title": "Аккаунт заблокирован",
+    "until": "До",
+    "supportHint": "Если вы считаете бан ошибочным, откройте обращение в поддержке."
   }
 }

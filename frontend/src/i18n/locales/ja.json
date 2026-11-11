@@ -484,7 +484,10 @@
     "typeSuggestion": "改善提案",
     "statusPending": "確認中",
     "statusRejected": "却下",
-    "statusResolved": "解決済み"
+    "statusResolved": "解決済み",
+    "typeWrongBan": "誤BAN",
+    "describeWrongBan": "BANが誤りである理由は？",
+    "wrongBanReason": "BANが誤りである理由"
   },
   "errors": {
     "sessionExpired": "セッションの有効期限が切れました。再度ログインしてください。",
@@ -2828,7 +2831,11 @@
     "company_members": "従業員の管理",
     "company_leave": "会社を退社",
     "cityroof": "シティルーフ",
-    "media": "メディア広告"
+    "media": "メディア広告",
+    "clicker": "クリッカー",
+    "clicker_cases": "クリッカーのケース開封",
+    "promo": "プロモコード",
+    "support": "サポート（問い合わせ）"
   },
   "sourceUi": {
     "source": "資源施設",
@@ -3487,5 +3494,10 @@
     "loanTypeBorrow": "借りる",
     "termLabel": "期間（日、2〜21）",
     "rateLabel": "日利、%"
+  },
+  "banned": {
+    "title": "アカウントは停止されています",
+    "until": "期限",
+    "supportHint": "BANが誤りだと思われる場合は、サポートに問い合わせてください。"
   }
 }

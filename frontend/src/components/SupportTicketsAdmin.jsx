@@ -8,6 +8,7 @@ const TYPE_OPTIONS = [
   { value: 'bug', label: 'Баги' },
   { value: 'loss', label: 'Потеря имущества' },
   { value: 'suggestion', label: 'Предложения' },
+  { value: 'wrongban', label: 'Ошибочный бан' },
 ]
 
 const STATUS_OPTIONS = [

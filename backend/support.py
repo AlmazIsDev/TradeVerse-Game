@@ -11,15 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
 
-from admin_perms import require_admin
-from auth import get_current_user
+from admin_perms import require_admin, require_allowed_even_banned
+from auth import get_current_user, get_user_ignoring_account_ban
 from database import get_db
 
 logger = logging.getLogger("tradeverse.support")
 router = APIRouter(prefix="/api/support", tags=["support"])
 admin_router = APIRouter(prefix="/api/admin/support", tags=["support-admin"])
 bug_router = APIRouter(prefix="/api/admin/bugs", tags=["bugs-admin"])
-TicketType = Literal["bug", "loss", "suggestion"]
+TicketType = Literal["bug", "loss", "suggestion", "wrongban"]
 BugStatus = Literal["new", "in_progress", "fixed"]
 TicketStatus = Literal["pending", "resolved", "rejected"]
 MAX_TEXT = 10000
@@ -79,6 +79,10 @@ def _initial(payload):
         values = [_clean(payload.lost_item), _clean(payload.method), _clean(payload.time)]
         if not all(values): raise HTTPException(400, "Заполните все поля о потере имущества")
         return "Что потерялось: %s\nКаким способом: %s\nПримерное время: %s" % tuple(values)
+    if payload.type == "wrongban":
+        text = _clean(payload.description or payload.message)
+        if not text: raise HTTPException(400, "Опишите, почему бан ошибочный")
+        return text
     text = _clean(payload.suggestion or payload.message)
     if not text: raise HTTPException(400, "Опишите предложение")
     return text
@@ -103,7 +107,7 @@ async def _next_number(db):
     return result.get("value", 1)
 
 @router.post("/tickets")
-async def create_ticket(payload: TicketCreate, current_user=Depends(get_current_user), db: AsyncIOMotorDatabase=Depends(get_db)):
+async def create_ticket(payload: TicketCreate, current_user=Depends(require_allowed_even_banned("support")), db: AsyncIOMotorDatabase=Depends(get_db)):
     _check_files(payload.attachments)
     now = _now()
     doc = {"number": await _next_number(db), "user_id": current_user["_id"], "username": current_user.get("username", ""),
@@ -113,11 +117,11 @@ async def create_ticket(payload: TicketCreate, current_user=Depends(get_current_
     return _serialize(doc)
 
 @router.get("/tickets")
-async def list_my_tickets(current_user=Depends(get_current_user), db: AsyncIOMotorDatabase=Depends(get_db)):
+async def list_my_tickets(current_user=Depends(get_user_ignoring_account_ban), db: AsyncIOMotorDatabase=Depends(get_db)):
     return [_serialize(d) async for d in db.support_tickets.find({"user_id": current_user["_id"]}).sort("updated_at", -1)]
 
 @router.post("/tickets/{ticket_id}/messages")
-async def player_message(ticket_id: str, payload: TicketMessageCreate, current_user=Depends(get_current_user), db: AsyncIOMotorDatabase=Depends(get_db)):
+async def player_message(ticket_id: str, payload: TicketMessageCreate, current_user=Depends(require_allowed_even_banned("support")), db: AsyncIOMotorDatabase=Depends(get_db)):
     _check_files(payload.attachments)
     try: oid = ObjectId(ticket_id)
     except Exception: raise HTTPException(400, "Некорректный id обращения")

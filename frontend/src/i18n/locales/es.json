@@ -484,7 +484,10 @@
     "typeSuggestion": "Sugerencia de mejora",
     "statusPending": "En revisiГіn",
     "statusRejected": "Rechazado",
-    "statusResolved": "Resuelto"
+    "statusResolved": "Resuelto",
+    "typeWrongBan": "Baneo incorrecto",
+    "describeWrongBan": "¿Por qué el baneo es incorrecto?",
+    "wrongBanReason": "Por qué el baneo es incorrecto"
   },
   "errors": {
     "sessionExpired": "La sesiГіn ha expirado. Inicia sesiГіn de nuevo.",
@@ -2910,7 +2913,11 @@
     "company_members": "Gestionar empleados",
     "company_leave": "Salir de la empresa",
     "cityroof": "Azotea de la ciudad",
-    "media": "Anuncios de medios"
+    "media": "Anuncios de medios",
+    "clicker": "Clicker",
+    "clicker_cases": "Apertura de cajas del clicker",
+    "promo": "Códigos promocionales",
+    "support": "Soporte (tickets)"
   },
   "sourceUi": {
     "source": "Fuente",
@@ -3798,5 +3805,10 @@
     "noOddsData": "Probabilidades no disponibles",
     "upgrade": "Mejora",
     "viewOdds": "Ver probabilidades"
+  },
+  "banned": {
+    "title": "Cuenta bloqueada",
+    "until": "Hasta",
+    "supportHint": "Si cree que el baneo es incorrecto, abra un ticket de soporte."
   }
 }

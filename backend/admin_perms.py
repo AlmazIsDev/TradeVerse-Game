@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, status
 
-from auth import get_current_user
+from auth import get_current_user, get_user_ignoring_account_ban
 from database import get_db, find_config_by_key
 
 PERMS_CONFIG_KEY = "admin_permissions"
@@ -171,6 +171,10 @@ PLAYER_FUNCTIONS: list[tuple[str, str]] = [
     ("cityroof_capture", "banFunc.cityroof_capture"),
     ("cityroof_protect", "banFunc.cityroof_protect"),
     ("media", "banFunc.media"),
+    ("clicker", "banFunc.clicker"),
+    ("clicker_cases", "banFunc.clicker_cases"),
+    ("promo", "banFunc.promo"),
+    ("support", "banFunc.support"),
 ]
 PLAYER_FUNCTION_IDS = {fid for fid, _ in PLAYER_FUNCTIONS}
 
@@ -194,14 +198,15 @@ def ban_active(ban: dict | None) -> bool:
     return True
 
 
-def user_ban_active(user: dict, func: str) -> bool:
+def user_ban_active(user: dict, func: str, *, ignore_account: bool = False) -> bool:
     bans = user.get("bans") or {}
     parents = sorted(
         (key for key in PLAYER_FUNCTION_IDS if func.startswith(f"{key}_")),
         key=len,
         reverse=True,
     )
-    return any(ban_active(bans.get(key)) for key in ("account", func, *parents) if key)
+    keys = (func, *parents) if ignore_account else ("account", func, *parents)
+    return any(ban_active(bans.get(key)) for key in keys if key)
 
 
 def require_allowed(func: str):
@@ -211,6 +216,19 @@ def require_allowed(func: str):
     """
     async def dep(current_user: dict = Depends(get_current_user)) -> dict:
         if user_ban_active(current_user, func):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Функция недоступна: доступ ограничен администрацией",
+            )
+        return current_user
+    return dep
+
+
+def require_allowed_even_banned(func: str):
+    """Как require_allowed, но полный бан аккаунта не блокирует: поддержка
+    нужна именно заблокированным игрокам, чтобы оспорить бан."""
+    async def dep(current_user: dict = Depends(get_user_ignoring_account_ban)) -> dict:
+        if user_ban_active(current_user, func, ignore_account=True):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Функция недоступна: доступ ограничен администрацией",

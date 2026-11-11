@@ -29,6 +29,8 @@ from admin_audit import changed_fields, record_admin_action
 
 from auth import (
     get_current_user,
+    get_user_ignoring_account_ban,
+    account_ban_detail,
     hash_password,
     verify_password,
     create_access_token,
@@ -501,6 +503,19 @@ async def logout(
     """
     await delete_refresh_token(db, body.refresh_token)
     return {"message": "Выход выполнен"}
+
+
+@app.get("/api/user/ban-status")
+async def get_ban_status(current_user: dict = Depends(get_user_ignoring_account_ban)):
+    """Статус полного бана: фронт переключается в режим «только поддержка»."""
+    detail = account_ban_detail(current_user)
+    ban = (current_user.get("bans") or {}).get("account") or {}
+    return {
+        "account_banned": detail is not None,
+        "detail": detail,
+        "until": ban.get("until") if detail else None,
+        "username": current_user.get("username"),
+    }
 
 
 @app.get("/api/user/me")

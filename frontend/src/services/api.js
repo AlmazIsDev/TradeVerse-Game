@@ -362,6 +362,10 @@ export async function fetchCurrentUser() {
   return request('/api/user/me')
 }
 
+export async function fetchBanStatus() {
+  return request('/api/user/ban-status')
+}
+
 /** Публичная карточка игрока по id (никнейм, аватар, «о себе», капитал, ачивки). */
 export async function fetchPlayerProfile(userId) {
   return request(`/api/user/${encodeURIComponent(userId)}/profile`)

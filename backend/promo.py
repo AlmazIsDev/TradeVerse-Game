@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 
-from admin_perms import require_admin
+from admin_perms import require_admin, require_allowed
 from assets import _find_catalog, _fallback_catalog, check_type_limit
 from auth import get_current_user
 from database import get_db
@@ -37,7 +37,7 @@ async def ensure_promo_indexes(db: AsyncIOMotorDatabase) -> None:
 @router.post("/promo/redeem")
 async def redeem_promo(
     payload: PromoRedeem,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_allowed("promo")),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Активировать промокод. Все награды или ни одной: сначала проверяются срок,

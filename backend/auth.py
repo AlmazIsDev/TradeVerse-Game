@@ -139,11 +139,7 @@ async def delete_refresh_token(db: AsyncIOMotorDatabase, raw_token: str) -> bool
     return result.deleted_count > 0
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-) -> dict:
-    """Dependency: извлекает текущего пользователя из JWT-токена."""
+async def _load_user_from_token(credentials, db) -> dict:
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -175,32 +171,50 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Пользователь не найден",
         )
-
-    # Полный бан аккаунта (bans.account). Проверка здесь — единая точка:
-    # блокирует и вход по JWT, и refresh (refresh выдаёт токен, которым
-    # всё равно пользуется get_current_user). Баны отдельных функций
-    # проверяет require_allowed (admin_perms.py) на игровых эндпоинтах.
-    ban = (user.get("bans") or {}).get("account")
-    if ban:
-        until = ban.get("until")
-        active = True
-        if until:
-            if isinstance(until, str):
-                try:
-                    until = datetime.fromisoformat(until)
-                except ValueError:
-                    until = None
-            if isinstance(until, datetime):
-                if until.tzinfo is None:
-                    until = until.replace(tzinfo=timezone.utc)
-                active = until > datetime.now(timezone.utc)
-        if active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Аккаунт заблокирован администрацией" +
-                       (f": {ban['reason']}" if ban.get("reason") else ""),
-            )
     return user
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    """Dependency: извлекает текущего пользователя из JWT-токена."""
+    user = await _load_user_from_token(credentials, db)
+    # Полный бан проверяется здесь — единая точка для JWT и refresh.
+    # Баны отдельных функций проверяет require_allowed (admin_perms.py).
+    detail = account_ban_detail(user)
+    if detail:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+    return user
+
+
+def account_ban_detail(user: dict) -> str | None:
+    """Текст блокировки, если у аккаунта активен полный бан (bans.account)."""
+    ban = (user.get("bans") or {}).get("account")
+    if not ban:
+        return None
+    until = ban.get("until")
+    if until:
+        if isinstance(until, str):
+            try:
+                until = datetime.fromisoformat(until)
+            except ValueError:
+                until = None
+        if isinstance(until, datetime):
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            if until <= datetime.now(timezone.utc):
+                return None
+    return "Аккаунт заблокирован администрацией" + (f": {ban['reason']}" if ban.get("reason") else "")
+
+
+async def get_user_ignoring_account_ban(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    """Как get_current_user, но без проверки полного бана: для поддержки,
+    чтобы заблокированный игрок мог оспорить бан."""
+    return await _load_user_from_token(credentials, db)
 
 
 if __name__ == "__main__":

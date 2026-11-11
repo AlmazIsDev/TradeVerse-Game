@@ -484,7 +484,10 @@
     "typeSuggestion": "Improvement suggestion",
     "statusPending": "Under review",
     "statusRejected": "Rejected",
-    "statusResolved": "Resolved"
+    "statusResolved": "Resolved",
+    "typeWrongBan": "Wrongful ban",
+    "describeWrongBan": "Why is the ban wrongful?",
+    "wrongBanReason": "Why is the ban wrongful"
   },
   "errors": {
     "sessionExpired": "Session expired. Please sign in again.",
@@ -2960,7 +2963,11 @@
     "company_members": "Manage employees",
     "company_leave": "Leave company",
     "cityroof": "CityRoof",
-    "media": "Media ads"
+    "media": "Media ads",
+    "clicker": "Clicker",
+    "clicker_cases": "Clicker case opening",
+    "promo": "Promo codes",
+    "support": "Support (tickets)"
   },
   "sourceUi": {
     "source": "Source",
@@ -4032,5 +4039,10 @@
         "text": "Press ▶ Start mining. The status switches to Mining in progress and income starts accruing in ticks, even while you are offline. Electricity is charged from the Electricity account in the Bank: make sure it does not run dry. Press Check."
       }
     }
+  },
+  "banned": {
+    "title": "Account suspended",
+    "until": "Until",
+    "supportHint": "If you believe the ban is wrong, open a support ticket."
   }
 }

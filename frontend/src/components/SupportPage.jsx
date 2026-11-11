@@ -9,6 +9,7 @@ const TYPES = {
   bug: { key: 'support.typeBug', label: 'Баг' },
   loss: { key: 'support.typeLoss', label: 'Потеря имущества' },
   suggestion: { key: 'support.typeSuggestion', label: 'Предложение по улучшению' },
+  wrongban: { key: 'support.typeWrongBan', label: 'Ошибочный бан' },
 }
 
 const STATUS_LABELS = {
@@ -54,11 +55,14 @@ function ticketFields(ticket, t) {
   if (ticket.type === 'suggestion') {
     return [{ label: t('support.suggestion', 'Предложение'), value: value(ticket.suggestion) }]
   }
+  if (ticket.type === 'wrongban') {
+    return [{ label: t('support.wrongBanReason', 'Почему бан ошибочный'), value: value(ticket.description) }]
+  }
   return [{ label: t('support.bugDescription', 'Описание бага'), value: value(ticket.description) }]
 }
 
 function isFormValid(form) {
-  if (form.type === 'bug') return form.description.trim() !== ''
+  if (form.type === 'bug' || form.type === 'wrongban') return form.description.trim() !== ''
   if (form.type === 'loss') {
     return form.lostItem.trim() && form.method.trim() && form.time.trim()
   }
@@ -67,6 +71,7 @@ function isFormValid(form) {
 
 function buildPayload(form) {
   if (form.type === 'bug') return { type: 'bug', description: form.description.trim() }
+  if (form.type === 'wrongban') return { type: 'wrongban', description: form.description.trim() }
   if (form.type === 'loss') {
     return {
       type: 'loss',
@@ -198,9 +203,9 @@ function SupportPage() {
               </select>
             </label>
 
-            {form.type === 'bug' && (
+            {(form.type === 'bug' || form.type === 'wrongban') && (
               <label className="support-label">
-                {t('support.describeBug', 'Опишите баг')}
+                {form.type === 'wrongban' ? t('support.describeWrongBan', 'Почему бан ошибочный?') : t('support.describeBug', 'Опишите баг')}
                 <textarea className="support-input" rows={5} value={form.description}
                   onChange={e => setField('description', e.target.value)} />
               </label>

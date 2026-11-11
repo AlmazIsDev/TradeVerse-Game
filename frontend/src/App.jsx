@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import './App.css'
 import './mobile.css'
@@ -6,12 +7,23 @@ import './landing.css'
 import AuthPage from './components/AuthPage'
 import Dashboard from './components/Dashboard'
 import Landing from './components/Landing'
-import { logoutUser, startTokenRefresh, stopTokenRefresh } from './services/api'
+import { logoutUser, startTokenRefresh, stopTokenRefresh, fetchBanStatus } from './services/api'
+import SupportPage from './components/SupportPage'
 
 const STORAGE_KEY = 'tradeverse_user'
 
 function App() {
   const [user, setUser] = useState(null)
+  const [accountBan, setAccountBan] = useState(null)
+
+  useEffect(() => {
+    if (!user) { setAccountBan(null); return }
+    let active = true
+    fetchBanStatus()
+      .then(status => { if (active) setAccountBan(status.account_banned ? status : null) })
+      .catch(() => { if (active) setAccountBan(null) })
+    return () => { active = false }
+  }, [user])
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -81,9 +93,11 @@ function App() {
         <Route
           path="/"
           element={
-            user
-              ? <Dashboard user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
-              : <Landing />
+            !user
+              ? <Landing />
+              : accountBan
+                ? <BannedView status={accountBan} onLogout={handleLogout} />
+                : <Dashboard user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
           }
         />
         <Route
@@ -98,6 +112,21 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+  )
+}
+
+/** Полный бан аккаунта: доступна только поддержка, чтобы оспорить решение. */
+function BannedView({ status, onLogout }) {
+  const { t } = useTranslation()
+  return (
+    <div className="banned-view">
+      <h1>{t('banned.title', 'Аккаунт заблокирован')}</h1>
+      {status.detail && <p>{status.detail}</p>}
+      {status.until && <p>{t('banned.until', 'До')}: {new Date(status.until).toLocaleString()}</p>}
+      <p>{t('banned.supportHint', 'Если вы считаете бан ошибочным, откройте обращение в поддержке.')}</p>
+      <SupportPage />
+      <button type="button" className="support-cancel-btn" onClick={onLogout}>{t('header.logout', 'Выйти')}</button>
+    </div>
   )
 }
 

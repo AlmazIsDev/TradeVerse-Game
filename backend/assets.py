@@ -1821,6 +1821,8 @@ async def sell_assets_bulk(
     if any(a.get("onAuction") for a in assets):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Один из активов выставлен на аукцион")
 
+    asset_ids = [a["_id"] for a in assets]
+
     await _ensure_asset_market(db)
     mult = await _asset_mult(db, slug)
     payout = 0.0
@@ -1831,10 +1833,11 @@ async def sell_assets_bulk(
 
     result = await db.user_assets.delete_many({
         "userId": user_id, "slug": slug, "companyId": None,
+        "_id": {"$in": asset_ids},
         "frozen": {"$ne": True}, "onAuction": {"$ne": True},
     })
     count = result.deleted_count
-    if count <= 0:
+    if count != len(assets):
         raise HTTPException(status.HTTP_409_CONFLICT, "Имущество уже изменилось, повторите")
     new_balance = await adjust_balance(db, user_id, round(payout, 2))
     cat = _ledger_category(assets[0])
